@@ -1,0 +1,15 @@
+# Representative subset: build test_db for users 1-300 (whole-user batches for eval).
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "test_db"
+LMDB_SIZE = 8_000_000_000          # ~5.1 GB data estimated; 8 GB reserved (Windows pre-allocates)
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+USER_START = 1
+USER_END = 300
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 7
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

@@ -1,0 +1,15 @@
+# Representative subset: build label_filter_db for users 1-300 (eval range of the
+# RWKV_trained_on_5000_10000 model). User ids are not size-sorted, so 1-300 is a
+# reasonable random-ish sample of the 10k table.
+DATA_PATH = "../anki-revlogs-10k"
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 1
+USER_END = 300
+
+PROCESSES = 7

@@ -1,0 +1,22 @@
+# Representative subset: evaluate users 1-300 on the CUDA parallel path; compare the
+# by-user mean to the published files (same users) and to the 10k table value.
+FILE_AHEAD = "RWKV-short-secs-subset"
+FILE_IMM = "RWKV-P-short-secs-subset"
+
+MODEL_PATH = "pretrain/RWKV_trained_on_5000_10000.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 1
+USER_END = 300
+
+NUM_FETCH_PROCESSES = 7
