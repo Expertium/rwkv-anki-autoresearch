@@ -1,0 +1,17 @@
+# 2k loop: build train_db for users 1-2000 (covers train 1-1000 AND the swap's 1001-2000).
+# Resume keeps the already-built 1-100 (sanity) and adds the rest. Train uses the smaller
+# MAX_BATCH_SIZE so users are chunked into <=32768-row training sections.
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "train_db"
+LMDB_SIZE = 40_000_000_000          # ~34 GB data est for 2000 users; 40 GB reserved
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000   # the persistent cache
+
+USER_START = 1
+USER_END = 2000
+MAX_BATCH_SIZE = 65536
+PROCESSES = 7
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

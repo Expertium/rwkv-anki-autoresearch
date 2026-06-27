@@ -1,0 +1,16 @@
+# Persistent label_filter cache for the whole 2k loop (users 1-2000).
+# find_equalize output is deterministic, so this is a build-once cache: resume logic skips
+# the already-cached 1-300, computes 301-2000. NEVER delete label_filter_db. Keep
+# LABEL_FILTER_LMDB_SIZE = 2 GB consistent across ALL configs (the file grows to this size).
+DATA_PATH = "../anki-revlogs-10k"
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 1
+USER_END = 2000
+
+PROCESSES = 7

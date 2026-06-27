@@ -456,8 +456,11 @@ def main_loop(config, task_queue, batch_queue):
             if step < config.STEP_OFFSET + 1000:
                 _clear_device_cache(config.DEVICE)
 
+            # VALIDATE_EVERY (default 500) controls validation/checkpoint cadence by global
+            # step — small datasets have too few groups for the original (group_i+1)%500.
+            validate_every = getattr(config, "VALIDATE_EVERY", 500)
             validate_iter = (
-                step == 50 or (group_i + 1) % 500 == 0 or step == total_steps
+                step == 50 or step % validate_every == 0 or step == total_steps
             )
             log = {}
             log["step"] = step
