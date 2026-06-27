@@ -236,27 +236,81 @@ deltas so dead ends aren't re-run.
 | `parse_toml.py`, `utils.py` | config + small helpers |
 | *(parent)* `features/`, `utils.get_bin`, `config.py`, `setup.py` | shared deps to vendor |
 
-## 11. Optimization loop (steps 4–7) — protocol
+## 11. Optimization loop (steps 4–5–7) — THE PROTOCOL (canonical; mirror in `optimization/PROTOCOL.md`)
 
-Steps 4 (speed), 5 (param reduction), and 7 (quantize) run as one **iterative autoresearch
-loop**. The full rules live in **[`optimization/PROTOCOL.md`](optimization/PROTOCOL.md)** —
-read it before running an iteration. In brief:
-- **Allowed:** exact + inexact changes — training, hyperparameters, **and architecture**.
-  Biggest wins first (param-count reduction). **Invariants:** the `card→note→deck→preset→
-  global` hierarchy and the existing 92-dim inputs/preprocessed data never change.
-- **5 gates (all must pass to keep a change):** (1) ahead+imm by-user-mean LogLoss not worse
-  by >+0.0015 vs **iteration 0**; (2) per-user review count identical; (3) per-card state
-  ≤ baseline (51.0 KiB / 13,056 floats); (4) hierarchy preserved; (5) same inputs.
-- **Eval recipe:** train 1–100, eval 101–200, bf16 GPU `get_result`
-  (`get_result_config_iter0.toml`); keep `verify_rust.py` (3-user, float32) passing as the
-  Rust-parity invariant.
-- **Speed:** batch throughput, simultaneous before/after paired trials (3+3 threads, locked
-  CPU freq), one-sided Wilcoxon p<0.01. Helpers: `optimization/model_stats.py` (params +
-  state size); logs in `optimization/log.{jsonl,md}` (append-only).
-- **Iteration 0 baseline:** `rwkv_ref_558.pth`, 2,762,884 params, 51.0 KiB/card.
+Steps 4 (speed), 5 (param reduction), 7 (quantize) run as ONE iterative autoresearch loop.
+Follow this exactly — Andrew has flagged sloppiness, so do every step every iteration.
+
+**Scope / allowed changes:** both **exact** (float-noise) and **inexact** (accuracy-affecting)
+changes — training, hyperparameters, AND architecture. Biggest wins first, but per Andrew
+(2026-06-27): **bank cheap size/speed wins that barely move LogLoss first; don't push the
+champion close to the +0.0015 threshold early** (the champion's distance from the threshold is
+the remaining budget for ALL future iterations — burning it early starves them).
+
+**Two hard INVARIANTS (never change):** (1) hierarchy `card→note→deck→preset→global` (5 chained
+streams in that order); (2) inputs — the model must still run on the *same preprocessed 92-dim
+data* / existing LMDBs. No new/changed inputs.
+
+**The 5 gates — a change is KEPT only if ALL pass:**
+1. **LogLoss (both modes):** ahead AND imm by-user-mean LogLoss not worse than **iteration 0**
+   by >**+0.0015**. (A pure/exact change ≈0; a real rise is a red flag, not budget to spend.)
+2. **Review count ("size"):** per-user equalized review count IDENTICAL to iter0 (it's a
+   property of the data+filters; any change = a pipeline bug).
+3. **State size:** per-card RNN state (card_id stream) **≤ iter0** (13,056 floats / 51.0 KiB).
+4. **Hierarchy** preserved. 5. **Inputs** unchanged.
+GPU training speed is **untimed** (prefer it not balloon, but it doesn't gate).
+
+**Eval recipe (FIXED every iteration):** train users **1–100**, eval **101–200** (all 100),
+bf16 CUDA `python -m rwkv.get_result --config rwkv/get_result_config_iterN.toml` → by-user mean
+of `result/RWKV-iterN.jsonl` (ahead) + `RWKV-P-iterN.jsonl` (imm). Training recipe = **WSD**:
+WS 18 epochs (558 steps, `train_rwkv_config_iterN.toml`) then **D** 2-epoch cosine decay
+(`..._iterN_decay.toml`, loads the WS-final ckpt) — the decay phase matters (it's what landed
+the iter3 champion). **Rust-parity invariant:** `verify_rust.py` (3-user float32) must pass for
+the champion arch before "shipping" (re-export trace + match the trained model bit-exactly).
+
+**Speed = batch throughput via simultaneous paired Wilcoxon (protocol point 7–8):**
+- **Lock CPU freq** (admin, once/session): `powercfg -attributes SUB_PROCESSOR
+  75b0ae3f-bce0-45a7-8c89-c9611c25e100 -ATTRIB_HIDE` ; `powercfg /setacvalueindex SCHEME_CURRENT
+  SUB_PROCESSOR PROCFREQMAX 3400` ; `... PROCTHROTTLEMIN 100` ; `... PROCTHROTTLEMAX 100` ;
+  `powercfg /setactive SCHEME_CURRENT`. (`PROCFREQMIN` is not a valid alias — pin the perf
+  state instead. Restore: `PROCFREQMAX 0`, `PROCTHROTTLEMIN 5`.)
+- **One trial** = run *before* (champion) and *after* (candidate) **simultaneously**, each
+  pinned to **3 threads**, each looping the **same frozen pre-chosen batch set** for a fixed
+  wall-clock **T≈20–30 s**; count reviews each finishes → one paired point. Pairing the *trial*
+  (not the batch) keeps pairs independent + cancels external load + avoids tail bias.
+- Repeat **K≈10** trials (drop 1–2 warm-ups); accept the speedup only if **one-sided Wilcoxon
+  signed-rank p < 0.01**. (Power: n all-same-sign pairs → p≈2⁻ⁿ, so ~8–10 consistent trials
+  clear it.) Batch throughput = stepping many *independent* card-streams in parallel (per-card
+  is inherently sequential); batching is an exact, free speedup. Build via the config-driven
+  Rust bench + a Python Wilcoxon driver.
+
+**Logging — DO NOT BE SLOPPY (Andrew flagged this twice):** `optimization/logbook.py` appends to
+`log.jsonl` and regenerates `log.md` (table excludes `comment`). EVERY iteration gets ALL fields:
+`number, timestamp, logloss{ahead,imm}, params, state_kib, throughput, wilcoxon_p,
+review_count_check, logloss_tolerance_check, state_size_check, summary(≤15 words, BEFORE),
+comment(after; jsonl only)`.
+- **Throughput (rev/s) is MANDATORY for every ACCEPTED iteration** — measure it then and there
+  (`python optimization/measure_throughput.py <ckpt.pth>`); rejected → `n/a`. Never "pending".
+- **`wilcoxon_p` is MANDATORY for every ACCEPTED iteration** — run the paired Wilcoxon trial
+  (champion-vs-candidate) and record p; rejected → `n/a`.
+- Plain ASCII in shell-written values (an em-dash mojibakes). Log dead ends with a why-comment.
+
+**Tooling (`optimization/`):** `model_stats.py` (params + per-card state), `gate.py` (computes
+the gates + appends a record; `--no-write` to dry-run), `logbook.py`, `measure_throughput.py`,
+`PROTOCOL.md`. Use `.venv/Scripts/python.exe`, `OMP_NUM_THREADS=7`.
+
+**Training survives the ~5-min session teardowns** (which kill bg/detached jobs) via
+**foreground + resume-from-checkpoint**: ckpts every 100 steps; resume by copying
+`{prefix}_optim_{step}.pth` → `{prefix}_{step}_optim.pth` and setting LOAD_MODEL /
+LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
+
+**Iteration 0 baseline:** `rwkv_ref_558.pth`, d_model=128, 2,762,884 params, 51.0 KiB/card,
+ahead 0.374046 / imm 0.319475, throughput 181.8 rev/s (B=1).
+**CHAMPION = iter3:** d_model=64 (N_HEADS=2) + WSD decay, 804,036 params (3.44×), 25.5 KiB,
+ahead 0.358576 / imm 0.318373 (both beat iter0). See `optimization/log.md` + [[optimization-loop]].
 
 ---
 
 **Status:** roadmap steps 1–3 DONE (reproduce; 2k-loop workbench/training verified; Rust
-RNN port at bit-exact parity — see `optimization/` + the `step*` memories). Now in the
-steps 4–5–7 optimization loop (§11), starting with parameter-count reduction.
+RNN port at bit-exact parity). Now in the steps 4–5–7 optimization loop (§11): champion iter3
+(d_model=64, 3.44× smaller). Overnight automation + compaction injector ENABLED.

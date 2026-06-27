@@ -91,6 +91,17 @@ comparison model — decimal when large, scientific when tiny), `review_count_ch
 
 Keep dead ends in the log so they aren't re-tried (CLAUDE.md §8).
 
+**Documentation discipline (do NOT be sloppy):** every iteration must be logged with ALL
+fields filled in — no leaving values blank or "pending" and moving on. In particular:
+- **Throughput is mandatory for every ACCEPTED iteration**: measure it (`optimization/
+  measure_throughput.py <ckpt.pth>` → median rev/s) and record the number *before* moving to
+  the next iteration. Rejected iterations show `n/a`. Never leave an accepted champion's
+  throughput as `pending`.
+- Fill `wilcoxon_p` whenever a paired speed trial is run; else `n/a`.
+- `summary` is written *before* the run (≤15 words); `comment` *after* (jsonl only).
+- Log dead ends too, with a comment explaining why they failed.
+- Use plain ASCII in values written via the shell (a stray em-dash gets mojibaked).
+
 ## Iteration 0 (frozen baseline)
 
 Model `pretrain/rwkv/ref_100/rwkv_ref_558.pth` (current arch, trained 1–100). Params
