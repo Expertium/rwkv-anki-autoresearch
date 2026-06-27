@@ -34,3 +34,11 @@ raw/
 evaluation/
 wandb/
 *.log
+
+# Rust build artifacts (regenerable)
+target/
+
+# Reference port artifacts: large + regenerable (keep ref_metrics.json + weight_names.json)
+reference/*.safetensors
+reference/trace_user_*.json
+reference/rust_pred_*.json

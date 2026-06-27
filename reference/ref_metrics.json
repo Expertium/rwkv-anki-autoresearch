@@ -1,6 +1,7 @@
 {
   "model": "rwkv_ref_558.pth",
-  "seed_scheme": "torch.manual_seed(user_id) per user",
+  "mode": "RNN eval (dropout off), float32",
+  "seed_scheme": "torch.manual_seed(user_id) per user (id-encodings only)",
   "users": [
     107,
     136,
@@ -10,24 +11,24 @@
     {
       "user": 107,
       "size": 3510,
-      "imm_logloss": 0.268114,
-      "ahead_logloss": 0.341951
+      "imm_logloss": 0.267575,
+      "ahead_logloss": 0.34039
     },
     {
       "user": 136,
       "size": 3870,
-      "imm_logloss": 0.130831,
-      "ahead_logloss": 0.196701
+      "imm_logloss": 0.130469,
+      "ahead_logloss": 0.195117
     },
     {
       "user": 156,
       "size": 3710,
-      "imm_logloss": 0.302083,
-      "ahead_logloss": 0.328033
+      "imm_logloss": 0.300294,
+      "ahead_logloss": 0.326836
     }
   ],
-  "mean_imm_logloss": 0.233676,
-  "mean_ahead_logloss": 0.288895,
+  "mean_imm_logloss": 0.232779,
+  "mean_ahead_logloss": 0.287448,
   "tolerance": 0.0005,
   "note": "Rust RNN port must match mean_*_logloss within +/-tolerance."
 }

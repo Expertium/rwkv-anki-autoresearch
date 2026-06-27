@@ -48,6 +48,11 @@ class RNNProcess:
         else:
             print("Did not load weights.")
         self.rnn = self.rnn.selective_cast(dtype)
+        # Frozen-weight inference: disable dropout. The upstream demo omitted this,
+        # so it ran with prehead_dropout (p=0.02) + head_w dropout (p=0.1) active,
+        # injecting (seeded) noise. get_result.py (the real benchmark) calls .eval();
+        # eval mode is the correct deterministic inference path for the Rust port.
+        self.rnn.eval()
         self.device = device
         self.dtype = dtype
 
