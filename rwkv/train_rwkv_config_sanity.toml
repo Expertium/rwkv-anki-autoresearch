@@ -1,0 +1,37 @@
+# SANITY training run: train users 1-100, validate on a few users from test_db (1-300).
+# Goal: confirm the loss drops, VRAM fits on 12 GB, checkpoints save. Not a real model.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db"
+TRAIN_DATASET_LMDB_SIZE = 4_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000   # the existing 1-300 test_db
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+NUM_FETCH_PROCESSES = 7          # <= 7-thread cap
+
+MAX_TRAIN_GLOBAL_LEN = 20000     # conservative for 12 GB (24 GB used 66000); tune up if VRAM headroom
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 50                # short so LR ramps fast and loss visibly drops in a sanity run
+EPOCHS = 3                       # bounded: total_steps = 3 * len(groups); a few hundred steps
+PEAK_LR = 7e-4
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "pretrain/rwkv"
+LOAD_MODEL_NAME = "RWKV_trained_on_5000_10000"
+SAVE_MODEL_FOLDER = "pretrain/rwkv/train_sanity"
+SAVE_MODEL_PREFIX = "rwkv_sanity"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

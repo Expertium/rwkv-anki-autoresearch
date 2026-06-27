@@ -1,0 +1,16 @@
+# SANITY: build train_db for users 1-100 to validate the training loop quickly.
+# Train uses a smaller MAX_BATCH_SIZE (chunks users into <=32768-row sections).
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "train_db"
+LMDB_SIZE = 4_000_000_000          # 4 GB reserved for 100 users
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000   # the 1-300 label db already built
+
+USER_START = 1
+USER_END = 100
+MAX_BATCH_SIZE = 65536
+PROCESSES = 7
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

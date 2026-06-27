@@ -560,6 +560,23 @@ def create_sample(
     )
 
 
+# Per-worker handle to the label-filter LMDB, opened once in the Pool initializer below.
+# Opening AND closing it per user under 7-way concurrency caused transient Windows file
+# races ("No such file or directory") that crashed the whole Pool and SILENTLY dropped the
+# in-flight users while the process still exited 0. Open once, read-only, no lock file.
+_label_filter_env = None
+
+
+def init_worker(config):
+    global _label_filter_env
+    _label_filter_env = lmdb.open(
+        config.LABEL_FILTER_LMDB_PATH,
+        map_size=config.LABEL_FILTER_LMDB_SIZE,
+        readonly=True,
+        lock=False,
+    )
+
+
 def job(config, user_id, max_size, done, writer_queue, progress_queue):
     if done:
         print(f"User already done: {user_id}")
@@ -569,10 +586,16 @@ def job(config, user_id, max_size, done, writer_queue, progress_queue):
     torch.manual_seed(user_id)
     np.random.seed(user_id)
 
-    LABEL_FILTER_DATASET = lmdb.open(
-        config.LABEL_FILTER_LMDB_PATH, map_size=config.LABEL_FILTER_LMDB_SIZE
-    )
-    with LABEL_FILTER_DATASET.begin(write=False) as txn:
+    global _label_filter_env
+    if _label_filter_env is None:
+        # Fallback when run outside the Pool initializer (e.g. single-process).
+        _label_filter_env = lmdb.open(
+            config.LABEL_FILTER_LMDB_PATH,
+            map_size=config.LABEL_FILTER_LMDB_SIZE,
+            readonly=True,
+            lock=False,
+        )
+    with _label_filter_env.begin(write=False) as txn:
 
         def load_tensor(txn, key, device):
             tensor_bytes = txn.get(key.encode())
@@ -580,7 +603,6 @@ def job(config, user_id, max_size, done, writer_queue, progress_queue):
             return torch.load(buffer, weights_only=True, map_location=device)
 
         equalize_review_ths = load_tensor(txn, f"{user_id}_review_ths", "cpu").tolist()
-    LABEL_FILTER_DATASET.close()
 
     df = get_rwkv_data(
         config.DATA_PATH, user_id, equalize_review_ths=equalize_review_ths
@@ -723,7 +745,9 @@ def main(config):
 
         # Config-driven worker count (default 7) to respect this machine's thread cap.
         n_proc = getattr(config, "PROCESSES", 7)
-        with multiprocessing.Pool(processes=n_proc) as pool:
+        with multiprocessing.Pool(
+            processes=n_proc, initializer=init_worker, initargs=(config,)
+        ) as pool:
             pool.starmap(
                 job,
                 [
