@@ -8,18 +8,11 @@ use anyhow::{anyhow, Result};
 use candle_core::{DType, Device, Tensor, D};
 use std::collections::HashMap;
 
-// NOTE: dims are champion-arch constants. iter0 was H=4/C=128; champion iter3+ is H=2/C=64.
-// TODO: derive these (and STREAM_LAYERS) from the weight shapes so the engine auto-adapts
-// to any arch without edits — needed once layer-count/d_model changes land.
-pub const H: usize = 2; // heads
-pub const K: usize = 32; // head dim
-pub const C: usize = 64; // d_model
+// Model dims (H heads, K head-dim, C d_model) and per-stream layer counts are DERIVED from
+// the weight shapes at load time (see Model::load) so the engine auto-adapts to any arch.
 const LN_EPS: f64 = 1e-5;
 const GN_EPS: f64 = 64e-5;
 const L2_EPS: f64 = 1e-12;
-
-// layers per stream, in chain order: card, deck, note, preset, user
-pub const STREAM_LAYERS: [usize; 5] = [3, 4, 2, 3, 4];
 
 type TMap = HashMap<String, Tensor>;
 
@@ -111,6 +104,10 @@ pub type StreamState = Vec<LayerState>;
 pub struct Model {
     w: TMap,
     dev: Device,
+    h: usize,              // n_heads (derived from weights)
+    k: usize,              // head dim = c / h
+    c: usize,              // d_model (derived from weights)
+    stream_layers: Vec<usize>, // layers per stream (derived by counting blocks)
     s_space: Tensor,       // (1,128) forgetting-curve time constants
     point_space: Vec<f32>, // (128) interp grid
 }
@@ -118,6 +115,20 @@ pub struct Model {
 impl Model {
     pub fn load(path: &str, dev: Device) -> Result<Self> {
         let w = candle_core::safetensors::load(path, &dev)?;
+        // Derive dims from the weight shapes so the engine auto-adapts to any arch.
+        let c = get(&w, "prehead_norm.weight")?.dim(0)?;
+        let h = get(&w, "rwkv_modules.0.blocks.0.time_mixer.k_scale_linear.weight")?.dim(0)?;
+        let k = c / h;
+        let mut stream_layers = Vec::new();
+        for m in 0..5 {
+            let mut l = 0;
+            while w.contains_key(&format!(
+                "rwkv_modules.{m}.blocks.{l}.time_mixer.layer_norm.weight"
+            )) {
+                l += 1;
+            }
+            stream_layers.push(l);
+        }
         // forgetting_curve s_space (num_curves=128)
         let n = 128usize;
         let lin: Vec<f32> = (0..n).map(|i| 18.5f32 * i as f32 / (n as f32 - 1.0)).collect();
@@ -140,6 +151,10 @@ impl Model {
         Ok(Self {
             w,
             dev,
+            h,
+            k,
+            c,
+            stream_layers,
             s_space: s_space_t,
             point_space,
         })
@@ -182,6 +197,8 @@ impl Model {
         v0: Option<&Tensor>,
         st: Option<(&Tensor, &Tensor)>,
     ) -> Result<(Tensor, Tensor, Tensor, Tensor)> {
+        #[allow(non_snake_case)]
+        let (H, K, C) = (self.h, self.k, self.c); // dims derived from weights
         let x = self.ln(in_x, &format!("{p}.layer_norm"), LN_EPS)?;
         let (xshift, s_prev) = match st {
             Some((xs, s)) => (xs.clone(), s.clone()),
@@ -248,7 +265,7 @@ impl Model {
         let k_h = (&k_h0 * &a_h)?;
 
         // WKV single_timestep
-        let (out_hk, next_s) = single_timestep(&r_h, &k_h, &v_h, &w_h, &a_h, &kd_h, &s_prev)?;
+        let (out_hk, next_s) = single_timestep(H, K, &r_h, &k_h, &v_h, &w_h, &a_h, &kd_h, &s_prev)?;
 
         let out_flat = out_hk.reshape((1, C))?;
         let out_gn = group_norm(
@@ -287,6 +304,8 @@ impl Model {
 
     /// One RWKV7 channel-mixer layer. Returns (out, new_c_xshift).
     fn channel_mixer(&self, p: &str, in_x: &Tensor, xshift: Option<&Tensor>) -> Result<(Tensor, Tensor)> {
+        #[allow(non_snake_case)]
+        let C = self.c;
         let x = self.ln(in_x, &format!("{p}.layer_norm"), LN_EPS)?;
         let xs = match xshift {
             Some(t) => t.clone(),
@@ -348,7 +367,7 @@ impl Model {
         // chain streams
         let mut new: Vec<StreamState> = Vec::with_capacity(5);
         for m in 0..5 {
-            let (xo, ns) = self.run_stream(m, STREAM_LAYERS[m], &x, states[m].as_ref())?;
+            let (xo, ns) = self.run_stream(m, self.stream_layers[m], &x, states[m].as_ref())?;
             x = xo;
             new.push(ns);
             if dbg {
@@ -446,7 +465,10 @@ impl Model {
 
 /// RWKV-7 WKV single timestep (matches rwkv_ops.single_timestep).
 /// state' = state*w(cols) - (state@kd)@(a*kd)^T + v@k^T ; out = state'@r
+#[allow(non_snake_case)]
 fn single_timestep(
+    n_heads: usize,
+    head_dim: usize,
     r: &Tensor, // (H,K)
     k: &Tensor,
     v: &Tensor,
@@ -455,6 +477,7 @@ fn single_timestep(
     kd: &Tensor,
     s_prev: &Tensor, // (H,K,K)
 ) -> Result<(Tensor, Tensor)> {
+    let (H, K) = (n_heads, head_dim);
     let col = |t: &Tensor| -> Result<Tensor> { Ok(t.reshape((H, K, 1))?) };
     let row = |t: &Tensor| -> Result<Tensor> { Ok(t.reshape((H, 1, K))?) };
 
