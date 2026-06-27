@@ -97,7 +97,9 @@ fn run_user(model: &Model, user: i64) -> Result<()> {
 }
 
 fn main() -> Result<()> {
-    let weights = "reference/rwkv_ref_558.safetensors";
+    let weights_owned = std::env::var("RWKV_WEIGHTS")
+        .unwrap_or_else(|_| "reference/rwkv_ref_558.safetensors".to_string());
+    let weights = weights_owned.as_str();
     let model = Model::load(weights, Device::Cpu)?;
     println!("model loaded from {weights}");
 

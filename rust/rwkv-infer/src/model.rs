@@ -8,9 +8,12 @@ use anyhow::{anyhow, Result};
 use candle_core::{DType, Device, Tensor, D};
 use std::collections::HashMap;
 
-pub const H: usize = 4; // heads
+// NOTE: dims are champion-arch constants. iter0 was H=4/C=128; champion iter3+ is H=2/C=64.
+// TODO: derive these (and STREAM_LAYERS) from the weight shapes so the engine auto-adapts
+// to any arch without edits — needed once layer-count/d_model changes land.
+pub const H: usize = 2; // heads
 pub const K: usize = 32; // head dim
-pub const C: usize = 128; // d_model
+pub const C: usize = 64; // d_model
 const LN_EPS: f64 = 1e-5;
 const GN_EPS: f64 = 64e-5;
 const L2_EPS: f64 = 1e-12;
