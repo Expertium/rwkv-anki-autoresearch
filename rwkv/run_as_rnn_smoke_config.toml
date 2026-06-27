@@ -1,0 +1,14 @@
+# SMOKE config: single-user CPU RNN inference proof-of-life (no CUDA kernel needed).
+# User 3 is the smallest of users 1-15 (~8k reviews) -> fast. Weights trained on users
+# 5000-10000, so user 3 is a genuine held-out eval user.
+USER = 3
+
+DATA_PATH = "../anki-revlogs-10k"
+MODEL_PATH = "pretrain/RWKV_trained_on_5000_10000.pth"
+DEVICE = "cpu"
+DTYPE = "float"
+
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 500_000_000   # must match the size used to create the db
+
+VERBOSE = false

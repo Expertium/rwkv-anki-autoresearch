@@ -1,0 +1,36 @@
+# Python virtual env
+.venv/
+venv/
+
+# Byte-compiled / caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Vendored pretrained weights (large binaries; copy from ../srs-benchmark/pretrain)
+pretrain/
+
+# LMDB databases (huge; see lmdb-storage-plan memory)
+*_db/
+train_db/
+test_db/
+label_filter_db/
+*.mdb
+
+# Compiled CUDA/C++ extension build artifacts
+build/
+*.so
+*.pyd
+*.dll
+*.egg-info/
+
+# Scratch / local outputs
+result/
+raw/
+evaluation/
+wandb/
+*.log

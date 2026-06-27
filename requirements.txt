@@ -1,0 +1,28 @@
+# RWKV-for-Anki — Python dependencies (RWKV-only vendor).
+#
+# torch must come from the CUDA 12.6 wheel index. Install it FIRST, separately:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cu126
+# then:  uv pip install -r requirements.txt
+#
+# Pins below are the versions verified working on Andrew's machine (2026-06-27,
+# Python 3.12, RTX 4070). Loosen if you re-resolve.
+
+torch==2.12.1+cu126            # install via the cu126 index (see note above)
+
+# --- core data pipeline + eval (find_equalize / data_processing / get_result / run_as_rnn) ---
+numpy==2.5.0
+pandas==3.0.3
+pyarrow==24.0.0
+lmdb==2.2.1
+tqdm==4.68.3
+scikit-learn==1.9.0
+tomli==2.4.1
+psutil==7.2.2
+
+# --- benchmark test-set filtering used by find_equalize_test_reviews.py ---
+# Provides remove_outliers / remove_non_continuous_rows so our "equalized" test set
+# matches srs-benchmark exactly. Pulls in matplotlib + statsmodels transitively.
+fsrs-optimizer==6.5.0
+
+# --- training only (rwkv/train_rwkv.py); uncomment when you start training ---
+# wandb

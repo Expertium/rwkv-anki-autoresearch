@@ -1,0 +1,19 @@
+# Verification subset (seeded test_users.json): the 5 smallest + 2 small randoms.
+# The 5 "largest" test users (1-2.5M reviews) are excluded here — the CPU RNN path
+# (~20 reviews/sec) can't cover them in reasonable time; they go through the CUDA path.
+DATA_PATH = "../anki-revlogs-10k"
+LABEL_FILTER_LMDB_PATH = "label_filter_verify_db"
+LABEL_FILTER_LMDB_SIZE = 500_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+# 5 smallest: 2308, 322, 2253, 1175, 128 ; 2 small randoms: 459, 1007
+USER_IDS = [128, 322, 459, 1007, 1175, 2253, 2308]
+
+# placeholders (unused when USER_IDS is set)
+USER_START = 1
+USER_END = 1
+
+PROCESSES = 7
