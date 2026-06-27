@@ -236,10 +236,27 @@ deltas so dead ends aren't re-run.
 | `parse_toml.py`, `utils.py` | config + small helpers |
 | *(parent)* `features/`, `utils.get_bin`, `config.py`, `setup.py` | shared deps to vendor |
 
+## 11. Optimization loop (steps 4–7) — protocol
+
+Steps 4 (speed), 5 (param reduction), and 7 (quantize) run as one **iterative autoresearch
+loop**. The full rules live in **[`optimization/PROTOCOL.md`](optimization/PROTOCOL.md)** —
+read it before running an iteration. In brief:
+- **Allowed:** exact + inexact changes — training, hyperparameters, **and architecture**.
+  Biggest wins first (param-count reduction). **Invariants:** the `card→note→deck→preset→
+  global` hierarchy and the existing 92-dim inputs/preprocessed data never change.
+- **5 gates (all must pass to keep a change):** (1) ahead+imm by-user-mean LogLoss not worse
+  by >+0.0015 vs **iteration 0**; (2) per-user review count identical; (3) per-card state
+  ≤ baseline (51.0 KiB / 13,056 floats); (4) hierarchy preserved; (5) same inputs.
+- **Eval recipe:** train 1–100, eval 101–200, bf16 GPU `get_result`
+  (`get_result_config_iter0.toml`); keep `verify_rust.py` (3-user, float32) passing as the
+  Rust-parity invariant.
+- **Speed:** batch throughput, simultaneous before/after paired trials (3+3 threads, locked
+  CPU freq), one-sided Wilcoxon p<0.01. Helpers: `optimization/model_stats.py` (params +
+  state size); logs in `optimization/log.{jsonl,md}` (append-only).
+- **Iteration 0 baseline:** `rwkv_ref_558.pth`, 2,762,884 params, 51.0 KiB/card.
+
 ---
 
-**First session, do this:** (1) vendor `srs-benchmark/rwkv` + its parent deps into this
-repo and get it importing standalone; (2) sort out the CUDA toolchain *or* prove the
-CPU/RNN path works; (3) reproduce the §5 baseline from the provided weights via
-`get_result.py`. Then proceed down the roadmap, building the 2k loop (step 2) as your
-workbench.
+**Status:** roadmap steps 1–3 DONE (reproduce; 2k-loop workbench/training verified; Rust
+RNN port at bit-exact parity — see `optimization/` + the `step*` memories). Now in the
+steps 4–5–7 optimization loop (§11), starting with parameter-count reduction.

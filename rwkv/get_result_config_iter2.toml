@@ -1,0 +1,21 @@
+# Iteration 2 eval: d_model=64 + IMMEDIATE_SCALE=2.0 model, eval on 101-200, bf16.
+FILE_AHEAD = "RWKV-iter2"
+FILE_IMM = "RWKV-P-iter2"
+
+MODEL_PATH = "pretrain/rwkv/opt_iter2/rwkv_iter2_558.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 101
+USER_END = 200
+
+NUM_FETCH_PROCESSES = 7

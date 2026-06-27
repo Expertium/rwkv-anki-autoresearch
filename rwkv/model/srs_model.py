@@ -339,6 +339,10 @@ class SrsRWKV(ModuleType):
         ahead_raw_avg = (curve_raw_loss * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
         AHEAD_RAW_SCALE = 0.5
         immediate_avg = (p_loss * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
+        # Optimization-loop knob (local literal — TorchScript can't use module globals/env):
+        # weight on the immediate 4-way rating loss. 1.0 = original. (iter2 tried 2.0 -> imm
+        # got WORSE, reverted.)
+        IMMEDIATE_SCALE = 1.0
         w_avg = (w_loss * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
         W_LOSS_SCALE = 1e-5
         ahead_logits_mag_loss = torch.sqrt(
@@ -357,7 +361,7 @@ class SrsRWKV(ModuleType):
         AHEAD_LOGITS_DIFF_LOSS_SCALE = 1e-3
         loss_avg = (
             AHEAD_SCALE * ahead_avg
-            + immediate_avg
+            + IMMEDIATE_SCALE * immediate_avg
             + AHEAD_RAW_SCALE * ahead_raw_avg
             + W_LOSS_SCALE * w_avg
             + AHEAD_LOGITS_MAG_LOSS_SCALE * ahead_logits_mag_avg

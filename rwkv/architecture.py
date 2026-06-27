@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from rwkv.model.rwkv_model import RWKV7Config
 
-N_HEADS = 4
+N_HEADS = 2  # iter1: halve d_model 128->64 (keep head-dim K=32 for the CUDA kernel)
 
 DROPOUT = 0.02
 DROPOUT_LONG = 0.05
