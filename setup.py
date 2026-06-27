@@ -1,4 +1,5 @@
 import os
+import sys
 import torch
 import glob
 from setuptools import find_packages, setup  # type: ignore
@@ -16,13 +17,23 @@ def get_rwkv_extensions():
     extension = CUDAExtension if use_cuda else CppExtension
 
     extra_link_args = []
-    extra_compile_args = {
-        "cxx": [
+    # Host-compiler flags differ between MSVC (Windows) and GCC/Clang (Linux/macOS).
+    # The upstream flags are GCC-style; MSVC rejects -O3/-fdiagnostics-color.
+    # On Windows, CUDA 13.x's CCCL headers require MSVC's conforming preprocessor
+    # (/Zc:preprocessor) under -std=c++20, both for host (.cpp) and nvcc-host (.cu).
+    if sys.platform == "win32":
+        cxx_flags = ["/O2", "/Zc:preprocessor", "/DPy_LIMITED_API=0x03090000"]
+        nvcc_flags = ["-O3", "-Xcompiler", "/Zc:preprocessor"]
+    else:
+        cxx_flags = [
             "-O3",
             "-fdiagnostics-color=always",
             "-DPy_LIMITED_API=0x03090000",  # min CPython version 3.9
-        ],
-        "nvcc": ["-O3"],
+        ]
+        nvcc_flags = ["-O3"]
+    extra_compile_args = {
+        "cxx": cxx_flags,
+        "nvcc": nvcc_flags,
     }
 
     this_dir = os.path.dirname(os.path.curdir)

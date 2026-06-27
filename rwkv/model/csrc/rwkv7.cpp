@@ -5,7 +5,12 @@
 #include <vector>
 
 extern "C" {
-  PyObject* PyInit_RWKV_CUDA(void)
+  // PyMODINIT_FUNC adds __declspec(dllexport) on Windows so the loader can find
+  // PyInit_RWKV_CUDA. Upstream's raw `extern "C" PyObject*` only exports on Linux
+  // (default symbol visibility); on Windows the symbol stays hidden and the .pyd
+  // import fails (ops still register via TORCH_LIBRARY static-init, but the Python
+  // module object would be None). This makes the import succeed cleanly on Windows.
+  PyMODINIT_FUNC PyInit_RWKV_CUDA(void)
   {
       static struct PyModuleDef module_def = {
           PyModuleDef_HEAD_INIT,

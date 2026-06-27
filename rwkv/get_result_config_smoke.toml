@@ -1,0 +1,23 @@
+# SMOKE: evaluate the CUDA parallel path on users 1-5 and compare to the published
+# RWKV result jsonls. Model trained on users 5000-10000 evaluates users 1-4999.
+# Output names are smoke-suffixed so they don't collide with the published files.
+FILE_AHEAD = "RWKV-short-secs-smoke"
+FILE_IMM = "RWKV-P-short-secs-smoke"
+
+MODEL_PATH = "pretrain/RWKV_trained_on_5000_10000.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 2_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 500_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 1
+USER_END = 5
+
+NUM_FETCH_PROCESSES = 5

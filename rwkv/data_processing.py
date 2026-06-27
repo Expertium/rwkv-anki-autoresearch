@@ -721,7 +721,9 @@ def main(config):
         )
         progress_process.start()
 
-        with multiprocessing.Pool(processes=9) as pool:
+        # Config-driven worker count (default 7) to respect this machine's thread cap.
+        n_proc = getattr(config, "PROCESSES", 7)
+        with multiprocessing.Pool(processes=n_proc) as pool:
             pool.starmap(
                 job,
                 [
