@@ -543,6 +543,46 @@ needed 66000 on a 24 GB card). At 66000 you also get B>1 free for small users (h
   the per-batch random ID-encodings + time baselines stay in the fetch children, unseeded) -> run-to-run variance
   now isolates the AUGMENTATION-only noise floor. (Andrew is skeptical the augmentation even helps -- ablation TODO.)
 
+### ★★★ REVISED PLAN (Andrew 2026-06-29 late) -- supersedes the NEW PHASE PLAN's step-4 ordering ★★★
+**KEY NEW RESULTS this session:**
+- **Full-coverage 66000 re-baseline (WS-only, from scratch on 1-100) BEATS the iter36 champion by ~0.013 imm /
+  ~0.017 ahead on 101-200** (re-baseline imm 0.2989-0.3006 / ahead 0.330 vs champion imm 0.3139 / ahead 0.3480;
+  SAME train users + eval set, only 5%->100% coverage). The data-drop fix is worth ~0.013 imm -- LARGER than the
+  ENTIRE optimization loop (iter0 0.3195 -> champion 0.3139 = 0.006). Re-baseline ckpts:
+  `scratchpad/rebase_run1/rebase_1020.pth` (WS), `scratchpad/rebase_champ/rebasec_680.pth` (WS + 4-epoch decay).
+- **Run-to-run variance (determinism ON, augmentation stochastic) = ~0.0018 imm / 0.0006 ahead (100 users).**
+  PURELY augmentation-induced (the two trainings land in different optima -- a correlated shift that does NOT
+  average out with more users). NOT <0.0001. => **tuner noise margin ~0.002.**
+- **Tuner = GREEDY coordinate descent** (pattern-search / Hooke-Jeeves, ~0.002 noise-margin acceptance, natural
+  early-stop), NOT CMA-ES (25-eval budget too small for its covariance) or Bayesian (warmup waste); Optuna TPE as
+  a phase-2 on the ~3 most-coupled params. Tune ~6-8 of the ~20 non-arch hyperparams (full inventory in HISTORY).
+- **Stateful-BPTT finding:** training chunks (32768-review windows, multiple per user) are trained COLD --
+  `RWKV7_WKV.forward` takes NO initial state, and `get_groups` shuffles chunks independently. So (a) B=1 wastes
+  parallelism (one ~62k-token chunk fills the 66000 budget; GPU ~15-67% util) and (b) train/eval MISMATCH (eval =
+  full history with carry; test_db = 1 batch/user, asserts len==1). Eval is also slow: power users have 700k+
+  review histories (~3 min/100 users; the earlier "11s" was a resume-skip artifact).
+**ANDREW'S PLAN (ordered):**
+0) [DONE] compaction + GitHub=local.
+1) **STATEFUL BPTT FIRST** (the speed enabler -> makes everything else faster): chunk smaller + batch across users
+   (B>>1) + carry the RNN state across a user's consecutive chunks. Gets speed (high B util) AND learns long
+   context AND closes the train/eval mismatch -- "2-3 birds". Needs a CUDA-kernel change (add initial-state input +
+   final-state output to the WKV forward/backward). ALSO look for OTHER train + EVAL speedups.
+2) **Build train_db for users 1-1000** (only 1-100 exists!) -- WITH the new BPTT chunking. test_db 1001-2000 is
+   ALREADY built (this session). This is the prerequisite Andrew's plan implies for "train on 1k".
+3) **1k RESEARCH PHASE: train 1-1000 / eval 1001-2000** (GPU get_result), algorithmic improvements under the
+   param + per-entity-state caps. OLD baseline = `pretrain/RWKV_trained_on_5000_10000.pth` (2.76M d=128; eval via
+   `scratchpad/architecture_old_d128.py` arch-swap, strict-loads). NEW champion logloss MUST include QUANTIZATION
+   (deployed = low-rank PTQ): current champ = iter45 fp32 `pretrain/rwkv/opt_qat45/rwkv_iter45_496.pth`; quantized
+   eval via the RUST engine on exported traces (`export_features_fast.py --range`) -- per-step SVD too slow in
+   Python over power users' full histories.
+4) **AUGMENTATION ABLATION:** train with the per-batch augmentation ON vs a FIXED seed, compare logloss -> does the
+   randomization actually improve generalization? If not, fix the seed -> reproducible objective (variance ~0) for
+   the tuner. (Augmentation = random ID-encoding vectors + random time-of-day baselines, regenerated EVERY batch,
+   `prepare(seed=None)`; eval uses fixed seed 1234 -> eval is bit-deterministic.)
+PENDING/ARTIFACTS: the 1001-2000 old-vs-new fp32 comparison was STARTED then STOPPED (slow power users; variance
+already answered -- don't resume it as-is). Harness ready: `scratchpad/run_rebaseline_eval.cmd` + `compare_rebaseline.py`
+(old d=128 arch-swap + iter45 + re-baseline; size-identity check). get_result runs JIT-on (needs the jit.ignore fix).
+
 ### Active agenda (Andrew, priority order) [OLDER -- see NEW PHASE PLAN above]
 1. **Param reduction = headline** (helps throughput AND state). Champion 192,800. Big blocks: RWKV
    stacks ~70%, the two 128x128 SRS linears, the input FC. Standard levers mostly spent -> needs
