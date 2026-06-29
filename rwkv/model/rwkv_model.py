@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 import math
+import os
 import torch
 
-from rwkv.model.rwkv_ops import RWKV7_WKV, reference_rwkv7
+from rwkv.model.rwkv_ops import RWKV7_WKV, reference_rwkv7, quant_aware_rwkv7
 
 """
 IMPORTANT: the CUDA implementation in this repository only supports head dimensions of 32. d_model // n_heads == 32.
@@ -19,11 +20,15 @@ def __nop(ob):
     return ob
 
 
-# ModuleType = torch.nn.Module
-# FunctionType = __nop
-
-ModuleType = torch.jit.ScriptModule
-FunctionType = torch.jit.script_method
+# State-QAT (RWKV_NO_JIT=1) disables torch.jit so the quant-aware per-step WKV path runs as plain
+# Python (avoids scripting the fake-quant loop). The default (JIT on) keeps the champion/eval path
+# byte-for-byte unchanged. state_dict is identical either way, so weights load across both.
+if os.environ.get("RWKV_NO_JIT"):
+    ModuleType = torch.nn.Module
+    FunctionType = __nop
+else:
+    ModuleType = torch.jit.ScriptModule
+    FunctionType = torch.jit.script_method
 
 
 @dataclass
@@ -46,6 +51,15 @@ class RWKV7Config:
 
     dropout: float
     dropout_layer: float
+
+    # State-QAT: per-step int-N round-trip of the WKV recurrent state (inf = off = fp32). Set per
+    # stream (card/note get int4/int2 qmax; deck/preset/global stay inf). Only used with RWKV_NO_JIT.
+    state_qmax: float = float("inf")
+    # Low-rank state-QAT: per-step rank-r truncation of the WKV state (0 = off), factors optionally
+    # int-N quantized (inf = fp32 factors). Takes precedence over state_qmax. The QAT analog of the
+    # Rust deploy RWKV_STATE_LOWRANK_SCOPE. Only used with RWKV_NO_JIT.
+    state_lowrank_rank: int = 0
+    state_lowrank_fqmax: float = float("inf")
 
 
 class RWKV7(ModuleType):
@@ -178,7 +192,7 @@ class LoraMLP(ModuleType):
     def __init__(self, name, config: RWKV7Config, d_lora, out_dim, layer_id):
         super().__init__()
         C = out_dim
-        ratio_0_to_1 = layer_id / (config.total_layers - 1)
+        ratio_0_to_1 = layer_id / max(config.total_layers - 1, 1)  # guard 1-layer stream (iter35 card=1)
 
         with torch.no_grad():
             self.A = torch.nn.Linear(config.d_model, d_lora, bias=False)
@@ -209,9 +223,12 @@ class RWKV7TimeMixer(ModuleType):
         self.d_model = C
         self.H = config.n_heads
         self.K = C // config.n_heads
+        self.state_qmax = config.state_qmax  # QAT: inf = off (fp32 kernel path)
+        self.state_lowrank_rank = config.state_lowrank_rank      # low-rank QAT: 0 = off
+        self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
 
         with torch.no_grad():
-            ratio_0_to_1 = layer_id / (config.n_layers - 1)
+            ratio_0_to_1 = layer_id / max(config.n_layers - 1, 1)  # guard 1-layer stream (iter35 card=1)
             ratio_1_to_almost_0 = 1.0 - (layer_id / config.n_layers)
             channel_ratio = torch.ones(1, 1, C)
             for i in range(C):
@@ -352,7 +369,15 @@ class RWKV7TimeMixer(ModuleType):
         k_deformed_BTHK = k_BTHK
         k_BTHK = k_BTHK * a_BTHK
 
-        if r_BTHK.is_cuda:
+        if self.state_qmax != float("inf") or self.state_lowrank_rank > 0:
+            # QAT: simulate per-step deploy state storage for this stream (card/note) -- low-rank
+            # truncation if configured, else int-N quant. Runs the quant-aware per-step reference
+            # (requires RWKV_NO_JIT). deck/preset/global stay off and keep the fast kernel.
+            out_BTHK = quant_aware_rwkv7(
+                r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
+                self.state_qmax, self.state_lowrank_rank, self.state_lowrank_fqmax,
+            )
+        elif r_BTHK.is_cuda:
             out_BTHK = RWKV7_WKV.apply(
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT
             )

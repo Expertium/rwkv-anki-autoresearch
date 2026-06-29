@@ -11,24 +11,24 @@
     {
       "user": 107,
       "size": 3510,
-      "imm_logloss": 0.267575,
-      "ahead_logloss": 0.34039
+      "imm_logloss": 0.262518,
+      "ahead_logloss": 0.336893
     },
     {
       "user": 136,
       "size": 3870,
-      "imm_logloss": 0.130469,
-      "ahead_logloss": 0.195117
+      "imm_logloss": 0.125136,
+      "ahead_logloss": 0.153075
     },
     {
       "user": 156,
       "size": 3710,
-      "imm_logloss": 0.300294,
-      "ahead_logloss": 0.326836
+      "imm_logloss": 0.304299,
+      "ahead_logloss": 0.333537
     }
   ],
-  "mean_imm_logloss": 0.232779,
-  "mean_ahead_logloss": 0.287448,
+  "mean_imm_logloss": 0.230651,
+  "mean_ahead_logloss": 0.274502,
   "tolerance": 0.0005,
   "note": "Rust RNN port must match mean_*_logloss within +/-tolerance."
 }

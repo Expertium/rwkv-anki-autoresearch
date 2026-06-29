@@ -1,0 +1,19 @@
+# Groundwork for step 4 (Andrew 2026-06-29): build the test_db preprocessed features for users
+# 1001-2000 (the step-4 TEST set). data_processing is append-safe (skips users with a `_done`
+# marker), so this ADDS 1001-2000 to the existing test_db (101-200) without touching it. LMDB_SIZE
+# matches the existing test_db map (sparse on NTFS -> actual disk = data written, ~50 GB for 1000 users).
+# Identical preprocessing config to how 101-200 was built (same feature settings) so old+new RWKV
+# and the existing gate all see the SAME pipeline.
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "test_db"
+LMDB_SIZE = 195_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+USER_START = 1001
+USER_END = 1003
+MAX_BATCH_SIZE = 2097152
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

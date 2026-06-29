@@ -1,0 +1,22 @@
+# Iteration 14 eval: SWA (weight average) of iter11 checkpoints {400,500,558} -- same trajectory,
+# same basin, so averaging is valid. Tests whether SWA reduces d=32 imm variance into a reliable pass.
+FILE_AHEAD = "RWKV-iter14"
+FILE_IMM = "RWKV-P-iter14"
+
+MODEL_PATH = "pretrain/rwkv/opt_iter14/rwkv_iter14_swa.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 101
+USER_END = 200
+
+NUM_FETCH_PROCESSES = 7

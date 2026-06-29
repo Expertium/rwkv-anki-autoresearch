@@ -1,0 +1,40 @@
+# Decay phase for the full-coverage re-baseline: 4-epoch cosine decay (the established "general win")
+# from run1's WS-final (rebase_1020), at MAX=66000 (full coverage). Matches iter45's recipe shape
+# (WS + decay) so the re-baselined champion is comparable to the current iter45 champion -- but at
+# 100% data coverage instead of 4.7%. Output = rebase_champ/rebasec_680.pth (the re-baselined champion).
+# The driver copies rebase_run1/rebase_optim_1020.pth -> rebase_run1/rebase_1020_optim.pth first.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db"
+TRAIN_DATASET_LMDB_SIZE = 4_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "D"
+STEP_OFFSET = 1
+WARMUP_STEPS = 0
+EPOCHS = 4
+VALIDATE_EVERY = 680
+PEAK_LR = 7e-4
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "scratchpad/rebase_run1"
+LOAD_MODEL_NAME = "rebase_1020"
+SAVE_MODEL_FOLDER = "scratchpad/rebase_champ"
+SAVE_MODEL_PREFIX = "rebasec"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

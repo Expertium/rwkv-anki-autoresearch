@@ -8,7 +8,7 @@ iff one-sided Wilcoxon signed-rank p < 0.01 (H1: after faster).
 
 Usage:
   python optimization/wilcoxon_speed.py --before reference/rwkv_ref_558.safetensors \
-      --after reference/rwkv_iter3_62.safetensors [--secs 20 --threads 3 --trials 10 --warmup 1]
+      --after reference/rwkv_iter3_62.safetensors [--secs 20 --threads 3 --trials 20 --warmup 1]
 Prints median throughputs, speedup, and WILCOXON_P <p>.
 """
 import argparse
@@ -24,10 +24,14 @@ ROOT = Path(__file__).resolve().parent.parent
 BIN = str(ROOT / "rust" / "rwkv-infer" / "target" / "release" / "rwkv-infer.exe")
 
 
-def launch(weights, secs, user):
+def launch(binpath, weights, secs, user, quant=""):
     env = {**os.environ, "RWKV_WEIGHTS": weights, "OMP_NUM_THREADS": "1"}
+    if quant:
+        env["RWKV_QUANT"] = quant
+    else:
+        env.pop("RWKV_QUANT", None)
     return subprocess.Popen(
-        [BIN, "--bench", str(secs), str(user)], cwd=str(ROOT), env=env,
+        [binpath, "--bench", str(secs), str(user)], cwd=str(ROOT), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
     )
 
@@ -44,9 +48,13 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--before", required=True)
     ap.add_argument("--after", required=True)
+    ap.add_argument("--before-bin", default=BIN, help="binary for the BEFORE side (default: release bin)")
+    ap.add_argument("--after-bin", default=BIN, help="binary for the AFTER side (compare code changes)")
+    ap.add_argument("--before-quant", default="", help="RWKV_QUANT for BEFORE side (q8/q4/empty=fp32)")
+    ap.add_argument("--after-quant", default="", help="RWKV_QUANT for AFTER side (q8/q4/empty=fp32)")
     ap.add_argument("--secs", type=float, default=20.0)
     ap.add_argument("--threads", type=int, default=3)
-    ap.add_argument("--trials", type=int, default=10)
+    ap.add_argument("--trials", type=int, default=20)  # Andrew 2026-06-28: 20 trials, not ~10
     ap.add_argument("--warmup", type=int, default=1)
     ap.add_argument("--user", type=int, default=107)
     a = ap.parse_args()
@@ -54,8 +62,8 @@ def main():
     pairs = []
     for trial in range(a.trials + a.warmup):
         # launch all before+after procs simultaneously
-        bps = [launch(a.before, a.secs, a.user) for _ in range(a.threads)]
-        aps = [launch(a.after, a.secs, a.user) for _ in range(a.threads)]
+        bps = [launch(a.before_bin, a.before, a.secs, a.user, a.before_quant) for _ in range(a.threads)]
+        aps = [launch(a.after_bin, a.after, a.secs, a.user, a.after_quant) for _ in range(a.threads)]
         b = sum(reviews(p) for p in bps)
         aa = sum(reviews(p) for p in aps)
         tag = "warmup" if trial < a.warmup else "trial "

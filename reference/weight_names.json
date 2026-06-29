@@ -1,5 +1,5 @@
 {
- "n": 504,
+ "n": 444,
  "names": [
   "ahead_linear.bias",
   "ahead_linear.weight",
@@ -53,66 +53,6 @@
   "rwkv_modules.0.blocks.0.time_mixer.v_lora_simple.B_and_lamb.weight",
   "rwkv_modules.0.blocks.0.time_mixer.v_scale_linear.bias",
   "rwkv_modules.0.blocks.0.time_mixer.v_scale_linear.weight",
-  "rwkv_modules.0.blocks.1.channel_mixer.W_k.weight",
-  "rwkv_modules.0.blocks.1.channel_mixer.W_v.weight",
-  "rwkv_modules.0.blocks.1.channel_mixer.layer_norm.bias",
-  "rwkv_modules.0.blocks.1.channel_mixer.layer_norm.weight",
-  "rwkv_modules.0.blocks.1.channel_mixer.lerp_k",
-  "rwkv_modules.0.blocks.1.time_mixer.W_k.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.W_o.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.W_r.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.W_v.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.a_lora_simple.A.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.a_lora_simple.B_and_lamb.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.a_lora_simple.B_and_lamb.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.bonus",
-  "rwkv_modules.0.blocks.1.time_mixer.d_lora_mlp.A.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.k_scale_linear.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.k_scale_linear.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.layer_norm.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.layer_norm.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.lora_A_g.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.lora_B_g.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.out_group_norm.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.out_group_norm.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.rkvdag_lerp",
-  "rwkv_modules.0.blocks.1.time_mixer.v_lora_simple.A.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.v_lora_simple.B_and_lamb.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight",
-  "rwkv_modules.0.blocks.1.time_mixer.v_scale_linear.bias",
-  "rwkv_modules.0.blocks.1.time_mixer.v_scale_linear.weight",
-  "rwkv_modules.0.blocks.2.channel_mixer.W_k.weight",
-  "rwkv_modules.0.blocks.2.channel_mixer.W_v.weight",
-  "rwkv_modules.0.blocks.2.channel_mixer.layer_norm.bias",
-  "rwkv_modules.0.blocks.2.channel_mixer.layer_norm.weight",
-  "rwkv_modules.0.blocks.2.channel_mixer.lerp_k",
-  "rwkv_modules.0.blocks.2.time_mixer.W_k.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.W_o.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.W_r.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.W_v.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.a_lora_simple.A.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.bonus",
-  "rwkv_modules.0.blocks.2.time_mixer.d_lora_mlp.A.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.k_scale_linear.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.k_scale_linear.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.layer_norm.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.layer_norm.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.lora_A_g.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.lora_B_g.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.out_group_norm.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.out_group_norm.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.rkvdag_lerp",
-  "rwkv_modules.0.blocks.2.time_mixer.v_lora_simple.A.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight",
-  "rwkv_modules.0.blocks.2.time_mixer.v_scale_linear.bias",
-  "rwkv_modules.0.blocks.2.time_mixer.v_scale_linear.weight",
   "rwkv_modules.1.blocks.0.channel_mixer.W_k.weight",
   "rwkv_modules.1.blocks.0.channel_mixer.W_v.weight",
   "rwkv_modules.1.blocks.0.channel_mixer.layer_norm.bias",
@@ -293,6 +233,36 @@
   "rwkv_modules.2.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight",
   "rwkv_modules.2.blocks.1.time_mixer.v_scale_linear.bias",
   "rwkv_modules.2.blocks.1.time_mixer.v_scale_linear.weight",
+  "rwkv_modules.2.blocks.2.channel_mixer.W_k.weight",
+  "rwkv_modules.2.blocks.2.channel_mixer.W_v.weight",
+  "rwkv_modules.2.blocks.2.channel_mixer.layer_norm.bias",
+  "rwkv_modules.2.blocks.2.channel_mixer.layer_norm.weight",
+  "rwkv_modules.2.blocks.2.channel_mixer.lerp_k",
+  "rwkv_modules.2.blocks.2.time_mixer.W_k.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.W_o.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.W_r.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.W_v.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.a_lora_simple.A.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.bonus",
+  "rwkv_modules.2.blocks.2.time_mixer.d_lora_mlp.A.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.k_scale_linear.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.k_scale_linear.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.layer_norm.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.layer_norm.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.lora_A_g.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.lora_B_g.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.out_group_norm.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.out_group_norm.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.rkvdag_lerp",
+  "rwkv_modules.2.blocks.2.time_mixer.v_lora_simple.A.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight",
+  "rwkv_modules.2.blocks.2.time_mixer.v_scale_linear.bias",
+  "rwkv_modules.2.blocks.2.time_mixer.v_scale_linear.weight",
   "rwkv_modules.3.blocks.0.channel_mixer.W_k.weight",
   "rwkv_modules.3.blocks.0.channel_mixer.W_v.weight",
   "rwkv_modules.3.blocks.0.channel_mixer.layer_norm.bias",
@@ -473,1944 +443,1686 @@
   "rwkv_modules.4.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight",
   "rwkv_modules.4.blocks.2.time_mixer.v_scale_linear.bias",
   "rwkv_modules.4.blocks.2.time_mixer.v_scale_linear.weight",
-  "rwkv_modules.4.blocks.3.channel_mixer.W_k.weight",
-  "rwkv_modules.4.blocks.3.channel_mixer.W_v.weight",
-  "rwkv_modules.4.blocks.3.channel_mixer.layer_norm.bias",
-  "rwkv_modules.4.blocks.3.channel_mixer.layer_norm.weight",
-  "rwkv_modules.4.blocks.3.channel_mixer.lerp_k",
-  "rwkv_modules.4.blocks.3.time_mixer.W_k.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.W_o.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.W_r.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.W_v.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.a_lora_simple.A.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.a_lora_simple.B_and_lamb.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.a_lora_simple.B_and_lamb.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.bonus",
-  "rwkv_modules.4.blocks.3.time_mixer.d_lora_mlp.A.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.d_lora_mlp.B_and_lamb.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.d_lora_mlp.B_and_lamb.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.k_scale_linear.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.k_scale_linear.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.layer_norm.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.layer_norm.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.lora_A_g.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.lora_B_g.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.out_group_norm.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.out_group_norm.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.rkvdag_lerp",
-  "rwkv_modules.4.blocks.3.time_mixer.v_lora_simple.A.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.v_lora_simple.B_and_lamb.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.v_lora_simple.B_and_lamb.weight",
-  "rwkv_modules.4.blocks.3.time_mixer.v_scale_linear.bias",
-  "rwkv_modules.4.blocks.3.time_mixer.v_scale_linear.weight",
   "w_linear.bias",
   "w_linear.weight"
  ],
  "shapes": {
   "ahead_linear.bias": [
-   128
+   64
   ],
   "ahead_linear.weight": [
-   128,
-   512
+   64,
+   128
   ],
   "features2card.0.bias": [
-   512
+   128
   ],
   "features2card.0.weight": [
-   512,
+   128,
    92
   ],
   "features2card.2.bias": [
-   512
+   128
   ],
   "features2card.2.weight": [
-   512
+   128
   ],
   "features2card.3.bias": [
-   128
+   32
   ],
   "features2card.3.weight": [
-   128,
-   512
+   32,
+   128
   ],
   "head_ahead_logits.0.bias": [
-   512
+   128
   ],
   "head_ahead_logits.0.weight": [
-   512,
-   128
+   128,
+   32
   ],
   "head_p.0.bias": [
-   512
+   128
   ],
   "head_p.0.weight": [
-   512,
-   128
+   128,
+   32
   ],
   "head_w.0.bias": [
-   128
+   32
   ],
   "head_w.0.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "head_w.2.bias": [
-   128
+   32
   ],
   "head_w.2.weight": [
-   128
+   32
   ],
   "head_w.4.bias": [
-   512
+   128
   ],
   "head_w.4.weight": [
-   512,
-   128
+   128,
+   32
   ],
   "p_linear.bias": [
    4
   ],
   "p_linear.weight": [
    4,
-   512
+   128
   ],
   "prehead_norm.bias": [
-   128
+   32
   ],
   "prehead_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.channel_mixer.W_k.weight": [
-   192,
-   128
+   32,
+   32
   ],
   "rwkv_modules.0.blocks.0.channel_mixer.W_v.weight": [
-   128,
-   192
+   32,
+   32
   ],
   "rwkv_modules.0.blocks.0.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.0.blocks.0.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.0.blocks.0.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.0.blocks.0.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.0.blocks.0.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.0.blocks.0.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.0.blocks.0.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.0.blocks.0.time_mixer.v_scale_linear.weight": [
-   4,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.channel_mixer.W_k.weight": [
-   192,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.channel_mixer.W_v.weight": [
-   128,
-   192
-  ],
-  "rwkv_modules.0.blocks.1.channel_mixer.layer_norm.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.channel_mixer.layer_norm.weight": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.channel_mixer.lerp_k": [
    1,
-   1,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.W_k.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.W_o.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.W_r.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.W_v.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.a_lora_simple.A.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.bonus": [
-   1,
-   1,
-   4,
    32
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.d_lora_mlp.A.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.k_scale_linear.bias": [
-   4
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.k_scale_linear.weight": [
-   4,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.layer_norm.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.layer_norm.weight": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.lora_A_g.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.lora_B_g.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.out_group_norm.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.out_group_norm.weight": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.rkvdag_lerp": [
-   8,
-   1,
-   1,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.v_lora_simple.A.weight": [
-   8,
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
-   8
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.v_scale_linear.bias": [
-   4
-  ],
-  "rwkv_modules.0.blocks.1.time_mixer.v_scale_linear.weight": [
-   4,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.channel_mixer.W_k.weight": [
-   192,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.channel_mixer.W_v.weight": [
-   128,
-   192
-  ],
-  "rwkv_modules.0.blocks.2.channel_mixer.layer_norm.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.channel_mixer.layer_norm.weight": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.channel_mixer.lerp_k": [
-   1,
-   1,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.W_k.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.W_o.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.W_r.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.W_v.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.a_lora_simple.A.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.bonus": [
-   1,
-   1,
-   4,
-   32
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.d_lora_mlp.A.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.k_scale_linear.bias": [
-   4
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.k_scale_linear.weight": [
-   4,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.layer_norm.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.layer_norm.weight": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.lora_A_g.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.lora_B_g.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.out_group_norm.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.out_group_norm.weight": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.rkvdag_lerp": [
-   8,
-   1,
-   1,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.v_lora_simple.A.weight": [
-   8,
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
-   8
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.v_scale_linear.bias": [
-   4
-  ],
-  "rwkv_modules.0.blocks.2.time_mixer.v_scale_linear.weight": [
-   4,
-   128
   ],
   "rwkv_modules.1.blocks.0.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.0.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.0.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.0.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.0.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.0.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.0.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.0.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.1.blocks.0.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.0.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.1.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.1.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.1.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.1.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.1.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.1.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.1.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.1.blocks.1.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.1.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.2.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.2.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.2.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.2.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.2.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.2.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.2.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.1.blocks.2.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.2.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.3.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.3.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.3.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.3.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.3.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.3.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.1.blocks.3.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.1.blocks.3.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.1.blocks.3.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.1.blocks.3.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.2.blocks.0.channel_mixer.W_k.weight": [
-   192,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.0.channel_mixer.W_v.weight": [
-   128,
-   192
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.0.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.2.blocks.0.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.2.blocks.0.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.2.blocks.0.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.2.blocks.0.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.0.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.2.blocks.0.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.2.blocks.0.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.2.blocks.1.channel_mixer.W_k.weight": [
-   192,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.1.channel_mixer.W_v.weight": [
-   128,
-   192
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.1.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.2.blocks.1.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.2.blocks.1.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.2.blocks.1.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.2.blocks.1.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.2.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.2.blocks.1.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.2.blocks.1.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.channel_mixer.W_k.weight": [
+   32,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.channel_mixer.W_v.weight": [
+   32,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.channel_mixer.layer_norm.bias": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.channel_mixer.layer_norm.weight": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.channel_mixer.lerp_k": [
+   1,
+   1,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.W_k.weight": [
+   32,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.W_o.weight": [
+   32,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.W_r.weight": [
+   32,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.W_v.weight": [
+   32,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.a_lora_simple.A.weight": [
+   16,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight": [
+   32,
+   16
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.bonus": [
+   1,
+   1,
+   1,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.d_lora_mlp.A.weight": [
+   16,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight": [
+   32,
+   16
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.k_scale_linear.bias": [
+   1
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.k_scale_linear.weight": [
+   1,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.layer_norm.bias": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.layer_norm.weight": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.lora_A_g.weight": [
+   16,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.lora_B_g.weight": [
+   32,
+   16
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.out_group_norm.bias": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.out_group_norm.weight": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.rkvdag_lerp": [
+   8,
+   1,
+   1,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.v_lora_simple.A.weight": [
+   8,
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias": [
+   32
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight": [
+   32,
+   8
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.v_scale_linear.bias": [
+   1
+  ],
+  "rwkv_modules.2.blocks.2.time_mixer.v_scale_linear.weight": [
+   1,
+   32
   ],
   "rwkv_modules.3.blocks.0.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.0.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.0.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.0.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.0.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.3.blocks.0.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.0.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.0.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.3.blocks.0.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.3.blocks.0.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.3.blocks.1.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.1.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.1.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.1.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.1.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.3.blocks.1.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.1.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.3.blocks.1.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.3.blocks.1.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.3.blocks.2.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.2.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.2.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.2.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.2.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.3.blocks.2.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.3.blocks.2.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.3.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.3.blocks.2.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.3.blocks.2.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.4.blocks.0.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.0.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.0.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.0.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.0.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.4.blocks.0.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.0.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.0.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.4.blocks.0.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.4.blocks.0.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.4.blocks.1.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.1.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.1.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.1.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.1.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.4.blocks.1.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.1.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.1.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.4.blocks.1.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.4.blocks.1.time_mixer.v_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.4.blocks.2.channel_mixer.W_k.weight": [
-   256,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.2.channel_mixer.W_v.weight": [
-   128,
-   256
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.2.channel_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.channel_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.channel_mixer.lerp_k": [
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.W_k.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.W_o.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.W_r.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.W_v.weight": [
-   128,
-   128
+   32,
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.a_lora_simple.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.2.time_mixer.bonus": [
    1,
    1,
-   4,
+   1,
    32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.d_lora_mlp.A.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.2.time_mixer.k_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.4.blocks.2.time_mixer.k_scale_linear.weight": [
-   4,
-   128
+   1,
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.layer_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.layer_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.lora_A_g.weight": [
    16,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.lora_B_g.weight": [
-   128,
+   32,
    16
   ],
   "rwkv_modules.4.blocks.2.time_mixer.out_group_norm.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.out_group_norm.weight": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.rkvdag_lerp": [
    8,
    1,
    1,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.v_lora_simple.A.weight": [
    8,
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
+   32
   ],
   "rwkv_modules.4.blocks.2.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
+   32,
    8
   ],
   "rwkv_modules.4.blocks.2.time_mixer.v_scale_linear.bias": [
-   4
+   1
   ],
   "rwkv_modules.4.blocks.2.time_mixer.v_scale_linear.weight": [
-   4,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.channel_mixer.W_k.weight": [
-   256,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.channel_mixer.W_v.weight": [
-   128,
-   256
-  ],
-  "rwkv_modules.4.blocks.3.channel_mixer.layer_norm.bias": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.channel_mixer.layer_norm.weight": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.channel_mixer.lerp_k": [
    1,
-   1,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.W_k.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.W_o.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.W_r.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.W_v.weight": [
-   128,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.a_lora_simple.A.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.a_lora_simple.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.a_lora_simple.B_and_lamb.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.bonus": [
-   1,
-   1,
-   4,
    32
   ],
-  "rwkv_modules.4.blocks.3.time_mixer.d_lora_mlp.A.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.d_lora_mlp.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.d_lora_mlp.B_and_lamb.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.k_scale_linear.bias": [
-   4
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.k_scale_linear.weight": [
-   4,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.layer_norm.bias": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.layer_norm.weight": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.lora_A_g.weight": [
-   16,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.lora_B_g.weight": [
-   128,
-   16
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.out_group_norm.bias": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.out_group_norm.weight": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.rkvdag_lerp": [
-   8,
-   1,
-   1,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.v_lora_simple.A.weight": [
-   8,
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.v_lora_simple.B_and_lamb.bias": [
-   128
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.v_lora_simple.B_and_lamb.weight": [
-   128,
-   8
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.v_scale_linear.bias": [
-   4
-  ],
-  "rwkv_modules.4.blocks.3.time_mixer.v_scale_linear.weight": [
-   4,
-   128
-  ],
   "w_linear.bias": [
-   128
+   64
   ],
   "w_linear.weight": [
-   128,
-   512
+   64,
+   128
   ]
  }
 }

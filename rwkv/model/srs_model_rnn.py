@@ -26,11 +26,11 @@ class SrsRWKVRnn(ModuleType):
         super().__init__()
         self.card_features_dim = 92
         self.d_model = anki_rwkv_config.d_model
-        self.features_fc_dim = 4 * anki_rwkv_config.d_model
-        self.ahead_head_dim = 4 * self.d_model
-        self.p_head_dim = 4 * self.d_model
-        self.w_head_dim = 4 * self.d_model
-        self.num_curves = 128
+        self.features_fc_dim = anki_rwkv_config.features_fc_mult * anki_rwkv_config.d_model
+        self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
+        self.p_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
+        self.w_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
+        self.num_curves = anki_rwkv_config.num_curves
 
         self.features2card = torch.nn.Sequential(
             torch.nn.Linear(self.card_features_dim, self.features_fc_dim),
@@ -62,7 +62,7 @@ class SrsRWKVRnn(ModuleType):
 
         self.max_e = 21
         self.point_spread = 18.5
-        self.num_points = 128
+        self.num_points = anki_rwkv_config.num_points
         self.ahead_linear = torch.nn.Linear(self.ahead_head_dim, self.num_points)
 
         self.w_linear = torch.nn.Linear(self.w_head_dim, self.num_curves)

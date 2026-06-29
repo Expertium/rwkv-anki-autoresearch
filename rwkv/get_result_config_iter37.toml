@@ -1,0 +1,21 @@
+# iter37 eval: channel_mixer_factor 0.5 (FFN-width param cut). Output = rwkv_iter37_124.pth.
+FILE_AHEAD = "RWKV-iter37"
+FILE_IMM = "RWKV-P-iter37"
+
+MODEL_PATH = "pretrain/rwkv/opt_iter37/rwkv_iter37_124.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 101
+USER_END = 200
+
+NUM_FETCH_PROCESSES = 7

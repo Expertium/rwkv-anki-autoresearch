@@ -1,0 +1,22 @@
+# Iteration 5 eval: d_model=64, channel=1.0, LoRA ranks 8 (was 16) model; eval 101-200, bf16.
+# Decay output = rwkv_iter5_62.pth.
+FILE_AHEAD = "RWKV-iter5"
+FILE_IMM = "RWKV-P-iter5"
+
+MODEL_PATH = "pretrain/rwkv/opt_iter5/rwkv_iter5_62.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 101
+USER_END = 200
+
+NUM_FETCH_PROCESSES = 7

@@ -1,0 +1,18 @@
+# Groundwork for step 4 (Andrew 2026-06-29): build the equalized-test cache for users 1001-2000
+# (the step-4 TEST set). find_equalize output is deterministic + per-user, and the build has resume
+# logic (skips already-cached users), so this only computes 1001-2000. Appends to the permanent
+# label_filter_db cache (currently ~users 100-516). Keep LABEL_FILTER_LMDB_SIZE = 2 GB consistent.
+DATA_PATH = "../anki-revlogs-10k"
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+# Same feature-engineering settings as the existing cache (MUST match so old+new RWKV see identical
+# preprocessing): FSRS-6 short+secs. These decide which reviews count in the benchmark.
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 1001
+USER_END = 2000
+
+PROCESSES = 7

@@ -15,6 +15,7 @@ Rust then consumes identical inputs and must match within +/-0.0005 mean LogLoss
 Run: python export_rnn_trace.py
 """
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +34,10 @@ from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 DATA = Path("../anki-revlogs-10k")
 LABEL_DB = "label_filter_db"
 LABEL_DB_SIZE = 2_000_000_000
-MODEL_PATH = "pretrain/rwkv/ref_100/rwkv_ref_558.pth"
+# Parity target = the current champion. Override with RWKV_CHAMP_CKPT / RWKV_CHAMP_SFT.
+# architecture.py must match this checkpoint (it is the single arch source).
+MODEL_PATH = os.environ.get("RWKV_CHAMP_CKPT", "pretrain/rwkv/ref_100/rwkv_ref_558.pth")
+WEIGHTS_SFT = os.environ.get("RWKV_CHAMP_SFT", "rwkv_ref_558.safetensors")
 REF_USERS = [107, 136, 156]
 OUT_DIR = Path("reference")
 
@@ -197,12 +201,12 @@ def export_weights():
     sd = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
     model.load_state_dict(sd)
     flat = {k: v.detach().cpu().contiguous().float() for k, v in model.state_dict().items()}
-    save_pt(flat, str(OUT_DIR / "rwkv_ref_558.safetensors"))
+    save_pt(flat, str(OUT_DIR / WEIGHTS_SFT))
     names = sorted(flat.keys())
     with open(OUT_DIR / "weight_names.json", "w") as f:
         json.dump({"n": len(names), "names": names,
                    "shapes": {k: list(flat[k].shape) for k in names}}, f, indent=1)
-    print(f"weights: {len(names)} tensors -> reference/rwkv_ref_558.safetensors")
+    print(f"weights: {len(names)} tensors -> reference/{WEIGHTS_SFT}")
 
 
 def main():

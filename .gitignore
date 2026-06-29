@@ -42,3 +42,8 @@ target/
 reference/*.safetensors
 reference/trace_user_*.json
 reference/rust_pred_*.json
+
+# Model checkpoints (regenerable binaries; never track) + papers + any stray safetensors
+*.pth
+*.safetensors
+*.pdf

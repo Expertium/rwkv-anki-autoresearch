@@ -59,8 +59,9 @@ exact speedup; iteration 0 is batch size 1, the honest baseline).
   each pinned to **3 threads**, each looping over the **same frozen pre-chosen batch set**,
   for a fixed wall-clock **T ≈ 20–30 s**; count reviews each finishes → one paired point
   `(thru_before, thru_after)` from the identical time window (external load cancels).
-- Repeat **K ≈ 10** trials (discard 1–2 warm-ups). One-sided **Wilcoxon signed-rank** on
-  `after − before`; accept the speedup only if **p < 0.01**.
+- Repeat **20 trials** (discard 1–2 warm-ups). One-sided **Wilcoxon signed-rank** on
+  `after − before`; accept the speedup only if **p < 0.01**. (Andrew 2026-06-28: use 20 trials,
+  not ~10. `wilcoxon_speed.py` default is now `--trials 20`.)
 - Pairing the *trial* (not the batch) keeps pairs independent and avoids the faster process
   racing ahead / tail bias. Cost is bounded by K·T (~3–5 min) regardless of model speed.
 

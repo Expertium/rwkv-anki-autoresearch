@@ -54,6 +54,9 @@ def main():
     ap.add_argument("--throughput", type=float, default=None)
     ap.add_argument("--wilcoxon-p", type=float, default=None)
     ap.add_argument("--comment", default="")
+    ap.add_argument("--status", default=None,
+                    help="adoption outcome (CHAMP-acc/CHAMP-comp/ex-champ/alt/rejected/...); "
+                         "default derived from gate pass/fail")
     ap.add_argument("--no-write", action="store_true")
     args = ap.parse_args()
 
@@ -80,13 +83,16 @@ def main():
           f"state<=iter0 {'PASS' if state_ok else 'FAIL'}")
 
     accepted = ll_ok and size_ok and state_ok
-    # Throughput is only measured for accepted iterations; rejected ones show "n/a".
+    status = args.status if args.status else ("rejected" if not accepted else "accepted")
+    # Throughput is only measured for kept iterations; rejected ones (incl. gate-passing but
+    # not-adopted, via --status rejected) show "n/a" instead of "pending".
     throughput = args.throughput
-    if throughput is None and not accepted:
+    if throughput is None and status == "rejected":
         throughput = "n/a"
 
     rec = {
         "number": args.number,
+        "status": status,
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
         "model": args.model,
         "arch": {"d_model": rep["d_model"], "n_heads": rep["n_heads"],

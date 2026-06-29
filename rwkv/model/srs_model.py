@@ -11,15 +11,21 @@ from typing import NamedTuple
 from rwkv.architecture import AnkiRWKVConfig
 
 
-# def __nop(ob):
-#     return ob
+import os
 
 
-# ModuleType = torch.nn.Module
-# FunctionType = __nop
+def __nop(ob):
+    return ob
 
-ModuleType = torch.jit.ScriptModule
-FunctionType = torch.jit.script_method
+
+# Match rwkv_model.py: RWKV_NO_JIT=1 (state-QAT) disables torch.jit so the whole model -- incl. the
+# quant-aware per-step WKV -- runs as plain Python. Default (JIT on) keeps eval byte-for-byte unchanged.
+if os.environ.get("RWKV_NO_JIT"):
+    ModuleType = torch.nn.Module
+    FunctionType = __nop
+else:
+    ModuleType = torch.jit.ScriptModule
+    FunctionType = torch.jit.script_method
 
 
 class SrsRWKVIterStatistics(NamedTuple):
@@ -105,11 +111,11 @@ class SrsRWKV(ModuleType):
 
         self.card_features_dim = 92
         self.d_model = anki_rwkv_config.d_model
-        self.features_fc_dim = 4 * self.d_model
-        self.ahead_head_dim = 4 * self.d_model
-        self.p_head_dim = 4 * self.d_model
-        self.w_head_dim = 4 * self.d_model
-        self.num_curves = 128
+        self.features_fc_dim = anki_rwkv_config.features_fc_mult * self.d_model
+        self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
+        self.p_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
+        self.w_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
+        self.num_curves = anki_rwkv_config.num_curves
 
         with torch.no_grad():
             self.features2card = torch.nn.Sequential(
@@ -142,7 +148,7 @@ class SrsRWKV(ModuleType):
 
             self.max_e = 21
             self.point_spread = 18.5
-            self.num_points = 128
+            self.num_points = anki_rwkv_config.num_points
             self.ahead_linear = torch.nn.Linear(self.ahead_head_dim, self.num_points)
             torch.nn.init.zeros_(self.ahead_linear.weight)
             torch.nn.init.zeros_(self.ahead_linear.bias)
@@ -426,13 +432,21 @@ class SrsRWKV(ModuleType):
         )
 
     def copy_downcast_(self, master_model, dtype):
+        # Vectorized fp32-master -> (bf16/fp32)-child param copy via torch._foreach_copy_: one fused
+        # kernel per dtype group instead of ~440 per-param copy launches (a launch-bound hotspot,
+        # ~24 ms/step). copy_ casts, so grouping by target dtype + foreach is BIT-IDENTICAL to the
+        # original per-param loop. Arch-agnostic (operates on whatever params exist).
         master_params = dict(master_model.named_parameters())
+        groups: dict = {}  # target_dtype -> ([dst...], [src...])
+        for name, param in self.named_parameters():
+            target_dtype = torch.float32 if is_excluded(name) else dtype
+            assert param.dtype == target_dtype
+            dst, src = groups.setdefault(target_dtype, ([], []))
+            dst.append(param.data)
+            src.append(master_params[name].data)
         with torch.no_grad():
-            for name, param in self.named_parameters():
-                target_dtype = torch.float32 if is_excluded(name) else dtype
-                assert param.dtype == target_dtype
-                param.data.copy_(master_params[name].to(target_dtype))
-                assert param.dtype == target_dtype
+            for dst, src in groups.values():
+                torch._foreach_copy_(dst, src)
 
     def selective_cast(self, dtype):
         for name, module in self.named_modules():

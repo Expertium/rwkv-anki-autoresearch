@@ -1,3 +1,9 @@
+import os
+
+# Must precede `import torch` / first cuBLAS call: required for deterministic cuBLAS matmuls when
+# RWKV_DETERMINISTIC is on (see _maybe_enable_determinism). Harmless otherwise.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import json
 import math
 import multiprocessing
@@ -23,6 +29,26 @@ from rwkv.utils import (
 )
 
 random.seed(12345)
+
+
+def _maybe_enable_determinism():
+    """RWKV_DETERMINISTIC=1 (default): pin the TRAINING process's RNG + cuBLAS/cuDNN algorithm
+    selection so run-to-run training is reproducible APART from the intentional per-batch data
+    augmentation (which lives in the fetch child processes and is deliberately left stochastic --
+    Andrew 2026-06-29). The custom WKV CUDA kernel has no atomics, so it is already deterministic.
+    warn_only=True so an op lacking a deterministic impl warns instead of crashing. Call in main()
+    (training process only) -- NOT at module level, so the fetch children keep stochastic augmentation."""
+    if os.environ.get("RWKV_DETERMINISTIC", "1") != "1":
+        return
+    torch.manual_seed(12345)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(12345)
+    np.random.seed(12345)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    print("[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation stays stochastic)")
+
 
 FINAL_LR = 0
 
@@ -254,22 +280,26 @@ def validate(model, data_fetcher, all_db_keys, users, device):
 
 
 def transfer_child_grad_to_master(master, child):
+    # Vectorized child(bf16)-grad -> master(fp32)-grad accumulation via torch._foreach_add_: one
+    # fused kernel per dtype group instead of ~440 per-param add+zero launches (a launch-bound
+    # hotspot, ~43 ms/step). add_ upcasts the operand, so grouping + foreach is BIT-IDENTICAL to the
+    # original per-param loop. Arch-agnostic. (None grads -- first few iters -- are skipped as before.)
     master_params = dict(master.named_parameters())
-    for name, param in child.named_parameters():
-        # print(name, param.grad)
-        master_param = master_params[name]
-        if (
-            param.grad is not None
-        ):  # None happens on the first few iterations for some params
-            # Add the child model's grad
-            with torch.no_grad():
-                if master_param.grad is None:
-                    master_param.grad = torch.zeros_like(
-                        master_param, requires_grad=True
-                    )
-                master_param.grad.add_(param.grad.to(torch.float32))
-            # Set the child model's grad to zero
-            param.grad.zero_()
+    groups = {}  # (master_grad_dtype, child_grad_dtype) -> ([master_grad...], [child_grad...])
+    with torch.no_grad():
+        for name, param in child.named_parameters():
+            if param.grad is None:
+                continue
+            master_param = master_params[name]
+            if master_param.grad is None:
+                master_param.grad = torch.zeros_like(master_param, requires_grad=True)
+            key = (master_param.grad.dtype, param.grad.dtype)
+            mg, cg = groups.setdefault(key, ([], []))
+            mg.append(master_param.grad)
+            cg.append(param.grad)
+        for mg, cg in groups.values():
+            torch._foreach_add_(mg, cg)  # fp32 += child grad (casts)
+            torch._foreach_zero_(cg)
 
 
 def get_test_keys(dataset_path, dataset_size, users):
@@ -492,7 +522,7 @@ def main_loop(config, task_queue, batch_queue):
                 stats.average_loss.backward()
                 transfer_child_grad_to_master(master=master_model, child=model)
 
-                if validate_iter:
+                if validate_iter and config.USE_WANDB:
                     log_model(log, master_model)
                 log["loss"] = stats.average_loss.detach()
                 log["w_divergence"] = stats.w_loss_avg.detach()
@@ -500,7 +530,10 @@ def main_loop(config, task_queue, batch_queue):
                 log["ahead_logits_diff_loss"] = (
                     stats.ahead_logits_diff_loss_avg.detach()
                 )
-                log["norm"] = get_grad_norm(master_model)
+                # get_grad_norm does ~440 per-param .item() syncs/step (~28 ms) and is consumed
+                # ONLY by wandb -- skip it entirely when wandb is off (every iter config is off).
+                if config.USE_WANDB:
+                    log["norm"] = get_grad_norm(master_model)
                 key_value_stats.add(keys, stats)
                 key_value_stats.add_log(log)
 
@@ -554,6 +587,7 @@ def main_loop(config, task_queue, batch_queue):
 
 
 def main(config):
+    _maybe_enable_determinism()
     with multiprocessing.Manager() as manager:
         task_queue = manager.Queue()
         batch_queue = manager.Queue()

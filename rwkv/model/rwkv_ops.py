@@ -233,6 +233,98 @@ def single_timestep(
     return out_BHK1.squeeze(-1), state_BHKK
 
 
+def fake_quant_state(s_BHKK: Tensor, qmax: float) -> Tensor:
+    """Symmetric per-(B) per-tensor int-N round-trip of the WKV state with a straight-through
+    gradient (forward = quantized, backward = identity). amax is taken over (H,K,K) per batch
+    element, matching the Rust inference `quant_roundtrip_batched`. qmax: int8=127, int4=7, int2=1.
+    qmax=inf disables (returns input). This is the QAT analog of the deploy-time state quant."""
+    if qmax == float("inf"):
+        return s_BHKK
+    amax = torch.amax(s_BHKK.abs(), dim=[1, 2, 3], keepdim=True)  # list dim = TorchScript-safe
+    scale = (amax / qmax).clamp_min(1e-12)
+    q = torch.round(s_BHKK / scale).clamp(-qmax, qmax) * scale
+    return s_BHKK + (q - s_BHKK).detach()
+
+
+def _fake_quant_factor(f: Tensor, qmax: float) -> Tensor:
+    """Symmetric per-matrix int-N round-trip of a low-rank factor (amax over its last two dims),
+    matching the Rust `quant_factor_inplace`. qmax=inf returns input."""
+    if qmax == float("inf"):
+        return f
+    amax = torch.amax(f.abs(), dim=[-2, -1], keepdim=True)
+    scale = (amax / qmax).clamp_min(1e-12)
+    return torch.round(f / scale).clamp(-qmax, qmax) * scale
+
+
+def fake_lowrank_state(s_BHKK: Tensor, rank: int, factor_qmax: float) -> Tensor:
+    """STE rank-r truncation of the WKV state (optionally with int-N quantized factors), the QAT
+    analog of the Rust deploy `lowrank_roundtrip`. forward = rank-r reconstruction A_r =
+    (U_r sqrt S)(V_r sqrt S)^T (factors optionally quantized), backward = identity. The rank-r
+    reconstruction is sign-convention-invariant, so it matches the Rust nalgebra SVD."""
+    if rank <= 0:
+        return s_BHKK
+    B, H, K, _ = s_BHKK.shape
+    with torch.no_grad():
+        s = s_BHKK.reshape(B * H, K, K).float()
+        u, sv, vh = torch.linalg.svd(s, full_matrices=False)  # u(BH,K,K) sv(BH,K) vh(BH,K,K)
+        sq = sv[:, :rank].clamp_min(0).sqrt()                  # (BH,r)
+        uf = u[:, :, :rank] * sq.unsqueeze(1)                  # (BH,K,r)
+        vf = vh[:, :rank, :] * sq.unsqueeze(-1)                # (BH,r,K)
+        uf = _fake_quant_factor(uf, factor_qmax)
+        vf = _fake_quant_factor(vf, factor_qmax)
+        recon = (uf @ vf).reshape(B, H, K, K).to(s_BHKK.dtype)  # (BH,K,r)@(BH,r,K)=(BH,K,K)
+    return s_BHKK + (recon - s_BHKK).detach()
+
+
+@torch.jit.ignore  # never scripted: the QAT per-step loop (+ torch.linalg.svd) isn't TorchScript-able,
+# and this path only runs under RWKV_NO_JIT (eager). Marking it ignore lets the JIT scripter compile
+# RWKV7TimeMixer.forward's hot kernel path again (JIT was silently broken by adding this call).
+def quant_aware_rwkv7(
+    r_BTHK: Tensor,
+    k_BTHK: Tensor,
+    v_BTHK: Tensor,
+    w_BTHK: Tensor,
+    a_BTHK: Tensor,
+    k_deformed_BTHK: Tensor,
+    skip_BT: Tensor,
+    state_qmax: float,
+    lowrank_rank: int = 0,
+    lowrank_fqmax: float = float("inf"),
+) -> Tensor:
+    """Per-step reference WKV with the recurrent state round-tripped each step (quant-aware training).
+    If lowrank_rank>0 the state is rank-r truncated (+ optional int-N factor quant) instead of full
+    int-N quant -- the QAT analog of the deploy low-rank card/note state. Identical to `reference_rwkv7`
+    when state_qmax=inf and lowrank_rank=0. Used ONLY for short-recurrence card/note streams in QAT."""
+    out_dtype = k_BTHK.dtype
+    r_BTHK = r_BTHK.float()
+    k_BTHK = k_BTHK.float()
+    v_BTHK = v_BTHK.float()
+    w_BTHK = w_BTHK.float()
+    a_BTHK = a_BTHK.float()
+    k_deformed_BTHK = k_deformed_BTHK.float()
+    skip_BT111 = skip_BT.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+    B, T, H, K = r_BTHK.shape
+    out_BTHK = torch.empty(B, T, H, K, dtype=torch.float32, device=r_BTHK.device)
+    state_BHKK = torch.zeros(B, H, K, K, dtype=torch.float32, device=r_BTHK.device)
+    for t in range(T):
+        out_BTHK[:, t], next_state_BHKK = single_timestep(
+            r_BTHK[:, t],
+            k_BTHK[:, t],
+            v_BTHK[:, t],
+            w_BTHK[:, t],
+            a_BTHK[:, t],
+            k_deformed_BTHK[:, t],
+            state_BHKK,
+        )
+        if lowrank_rank > 0:  # rank-r truncation (+ factor quant) -- the low-rank deploy analog
+            next_state_BHKK = fake_lowrank_state(next_state_BHKK, lowrank_rank, lowrank_fqmax)
+        else:
+            next_state_BHKK = fake_quant_state(next_state_BHKK, state_qmax)  # quant before next step
+        skip_B111 = skip_BT111[:, t]
+        state_BHKK = torch.where(skip_B111, state_BHKK, next_state_BHKK)
+    return out_BTHK.to(out_dtype)
+
+
 def reference_rwkv7(
     r_BTHK: Tensor,
     k_BTHK: Tensor,

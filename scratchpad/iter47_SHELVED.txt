@@ -1,0 +1,1 @@
+(iter47 note-int2 QAT config kept but SHELVED 2026-06-29: superseded by both-low-rank PTQ plan; note int2 0.80 KiB > note low-rank 0.28 KiB)

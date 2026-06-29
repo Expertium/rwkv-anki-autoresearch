@@ -9,6 +9,7 @@ candle-nn = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
+nalgebra = "0.33"   # pure-Rust SVD (no LAPACK) for low-rank card-state truncation (step 4)
 
 [profile.release]
 opt-level = 3

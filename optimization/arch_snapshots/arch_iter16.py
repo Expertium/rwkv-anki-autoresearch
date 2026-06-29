@@ -1,0 +1,111 @@
+from dataclasses import dataclass
+from rwkv.model.rwkv_model import RWKV7Config
+
+N_HEADS = 2  # iter1: halve d_model 128->64 (keep head-dim K=32 for the CUDA kernel)
+# iter5: halve the rank-16 LoRAs (decay/a/gate 16->8); v0_mix stays 8. channel_mixer_factor=1.0 from iter4.
+# iter6: trim the two broad streams (deck & user) 4->3 layers -> [3,3,2,3,3]; card stays 3 (state unchanged).
+# iter16: at d=64 (over-capacity) halve all LoRAs again 8->4 -- the proven d=64 "cutting helps imm" direction.
+
+DROPOUT = 0.02
+DROPOUT_LONG = 0.05
+DROPOUT_LAYER = 0.01
+
+
+@dataclass
+class AnkiRWKVConfig:
+    d_model: int
+    modules: list
+    dropout: float
+
+
+_layers = [
+    (
+        "card_id",
+        RWKV7Config(
+            d_model=32 * N_HEADS,
+            n_heads=N_HEADS,
+            n_layers=3,
+            layer_offset=0,
+            total_layers=3,
+            channel_mixer_factor=1.0,
+            decay_lora=4,
+            a_lora=4,
+            v0_mix_amt_lora=4,
+            gate_lora=4,
+            dropout=DROPOUT,
+            dropout_layer=DROPOUT_LAYER,
+        ),
+    ),
+    (
+        "deck_id",
+        RWKV7Config(
+            d_model=32 * N_HEADS,
+            n_heads=N_HEADS,
+            n_layers=3,
+            layer_offset=0,
+            total_layers=3,
+            channel_mixer_factor=1.0,
+            decay_lora=4,
+            a_lora=4,
+            v0_mix_amt_lora=4,
+            gate_lora=4,
+            dropout=DROPOUT_LONG,
+            dropout_layer=DROPOUT_LAYER,
+        ),
+    ),
+    (
+        "note_id",
+        RWKV7Config(
+            d_model=32 * N_HEADS,
+            n_heads=N_HEADS,
+            n_layers=2,
+            layer_offset=0,
+            total_layers=2,
+            channel_mixer_factor=1.0,
+            decay_lora=4,
+            a_lora=4,
+            v0_mix_amt_lora=4,
+            gate_lora=4,
+            dropout=DROPOUT,
+            dropout_layer=DROPOUT_LAYER,
+        ),
+    ),
+    (
+        "preset_id",
+        RWKV7Config(
+            d_model=32 * N_HEADS,
+            n_heads=N_HEADS,
+            n_layers=3,
+            layer_offset=0,
+            total_layers=3,
+            channel_mixer_factor=1.0,
+            decay_lora=4,
+            a_lora=4,
+            v0_mix_amt_lora=4,
+            gate_lora=4,
+            dropout=DROPOUT_LONG,
+            dropout_layer=DROPOUT_LAYER,
+        ),
+    ),
+    (
+        "user_id",
+        RWKV7Config(
+            d_model=32 * N_HEADS,
+            n_heads=N_HEADS,
+            n_layers=3,
+            layer_offset=0,
+            total_layers=3,
+            channel_mixer_factor=1.0,
+            decay_lora=4,
+            a_lora=4,
+            v0_mix_amt_lora=4,
+            gate_lora=4,
+            dropout=DROPOUT_LONG,
+            dropout_layer=DROPOUT_LAYER,
+        ),
+    ),
+]
+
+DEFAULT_ANKI_RWKV_CONFIG = AnkiRWKVConfig(
+    d_model=32 * N_HEADS, modules=_layers, dropout=DROPOUT
+)

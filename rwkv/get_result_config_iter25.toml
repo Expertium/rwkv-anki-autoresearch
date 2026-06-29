@@ -1,0 +1,21 @@
+# Iteration 25 eval: d=64 iter16 arch, 8-epoch decay. Output = rwkv_iter25_248.pth.
+FILE_AHEAD = "RWKV-iter25"
+FILE_IMM = "RWKV-P-iter25"
+
+MODEL_PATH = "pretrain/rwkv/opt_iter25/rwkv_iter25_248.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 1_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 101
+USER_END = 200
+
+NUM_FETCH_PROCESSES = 7
