@@ -1,0 +1,35 @@
+# "Varied data, few epochs" experiment: 1 epoch WS on 1500 users (1000-2499), eval 101-200. Compute-matched
+# to the champion (1 epoch x 1500 users ~= 2400 steps ~= 15 epochs x 100 users). Tuned recipe (peak_lr 1e-3 /
+# warmup 200 / clip 0.25 via env). Champion arch. Final ckpt = scratchpad/exp_1500/t1500ws_<total_steps>.pth.
+TRAIN_USERS_START = 1000
+TRAIN_USERS_END = 2499
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db_sc8k_1500"
+TRAIN_DATASET_LMDB_SIZE = 80_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/exp_1500"
+SAVE_MODEL_PREFIX = "t1500ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

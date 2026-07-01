@@ -1,0 +1,1 @@
+{"name": "hp_warmup_steps_100", "param": "warmup_steps", "config": {"peak_lr": 0.001, "warmup_steps": 100, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "total_steps": 960}

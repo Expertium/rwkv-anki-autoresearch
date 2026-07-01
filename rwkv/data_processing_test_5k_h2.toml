@@ -1,0 +1,18 @@
+# 5k-phase EVAL (test) db for the SECOND half, users 5001-10000 -- the primary held-out eval set + the
+# d=128 baseline eval set. Whole-user format (MAX_BATCH_SIZE=2097152, allowable=1048576) like the existing
+# test_db. Lives on F: (4 TB USB, roomy; eval reads are one-shot, not latency-critical). 1 thread, cpu-build.
+# Resumable. Sparse map_size (250 GB) -- monitor FREE space, not the logical file size.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 1
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

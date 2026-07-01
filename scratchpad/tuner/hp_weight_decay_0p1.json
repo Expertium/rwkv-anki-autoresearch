@@ -1,0 +1,1 @@
+{"name": "hp_weight_decay_0p1", "param": "weight_decay", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.1, "clip": 0.5, "epochs": 6}, "total_steps": 960}

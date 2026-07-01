@@ -84,6 +84,77 @@ fn quant_factor_inplace(m: &mut nalgebra::DMatrix<f32>, qmax: f64) {
     }
 }
 
+/// Per-COLUMN (per rank-component) symmetric int-N quant: each column gets its OWN scale, so a
+/// small-singular-value column is not crushed by the dominant column's scale. This is the "channel
+/// scaling equalizes quantization difficulty" fix that makes int2 low-rank viable (RWKV_LOWRANK_PERCOL).
+/// Cost = r extra scales/factor (a few bytes) vs the 2*K*r factor codes -- negligible.
+fn quant_factor_percol_inplace(m: &mut nalgebra::DMatrix<f32>, qmax: f64) {
+    for mut col in m.column_iter_mut() {
+        let amax = col.iter().fold(0f32, |a, &x| a.max(x.abs())) as f64;
+        let scale = (amax / qmax).max(1e-12);
+        for x in col.iter_mut() {
+            *x = (((*x as f64) / scale).round().clamp(-qmax, qmax) * scale) as f32;
+        }
+    }
+}
+
+/// Quantize one value to the symmetric 4-LEVEL 2-bit grid {-1.5,-0.5,+0.5,+1.5}*scale (uses all 4
+/// codes of a 2-bit field, vs ternary int2's 3). Nearest level = floor(x/scale) clamped to [-2,1] + 0.5.
+fn q4_level(x: f32, scale: f64) -> f32 {
+    let y = (x as f64) / scale;
+    let lvl = y.floor().clamp(-2.0, 1.0) + 0.5; // nearest of {-1.5,-0.5,0.5,1.5}
+    (lvl * scale) as f32
+}
+
+/// 4-LEVEL symmetric 2-bit factor quant (technique #4): uses all 4 codes ({-1.5,-0.5,0.5,1.5}*scale,
+/// scale = amax/1.5) instead of ternary int2's {-1,0,1} -- ~33% finer at the SAME 2-bit storage, still
+/// symmetric (no zero-point/bias). per_col gives each rank-component its own scale (stacks with #1).
+fn quant_factor_4level_inplace(m: &mut nalgebra::DMatrix<f32>, per_col: bool) {
+    if per_col {
+        for mut col in m.column_iter_mut() {
+            let amax = col.iter().fold(0f32, |a, &x| a.max(x.abs())) as f64;
+            let scale = (amax / 1.5).max(1e-12);
+            for x in col.iter_mut() {
+                *x = q4_level(*x, scale);
+            }
+        }
+    } else {
+        let amax = m.iter().fold(0f32, |a, &x| a.max(x.abs())) as f64;
+        let scale = (amax / 1.5).max(1e-12);
+        for x in m.iter_mut() {
+            *x = q4_level(*x, scale);
+        }
+    }
+}
+
+/// Normalized (orthogonal AND symmetric) Sylvester-Hadamard matrix, size k x k. Returns None unless k
+/// is a power of 2. Because H == H^T and H*H == I, the SAME matrix rotates the factors (before quant)
+/// and un-rotates them (after) -- the QuIP#/QuaRot/ButterflyQuant incoherence trick (technique #3):
+/// rotating a low-rank factor spreads its energy across all K dims so low-bit (esp. ternary int2)
+/// quantization has lower error. Free at deploy (H is fixed/known -> no extra storage), O(K^2) here.
+fn hadamard_matrix(k: usize) -> Option<nalgebra::DMatrix<f32>> {
+    if k == 0 || (k & (k - 1)) != 0 {
+        return None; // Sylvester construction needs a power of 2
+    }
+    let mut h = nalgebra::DMatrix::<f32>::from_element(1, 1, 1.0);
+    let mut n = 1;
+    while n < k {
+        let mut h2 = nalgebra::DMatrix::<f32>::zeros(2 * n, 2 * n);
+        for i in 0..n {
+            for j in 0..n {
+                let v = h[(i, j)];
+                h2[(i, j)] = v;
+                h2[(i, j + n)] = v;
+                h2[(i + n, j)] = v;
+                h2[(i + n, j + n)] = -v;
+            }
+        }
+        h = h2;
+        n *= 2;
+    }
+    Some(h * (1.0 / (k as f32).sqrt()))
+}
+
 /// Low-rank roundtrip of a (H,K,K) WKV state: per head, replace the KxK matrix with its rank-r SVD
 /// truncation A_r = (U_r sqrt(S_r)) (V_r sqrt(S_r))^T. The deploy model stores the two Kxr factors
 /// (2*K*r floats) instead of the full K*K -- the 0.15 KB card path. If `factor_qmax` is Some, the
@@ -91,13 +162,22 @@ fn quant_factor_inplace(m: &mut nalgebra::DMatrix<f32>, qmax: f64) {
 /// this per recurrence step == the deploy per-persist model (a card advances 1 step per review, state
 /// persisted between reviews). Uses a fast top-r truncation (Gram + symmetric eigendecomposition),
 /// NOT a full SVD -- the full SVD converges pathologically slowly on near-low-rank states.
-fn lowrank_roundtrip(t: &Tensor, rank: usize, factor_qmax: Option<f64>) -> Result<Tensor> {
+fn lowrank_roundtrip(
+    t: &Tensor,
+    rank: usize,
+    factor_qmax: Option<f64>,
+    per_col: bool,
+    hadamard: bool,
+    four_level: bool,
+) -> Result<Tensor> {
     use nalgebra::DMatrix;
     let (h, k, k2) = t.dims3()?;
     assert_eq!(k, k2, "WKV state must be square KxK");
     let data: Vec<f32> = t.flatten_all()?.to_vec1()?;
     let mut out = vec![0f32; data.len()];
     let r = rank.min(k);
+    // QuIP#/QuaRot incoherence rotation (#3): built once, reused per head. None if K not a power of 2.
+    let hmat = if hadamard { hadamard_matrix(k) } else { None };
     for hh in 0..h {
         let off = hh * k * k;
         // our layout is row-major (row r, col c) at off + r*k + c
@@ -119,10 +199,14 @@ fn lowrank_roundtrip(t: &Tensor, rank: usize, factor_qmax: Option<f64>) -> Resul
         let evals = &eig.eigenvalues;
         let mut order: Vec<usize> = (0..k).collect();
         // NaN-safe descending sort (a non-finite eigenvalue sorts last, so it is never picked as top-r).
+        // Descending sort with a PROPER total order: map non-finite eigenvalues to -inf so they sort
+        // last (never picked as top-r) AND the comparator is a valid total order. The previous
+        // `partial_cmp(...).unwrap_or(Equal)` violated total-order on NaN evals (int2 quant produces
+        // them) -> Rust's sort DETECTED the inconsistency and PANICKED. This is the robustness fix.
         order.sort_by(|&i, &j| {
-            evals[j]
-                .partial_cmp(&evals[i])
-                .unwrap_or(std::cmp::Ordering::Equal)
+            let a = if evals[i].is_finite() { evals[i] } else { f32::NEG_INFINITY };
+            let b = if evals[j].is_finite() { evals[j] } else { f32::NEG_INFINITY };
+            b.partial_cmp(&a).unwrap()
         });
         let mut uf = DMatrix::<f32>::zeros(k, r);
         let mut vf = DMatrix::<f32>::zeros(k, r);
@@ -144,8 +228,28 @@ fn lowrank_roundtrip(t: &Tensor, rank: usize, factor_qmax: Option<f64>) -> Resul
             }
         }
         if let Some(qmax) = factor_qmax {
-            quant_factor_inplace(&mut uf, qmax);
-            quant_factor_inplace(&mut vf, qmax);
+            // #3 incoherence: rotate the factor K-dim into the spread-energy basis before quant.
+            if let Some(hm) = &hmat {
+                uf = hm * &uf;
+                vf = hm * &vf;
+            }
+            if four_level && qmax <= 1.5 {
+                // #4: all 4 codes of the 2-bit field (only meaningful for the int2 level, qmax=1).
+                quant_factor_4level_inplace(&mut uf, per_col);
+                quant_factor_4level_inplace(&mut vf, per_col);
+            } else if per_col {
+                quant_factor_percol_inplace(&mut uf, qmax);
+                quant_factor_percol_inplace(&mut vf, qmax);
+            } else {
+                quant_factor_inplace(&mut uf, qmax);
+                quant_factor_inplace(&mut vf, qmax);
+            }
+            // un-rotate (H is symmetric orthogonal -> H*(H*uf_q) recovers uf with the quant error
+            // introduced in the incoherent basis). No-op when hmat is None.
+            if let Some(hm) = &hmat {
+                uf = hm * &uf;
+                vf = hm * &vf;
+            }
         }
         let a_r = &uf * vf.transpose(); // (k,k)
         for rr in 0..k {
@@ -278,6 +382,19 @@ pub struct Model {
     // COMPRESSED stream at its bit-width, so the deploy SIZE accounting is honest (shifts otherwise
     // stay fp32, which alone blows the 0.15 KB card budget). Off by default -> past numbers reproduce.
     quant_shifts: bool,
+    // RWKV_LOWRANK_PERCOL=1: quantize low-rank factors with a PER-COLUMN (per rank-component) scale
+    // instead of one shared scale -> makes int2 low-rank viable (the small-sigma column isn't crushed).
+    lowrank_percol: bool,
+    // RWKV_LOWRANK_HADAMARD=1 (#3): rotate low-rank factors by a Hadamard (QuIP#/QuaRot incoherence)
+    // matrix before quant and un-rotate after -> spreads energy across K so low-bit quantizes cleaner.
+    // Free (H fixed, no extra storage); needs K a power of 2 (else silently skipped). Stacks with percol.
+    lowrank_hadamard: bool,
+    // RWKV_LOWRANK_4LEVEL=1 (#4): use all 4 codes of a 2-bit field for int2 low-rank factors
+    // ({-1.5,-0.5,0.5,1.5}*scale) instead of ternary {-1,0,1}. Only affects the int2 level. Free.
+    lowrank_4level: bool,
+    // Plain-Rust f32 forward (no candle in the hot loop) -- the deployment speed path. Parity-gated
+    // vs the candle review_batched (<1e-5). Built once at load from the f32 weight data.
+    pub fast: crate::fast::FastModel,
 }
 
 impl Model {
@@ -393,6 +510,15 @@ impl Model {
         let quant_shifts = std::env::var("RWKV_QUANT_SHIFTS")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
+        let lowrank_percol = std::env::var("RWKV_LOWRANK_PERCOL")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+        let lowrank_hadamard = std::env::var("RWKV_LOWRANK_HADAMARD")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
+        let lowrank_4level = std::env::var("RWKV_LOWRANK_4LEVEL")
+            .map(|v| v == "1" || v == "true")
+            .unwrap_or(false);
         // Pre-transpose every 2D linear weight (out,in) -> (in,out) contiguous ONCE, so the
         // per-token matmul needs no .t() / re-contiguous. Norm weights are 1D and skipped.
         let mut lin_wt: TMap = HashMap::new();
@@ -402,6 +528,9 @@ impl Model {
             }
         }
         let s_space_t = Tensor::from_vec(s_space, (1, num_curves), &dev)?;
+        let fast = crate::fast::FastModel::build(
+            &w, &lin_wt, c, h, k, stream_layers.clone(), num_curves, num_points,
+        )?;
         Ok(Self {
             w,
             lin_wt,
@@ -415,6 +544,10 @@ impl Model {
             state_quant_qmax,
             state_lowrank,
             quant_shifts,
+            lowrank_percol,
+            lowrank_hadamard,
+            lowrank_4level,
+            fast,
         })
     }
 
@@ -609,7 +742,14 @@ impl Model {
             // (worst-case accumulation == the deploy per-persist model). t_xshift/c_xshift are tiny ->
             // left fp32. Low-rank (the 0.15 KB path) takes precedence over full-matrix quant per stream.
             let t_state = if let Some(&(rank, fqmax)) = self.state_lowrank.get(&module_idx) {
-                lowrank_roundtrip(&t_state, rank, fqmax)?
+                lowrank_roundtrip(
+                    &t_state,
+                    rank,
+                    fqmax,
+                    self.lowrank_percol,
+                    self.lowrank_hadamard,
+                    self.lowrank_4level,
+                )?
             } else if let Some(&qmax) = self.state_quant_qmax.get(&module_idx) {
                 quant_roundtrip(&t_state, qmax)?
             } else {

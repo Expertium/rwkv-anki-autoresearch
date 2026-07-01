@@ -1,0 +1,16 @@
+# 5k-phase EVAL (test) db for the FIRST half, users 1-5000 (swap-eval side). Same F:/rwkv_lmdb/test_db_5k
+# db as the h2 config (resumable -> adds 1-5000 alongside 5001-10000). Whole-user format. 1 thread, cpu-build.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 1
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

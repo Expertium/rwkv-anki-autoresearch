@@ -112,6 +112,76 @@ class RWKV7_WKV(torch.autograd.Function):
         return r_grad, k_grad, v_grad, w_grad, a_grad, k_deformed_grad, None
 
 
+class RWKV7_WKV_Stateful(torch.autograd.Function):
+    """Stateful (truncated-BPTT) WKV. forward takes an initial state `state0_BHKK` (carried, detached,
+    from the previous chunk) and returns `(out_BTHK, final_state_BHKK)`. backward IGNORES the gradient
+    of final_state -- the carried state is treated as a constant across the chunk boundary (truncated
+    BPTT) -- and returns no gradient for state0 or skip. With state0 = zeros this is mathematically
+    identical to RWKV7_WKV; the only difference is the carried state I/O. CUDA-only (forces the
+    sequential kernel; the time-parallel path can't take an initial state)."""
+
+    @staticmethod
+    def forward(ctx, *inputs: Tensor):
+        r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT, state0_BHKK = inputs
+        assert all(
+            i.is_contiguous()
+            for i in [r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT, state0_BHKK]
+        )
+        assert w_BTHK.dtype == torch.float32
+        assert skip_BT.dtype == torch.bool
+        assert state0_BHKK.dtype == torch.float32
+        dtype = r_BTHK.dtype
+        assert all(
+            i.dtype == dtype for i in [r_BTHK, k_BTHK, v_BTHK, a_BTHK, k_deformed_BTHK]
+        )
+        if not r_BTHK.is_cuda:
+            raise ValueError("Stateful WKV is CUDA-only.")
+        if dtype == torch.bfloat16:
+            op_f = torch.ops.rwkv.rwkv7_wkv_forward_stateful_bfloat16
+        elif dtype == torch.float:
+            op_f = torch.ops.rwkv.rwkv7_wkv_forward_stateful_float
+        elif dtype == torch.half:
+            op_f = torch.ops.rwkv.rwkv7_wkv_forward_stateful_half
+        else:
+            raise ValueError(f"Unsupported dtype: {dtype}")
+        out, state_checkpoints, final_state = op_f.default(
+            r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT, state0_BHKK
+        )
+        ctx.save_for_backward(
+            r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT, state_checkpoints
+        )
+        return out, final_state
+
+    @staticmethod
+    def backward(ctx: Any, *grad_outputs: Tensor):
+        grad_BTHK = grad_outputs[0].contiguous()
+        # grad_outputs[1] (the grad of final_state) is intentionally ignored: truncated BPTT.
+        (
+            r_BTHK,
+            k_BTHK,
+            v_BTHK,
+            w_BTHK,
+            a_BTHK,
+            k_deformed_BTHK,
+            skip_BT,
+            state_checkpoints,
+        ) = ctx.saved_tensors
+        dtype = r_BTHK.dtype
+        if dtype == torch.bfloat16:
+            op_b = torch.ops.rwkv.rwkv7_wkv_backward_stateful_bfloat16
+        elif dtype == torch.float:
+            op_b = torch.ops.rwkv.rwkv7_wkv_backward_stateful_float
+        elif dtype == torch.half:
+            op_b = torch.ops.rwkv.rwkv7_wkv_backward_stateful_half
+        else:
+            raise ValueError(f"Unsupported dtype: {dtype}")
+        r_grad, k_grad, v_grad, w_grad, a_grad, k_deformed_grad = op_b.default(
+            r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT, state_checkpoints, grad_BTHK
+        )
+        # No gradient for skip_BT or state0_BHKK (the latter detached -> truncated BPTT).
+        return r_grad, k_grad, v_grad, w_grad, a_grad, k_deformed_grad, None, None
+
+
 # Unused reference code for backpropagation for RWKV-7 wkv.
 def reference_backward(
     r_BTHK: Tensor,
@@ -358,3 +428,49 @@ def reference_rwkv7(
         skip_B111 = skip_BT111[:, t]
         state_BHKK = torch.where(skip_B111, state_BHKK, next_state_BHKK)
     return out_BTHK.to(out_dtype)
+
+
+def reference_rwkv7_stateful(
+    r_BTHK: Tensor,
+    k_BTHK: Tensor,
+    v_BTHK: Tensor,
+    w_BTHK: Tensor,
+    a_BTHK: Tensor,
+    k_deformed_BTHK: Tensor,
+    skip_BT: Tensor,
+    state0_BHKK: Tensor = None,
+):
+    """Pure-PyTorch differentiable WKV with an optional initial state, returning
+    `(out_BTHK, final_state_BHKK)`. Mathematically identical to `reference_rwkv7` when
+    state0 is None/zeros. Used to parity-test the CUDA stateful kernel: the forward should
+    match exactly, and autograd through this with a *detached* carried state0 gives the
+    truncated-BPTT gradient reference the stateful CUDA backward must match."""
+    out_dtype = k_BTHK.dtype
+    r_BTHK = r_BTHK.float()
+    k_BTHK = k_BTHK.float()
+    v_BTHK = v_BTHK.float()
+    w_BTHK = w_BTHK.float()
+    a_BTHK = a_BTHK.float()
+    k_deformed_BTHK = k_deformed_BTHK.float()
+    skip_BT111 = skip_BT.unsqueeze(-1).unsqueeze(-1).unsqueeze(-1)
+    B, T, H, K = r_BTHK.shape
+    if state0_BHKK is None:
+        state_BHKK = torch.zeros(B, H, K, K, dtype=torch.float32, device=r_BTHK.device)
+    else:
+        state_BHKK = state0_BHKK.float()
+    outs = []
+    for t in range(T):
+        out_t, next_state_BHKK = single_timestep(
+            r_BTHK[:, t],
+            k_BTHK[:, t],
+            v_BTHK[:, t],
+            w_BTHK[:, t],
+            a_BTHK[:, t],
+            k_deformed_BTHK[:, t],
+            state_BHKK,
+        )
+        outs.append(out_t)
+        skip_B111 = skip_BT111[:, t]
+        state_BHKK = torch.where(skip_B111, state_BHKK, next_state_BHKK)
+    out_BTHK = torch.stack(outs, dim=1)
+    return out_BTHK.to(out_dtype), state_BHKK

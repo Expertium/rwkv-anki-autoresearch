@@ -599,10 +599,17 @@ def job(config, user_id, max_size, done, writer_queue, progress_queue):
 
         def load_tensor(txn, key, device):
             tensor_bytes = txn.get(key.encode())
+            if tensor_bytes is None:
+                return None
             buffer = BytesIO(tensor_bytes)
             return torch.load(buffer, weights_only=True, map_location=device)
 
-        equalize_review_ths = load_tensor(txn, f"{user_id}_review_ths", "cpu").tolist()
+        # equalize_review_ths only marks `label_is_equalize` (a metric-only flag; NOT used in the
+        # training objective or query selection -- add_queries makes a query for every non-first review
+        # regardless). So a TRAIN user absent from the label_filter -> empty equalize is fine, and lets us
+        # build a train_db for new user ranges WITHOUT first running find_equalize on them. (Andrew 2026-06-30)
+        _rt = load_tensor(txn, f"{user_id}_review_ths", "cpu")
+        equalize_review_ths = _rt.tolist() if _rt is not None else []
 
     df = get_rwkv_data(
         config.DATA_PATH, user_id, equalize_review_ths=equalize_review_ths

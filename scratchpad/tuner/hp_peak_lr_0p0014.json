@@ -1,0 +1,1 @@
+{"name": "hp_peak_lr_0p0014", "param": "peak_lr", "config": {"peak_lr": 0.0014, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "total_steps": 960}

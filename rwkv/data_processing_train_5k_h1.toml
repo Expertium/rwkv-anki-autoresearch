@@ -1,0 +1,19 @@
+# 5k-phase TRAIN db for the FIRST half, users 1-5000 -- the primary training set. sc8k format
+# (MAX_BATCH_SIZE=16384 -> 8192-review chunks), matching the h2k16 champion recipe. Lives on C: (fast M.2;
+# training reads it every step). label_filter is read only to mark the metric-only label_is_equalize flag;
+# a train user absent from it -> empty equalize (fine, unused in training). 1 thread, cpu-build. Resumable.
+# Sparse map_size (400 GB) -- monitor FREE space on C:, not the logical file size.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "train_db_5k_h1"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 1
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

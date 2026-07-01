@@ -1,0 +1,18 @@
+# Route-R (measure-first) small-chunk train_db for users 1-100: MAX_BATCH_SIZE=16384 -> chunks of 8192
+# reviews (allowable_size = MAX_BATCH_SIZE//2). At MAX_TRAIN_GLOBAL_LEN=66000 this packs ~8 chunks/group
+# (B up to 8) vs ~2 for the 32768-chunk db -> tests whether smaller COLD chunks give the GPU-util speedup
+# without the intricate stateful-carry pipeline. Separate LMDB (train_db_sc8k) so the existing train_db
+# (101-200 gate + 1-100 re-baseline) is untouched. label_filter_db already covers 1-100.
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "train_db_sc8k"
+LMDB_SIZE = 4_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 10_000_000_000
+
+USER_START = 1
+USER_END = 100
+MAX_BATCH_SIZE = 16384
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

@@ -13,3 +13,5 @@ nalgebra = "0.33"   # pure-Rust SVD (no LAPACK) for low-rank card-state truncati
 
 [profile.release]
 opt-level = 3
+# (iter 1 tried lto=true + codegen-units=1 + target-cpu=native -> only 1.015x at B=128, p=0.012
+#  REJECTED: gemm already runtime-dispatches AVX2/FMA, so build flags barely move the deployment B.)

@@ -1,0 +1,1 @@
+{"name": "hp5k_baseline", "param": "baseline", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25}, "ws_steps": 6702}

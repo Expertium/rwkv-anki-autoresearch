@@ -1,0 +1,35 @@
+# Route-R: WS train champion arch on the EXISTING db (65536-review chunks, B~1 at MAX=66000) -- the
+# current/re-baseline setup, run fresh THIS session for an apples-to-apples speed+accuracy baseline vs
+# sc8k. 6 epochs (170 groups -> 1020 steps). Final ckpt = scratchpad/base65k_ws/base65kws_1020.pth.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db"
+TRAIN_DATASET_LMDB_SIZE = 205_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 6
+VALIDATE_EVERY = 1020
+PEAK_LR = 7e-4
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/base65k_ws"
+SAVE_MODEL_PREFIX = "base65kws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

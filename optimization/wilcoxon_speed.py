@@ -24,23 +24,31 @@ ROOT = Path(__file__).resolve().parent.parent
 BIN = str(ROOT / "rust" / "rwkv-infer" / "target" / "release" / "rwkv-infer.exe")
 
 
-def launch(binpath, weights, secs, user, quant=""):
-    env = {**os.environ, "RWKV_WEIGHTS": weights, "OMP_NUM_THREADS": "1"}
+def launch(binpath, weights, secs, user, quant="", mode="full", batch=128):
+    # OMP + RAYON both pinned to 1 so each bench process is HONESTLY single-thread (candle's CPU
+    # matmul uses rayon; without this a "1 thread" process can still fan out tiny gemms). N such
+    # processes launched together = N threads total, the intended paired-load design.
+    env = {**os.environ, "RWKV_WEIGHTS": weights, "OMP_NUM_THREADS": "1", "RAYON_NUM_THREADS": "1"}
     if quant:
         env["RWKV_QUANT"] = quant
     else:
         env.pop("RWKV_QUANT", None)
+    # mode "full" = --bench (B=1 sequential replay, full per-review work). mode "synth" = --bench-synth
+    # (batched read-only query at B=`batch`, synthetic states) -- the deployment queue-scoring workload
+    # whose throughput-vs-RAM Pareto knee is B=128 (see scratchpad/cpu_bench/pareto_*).
+    cmd = ([binpath, "--bench-synth", str(secs), str(batch)] if mode == "synth"
+           else [binpath, "--bench", str(secs), str(user)])
     return subprocess.Popen(
-        [binpath, "--bench", str(secs), str(user)], cwd=str(ROOT), env=env,
+        cmd, cwd=str(ROOT), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
     )
 
 
 def reviews(proc):
     out, _ = proc.communicate()
-    m = re.search(r"BENCH reviews=(\d+)", out)
+    m = re.search(r"reviews[ =](\d+)", out)  # "BENCH reviews=N" (full) or "... reviews N" (synth)
     if not m:
-        raise SystemExit(f"no BENCH line:\n{out}")
+        raise SystemExit(f"no review count:\n{out}")
     return int(m.group(1))
 
 
@@ -57,13 +65,16 @@ def main():
     ap.add_argument("--trials", type=int, default=20)  # Andrew 2026-06-28: 20 trials, not ~10
     ap.add_argument("--warmup", type=int, default=1)
     ap.add_argument("--user", type=int, default=107)
+    ap.add_argument("--bench-mode", choices=["full", "synth"], default="full",
+                    help="full=--bench B=1 sequential replay; synth=--bench-synth batched query")
+    ap.add_argument("--batch", type=int, default=128, help="batch size for --bench-mode synth")
     a = ap.parse_args()
 
     pairs = []
     for trial in range(a.trials + a.warmup):
         # launch all before+after procs simultaneously
-        bps = [launch(a.before_bin, a.before, a.secs, a.user, a.before_quant) for _ in range(a.threads)]
-        aps = [launch(a.after_bin, a.after, a.secs, a.user, a.after_quant) for _ in range(a.threads)]
+        bps = [launch(a.before_bin, a.before, a.secs, a.user, a.before_quant, a.bench_mode, a.batch) for _ in range(a.threads)]
+        aps = [launch(a.after_bin, a.after, a.secs, a.user, a.after_quant, a.bench_mode, a.batch) for _ in range(a.threads)]
         b = sum(reviews(p) for p in bps)
         aa = sum(reviews(p) for p in aps)
         tag = "warmup" if trial < a.warmup else "trial "

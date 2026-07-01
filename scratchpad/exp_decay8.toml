@@ -1,0 +1,37 @@
+# EXP decay-length: 8-epoch cosine decay from the tuned WS-15 ckpt (champion uses 4 epochs). Tests whether
+# more annealing helps (the model responds strongly to more training). Loads hp_epochs_15_2400 (+ optim, already
+# copied). Final ckpt = scratchpad/exp_decay8/decay8_1280.pth. Champion arch (no env overrides). clip 0.25 via env.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db_sc8k"
+TRAIN_DATASET_LMDB_SIZE = 4_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "D"
+STEP_OFFSET = 1
+WARMUP_STEPS = 0
+EPOCHS = 8
+VALIDATE_EVERY = 1280
+PEAK_LR = 1e-3
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "scratchpad/tuner/hp_epochs_15"
+LOAD_MODEL_NAME = "hp_epochs_15_2400"
+SAVE_MODEL_FOLDER = "scratchpad/exp_decay8"
+SAVE_MODEL_PREFIX = "decay8"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

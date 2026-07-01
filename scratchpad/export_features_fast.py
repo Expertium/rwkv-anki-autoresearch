@@ -26,9 +26,12 @@ from safetensors.numpy import save_file as save_np
 import rwkv.run_as_rnn as rnn_mod
 from rwkv.get_result import get_benchmark_info
 
-torch.set_num_threads(7)
-
 import os
+
+# Low default per-process thread count so cross-user multiprocessing (export_mp.py) doesn't
+# oversubscribe. The export is parquet-I/O + 1-element torch ops, not torch-compute bound, so
+# few threads costs ~nothing; the parallelism win is across USERS (processes), not within one.
+torch.set_num_threads(int(os.environ.get("RWKV_TORCH_THREADS", "7")))
 DATA = Path("../anki-revlogs-10k")
 LABEL_DB = "label_filter_db"
 LABEL_DB_SIZE = 2_000_000_000
@@ -53,17 +56,25 @@ def export_user(user_id):
     if sft.exists():
         print(f"user {user_id}: SKIP (exists)", flush=True)
         return
+    # Skip users absent from the dataset (ids in a range are NOT contiguous): a missing partition
+    # raises FileNotFoundError which, unguarded, killed the rest of the worker's round-robin chunk --
+    # the cause of the 6000-6999 export landing 836/995 traces. Guard here + try/except in main().
+    if not (DATA / "revlogs" / f"{user_id=}").exists():
+        print(f"user {user_id}: SKIP (not in dataset)", flush=True)
+        return
     torch.manual_seed(user_id)  # matches export_rnn_trace id-encoding seed
 
     df = rnn_mod.RNNProcess.__dict__  # noqa (silence linters); real df below
     import pandas as pd
 
+    # Read the user's partition DIRECTLY (like revlogs) instead of read_parquet(dir, filters=...),
+    # which re-discovers all ~10k partition dirs every call (the 8.4s "_filesystem_dataset" in the
+    # profile). Direct path = no dataset discovery, no user_id column (it's the partition key).
     df = pd.read_parquet(DATA / "revlogs" / f"{user_id=}")
     df["review_th"] = range(1, df.shape[0] + 1)
-    df_cards = pd.read_parquet(DATA / "cards", filters=[("user_id", "=", user_id)])
-    df_cards.drop(columns=["user_id"], inplace=True)
-    df_decks = pd.read_parquet(DATA / "decks", filters=[("user_id", "=", user_id)])
-    df_decks.drop(columns=["user_id", "parent_id"], inplace=True)
+    df_cards = pd.read_parquet(DATA / "cards" / f"{user_id=}")
+    df_decks = pd.read_parquet(DATA / "decks" / f"{user_id=}")
+    df_decks.drop(columns=["parent_id"], inplace=True)
     df = df.merge(df_cards, on="card_id", how="left", validate="many_to_one")
     df = df.merge(df_decks, on="deck_id", how="left", validate="many_to_one")
     df["review_th"] = range(1, df.shape[0] + 1)
@@ -147,7 +158,12 @@ def main():
     else:
         users = [int(x) for x in sys.argv[1:]]
     for u in users:
-        export_user(u)
+        try:
+            export_user(u)
+        except Exception as e:
+            # Never let one user kill the rest of a worker's chunk (belt-and-suspenders vs the guard
+            # in export_user). Log + continue so a resumable re-run recovers everything reachable.
+            print(f"user {u}: ERROR {type(e).__name__}: {e} -- skipping", flush=True)
     print("DONE", flush=True)
 
 

@@ -1,0 +1,15 @@
+# 5k-phase label_filter (equalized-benchmark helper) for the SECOND half, users 5001-10000.
+# Extends the canonical label_filter_db (never deleted). Mirrors the FSRS-6 --short --secs recipe so the
+# equalize set matches the baseline. 1 thread (Andrew 2026-07-01). Resumable (skips users already present).
+DATA_PATH = "../anki-revlogs-10k"
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 5001
+USER_END = 10000
+
+PROCESSES = 1

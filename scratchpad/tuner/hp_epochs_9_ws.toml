@@ -1,0 +1,33 @@
+# HP-tuner trial hp_epochs_9: param=epochs -> 9.  Full config: {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "epochs": 9}
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db_sc8k"
+TRAIN_DATASET_LMDB_SIZE = 4_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 9
+VALIDATE_EVERY = 1000000
+PEAK_LR = 0.001
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/tuner/hp_epochs_9"
+SAVE_MODEL_PREFIX = "hp_epochs_9"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

@@ -1,3 +1,4 @@
+mod fast;
 mod model;
 
 use anyhow::Result;
@@ -571,6 +572,161 @@ fn dump_card_state(model: &Model, user: i64, card_pos: usize) -> Result<()> {
     Ok(())
 }
 
+/// --dump-card-corpus <user> [stride]: warm up the user ONCE and emit the fp32 card-id WKV state
+/// (the 32x32 = 1024-float matrix) of every `stride`-th card, one per line as
+/// `STATE <1024 space-separated f32>`. Cheap corpus builder for the offline state-quant autoresearch
+/// task (one replay per user instead of one per card). Mirrors dump_card_state's state access.
+fn dump_card_corpus(model: &Model, user: i64, stride: usize) -> Result<()> {
+    let wm = warmup(model, user)?;
+    let stride = stride.max(1);
+    let (h, k, _c) = model.dims();
+    let mut emitted = 0usize;
+    for (pos, cid) in wm.card_order.iter().enumerate() {
+        if pos % stride != 0 {
+            continue;
+        }
+        let st = &wm.s_card[cid];
+        let fp32: Vec<f32> = st[0].t_state.flatten_all()?.to_vec1()?;
+        if fp32.len() != h * k * k || !fp32.iter().all(|x| x.is_finite()) {
+            continue;
+        }
+        let amax = fp32.iter().fold(0f32, |m, x| m.max(x.abs()));
+        if amax < 1e-12 {
+            continue; // skip all-zero (never-reviewed) states
+        }
+        let mut line = String::from("STATE");
+        for v in &fp32 {
+            line.push_str(&format!(" {v:.7e}"));
+        }
+        println!("{line}");
+        emitted += 1;
+    }
+    eprintln!("dumped {emitted} card states for user {user} (stride {stride}, k={k})");
+    Ok(())
+}
+
+/// Convert candle batched states -> fast (flat f32) states for the plain-Rust path.
+fn batched_to_fast(
+    states: &[Option<BatchedStreamState>; 5],
+) -> Result<[Option<fast::FastStreamState>; 5]> {
+    let mut out: Vec<Option<fast::FastStreamState>> = Vec::with_capacity(5);
+    for s in states {
+        match s {
+            None => out.push(None),
+            Some(st) => {
+                let mut fs: fast::FastStreamState = Vec::with_capacity(st.len());
+                for ls in st {
+                    fs.push(fast::FastLayerState {
+                        t_xshift: ls.t_xshift.flatten_all()?.to_vec1()?,
+                        t_state: ls.t_state.flatten_all()?.to_vec1()?,
+                        c_xshift: ls.c_xshift.flatten_all()?.to_vec1()?,
+                    });
+                }
+                out.push(Some(fs));
+            }
+        }
+    }
+    out.try_into().map_err(|_| anyhow::anyhow!("stream count"))
+}
+
+/// --verify-fast [user]: assert the plain-Rust batched forward matches the candle one (imm per card).
+fn verify_fast(model: &Model, user: i64) -> Result<()> {
+    let wm = warmup(model, user)?;
+    let cards = wm.card_order.clone();
+    let b = cards.len();
+    let (_per, batched, feats_b) = gather_batch(&wm, &cards)?;
+    let (_, _, out_p_b, _) = model.review_batched(&feats_b, &batched)?;
+    let imm_candle = model.imm_prob_batched(&out_p_b)?;
+
+    let feats_v: Vec<f32> = feats_b.flatten_all()?.to_vec1()?;
+    let fstates = batched_to_fast(&batched)?;
+    let (_, _, out_p_f, _) = model.fast.review_batched(&feats_v, b, &fstates)?;
+    let imm_fast = model.fast.imm_prob(&out_p_f, b);
+
+    let (mut md, mut arg) = (0f32, 0usize);
+    for i in 0..b {
+        let d = (imm_candle[i] - imm_fast[i]).abs();
+        if d > md {
+            md = d;
+            arg = i;
+        }
+    }
+    println!(
+        "verify-fast user {user}: B={b} max|imm_fast - imm_candle| = {md:.3e}  (card {arg}: candle={:.6} fast={:.6})",
+        imm_candle[arg], imm_fast[arg]
+    );
+    println!("{}", if md < 1e-4 { "  PASS (<1e-4)" } else { "  FAIL (>=1e-4)" });
+    Ok(())
+}
+
+/// --bench-synth-fast <secs> <B>: plain-Rust batched throughput at a fixed B (synthetic states).
+fn bench_synth_fast(model: &Model, secs: f64, b: usize) -> Result<()> {
+    let dev = Device::Cpu;
+    let (h, k, c) = model.dims();
+    let layers = model.stream_layers().to_vec();
+    let rv = |shape: (usize, usize, usize, usize)| -> Result<Vec<f32>> {
+        Ok(Tensor::rand(-1f32, 1f32, shape, &dev)?.flatten_all()?.to_vec1()?)
+    };
+    let mut states: Vec<Option<fast::FastStreamState>> = Vec::with_capacity(5);
+    for &nl in layers.iter() {
+        let mut st: fast::FastStreamState = Vec::with_capacity(nl);
+        for _ in 0..nl {
+            st.push(fast::FastLayerState {
+                t_xshift: rv((b, c, 1, 1))?,
+                t_state: rv((b, h, k, k))?,
+                c_xshift: rv((b, c, 1, 1))?,
+            });
+        }
+        states.push(Some(st));
+    }
+    let states: [Option<fast::FastStreamState>; 5] =
+        states.try_into().map_err(|_| anyhow::anyhow!("stream count"))?;
+    let feats: Vec<f32> = Tensor::rand(0f32, 1f32, (b, 92), &dev)?.flatten_all()?.to_vec1()?;
+
+    let _ = model.fast.review_batched(&feats, b, &states)?; // warm
+    let mut total: u64 = 0;
+    let t0 = Instant::now();
+    while t0.elapsed().as_secs_f64() < secs {
+        let (_, _, out_p, _) = model.fast.review_batched(&feats, b, &states)?;
+        let _ = model.fast.imm_prob(&out_p, b);
+        total += b as u64;
+    }
+    let el = t0.elapsed().as_secs_f64();
+    println!("B {b} rev_s {:.1} reviews {total} secs {el:.2}", total as f64 / el);
+    Ok(())
+}
+
+/// --bench-mt <secs> <B_per_thread> <threads>: thread-level batch parallelism. Each OS thread runs the
+/// candle batched query at B (single-thread gemm; set RAYON_NUM_THREADS=1) on shared read-only weights
+/// + states; sum the review counts -> aggregate rev/s. Models Anki splitting its due-card queue across
+/// cores. Cards are independent (read-only) so this is exact + embarrassingly parallel.
+fn bench_mt(model: &Model, secs: f64, b: usize, threads: usize) -> Result<()> {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    let dev = Device::Cpu;
+    let states = synth_states(model, b, &dev)?; // shared read-only
+    let feats_b = Tensor::rand(0f32, 1f32, (b, 92), &dev)?;
+    let _ = model.review_batched(&feats_b, &states)?; // warm
+    let total = AtomicU64::new(0);
+    let t0 = Instant::now();
+    std::thread::scope(|s| {
+        for _ in 0..threads {
+            s.spawn(|| {
+                let mut local = 0u64;
+                while t0.elapsed().as_secs_f64() < secs {
+                    let (_, _, out_p, _) = model.review_batched(&feats_b, &states).unwrap();
+                    let _ = model.imm_prob_batched(&out_p).unwrap();
+                    local += b as u64;
+                }
+                total.fetch_add(local, Ordering::Relaxed);
+            });
+        }
+    });
+    let el = t0.elapsed().as_secs_f64();
+    let tot = total.load(Ordering::Relaxed);
+    println!("MT threads={threads} B={b} rev_s {:.1} reviews {tot} secs {el:.2}", tot as f64 / el);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let weights_owned = std::env::var("RWKV_WEIGHTS")
         .unwrap_or_else(|_| "reference/rwkv_ref_558.safetensors".to_string());
@@ -615,12 +771,41 @@ fn main() -> Result<()> {
         return dump_card_state(&model, user, card_pos);
     }
 
+    // --dump-card-corpus <user> [stride]: emit many real card WKV states (one replay) for the offline
+    // state-quant autoresearch dataset. See dump_card_corpus.
+    if argv.first().map(|s| s.as_str()) == Some("--dump-card-corpus") {
+        let user: i64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(107);
+        let stride: usize = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(1);
+        return dump_card_corpus(&model, user, stride);
+    }
+
     // --bench-synth <secs> <B>: synthetic-state batched throughput at a single B (no warmup).
     // One subprocess per B lets an external driver measure peak RSS for a speed-vs-RAM frontier.
     if argv.first().map(|s| s.as_str()) == Some("--bench-synth") {
         let secs: f64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(4.0);
         let b: usize = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(512);
         return bench_synth(&model, secs, b);
+    }
+
+    // --verify-fast [user]: plain-Rust forward must match the candle forward (imm per card)
+    if argv.first().map(|s| s.as_str()) == Some("--verify-fast") {
+        let user: i64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(107);
+        return verify_fast(&model, user);
+    }
+
+    // --bench-synth-fast <secs> <B>: plain-Rust batched throughput (the deployment speed path)
+    if argv.first().map(|s| s.as_str()) == Some("--bench-synth-fast") {
+        let secs: f64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(4.0);
+        let b: usize = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(128);
+        return bench_synth_fast(&model, secs, b);
+    }
+
+    // --bench-mt <secs> <B_per_thread> <threads>: aggregate multithread throughput (candle, B-parallel)
+    if argv.first().map(|s| s.as_str()) == Some("--bench-mt") {
+        let secs: f64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(4.0);
+        let b: usize = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(128);
+        let threads: usize = argv.get(3).map(|s| s.parse().unwrap()).unwrap_or(8);
+        return bench_mt(&model, secs, b, threads);
     }
 
     if std::env::var("RWKV_DEBUG").is_ok() {

@@ -1,0 +1,1 @@
+{"name": "hp_clip_1", "param": "clip", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 1.0, "epochs": 6}, "total_steps": 960}

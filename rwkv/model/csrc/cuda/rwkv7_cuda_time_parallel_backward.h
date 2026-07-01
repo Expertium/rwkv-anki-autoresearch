@@ -25,7 +25,7 @@ __global__ void rwkv7_wkv_backward_time_parallel_base_kernel(
     float* __restrict__ partial_mul_BMHKK,
     float* __restrict__ partial_add_BMHKK
     ) {
-    const int K = 32;
+    const int K = blockDim.x;
     int b = blockIdx.x;
     int h = blockIdx.y;
     int chunk_i = blockIdx.z;
@@ -57,10 +57,10 @@ __global__ void rwkv7_wkv_backward_time_parallel_base_kernel(
         auto mul_decay_remove_transpose = [&](float &A_xy) -> void {
             float A_xy_decayed = A_xy * w_y;
             float A_k_dot = A_xy * a_y * k_deformed_y;
-            for (int offset = 16; offset > 0; offset /= 2) {
-                A_k_dot += __shfl_down_sync(FULL_MASK, A_k_dot, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                A_k_dot += __shfl_down_sync(FULL_MASK, A_k_dot, offset, K);
             }
-            A_k_dot = __shfl_sync(FULL_MASK, A_k_dot, 0);
+            A_k_dot = __shfl_sync(FULL_MASK, A_k_dot, 0, K);
             A_xy = A_xy_decayed - A_k_dot * k_deformed_y;
         };
         if (!skip) {
@@ -107,12 +107,12 @@ __global__ void rwkv7_wkv_backward_time_parallel_final_kernel(
 ) {
     float state_xy_chunk[CHUNK_LEN];
     float state_prev_xy_chunk[CHUNK_LEN];
-    const int K = 32;
+    const int K = blockDim.x;
+    // Shared scratch sized for the max supported K (32); indices use the runtime K, so K-general.
+    // (Removed KK_grad_decay_remove and KK_dS_prev, both declared but never read -- dead allocations.)
     __shared__ float KK_state[32 * (32 + 1)];
     __shared__ float KK_state_prev[32 * (32 + 1)];
-    __shared__ float KK_grad_decay_remove[32 * 32];
     __shared__ float KK_dS[32 * (32 + 1)];
-    __shared__ float KK_dS_prev[32 * 32];
     __shared__ float KK_grad_decay[32 * (32 + 1)];
     __shared__ float K_k_deformed[32];
     __shared__ float K_a[32];
@@ -168,11 +168,11 @@ __global__ void rwkv7_wkv_backward_time_parallel_final_kernel(
             // compute decayed state value at (x, y)
             float state_xy_decayed = state_xy * w_y;
             float state_k_dot = state_xy * k_deformed_y;
-            for (int offset = 16; offset > 0; offset /= 2) {
-                state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset, K);
             }
 
-            state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0);
+            state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0, K);
             state_xy = state_xy_decayed - state_k_dot * a_y * k_deformed_y;
             state_xy += v_x * k_y;
             state_xy_chunk[c] = state_xy;
@@ -230,11 +230,11 @@ __global__ void rwkv7_wkv_backward_time_parallel_final_kernel(
             float k_grad_x = KK_dS[get_index1(y, x, K + 1)] * v_y;
 
             // But we can still use 3x4 = 12 warps to do this on the tensor cores instead.
-            for (int offset = 16; offset > 0; offset /= 2) {
-                v_grad_x += __shfl_down_sync(FULL_MASK, v_grad_x, offset);
-                k_grad_x += __shfl_down_sync(FULL_MASK, k_grad_x, offset);
-                state_grad_dot += __shfl_down_sync(FULL_MASK, state_grad_dot, offset);
-                dS_xy_remove += __shfl_down_sync(FULL_MASK, dS_xy_remove, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                v_grad_x += __shfl_down_sync(FULL_MASK, v_grad_x, offset, K);
+                k_grad_x += __shfl_down_sync(FULL_MASK, k_grad_x, offset, K);
+                state_grad_dot += __shfl_down_sync(FULL_MASK, state_grad_dot, offset, K);
+                dS_xy_remove += __shfl_down_sync(FULL_MASK, dS_xy_remove, offset, K);
             }
             if (y == 0) {
                 v_grad_BTHK[get_index3(b, t, h, x, T, H, K)] = to_F<F>(v_grad_x);
@@ -247,10 +247,10 @@ __global__ void rwkv7_wkv_backward_time_parallel_final_kernel(
             float k_deformed_t1 = -grad_decay_remove_xy * K_a[y] * K_k_deformed[y];
             float k_deformed_t2 = -K_a[x] * KK_grad_decay_yx * K_k_deformed[y];
             // TODO potential tensor core optimization
-            for (int offset = 16; offset > 0; offset /= 2) {
-                a_grad_x += __shfl_down_sync(FULL_MASK, a_grad_x, offset);
-                k_deformed_t1 += __shfl_down_sync(FULL_MASK, k_deformed_t1, offset);
-                k_deformed_t2 += __shfl_down_sync(FULL_MASK, k_deformed_t2, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                a_grad_x += __shfl_down_sync(FULL_MASK, a_grad_x, offset, K);
+                k_deformed_t1 += __shfl_down_sync(FULL_MASK, k_deformed_t1, offset, K);
+                k_deformed_t2 += __shfl_down_sync(FULL_MASK, k_deformed_t2, offset, K);
             }
             
             if (y == 0) {
@@ -261,7 +261,7 @@ __global__ void rwkv7_wkv_backward_time_parallel_final_kernel(
             w_y_prev = w_y;
             a_y_prev = a_y;
             k_deformed_y_prev = k_deformed_y;
-            dS_xy_remove = __shfl_sync(FULL_MASK, dS_xy_remove, 0);
+            dS_xy_remove = __shfl_sync(FULL_MASK, dS_xy_remove, 0, K);
             dS_xy_contrib += dS_xy_decay - dS_xy_remove * k_deformed_y;
             __syncthreads();
         }

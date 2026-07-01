@@ -6,7 +6,8 @@ import torch
 from rwkv.model.rwkv_ops import RWKV7_WKV, reference_rwkv7, quant_aware_rwkv7
 
 """
-IMPORTANT: the CUDA implementation in this repository only supports head dimensions of 32. d_model // n_heads == 32.
+IMPORTANT: the CUDA WKV kernel supports any head dim K = d_model // n_heads that DIVIDES 32 (K-aware
+warp reduction added 2026-06-30; K=16 parity-verified). E.g. H=1/K=32 (champion) or H=2/K=16 (2x state).
 
 Sources:
 https://github.com/BlinkDL/RWKV-LM/blob/main/RWKV-v5/src/model.py#L766
@@ -114,7 +115,9 @@ class RWKV7ChannelMixer(ModuleType):
     # Also the same as for RWKV-5
     def __init__(self, config: RWKV7Config, layer_id):
         super().__init__()
-        assert config.d_model // config.n_heads == 32
+        # head dim K = d_model // n_heads. The CUDA WKV kernel now supports any K that DIVIDES 32
+        # (K-aware warp reduction, 2026-06-30; parity-verified for K=16). K must divide 32.
+        assert 32 % (config.d_model // config.n_heads) == 0
         self.d_model = config.d_model
         with torch.no_grad():
             ratio_1_to_almost_0 = 1.0 - (layer_id / config.total_layers)

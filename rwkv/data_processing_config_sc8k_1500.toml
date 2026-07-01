@@ -1,0 +1,19 @@
+# Build a sc8k (8192-review-chunk) train_db for users 1000-2499 (1500 users) -- the "lots of varied
+# users, few epochs" experiment (Andrew 2026-06-30). Eval stays on 101-200 (existing test_db). DEVICE=cpu
+# (samples are CPU-built; avoids GPU contention). The label_filter need NOT cover 1000-2499 -- data_processing
+# now tolerates missing users (empty equalize set; equalize is a metric-only marker, not training signal).
+# Separate LMDB (train_db_sc8k_1500) so the 1-100 db is untouched. ~56 GB expected (3.73 GB/100 users).
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "train_db_sc8k_1500"
+LMDB_SIZE = 80_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 10_000_000_000
+
+USER_START = 1000
+USER_END = 2499
+MAX_BATCH_SIZE = 16384
+PROCESSES = 7
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

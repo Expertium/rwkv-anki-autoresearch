@@ -25,7 +25,7 @@ __global__ void rwkv7_wkv_forward_time_parallel_base_kernel(
     float* __restrict__ partial_mul_BMHKK,
     float* __restrict__ partial_add_BMHKK
     ) {
-    const int K = 32;
+    const int K = blockDim.x;
     int b = blockIdx.x;
     int h = blockIdx.y;
     int chunk_i = blockIdx.z;
@@ -57,10 +57,10 @@ __global__ void rwkv7_wkv_forward_time_parallel_base_kernel(
             auto mul_decay_remove = [&](float &A_xy) -> void {
                 float A_xy_decayed = A_xy * w_y;
                 float A_k_dot = A_xy * k_deformed_y;
-                for (int offset = 16; offset > 0; offset /= 2) {
-                    A_k_dot += __shfl_down_sync(FULL_MASK, A_k_dot, offset);
+                for (int offset = K / 2; offset > 0; offset /= 2) {
+                    A_k_dot += __shfl_down_sync(FULL_MASK, A_k_dot, offset, K);
                 }
-                A_k_dot = __shfl_sync(FULL_MASK, A_k_dot, 0);
+                A_k_dot = __shfl_sync(FULL_MASK, A_k_dot, 0, K);
                 A_xy = A_xy_decayed - A_k_dot * a_y * k_deformed_y;
             };
             mul_decay_remove(mul_xy);
@@ -93,7 +93,7 @@ __global__ void rwkv7_wkv_forward_time_parallel_final_kernel(
     const int L,
     float* __restrict__ state_checkpoints_BLHKK
 ) {
-    const int K = 32;
+    const int K = blockDim.x;
     int b = blockIdx.x;
     int h = blockIdx.y;
     int chunk_i = blockIdx.z;
@@ -127,16 +127,16 @@ __global__ void rwkv7_wkv_forward_time_parallel_final_kernel(
         float state_k_dot = state_xy * k_deformed_y;
         // compute S@k. We do this in parallel at the row (warp) level
         // Parallel reduction: https://developer.nvidia.com/blog/using-cuda-warp-level-primitives/
-        for (int offset = 16; offset > 0; offset /= 2) {
-            state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset);
+        for (int offset = K / 2; offset > 0; offset /= 2) {
+            state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset, K);
         }
-        state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0);
+        state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0, K);
         state_xy = state_xy_decayed - state_k_dot * a_y * k_deformed_y;
         state_xy += v_x * k_y;
         // Compute S@r and store the result in out
         float state_r_dot = state_xy * r_y;
-        for (int offset = 16; offset > 0; offset /= 2) {
-            state_r_dot += __shfl_down_sync(FULL_MASK, state_r_dot, offset);
+        for (int offset = K / 2; offset > 0; offset /= 2) {
+            state_r_dot += __shfl_down_sync(FULL_MASK, state_r_dot, offset, K);
         }
         if (y == 0) {
             out_BTHK[global_x] = to_F<F>(state_r_dot);

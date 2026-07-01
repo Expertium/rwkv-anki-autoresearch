@@ -74,6 +74,17 @@ class RNNProcess:
         self.card2elapsed_days_cumulative = {}
         self.card2elapsed_seconds_cumulative = {}
         self.id_encodings = {submodule: {} for submodule in RWKV_SUBMODULES}
+        # Precomputed for the VECTORIZED day-offset encoding (replaces ~50 tiny per-period torch ops
+        # /row with ~8). float32 f matches torch's weak-scalar promotion in the original per-element
+        # form (python-float * int64 -> float32), so the result is bit-identical.
+        self._do_periods = torch.tensor(
+            DAY_OFFSET_ENCODE_PERIODS, device=device, dtype=torch.int64
+        )
+        self._do_f = torch.tensor(
+            [2 * np.pi / p for p in DAY_OFFSET_ENCODE_PERIODS],
+            device=device,
+            dtype=torch.float32,
+        )
 
     def get_tensor(self, row):
         def add_id_encoding(features):
@@ -101,32 +112,22 @@ class RNNProcess:
             return torch.cat(gather, dim=-1)
 
         def add_day_offset_encoding(features):
-            day_offset = torch.full((1,), row["day_offset"], device=self.device)
-            day_offset_first = torch.full(
-                (1,), row["day_offset_first"], device=self.device
-            )
-            gather = [features]
-            for period in DAY_OFFSET_ENCODE_PERIODS:
-                f = 2 * np.pi / period
-                encodings_sin = torch.sin(f * (day_offset % period)).to(self.dtype)
-                encodings_cos = torch.cos(f * (day_offset % period)).to(self.dtype)
-                encodings = torch.cat((encodings_sin, encodings_cos), dim=-1)
-                gather.append(encodings)
-                encodings_first_sin = torch.sin(f * (day_offset_first % period)).to(
-                    self.dtype
-                )
-                encodings_first_cos = torch.cos(f * (day_offset_first % period)).to(
-                    self.dtype
-                )
-                encodings_first = torch.cat(
-                    (encodings_first_sin, encodings_first_cos), dim=-1
-                )
-                gather.append(encodings_first)
-
-            return torch.cat(gather, dim=-1)
+            # Vectorized over all periods: 2 torch.sin + 2 torch.cos instead of ~50 tiny per-period
+            # ops. Per-period output order [sin(do), cos(do), sin(dof), cos(dof)] is preserved via
+            # stack+reshape. Bit-exact (verified): same int64-%->float32 path + float32 f.
+            do = torch.tensor(int(row["day_offset"]), device=self.device, dtype=torch.int64)
+            dof = torch.tensor(int(row["day_offset_first"]), device=self.device, dtype=torch.int64)
+            ang_do = self._do_f * (do % self._do_periods).to(torch.float32)
+            ang_dof = self._do_f * (dof % self._do_periods).to(torch.float32)
+            sin_do = torch.sin(ang_do).to(self.dtype)
+            cos_do = torch.cos(ang_do).to(self.dtype)
+            sin_dof = torch.sin(ang_dof).to(self.dtype)
+            cos_dof = torch.cos(ang_dof).to(self.dtype)
+            enc = torch.stack([sin_do, cos_do, sin_dof, cos_dof], dim=1).reshape(-1)
+            return torch.cat((features, enc), dim=-1)
 
         features = torch.tensor(
-            row.loc[CARD_FEATURE_COLUMNS].tolist(),
+            [row[c] for c in CARD_FEATURE_COLUMNS],  # dict-compatible (was row.loc[...].tolist())
             dtype=self.dtype,
             device=self.device,
             requires_grad=False,
@@ -194,7 +195,11 @@ class RNNProcess:
         return torch.sigmoid(curve_logits)
 
     def add_same(self, row):
-        row = row.copy()
+        # Use a plain dict, NOT a pandas Series: ~25 new-key assignments/call x2/review, and Series
+        # new-key assignment rebuilds the arrow-string index each time (O(n)) -> was ~60% of export
+        # runtime (cProfile). dict inserts are O(1). Values + features are bit-identical. dict(Series)
+        # and dict(dict) both work, so the inference path (Series in) is unaffected.
+        row = dict(row)
         card_id = row["card_id"]
         row["elapsed_days_cumulative"] = (
             self.card2elapsed_days_cumulative.get(card_id, 0) + row["elapsed_days"]
@@ -286,8 +291,7 @@ class RNNProcess:
         return row
 
     def imm_predict(self, row):
-        row = row.copy()
-        row = self.add_same(row)
+        row = self.add_same(row)  # add_same does dict(row) (isolated) -> outer Series.copy was redundant
         row["is_query"] = 1.0
         row["skip"] = True
         row["scaled_duration"] = 0
@@ -299,8 +303,7 @@ class RNNProcess:
         return imm_probs
 
     def process_row(self, row):
-        row = row.copy()
-        row = self.add_same(row)
+        row = self.add_same(row)  # add_same does dict(row) (isolated) -> outer Series.copy was redundant
         row["is_query"] = 0.0
         row["skip"] = False
         row["scaled_duration"] = scale_duration(row["duration"])

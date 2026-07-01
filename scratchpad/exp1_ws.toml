@@ -1,0 +1,35 @@
+# EXP1 = restore SRS-head resolution num_curves/num_points 64->128 (env RWKV_NUM_CURVES/POINTS=128 in driver).
+# Tuned WS recipe (peak_lr 1e-3 / warmup 200 / epochs 15; clip 0.25 + wd 0.01 via env). 209,312 params (<=225k),
+# ZERO state cost. Final ckpt = scratchpad/exp1/exp1ws_2400.pth.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db_sc8k"
+TRAIN_DATASET_LMDB_SIZE = 4_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 15
+VALIDATE_EVERY = 1000000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/exp1"
+SAVE_MODEL_PREFIX = "exp1ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

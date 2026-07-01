@@ -1,0 +1,17 @@
+# 5k-phase TRAIN db for the SECOND half, users 5001-10000 -- the swap training set. sc8k format. Lives on
+# F: (4 TB USB, roomy) since C: cannot hold both 5k train dbs. 1 thread, cpu-build. Resumable. Sparse
+# map_size (400 GB) -- monitor FREE space on F:.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h2"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 1
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

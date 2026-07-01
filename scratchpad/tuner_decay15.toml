@@ -1,0 +1,38 @@
+# WSD DECAY phase on the tuned WS-15 champion (hp_epochs_15). 4-epoch cosine decay (640 steps),
+# anneals the tuned LR (1e-3) -> 0. Loads hp_epochs_15 weights + optimizer (driver copies the optim
+# file to the {NAME}_optim.pth form first). clip=0.25 via RWKV_CLIP in the driver. Final ckpt =
+# scratchpad/tuner/decay15/decay15_640.pth. Gated vs WS-15 (keep only if BOTH modes improve >=0.0003).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+VALIDATE_USERS_START = 101
+VALIDATE_USERS_END = 110
+
+TRAIN_DATASET_LMDB_PATH = "train_db_sc8k"
+TRAIN_DATASET_LMDB_SIZE = 4_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "test_db"
+VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+NUM_FETCH_PROCESSES = 7
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+TRAIN_MODE = "D"
+STEP_OFFSET = 1
+WARMUP_STEPS = 0
+EPOCHS = 4
+VALIDATE_EVERY = 640
+PEAK_LR = 1e-3
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "scratchpad/tuner/hp_epochs_15"
+LOAD_MODEL_NAME = "hp_epochs_15_2400"
+SAVE_MODEL_FOLDER = "scratchpad/tuner/decay15"
+SAVE_MODEL_PREFIX = "decay15"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

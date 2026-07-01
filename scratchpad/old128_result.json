@@ -1,0 +1,14 @@
+{
+  "name": "old d=128 (trained 1-100)",
+  "params": 2762884,
+  "d_model": 128,
+  "trained_on": "1-100",
+  "chunk": "sc8k 8192",
+  "max_train": 18000,
+  "steps": 3888,
+  "train_min": 45.5,
+  "throughput": 9973.0,
+  "ahead": 0.320295,
+  "imm": 0.281913,
+  "eval_users": 100
+}

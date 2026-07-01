@@ -1,0 +1,21 @@
+# Eval the EMA-averaged WS-15 weights on 101-200 (champion arch). MODEL_PATH = the *_ema_* checkpoint.
+FILE_AHEAD = "RWKV-ema"
+FILE_IMM = "RWKV-P-ema"
+
+MODEL_PATH = "scratchpad/exp_ema/emaws_ema_2400.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+
+USER_START = 101
+USER_END = 200
+
+NUM_FETCH_PROCESSES = 7

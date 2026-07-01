@@ -28,9 +28,14 @@ __global__ void rwkv7_wkv_forward_kernel(
     const bool* __restrict__ skip_BT,
     F* __restrict__ out_BTHK,
     const int L,
-    float* __restrict__ state_checkpoints_BLHKK
+    float* __restrict__ state_checkpoints_BLHKK,
+    // Stateful BPTT: optional initial state (carried from the previous chunk) and optional
+    // final-state output (to carry into the next chunk). Both fp32 [B,H,K,K]. When null, the
+    // kernel is byte-for-byte the original (state starts at 0, no final write).
+    const float* __restrict__ state0_BHKK,
+    float* __restrict__ final_state_BHKK
     ) {
-    const int K = 32;
+    const int K = blockDim.x;
     int b = blockIdx.x;
     int h = blockIdx.y;
 
@@ -38,7 +43,8 @@ __global__ void rwkv7_wkv_forward_kernel(
     int x = threadIdx.y;
     int y = threadIdx.x;
 
-    float state_xy = 0.0; 
+    int s_idx = ((b * H + h) * K + x) * K + y;  // index into a [B,H,K,K] state tensor
+    float state_xy = (state0_BHKK != nullptr) ? state0_BHKK[s_idx] : 0.0f;
     int state_loc = get_index4(b, 0, h, x, y, L, H, K, K);
     int64_t global_y = get_index3(b, 0, h, y, T, H, K);
     int64_t global_x = get_index3(b, 0, h, x, T, H, K);
@@ -62,16 +68,16 @@ __global__ void rwkv7_wkv_forward_kernel(
         float state_k_dot = state_xy * k_deformed_y;
         // compute S@k. We do this in parallel at the row (warp) level
         // Parallel reduction: https://developer.nvidia.com/blog/using-cuda-warp-level-primitives/
-        for (int offset = 16; offset > 0; offset /= 2) {
-            state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset);
+        for (int offset = K / 2; offset > 0; offset /= 2) {
+            state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset, K);
         }
-        state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0);
+        state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0, K);
         state_xy = state_xy_decayed - state_k_dot * a_y * k_deformed_y;
         state_xy += v_x * k_y;
         // Compute S@r and store the result in out
         float state_r_dot = state_xy * r_y;
-        for (int offset = 16; offset > 0; offset /= 2) {
-            state_r_dot += __shfl_down_sync(FULL_MASK, state_r_dot, offset);
+        for (int offset = K / 2; offset > 0; offset /= 2) {
+            state_r_dot += __shfl_down_sync(FULL_MASK, state_r_dot, offset, K);
         }
         if (y == 0) {
             out_BTHK[global_x] = to_F<F>(state_r_dot);
@@ -81,6 +87,10 @@ __global__ void rwkv7_wkv_forward_kernel(
         }
         global_x += H * K;
         global_y += H * K;
+    }
+    // Stateful BPTT: emit the post-last-step state so the next chunk can resume from it.
+    if (final_state_BHKK != nullptr) {
+        final_state_BHKK[s_idx] = state_xy;
     }
 }
 
@@ -106,15 +116,16 @@ __global__ void rwkv7_wkv_backward_kernel(
     F* __restrict__ a_grad_BTHK,
     F* __restrict__ k_deformed_grad_BTHK
     ) {
-    const int K = 32;
+    const int K = blockDim.x;
+    // Shared scratch sized for the max supported K (32); indices use the runtime K, so K-general.
+    // (Removed KK_grad_decay_remove, which was declared but never read -- a dead shared allocation.)
     __shared__ float KK_state[32 * (32 + 1)];
     __shared__ float KK_state_prev[32 * (32 + 1)];
-    __shared__ float KK_grad_decay_remove[32 * 32];
     __shared__ float KK_dS[32 * (32 + 1)];
     __shared__ float KK_grad_decay[32 * (32 + 1)];
     __shared__ float K_k_deformed[32];
     __shared__ float K_a[32];
-    float state_xy_chunk[CHUNK_LEN]; 
+    float state_xy_chunk[CHUNK_LEN];
     float state_prev_xy_chunk[CHUNK_LEN];
     const int b = blockIdx.x;
     const int h = blockIdx.y;
@@ -148,11 +159,11 @@ __global__ void rwkv7_wkv_backward_kernel(
             // compute decayed state value at (x, y)
             float state_xy_decayed = state_xy * w_y;
             float state_k_dot = state_xy * k_deformed_y;
-            for (int offset = 16; offset > 0; offset /= 2) {
-                state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                state_k_dot += __shfl_down_sync(FULL_MASK, state_k_dot, offset, K);
             }
 
-            state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0);
+            state_k_dot = __shfl_sync(FULL_MASK, state_k_dot, 0, K);
             state_xy = state_xy_decayed - state_k_dot * a_y * k_deformed_y;
             state_xy += v_x * k_y;
             state_xy_chunk[c] = state_xy;
@@ -211,11 +222,11 @@ __global__ void rwkv7_wkv_backward_kernel(
             // TODO dS_xy_remove must stay as float for accurate propagation, but the rest can be batched up in a 32x3 matrix and matmull'd?
             // Looks like no, they each have a different multiplier matrix.
             // But we can still use 3x4 = 12 warps to do this on the tensor cores instead.
-            for (int offset = 16; offset > 0; offset /= 2) {
-                v_grad_x += __shfl_down_sync(FULL_MASK, v_grad_x, offset);
-                k_grad_x += __shfl_down_sync(FULL_MASK, k_grad_x, offset);
-                state_grad_dot += __shfl_down_sync(FULL_MASK, state_grad_dot, offset);
-                dS_xy_remove += __shfl_down_sync(FULL_MASK, dS_xy_remove, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                v_grad_x += __shfl_down_sync(FULL_MASK, v_grad_x, offset, K);
+                k_grad_x += __shfl_down_sync(FULL_MASK, k_grad_x, offset, K);
+                state_grad_dot += __shfl_down_sync(FULL_MASK, state_grad_dot, offset, K);
+                dS_xy_remove += __shfl_down_sync(FULL_MASK, dS_xy_remove, offset, K);
             }
             if (y == 0) {
                 v_grad_BTHK[get_index3(b, t, h, x, T, H, K)] = to_F<F>(v_grad_x);
@@ -228,10 +239,10 @@ __global__ void rwkv7_wkv_backward_kernel(
             float k_deformed_t1 = -grad_decay_remove_xy * K_a[y] * K_k_deformed[y];
             float k_deformed_t2 = -K_a[x] * KK_grad_decay_yx * K_k_deformed[y];
             // TODO potential tensor core optimization
-            for (int offset = 16; offset > 0; offset /= 2) {
-                a_grad_x += __shfl_down_sync(FULL_MASK, a_grad_x, offset);
-                k_deformed_t1 += __shfl_down_sync(FULL_MASK, k_deformed_t1, offset);
-                k_deformed_t2 += __shfl_down_sync(FULL_MASK, k_deformed_t2, offset);
+            for (int offset = K / 2; offset > 0; offset /= 2) {
+                a_grad_x += __shfl_down_sync(FULL_MASK, a_grad_x, offset, K);
+                k_deformed_t1 += __shfl_down_sync(FULL_MASK, k_deformed_t1, offset, K);
+                k_deformed_t2 += __shfl_down_sync(FULL_MASK, k_deformed_t2, offset, K);
             }
             
             if (y == 0) {
@@ -239,7 +250,7 @@ __global__ void rwkv7_wkv_backward_kernel(
                 k_deformed_grad_BTHK[get_index3(b, t, h, x, T, H, K)] = to_F<F>(k_deformed_t1 + k_deformed_t2);
             }
 
-            dS_xy_remove = __shfl_sync(FULL_MASK, dS_xy_remove, 0);
+            dS_xy_remove = __shfl_sync(FULL_MASK, dS_xy_remove, 0, K);
             dS_xy_contrib += dS_xy_decay - dS_xy_remove * k_deformed_y;
             __syncthreads();
         }
@@ -279,24 +290,71 @@ std::tuple<at::Tensor, at::Tensor> rwkv7_wkv_forward_cuda(
     if (T >= 3 * BASE_COARSE) {
         int M = (T + BASE_COARSE - 1) / BASE_COARSE;
         dim3 base_block_dim(B, H, M);
-        dim3 grid_dim(32, 32);
-        
-        float *buffer;
-        cudaMalloc(&buffer, sizeof(float) * 2 * B * M * H * K * K);
-        float *partial_mul_BMHKK, *partial_add_BMHKK;
-        partial_mul_BMHKK = buffer;
-        partial_add_BMHKK = buffer + (int64_t) B * M * H * K * K;
+        dim3 grid_dim(K, K);
+
+        // Scratch for the time-parallel scan, via PyTorch's CUDA caching allocator instead of raw
+        // cudaMalloc/cudaFree. cudaFree is a SYNCHRONIZING call (it stalls the stream until all prior
+        // GPU work completes); with ~14 WKV layers x (fwd+bwd) per step this serialized dozens of
+        // kernels/step. torch::empty pulls from the cached pool (no real malloc after warmup) and the
+        // RAII free is recorded against the current stream (no device sync). Byte-identical numerics --
+        // same contiguous 2*B*M*H*K*K float layout, only the memory source differs.
+        at::Tensor scan_buf = torch::empty({2, B, M, H, K, K}, r_BTHK.options().dtype(torch::kFloat32));
+        float *buffer = scan_buf.data_ptr<float>();
+        float *partial_mul_BMHKK = buffer;
+        float *partial_add_BMHKK = buffer + (int64_t) B * M * H * K * K;
         assert(M >= 3);
         rwkv7_wkv_forward_time_parallel_base_kernel<F><<<base_block_dim, grid_dim>>>(B, T, H, BASE_COARSE, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, M, partial_mul_BMHKK, partial_add_BMHKK);
-        rwkv7_scan_forward(B, M, H, partial_mul_BMHKK, partial_add_BMHKK);
+        rwkv7_scan_forward(B, M, H, K, partial_mul_BMHKK, partial_add_BMHKK);
         rwkv7_wkv_forward_time_parallel_final_kernel<CHUNK_LEN, F><<<base_block_dim, grid_dim>>>(B, T, H, BASE_COARSE, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, out_ptr, M, partial_add_BMHKK, L, state_checkpoints_ptr);
-        cudaFree(buffer);
     } else {
-        dim3 block_dim(32, 32);
+        dim3 block_dim(K, K);
         dim3 grid_dim(B, H);
-        rwkv7_wkv_forward_kernel<CHUNK_LEN><<<grid_dim, block_dim>>>(B, T, H, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, out_ptr, L, state_checkpoints_ptr);
+        rwkv7_wkv_forward_kernel<CHUNK_LEN><<<grid_dim, block_dim>>>(B, T, H, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, out_ptr, L, state_checkpoints_ptr, nullptr, nullptr);
     }
     return std::make_tuple(out_BTHK, state_checkpoints_BLHKK);
+}
+
+// Stateful WKV forward (truncated BPTT): like rwkv7_wkv_forward_cuda but takes an initial state
+// (carried from the previous chunk) and returns the final state (to carry into the next). ALWAYS
+// uses the sequential kernel -- the time-parallel scan path starts from a zero/identity state and
+// would ignore state0; stateful chunks are small, so sequential is both correct and the right regime.
+template <int CHUNK_LEN=32, typename F>
+std::tuple<at::Tensor, at::Tensor, at::Tensor> rwkv7_wkv_forward_stateful_cuda(
+    const at::Tensor& r_BTHK,
+    const at::Tensor& k_BTHK,
+    const at::Tensor& v_BTHK,
+    const at::Tensor& w_BTHK,
+    const at::Tensor& a_BTHK,
+    const at::Tensor& k_deformed_BTHK,
+    const at::Tensor& skip_BT,
+    const at::Tensor& state0_BHKK
+    ) {
+    const int B = r_BTHK.size(0);
+    const int T = r_BTHK.size(1);
+    const int H = r_BTHK.size(2);
+    const int K = r_BTHK.size(3);
+    TORCH_INTERNAL_ASSERT(r_BTHK.device().type() == at::DeviceType::CUDA);
+    const F* r_ptr = (F*)r_BTHK.data_ptr();
+    const F* k_ptr = (F*)k_BTHK.data_ptr();
+    const F* v_ptr = (F*)v_BTHK.data_ptr();
+    const float* w_ptr = w_BTHK.data_ptr<float>();
+    const F* a_ptr = (F*)a_BTHK.data_ptr();
+    const F* k_deformed_ptr = (F*)k_deformed_BTHK.data_ptr();
+    const bool* skip_ptr = (bool*)skip_BT.data_ptr();
+    const float* state0_ptr = state0_BHKK.data_ptr<float>();
+
+    at::Tensor out_BTHK = torch::empty(r_BTHK.sizes(), r_BTHK.options());
+    F* out_ptr = (F*)out_BTHK.data_ptr();
+    int L = (T + CHUNK_LEN) / CHUNK_LEN;
+    at::Tensor state_checkpoints_BLHKK = torch::empty({B, L, H, K, K}, r_BTHK.options().dtype(torch::kFloat32)).requires_grad_(false);
+    float* state_checkpoints_ptr = state_checkpoints_BLHKK.data_ptr<float>();
+    at::Tensor final_state_BHKK = torch::empty({B, H, K, K}, r_BTHK.options().dtype(torch::kFloat32)).requires_grad_(false);
+    float* final_state_ptr = final_state_BHKK.data_ptr<float>();
+
+    dim3 block_dim(K, K);
+    dim3 grid_dim(B, H);
+    rwkv7_wkv_forward_kernel<CHUNK_LEN><<<grid_dim, block_dim>>>(B, T, H, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, out_ptr, L, state_checkpoints_ptr, state0_ptr, final_state_ptr);
+    return std::make_tuple(out_BTHK, state_checkpoints_BLHKK, final_state_BHKK);
 }
 
 template <int CHUNK_LEN=32, typename F>
@@ -343,24 +401,79 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     if (T >= 3 * BASE_COARSE) {
         int M = (T + BASE_COARSE - 1) / BASE_COARSE;
         dim3 base_block_dim(B, H, M);
-        dim3 grid_dim(32, 32);
-        
-        float *buffer;
-        cudaMalloc(&buffer, 2 * sizeof(float) * B * M * H * K * K);
-        float *partial_mul_BMHKK, *partial_add_BMHKK;
-        partial_mul_BMHKK = buffer;
-        partial_add_BMHKK = buffer + (int64_t) B * M * H * K * K;
+        dim3 grid_dim(K, K);
+
+        // Caching-allocator scratch (see forward): replaces synchronizing cudaMalloc/cudaFree. The
+        // backward time-parallel path triggers for any stream > 3*BASE_COARSE = 384 reviews -- i.e.
+        // most users -- so this removed a per-layer device sync on the hot path. Byte-identical layout.
+        at::Tensor scan_buf = torch::empty({2, B, M, H, K, K}, r_BTHK.options().dtype(torch::kFloat32));
+        float *buffer = scan_buf.data_ptr<float>();
+        float *partial_mul_BMHKK = buffer;
+        float *partial_add_BMHKK = buffer + (int64_t) B * M * H * K * K;
         assert(BASE_COARSE % CHUNK_LEN == 0);
         rwkv7_wkv_backward_time_parallel_base_kernel<F><<<base_block_dim, grid_dim>>>(B, T, H, BASE_COARSE, grad_ptr, r_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, M, partial_mul_BMHKK, partial_add_BMHKK);
-        rwkv7_scan_backward(B, M, H, partial_mul_BMHKK, partial_add_BMHKK);
+        rwkv7_scan_backward(B, M, H, K, partial_mul_BMHKK, partial_add_BMHKK);
         rwkv7_wkv_backward_time_parallel_final_kernel<CHUNK_LEN, F><<<base_block_dim, grid_dim>>>(B, T, H, BASE_COARSE, grad_ptr, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, M, partial_add_BMHKK, L, state_checkpoints_ptr, r_grad_ptr, k_grad_ptr, v_grad_ptr, w_grad_ptr, a_grad_ptr, k_deformed_grad_ptr);
-        cudaFree(buffer);
     } else {
-        dim3 block_dim(32, 32);
+        dim3 block_dim(K, K);
         dim3 grid_dim(B, H);
         rwkv7_wkv_backward_kernel<CHUNK_LEN><<<grid_dim, block_dim>>>(B, T, H, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr, 
         grad_ptr, L, state_checkpoints_ptr, r_grad_ptr, k_grad_ptr, v_grad_ptr, w_grad_ptr, a_grad_ptr, k_deformed_grad_ptr);
     }
+
+    return std::make_tuple(r_grad_BTHK, k_grad_BTHK, v_grad_BTHK, w_grad_BTHK, a_grad_BTHK, k_deformed_grad_BTHK);
+}
+
+// Stateful WKV backward (truncated BPTT): identical math to rwkv7_wkv_backward_cuda but ALWAYS uses
+// the sequential kernel. The sequential backward recomputes each chunk forward from its checkpoint;
+// checkpoint[0] is the (possibly nonzero) state0 written by the stateful forward, so it is already
+// correct for a nonzero initial state -- including the nonzero w/a/k_deformed grads at t=0 that the
+// decay acting on state0 produces. The leftover dS into state0 is simply not emitted (truncated BPTT,
+// state0 is treated as a constant). The time-parallel backward is NOT used (it assumes a zero start).
+template <int CHUNK_LEN=32, typename F>
+std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor> rwkv7_wkv_backward_stateful_cuda(
+    const at::Tensor& r_BTHK,
+    const at::Tensor& k_BTHK,
+    const at::Tensor& v_BTHK,
+    const at::Tensor& w_BTHK,
+    const at::Tensor& a_BTHK,
+    const at::Tensor& k_deformed_BTHK,
+    const at::Tensor& skip_BT,
+    const at::Tensor& state_checkpoints_BLHKK,
+    const at::Tensor& grad_BTHK
+    ) {
+    const int B = r_BTHK.size(0);
+    const int T = r_BTHK.size(1);
+    const int H = r_BTHK.size(2);
+    const int K = r_BTHK.size(3);
+    const int L = state_checkpoints_BLHKK.size(1);
+    TORCH_INTERNAL_ASSERT(r_BTHK.device().type() == at::DeviceType::CUDA);
+    const F* r_ptr = (F*)r_BTHK.data_ptr();
+    const F* k_ptr = (F*)k_BTHK.data_ptr();
+    const F* v_ptr = (F*)v_BTHK.data_ptr();
+    const float* w_ptr = w_BTHK.data_ptr<float>();
+    const F* a_ptr = (F*)a_BTHK.data_ptr();
+    const F* k_deformed_ptr = (F*)k_deformed_BTHK.data_ptr();
+    const bool* skip_ptr = (bool*)skip_BT.data_ptr();
+    const float* state_checkpoints_ptr = state_checkpoints_BLHKK.data_ptr<float>();
+    const F* grad_ptr = (F*)grad_BTHK.data_ptr();
+    at::Tensor r_grad_BTHK = torch::zeros_like(r_BTHK);
+    at::Tensor k_grad_BTHK = torch::zeros_like(r_BTHK);
+    at::Tensor v_grad_BTHK = torch::zeros_like(r_BTHK);
+    at::Tensor w_grad_BTHK = torch::zeros_like(r_BTHK, torch::dtype(torch::kFloat32));
+    at::Tensor a_grad_BTHK = torch::zeros_like(r_BTHK);
+    at::Tensor k_deformed_grad_BTHK = torch::zeros_like(r_BTHK);
+    F* r_grad_ptr = (F*)r_grad_BTHK.data_ptr();
+    F* k_grad_ptr = (F*)k_grad_BTHK.data_ptr();
+    F* v_grad_ptr = (F*)v_grad_BTHK.data_ptr();
+    float* w_grad_ptr = w_grad_BTHK.data_ptr<float>();
+    F* a_grad_ptr = (F*)a_grad_BTHK.data_ptr();
+    F* k_deformed_grad_ptr = (F*)k_deformed_grad_BTHK.data_ptr();
+
+    dim3 block_dim(K, K);
+    dim3 grid_dim(B, H);
+    rwkv7_wkv_backward_kernel<CHUNK_LEN><<<grid_dim, block_dim>>>(B, T, H, r_ptr, k_ptr, v_ptr, w_ptr, a_ptr, k_deformed_ptr, skip_ptr,
+    grad_ptr, L, state_checkpoints_ptr, r_grad_ptr, k_grad_ptr, v_grad_ptr, w_grad_ptr, a_grad_ptr, k_deformed_grad_ptr);
 
     return std::make_tuple(r_grad_BTHK, k_grad_BTHK, v_grad_BTHK, w_grad_BTHK, a_grad_BTHK, k_deformed_grad_BTHK);
 }
@@ -373,5 +486,11 @@ TORCH_LIBRARY_IMPL(rwkv, CUDA, m) {
     m.impl("rwkv7_wkv_backward_bfloat16", &rwkv7_wkv_backward_cuda<CHECKPOINT_LEN, __nv_bfloat16>);
     m.impl("rwkv7_wkv_forward_half", &rwkv7_wkv_forward_cuda<CHECKPOINT_LEN, __half>);
     m.impl("rwkv7_wkv_backward_half", &rwkv7_wkv_backward_cuda<CHECKPOINT_LEN, __half>);
+    m.impl("rwkv7_wkv_forward_stateful_float", &rwkv7_wkv_forward_stateful_cuda<CHECKPOINT_LEN, float>);
+    m.impl("rwkv7_wkv_backward_stateful_float", &rwkv7_wkv_backward_stateful_cuda<CHECKPOINT_LEN, float>);
+    m.impl("rwkv7_wkv_forward_stateful_bfloat16", &rwkv7_wkv_forward_stateful_cuda<CHECKPOINT_LEN, __nv_bfloat16>);
+    m.impl("rwkv7_wkv_backward_stateful_bfloat16", &rwkv7_wkv_backward_stateful_cuda<CHECKPOINT_LEN, __nv_bfloat16>);
+    m.impl("rwkv7_wkv_forward_stateful_half", &rwkv7_wkv_forward_stateful_cuda<CHECKPOINT_LEN, __half>);
+    m.impl("rwkv7_wkv_backward_stateful_half", &rwkv7_wkv_backward_stateful_cuda<CHECKPOINT_LEN, __half>);
 }
 }

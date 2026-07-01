@@ -1,0 +1,15 @@
+{"name": "baseline", "param": "baseline", "config": {"peak_lr": 0.0007, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.324173, "imm": 0.292607}
+{"name": "hp_peak_lr_0p00035", "param": "peak_lr", "config": {"peak_lr": 0.00035, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.32312, "imm": 0.295585, "users": 100}
+{"name": "hp_peak_lr_0p0005", "param": "peak_lr", "config": {"peak_lr": 0.0005, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.322956, "imm": 0.293446, "users": 100}
+{"name": "hp_peak_lr_0p001", "param": "peak_lr", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.320311, "imm": 0.28986, "users": 100}
+{"name": "hp_peak_lr_0p0014", "param": "peak_lr", "config": {"peak_lr": 0.0014, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.322865, "imm": 0.290022, "users": 100}
+{"name": "hp_warmup_steps_100", "param": "warmup_steps", "config": {"peak_lr": 0.001, "warmup_steps": 100, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.322371, "imm": 0.292861, "users": 100}
+{"name": "hp_warmup_steps_400", "param": "warmup_steps", "config": {"peak_lr": 0.001, "warmup_steps": 400, "weight_decay": 0.01, "clip": 0.5, "epochs": 6}, "ahead": 0.321984, "imm": 0.292861, "users": 100}
+{"name": "hp_weight_decay_0", "param": "weight_decay", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.0, "clip": 0.5, "epochs": 6}, "ahead": 0.320308, "imm": 0.290412, "users": 100}
+{"name": "hp_weight_decay_0p05", "param": "weight_decay", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.05, "clip": 0.5, "epochs": 6}, "ahead": 0.320853, "imm": 0.290477, "users": 100}
+{"name": "hp_weight_decay_0p1", "param": "weight_decay", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.1, "clip": 0.5, "epochs": 6}, "ahead": 0.320834, "imm": 0.290324, "users": 100}
+{"name": "hp_clip_0p25", "param": "clip", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "epochs": 6}, "ahead": 0.320326, "imm": 0.289356, "users": 100}
+{"name": "hp_clip_1", "param": "clip", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 1.0, "epochs": 6}, "ahead": 0.321824, "imm": 0.290526, "users": 100}
+{"name": "hp_epochs_9", "param": "epochs", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "epochs": 9}, "ahead": 0.31723, "imm": 0.28471, "users": 100}
+{"name": "hp_epochs_12", "param": "epochs", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "epochs": 12}, "ahead": 0.316921, "imm": 0.284324, "users": 100}
+{"name": "hp_epochs_15", "param": "epochs", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "epochs": 15}, "ahead": 0.316252, "imm": 0.281974, "users": 100}

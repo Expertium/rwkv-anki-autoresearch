@@ -47,3 +47,12 @@ reference/rust_pred_*.json
 *.pth
 *.safetensors
 *.pdf
+
+# Large / transient scratch artifacts (regenerable): serialized tensors, compiled binaries,
+# captured stdout logs, pre-tidy backups, and exported per-user reference traces. Keep the
+# scripts + small configs in scratchpad/, drop these.
+*.pt
+*.exe
+*.out
+*.bak_pretidy
+trace_user_*.json

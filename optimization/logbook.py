@@ -16,6 +16,8 @@ JSONL = HERE / "log.jsonl"
 MD = HERE / "log.md"
 QUANT_JSONL = HERE / "quant_log.jsonl"  # state-quant configs (deploy-time PTQ; not arch iterations)
 QAT_JSONL = HERE / "qat_log.jsonl"      # quant-aware-training experiments (deploy measured on 17-user gate)
+BASELINE_JSONL = HERE / "baseline_log.jsonl"  # "baseline to beat" rows for the 100/100 research phase
+RESEARCH_JSONL = HERE / "research_log.jsonl"  # research-phase experiments (accept iff BOTH modes improve)
 
 COLS = [
     ("number", "#"),
@@ -60,7 +62,7 @@ QUANT_COLS = [
 def quant_cell(rec, key):
     v = rec.get(key, "")
     if key in ("imm_delta", "ahead_delta") and isinstance(v, (int, float)):
-        return f"+{v:.6f}" if v >= 0 else f"{v:.6f}"
+        return f"+{v:.4f}" if v >= 0 else f"{v:.4f}"
     if key in ("card_kib", "note_kib") and isinstance(v, (int, float)):
         return f"{v:.2f}"
     return str(v)
@@ -70,6 +72,104 @@ def load_qat():
     if not QAT_JSONL.exists():
         return []
     return [json.loads(l) for l in QAT_JSONL.read_text().splitlines() if l.strip()]
+
+
+def load_baseline():
+    if not BASELINE_JSONL.exists():
+        return []
+    return [json.loads(l) for l in BASELINE_JSONL.read_text().splitlines() if l.strip()]
+
+
+BASELINE_COLS = [
+    ("name", "model"), ("params", "params"), ("d_model", "d"), ("trained_on", "trained on"),
+    ("chunk", "chunk"), ("max_train", "MAX"), ("ahead", "ahead LL"), ("imm", "imm LL"), ("note", "note"),
+]
+
+
+def baseline_section_lines():
+    recs = load_baseline()
+    if not recs:
+        return []
+    header = "| " + " | ".join(h for _, h in BASELINE_COLS) + " |"
+    sep = "|" + "|".join("---" for _ in BASELINE_COLS) + "|"
+    lines = [
+        "",
+        "## Baseline to beat (100/100 research phase, eval users 101-200, --short --secs)",
+        "",
+        "The research workbench is train users 1-100 / eval 101-200 (Andrew 2026-06-29). The headline",
+        "baseline is the ORIGINAL d=128 arch (2.76M params) trained FROM SCRATCH on the SAME 1-100 -- this",
+        "isolates architecture from training-data quantity (the published d=128 row trained on 5000 users,",
+        "so its far-lower numbers are partly just 50x more data). by-user-mean LogLoss; `imm`=RWKV-P",
+        "(immediate), `ahead`=RWKV (forgetting-curve). GOAL: a SMALLER model whose imm/ahead matches or",
+        "beats the `old d=128 (trained 1-100)` row.",
+        "★ RULE (Andrew 2026-06-29): a CHAMPION's comparison logloss must be the DEPLOYED model -- with",
+        "quantization AND low-rank state enabled (measured via the Rust engine on 101-200), NOT fp32 --",
+        "since that is what ships. The d=128 baseline stays fp32 (it's the accuracy target, not deployable).",
+        "Champion rows showing fp32 are PLACEHOLDERS until their deployed (quant+low-rank) number is measured.",
+        "",
+        header,
+        sep,
+    ]
+    for r in recs:
+        def c(k):
+            v = r.get(k, "")
+            if k == "params" and isinstance(v, int):
+                return f"{v:,}"
+            if k in ("ahead", "imm") and isinstance(v, (int, float)):
+                return f"{v:.4f}"
+            return str(v)
+        lines.append("| " + " | ".join(c(k) for k, _ in BASELINE_COLS) + " |")
+    lines.append("")
+    return lines
+
+
+def load_research():
+    if not RESEARCH_JSONL.exists():
+        return []
+    return [json.loads(l) for l in RESEARCH_JSONL.read_text().splitlines() if l.strip()]
+
+
+RESEARCH_COLS = [
+    ("exp", "exp"), ("change", "change"), ("params", "params"),
+    ("ahead", "ahead LL"), ("imm", "imm LL"),
+    ("d_ahead", "Δahead vs champ"), ("d_imm", "Δimm vs champ"),
+    ("status", "status"), ("note", "note"),
+]
+
+
+def research_section_lines():
+    recs = load_research()
+    if not recs:
+        return []
+    header = "| " + " | ".join(h for _, h in RESEARCH_COLS) + " |"
+    sep = "|" + "|".join("---" for _ in RESEARCH_COLS) + "|"
+    lines = [
+        "",
+        "## Research-phase experiments (100/100 workbench)",
+        "",
+        "Train users 1-100 / eval 101-200 (sc8k 8192-chunk, MAX=66000, augmentation OFF, deterministic).",
+        "ACCEPT iff BOTH ahead AND imm improve by >=0.0003 vs the CURRENT champion (params<=225k; card+note",
+        "per-entity state unchanged; eval review-count identical). The champion is monotonic. d_ahead/d_imm",
+        "are vs the champion at the time (positive = better). Verbose notes live in `research_log.md`.",
+        "",
+        header,
+        sep,
+    ]
+    for r in recs:
+        def c(k):
+            v = r.get(k, "")
+            if k == "params" and isinstance(v, int):
+                return f"{v:,}"
+            if k in ("ahead", "imm") and isinstance(v, (int, float)):
+                return f"{v:.4f}"
+            if k in ("d_ahead", "d_imm"):
+                if isinstance(v, (int, float)):
+                    return f"{v:+.4f}"
+                return "—"
+            return str(v)
+        lines.append("| " + " | ".join(c(k) for k, _ in RESEARCH_COLS) + " |")
+    lines.append("")
+    return lines
 
 
 def qat_section_lines():
@@ -108,9 +208,9 @@ def qat_section_lines():
             if k == "params" and isinstance(v, int):
                 return f"{v:,}"
             if k in ("deploy_imm", "deploy_ahead") and isinstance(v, (int, float)):
-                return f"{v:.6f}"
+                return f"{v:.4f}"
             if k.startswith(("quant_cost", "finetune_cost")) and isinstance(v, (int, float)):
-                return f"{v:+.6f}"
+                return f"{v:+.4f}"
             return str(v)
         lines.append("| " + " | ".join(c(k) for k, _ in cols) + " |")
     lines.append("")
@@ -147,7 +247,7 @@ def quant_section_lines():
 def cell(rec, key):
     if key in ("ahead", "imm"):
         v = rec.get("logloss", {}).get(key)
-        return f"{v:.6f}" if isinstance(v, (int, float)) else "—"
+        return f"{v:.4f}" if isinstance(v, (int, float)) else "—"
     v = rec.get(key, "")
     if key == "params" and isinstance(v, int):
         return f"{v:,}"
@@ -178,9 +278,10 @@ def rebuild_md():
         "status: accepted = kept (adopted as a champion or a valid alternative); rejected = not kept",
         "(failed a gate, OR passed the iter0 floor but unreliable/regressed — e.g. iter11).",
         "",
-        header,
-        sep,
     ]
+    lines.extend(baseline_section_lines())
+    lines.extend(research_section_lines())
+    lines += ["", "## Iteration table (steps 4-5-7)", "", header, sep]
     for rec in recs:
         lines.append("| " + " | ".join(cell(rec, k) for k, _ in COLS) + " |")
     lines.extend(quant_section_lines())
@@ -188,7 +289,9 @@ def rebuild_md():
     MD.write_text("\n".join(lines) + "\n", encoding="utf-8")
     nq = len(load_quant())
     nqat = len(load_qat())
-    print(f"rebuilt {MD} ({len(recs)} iteration rows + {nq} quant rows + {nqat} qat rows)")
+    nb = len(load_baseline())
+    nr = len(load_research())
+    print(f"rebuilt {MD} ({nb} baseline + {nr} research + {len(recs)} iteration + {nq} quant + {nqat} qat rows)")
 
 
 def add(record_path):

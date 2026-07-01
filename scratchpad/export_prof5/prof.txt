@@ -1,0 +1,30 @@
+Did not load weights.
+  user 150: 2000/6564
+  user 150: 4000/6564
+  user 150: 6000/6564
+user 150: n 6564, size 4690 -> trace_user_150.safetensors
+DONE
+         10668064 function calls (10491932 primitive calls) in 31.845 seconds
+
+   Ordered by: internal time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        3    8.380    2.793    8.380    2.793 dataset.py:442(_filesystem_dataset)
+    13128    6.086    0.000    8.997    0.001 run_as_rnn.py:103(add_day_offset_encoding)
+   1549/1    1.788    0.001    0.014    0.014 frontend.py:410(__call__)
+     56/3    1.779    0.032    1.793    0.598 frontend.py:912(build_Call)
+   210048    0.929    0.000    0.929    0.000 {built-in method torch.cat}
+   369846    0.823    0.000    0.823    0.000 {method 'to' of 'torch._C.TensorBase' objects}
+   183792    0.576    0.000    0.576    0.000 {built-in method torch.sin}
+   183792    0.562    0.000    0.562    0.000 {built-in method torch.cos}
+        3    0.483    0.161    0.483    0.161 core.py:1520(read)
+     8857    0.480    0.000    0.480    0.000 {built-in method nt.stat}
+        1    0.445    0.445    0.508    0.508 __init__.py:168(_load_dll_libraries)
+   157536    0.417    0.000    0.428    0.000 array.py:819(__iter__)
+      114    0.383    0.003    0.387    0.003 custom_ops.py:635(_register_to_dispatcher)
+    13128    0.379    0.000    2.413    0.000 run_as_rnn.py:196(add_same)
+   177228    0.244    0.000    1.135    0.000 series.py:945(__getitem__)
+1690069/1686135    0.239    0.000    0.269    0.000 {built-in method builtins.isinstance}
+    13128    0.220    0.000    0.220    0.000 {built-in method torch.tensor}
+     2022    0.209    0.000    0.209    0.000 {built-in method marshal.loads}
+   177228    0.197    0.000    0.544    0.000 series.py:1029(_get_value)

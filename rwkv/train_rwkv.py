@@ -47,18 +47,23 @@ def _maybe_enable_determinism():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True, warn_only=True)
-    print("[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation stays stochastic)")
+    print("[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation seed set separately)")
 
 
 FINAL_LR = 0
 
 ADAMW_BETAS = (0.90, 0.999)
 ADAMW_EPS = 1e-18
-WEIGHT_DECAY = 0.01
-WEIGHT_DECAY_CHANNEL_MIXER = 0.01
-WEIGHT_DECAY_HEAD = 0.01
-CLIP = 0.5
-FETCH_AHEAD = 5
+# HP-tuner env overrides (Andrew 2026-06-30): default == current champion values, so an UNSET env var
+# leaves behavior byte-identical. The greedy coordinate-descent tuner sweeps these without source edits.
+WEIGHT_DECAY = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
+WEIGHT_DECAY_CHANNEL_MIXER = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
+WEIGHT_DECAY_HEAD = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
+CLIP = float(os.environ.get("RWKV_CLIP") or "0.5")
+FETCH_AHEAD = 10  # prefetch depth = MAX concurrent fetch workers (the main loop keeps this many batches
+# in flight). Raised 5->10 (Andrew 2026-06-30) so NUM_FETCH_PROCESSES=10 is actually usable -- with
+# FETCH_AHEAD=5 only ~5 workers were ever busy no matter the process count. Buffer-only: it changes WHEN a
+# batch is prepared, not its order/content -> results are bit-identical. (Costs ~10x21MB CPU RAM of buffer.)
 
 
 def extract_numbers(name):
@@ -466,6 +471,27 @@ def main_loop(config, task_queue, batch_queue):
 
     assert FETCH_AHEAD <= len(groups)
 
+    # EMA weight averaging (research lever, 2026-06-30): RWKV_EMA_DECAY=0.999 -> maintain an exponential
+    # moving average of the fp32 master weights and ALSO save it (as {prefix}_ema_{step}.pth) so eval can
+    # use the flatter-minimum averaged model. Off by default (decay<=0) => byte-identical to before. EMA
+    # starts after warmup (init'd to the post-warmup weights so the random init isn't averaged in).
+    ema_decay = float(os.environ.get("RWKV_EMA_DECAY") or "0")
+    ema_start = config.WARMUP_STEPS if config.TRAIN_MODE == "WS" else 0
+    ema_state = None
+    if ema_decay > 0:
+        print(f"[ema] weight averaging ON, decay={ema_decay}, start after step {ema_start}")
+
+    # The early-step torch.cuda.empty_cache() (next 1000 steps) guards against allocator
+    # fragmentation OOM under the variable-seq-length workload, but it COSTS ~150 ms/step
+    # (measured, scratchpad/profile_emptycache.py) -- and short research runs (~960-2400 steps)
+    # pay it on EVERY step. RWKV_EMPTY_CACHE_EVERY (default 1 == byte-identical to before) lets a
+    # run clear less often (e.g. 50) or never (0) once it's known not to OOM -> ~1.2x for short
+    # runs. Arch-agnostic. Read once here, not per-step.
+    empty_cache_every = int(os.environ.get("RWKV_EMPTY_CACHE_EVERY") or "1")
+    if empty_cache_every != 1:
+        print(f"[empty_cache] clearing device cache every {empty_cache_every} steps "
+              f"(first 1000), 0=never (default 1)")
+
     checkpoint_step_count = 0
     checkpoint_loss_n = 0
 
@@ -483,7 +509,11 @@ def main_loop(config, task_queue, batch_queue):
             if step > total_steps:
                 break
 
-            if step < config.STEP_OFFSET + 1000:
+            if (
+                empty_cache_every > 0
+                and step < config.STEP_OFFSET + 1000
+                and (step - config.STEP_OFFSET) % empty_cache_every == 0
+            ):
                 _clear_device_cache(config.DEVICE)
 
             # VALIDATE_EVERY (default 500) controls validation/checkpoint cadence by global
@@ -543,6 +573,15 @@ def main_loop(config, task_queue, batch_queue):
                 torch.nn.utils.clip_grad_norm_(master_model.parameters(), CLIP)
                 optimizer.step()
                 optimizer.zero_grad()
+                if ema_decay > 0 and step >= ema_start:
+                    msd = master_model.state_dict()
+                    if ema_state is None:  # init EMA to the post-warmup weights
+                        ema_state = {k: v.detach().float().clone()
+                                     for k, v in msd.items() if v.is_floating_point()}
+                    else:
+                        for k, v in msd.items():
+                            if k in ema_state:
+                                ema_state[k].mul_(ema_decay).add_(v.detach().float(), alpha=1 - ema_decay)
             except Exception as e:
                 print("Exception caught. Nan from RWKV-7? Skipping batch.")
                 print(e)
@@ -558,6 +597,9 @@ def main_loop(config, task_queue, batch_queue):
                 Path(config.SAVE_MODEL_FOLDER).mkdir(parents=True, exist_ok=True)
                 torch.save(master_model.state_dict(), save_model_path)
                 torch.save(optimizer.state_dict(), save_optim_path)
+                if ema_state is not None:  # save the averaged weights for eval ({prefix}_ema_{step}.pth)
+                    ema_full = {k: ema_state.get(k, v) for k, v in master_model.state_dict().items()}
+                    torch.save(ema_full, f"{config.SAVE_MODEL_FOLDER}/{config.SAVE_MODEL_PREFIX}_ema_{step}.pth")
                 print("MODEL SAVED.")
                 elapsed = time.time() - group_start
                 log["elapsed"] = elapsed
@@ -588,6 +630,15 @@ def main_loop(config, task_queue, batch_queue):
 
 def main(config):
     _maybe_enable_determinism()
+    # AUGMENTATION TOGGLE (Andrew 2026-06-29): the per-batch input-feature randomization in prepare()
+    # (random ID-encoding vectors + random time-of-day baselines, drawn fresh each batch in the unseeded
+    # fetch children) adds ~0.0024 run-to-run logloss variance, which SWAMPS the 0.0003 research-phase
+    # acceptance gate. DISABLED by default = a FIXED augmentation seed -> deterministic objective
+    # (variance ~0). Set env RWKV_AUGMENT_SEED=none to re-enable stochastic augmentation later.
+    _aug = os.environ.get("RWKV_AUGMENT_SEED", "1234")
+    augment_seed = None if _aug.strip().lower() in ("none", "off", "", "-1") else int(_aug)
+    print(f"[augmentation] training fetch seed = {augment_seed} "
+          f"({'STOCHASTIC (on)' if augment_seed is None else 'FIXED (disabled, run-to-run variance ~0)'})")
     with multiprocessing.Manager() as manager:
         task_queue = manager.Queue()
         batch_queue = manager.Queue()
@@ -604,7 +655,7 @@ def main(config):
                     task_queue,
                     batch_queue,
                     config.MAX_TRAIN_GLOBAL_LEN,
-                    None,
+                    augment_seed,
                 ),
             )
             process.start()

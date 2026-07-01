@@ -1,0 +1,15 @@
+# 5k-phase label_filter for the FIRST half, users 1-5000 (swap-eval side). Extends the canonical
+# label_filter_db. Mirrors FSRS-6 --short --secs. 1 thread. Resumable (skips users already present, so
+# the existing 1-~200 rows are not recomputed).
+DATA_PATH = "../anki-revlogs-10k"
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 1
+USER_END = 5000
+
+PROCESSES = 1

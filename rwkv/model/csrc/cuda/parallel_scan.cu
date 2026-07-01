@@ -16,10 +16,10 @@ __global__ void rwkv7_scan_kernel(
     float* __restrict__ partial_mul_BMHKK,
     float* __restrict__ partial_add_BMHKK
 ) {
-    const int K = 32;
-    __shared__ float mul_A[K * K];
-    __shared__ float mul_B[K * K];
-    __shared__ float add[K * K];
+    const int K = blockDim.x;
+    __shared__ float mul_A[32 * 32];
+    __shared__ float mul_B[32 * 32];
+    __shared__ float add[32 * 32];
     int b = blockIdx.x;
     int h = blockIdx.y;
     int chunk_i = blockIdx.z;
@@ -92,9 +92,9 @@ __global__ void rwkv7_add_kernel(
     const float* __restrict__ out_mul_BNHKK, // This doesn't need to be modified
     float* __restrict__ out_add_BNHKK
 ) { 
-    const int K = 32;
-    __shared__ float partial_add[K * K];
-    __shared__ float mul[K * K];
+    const int K = blockDim.x;
+    __shared__ float partial_add[32 * 32];
+    __shared__ float mul[32 * 32];
     int b = blockIdx.x;
     int h = blockIdx.y;
     int t = blockIdx.z;
@@ -125,10 +125,10 @@ void rwkv7_scan(
     const int B,
     const int N,
     const int H,
+    const int K,
     float* in_mul_BNHKK,
     float* in_add_BNHKK
 ) {
-    const int K = 32;
     const int COARSE = 5;
     const int M = (N + COARSE - 1) / COARSE;
 
@@ -138,13 +138,13 @@ void rwkv7_scan(
     partial_mul_BMHKK = buffer;
     partial_add_BMHKK = buffer + (int64_t) B * M * H * K * K;
     dim3 scan_grid_dim(B, H, M);
-    dim3 scan_block_dim(32, 32);
+    dim3 scan_block_dim(K, K);
     rwkv7_scan_kernel<FORWARD><<<scan_grid_dim, scan_block_dim>>>(B, H, COARSE, N, in_mul_BNHKK, in_add_BNHKK, M, partial_mul_BMHKK, partial_add_BMHKK);
     if (M > 1) {
-        rwkv7_scan<FORWARD>(B, M, H, partial_mul_BMHKK, partial_add_BMHKK);
+        rwkv7_scan<FORWARD>(B, M, H, K, partial_mul_BMHKK, partial_add_BMHKK);
         // One block per element
         dim3 add_grid_dim(B, H, N);
-        dim3 add_block_dim(32, 32);
+        dim3 add_block_dim(K, K);
         rwkv7_add_kernel<FORWARD><<<add_grid_dim, add_block_dim>>>(B, H, COARSE, M, partial_add_BMHKK, N, in_mul_BNHKK, in_add_BNHKK);
     }
     cudaFree(buffer);
@@ -154,18 +154,20 @@ void rwkv7_scan_forward(
     const int B,
     const int N,
     const int H,
+    const int K,
     float* in_mul_BNHKK,
     float* in_add_BNHKK
 ) {
-    return rwkv7_scan<true>(B, N, H, in_mul_BNHKK, in_add_BNHKK);
+    return rwkv7_scan<true>(B, N, H, K, in_mul_BNHKK, in_add_BNHKK);
 }
 
 void rwkv7_scan_backward(
     const int B,
     const int N,
     const int H,
+    const int K,
     float* in_mul_BNHKK,
     float* in_add_BNHKK
 ) {
-    return rwkv7_scan<false>(B, N, H, in_mul_BNHKK, in_add_BNHKK);
+    return rwkv7_scan<false>(B, N, H, K, in_mul_BNHKK, in_add_BNHKK);
 }
