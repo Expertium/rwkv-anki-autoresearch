@@ -3,6 +3,9 @@
 `research_5k.md` is the human-facing front (one results table only). All detail, reasoning, and
 running notes live here. Pre-5k history: `research_log.md` / `log.md` / `HISTORY.md`.
 
+**Front-table conventions:** LogLoss to 4 decimal places; parameter counts exact (e.g. 2,762,884 /
+193,724, from `optimization/model_stats.py`). Working precision here in the notes may be higher.
+
 ## Setup
 - **Train** users 1–5000; **eval** users 5001–10000 (disjoint held-out half).
 - **Compute budget:** 2 WS epochs + 0.5 decay epochs (cosine).
