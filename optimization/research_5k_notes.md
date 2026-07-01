@@ -6,6 +6,35 @@ running notes live here. Pre-5k history: `research_log.md` / `log.md` / `HISTORY
 **Front-table conventions:** LogLoss to 4 decimal places; parameter counts exact (e.g. 2,762,884 /
 193,724, from `optimization/model_stats.py`). Working precision here in the notes may be higher.
 
+## Methodology — governing rules for the 5k phase (Andrew 2026-07-01)
+These are the accept/reject rules for every 5k experiment. Hard invariants (never change): the
+hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim inputs / existing LMDBs.
+
+1. **Split + accept gate.** Train on one 5k half, eval on the other (train 1–5000 → eval 5001–10000;
+   the old d=128 model already has weights → just eval it on 5001–10000, same eval set = fair). A change
+   is **accepted only if it beats the current champion by ≥ 0.0003 in BOTH modes** — immediate (imm) AND
+   forgetting-curve (ahead). Monotonic-both-modes champion.
+2. **Param budget ≤ 225,000** (current champion 193,724 → ~31k headroom for experiments). Reducing params
+   is welcome; reducing **both** LogLoss and params is the goal.
+3. **Latitude.** Try own ideas and do literature searches freely.
+4. **Quant-aware eval (NEW, central).** Every recorded LogLoss is measured **with (fake) card-state
+   quantization applied** — the goal is to beat the old fp big model *while* being more efficient via
+   quantization, not just to beat it. The old d=128 baseline stays fp (it is the target). The sibling
+   `rwkv-state-quant` Claude is writing a fast fake-quant CUDA kernel; we copy it when ready (until then
+   this is the recorded-number convention, applied once the kernel + 5k data exist).
+5. **State-size rules.** Card and note per-entity state sizes are **FIXED (cannot change).** Deck, preset,
+   and global state **may grow** — they're cheap: deck/preset ~5–10×, global even up to ~100× is allowed
+   (though unlikely to help much).
+6. **Schedule + HP-tuning cadence.** WS = **2 epochs (fixed).** Decay epochs = WS × ratio, ratio ∈
+   **[1/7, 1/2.5]** → decay ∈ **[0.286, 0.8] epochs**; the **decay phase is also quant-aware.** Add this
+   decay-ratio as an HP-tuner hyperparameter (`optimization/hp_tuner_5k.py`). Do **HP tuning first**, then
+   re-tune either after several small architectural changes accumulate **or** after a major change.
+7. **Rust/CPU-deployable only (hard).** Every change must be reproducible in the Rust RNN inference engine
+   on CPU (deployable in Anki). No GPU-only tricks in the shipped model.
+
+TODO when the tuner is set up for 5k: add the `decay_ratio` lever (range [1/7, 1/2.5]) to
+`hp_tuner_5k.py` and make the decay phase apply fake card-state quant.
+
 ## Setup
 - **Train** users 1–5000; **eval** users 5001–10000 (disjoint held-out half).
 - **Compute budget:** 2 WS epochs + 0.5 decay epochs (cosine).
