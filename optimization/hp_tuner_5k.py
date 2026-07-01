@@ -9,8 +9,9 @@ to emit the next trial, detaches the generated self-recording .cmd, and repeats 
 runs the FULL champion recipe: WS (2 ep) -> write_decay_setup -> decay (0.5 ep) -> write_eval_toml ->
 eval (101-200) -> self-record. Mirrors scratchpad/run_h2k16.cmd.
 
-Levers (coordinate order = high-impact/cheap first): peak_lr, warmup_steps, weight_decay, clip.
-WS epochs FIXED at 2, decay FIXED at 0.5 (Andrew's 5k budget). Defaults = the H2K16 champion HPs.
+Levers (coordinate order = high-impact/cheap first): peak_lr, warmup_steps, weight_decay, clip, decay_ratio.
+WS epochs FIXED at 2; decay epochs = WS x decay_ratio, a TUNED lever with ratio in [1/7, 1/2.5] -> decay
+0.286-0.8 epochs (Andrew 2026-07-01). Defaults = the H2K16 champion HPs (decay_ratio 0.25 -> 0.5 decay ep).
 Objective minimized = ahead + imm (fp32, by-user mean on 101-200). The strict accept gate is applied
 separately when declaring a champion. CLI matches hp_tuner.py: next / record <name> /
 record-baseline <ahead> <imm> / status / loop.
@@ -26,7 +27,8 @@ TRIAL_DIR = f"{ROOT}/scratchpad/tuner5k"
 # train_db_sc8k_1500 @ MAX=66000 -> get_groups gives 3351 groups (the H2K16 champion's 1 WS epoch = 3351 steps).
 GROUPS_PER_EPOCH = 3351
 WS_EPOCHS = 2        # FIXED (5k budget)
-DECAY_EPOCHS = 0.5   # FIXED (5k budget)
+# Decay epochs are now a TUNED lever (Andrew 2026-07-01): decay_ep = WS_EPOCHS * decay_ratio,
+# ratio in [1/7, 1/2.5] -> decay in [0.286, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
 TRAIN_DB = "train_db_sc8k_1500"
 USTART, UEND = 1000, 2499
 NUM_FETCH = 10       # max-useful fetch (GPU saturates ~8-10 on a clean box); Andrew 2026-06-30 raised
@@ -39,14 +41,16 @@ SPACE = [
     ("warmup_steps", [200, 400, 800]),
     ("weight_decay", [0.0, 0.01, 0.05, 0.1]),
     ("clip",         [0.1, 0.25, 0.5]),
+    ("decay_ratio",  [0.1429, 0.2, 0.25, 0.4]),   # decay_ep = 2*ratio in [0.286, 0.8]; ratio in [1/7, 1/2.5]
 ]
-DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25}
+DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
 PARAMS = [p for p, _ in SPACE]
 
 
 def canon(cfg):
     return (round(float(cfg["peak_lr"]), 8), int(cfg["warmup_steps"]),
-            round(float(cfg["weight_decay"]), 6), round(float(cfg["clip"]), 6))
+            round(float(cfg["weight_decay"]), 6), round(float(cfg["clip"]), 6),
+            round(float(cfg.get("decay_ratio", 0.25)), 6))  # .get: pre-lever journal recs == implicit 0.25 (0.5 decay ep)
 
 
 def obj(rec):
@@ -105,6 +109,7 @@ def write_trial_files(name, param, cfg):
     folder = f"{TRIAL_DIR}/{name}"
     os.makedirs(folder, exist_ok=True)
     ws_ts = ws_steps()
+    decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/7, 1/2.5])
     pval_str = f"{cfg[param]:g}" if param in cfg else "baseline"
     # --- WS training toml (H2K16 proxy recipe; tuned TOML fields = peak_lr, warmup, epochs=2) ---
     ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
@@ -168,8 +173,8 @@ echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %
 echo === WS {WS_EPOCHS} epochs ({USTART}-{UEND}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_ws.toml >> "%LOG%" 2>&1
 echo === DECAY SETUP %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner5k/{name} {name}ws {name}d scratchpad/tuner5k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {DECAY_EPOCHS} {cfg["peak_lr"]:g} >> "%LOG%" 2>&1
-echo === DECAY {DECAY_EPOCHS} epoch %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner5k/{name} {name}ws {name}d scratchpad/tuner5k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {decay_ep:g} {cfg["peak_lr"]:g} >> "%LOG%" 2>&1
+echo === DECAY {decay_ep:g} epoch (ratio {cfg["decay_ratio"]:g}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_decay.toml >> "%LOG%" 2>&1
 del /Q result\\RWKV-{name}.jsonl result\\RWKV-P-{name}.jsonl 2>nul
 echo === WRITE EVAL TOML %TIME% === >> "%LOG%"

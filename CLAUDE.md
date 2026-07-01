@@ -379,7 +379,7 @@ inputs / existing LMDBs (no new/changed inputs).
 **5k-PHASE METHODOLOGY (Andrew 2026-07-01) -- full text in `optimization/research_5k_notes.md`:** the 5k
 research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-10000 as the target) keeps
 the same >=0.0003-BOTH-modes gate + params <=225,000, and ADDS: (a) **LogLoss recorded WITH (fake)
-card-state quantization** -- beat the old fp big model *while* quantized (sibling `rwkv-state-quant` is
+card- AND note-state quantization** -- beat the old fp big model *while* quantized (sibling `rwkv-state-quant` is
 writing the fast fake-quant kernel; copy later); (b) card+note state sizes FIXED, but deck/preset MAY grow
 ~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/7, 1/2.5] (decay
 0.286-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,

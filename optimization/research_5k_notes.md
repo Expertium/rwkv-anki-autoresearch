@@ -17,7 +17,7 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
 2. **Param budget ≤ 225,000** (current champion 193,724 → ~31k headroom for experiments). Reducing params
    is welcome; reducing **both** LogLoss and params is the goal.
 3. **Latitude.** Try own ideas and do literature searches freely.
-4. **Quant-aware eval (NEW, central).** Every recorded LogLoss is measured **with (fake) card-state
+4. **Quant-aware eval (NEW, central).** Every recorded LogLoss is measured **with (fake) card-state and note-state
    quantization applied** — the goal is to beat the old fp big model *while* being more efficient via
    quantization, not just to beat it. The old d=128 baseline stays fp (it is the target). The sibling
    `rwkv-state-quant` Claude is writing a fast fake-quant CUDA kernel; we copy it when ready (until then
@@ -32,12 +32,13 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
 7. **Rust/CPU-deployable only (hard).** Every change must be reproducible in the Rust RNN inference engine
    on CPU (deployable in Anki). No GPU-only tricks in the shipped model.
 
-TODO when the tuner is set up for 5k: add the `decay_ratio` lever (range [1/7, 1/2.5]) to
-`hp_tuner_5k.py` and make the decay phase apply fake card-state quant.
+DONE (2026-07-01): the `decay_ratio` lever (range [1/7, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
+when the tuner is set up for 5k: repoint its data paths to the 5k train_db, and make WS/decay/eval apply
+fake card- AND note-state quant (once the sibling's fast fake-quant kernel is copied).
 
 ## Setup
 - **Train** users 1–5000; **eval** users 5001–10000 (disjoint held-out half).
-- **Compute budget:** 2 WS epochs + 0.5 decay epochs (cosine).
+- **Compute budget:** 2 WS epochs + decay = WS × decay_ratio (ratio ∈ [1/7, 1/2.5], default 0.25 → 0.5 decay ep; cosine).
 - **Model:** H=2/K=16 champion (d=32, 2 heads × K=16, layers [1,4,3,3,3], 193,724 params, per-card
   WKV state = two 16×16 per-head matrices). Env: `RWKV_N_HEADS=2 RWKV_HEAD_DIM=16`,
   `RWKV_EMPTY_CACHE_EVERY=0`, `RWKV_DETERMINISTIC=1`, `RWKV_AUGMENT_SEED=1234`, HP from the tuner.
