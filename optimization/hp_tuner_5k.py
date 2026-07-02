@@ -12,6 +12,14 @@ eval (101-200) -> self-record. Mirrors scratchpad/run_h2k16.cmd.
 Levers (coordinate order = high-impact/cheap first): peak_lr, warmup_steps, weight_decay, clip, decay_ratio.
 WS epochs FIXED at 2; decay epochs = WS x decay_ratio, a TUNED lever with ratio in [1/10, 1/2.5] -> decay
 0.2-0.8 epochs (Andrew 2026-07-01). Defaults = the H2K16 champion HPs (decay_ratio 0.25 -> 0.5 decay ep).
+
+WILCOXON EARLY-PRUNING (Andrew 2026-07-02, methodology pt 9): every trial writes a per-step WS trace and,
+when optimization/champion_5k.json exists (written by promote_champion_5k.py after the pre-tune champion
+run), runs with RWKV_PRUNE_REF -> the trainer aborts (exit 42) iff BOTH modes are worse at p<1e-4 on the
+growing 300n window. RWKV_PRUNE_MIN_STEP = 2x the TRIAL's warmup (a big-warmup trial is worse early by
+construction; delaying the first check avoids false prunes). A pruned trial records its ESTIMATED logloss
+(champ_final + cand@s - champ@s, from the .pruned.json marker) to the journal with "pruned": true --
+coordinate descent proceeds on the estimate (an abysmal trial never wins a coordinate anyway).
 Objective minimized = ahead + imm (fp32, by-user mean on 101-200). The strict accept gate is applied
 separately when declaring a champion. CLI matches hp_tuner.py: next / record <name> /
 record-baseline <ahead> <imm> / status / loop.
@@ -111,6 +119,14 @@ def write_trial_files(name, param, cfg):
     ws_ts = ws_steps()
     decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/10, 1/2.5])
     pval_str = f"{cfg[param]:g}" if param in cfg else "baseline"
+    # Early-prune env (methodology pt 9): trace always on; prune only when a champion reference exists.
+    # min_step = 2x this trial's warmup so warmup-heavy configs aren't false-pruned while still climbing.
+    trace_rel = f"scratchpad/tuner5k/{name}/{name}_ws_trace.jsonl"
+    champion_ref = f"{ROOT}/optimization/champion_5k.json"
+    prune_lines = f"set RWKV_STEP_TRACE={trace_rel}\n"
+    if os.path.exists(champion_ref):
+        prune_lines += ("set RWKV_PRUNE_REF=optimization/champion_5k.json\n"
+                        f"set RWKV_PRUNE_MIN_STEP={2 * int(cfg['warmup_steps'])}\n")
     # --- WS training toml (H2K16 proxy recipe; tuned TOML fields = peak_lr, warmup, epochs=2) ---
     ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
 TRAIN_USERS_START = {USTART}
@@ -169,9 +185,15 @@ set RWKV_N_HEADS=2
 set RWKV_HEAD_DIM=16
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
 set RWKV_CLIP={cfg["clip"]:g}
-echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
+{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
 echo === WS {WS_EPOCHS} epochs ({USTART}-{UEND}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_ws.toml >> "%LOG%" 2>&1
+if %ERRORLEVEL%==42 (
+  echo === WILCOXON-PRUNED - recording estimated logloss %TIME% === >> "%LOG%"
+  .venv\\Scripts\\python.exe optimization/hp_tuner_5k.py record-pruned {name} >> "%LOG%" 2>&1
+  echo DONE_EXIT_PRUNED %DATE% %TIME% >> "%LOG%"
+  exit /b 0
+)
 echo === DECAY SETUP %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner5k/{name} {name}ws {name}d scratchpad/tuner5k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {decay_ep:g} {cfg["peak_lr"]:g} >> "%LOG%" 2>&1
 echo === DECAY {decay_ep:g} epoch (ratio {cfg["decay_ratio"]:g}) %TIME% === >> "%LOG%"
@@ -230,6 +252,22 @@ def cmd_record(name):
     print(f"RECORDED {name}: ahead {ahead:.6f} imm {imm:.6f} (users {na}/{ni}) obj {ahead+imm:.6f}")
 
 
+def cmd_record_pruned(name):
+    """Record a Wilcoxon-pruned trial from its .pruned.json marker: journal gets the ESTIMATED
+    logloss (champ_final + cand@s - champ@s) flagged "pruned": true, so descent proceeds."""
+    side = json.load(open(f"{TRIAL_DIR}/{name}/{name}.json"))
+    marker = json.load(open(f"{TRIAL_DIR}/{name}/{name}_ws_trace.jsonl.pruned.json"))
+    rec = {"name": name, "param": side["param"], "config": side["config"],
+           "ahead": round(float(marker["estimated_ahead"]), 6),
+           "imm": round(float(marker["estimated_imm"]), 6),
+           "pruned": True, "pruned_at_step": int(marker["pruned_at_step"]),
+           "p_ahead": marker["p_ahead"], "p_imm": marker["p_imm"]}
+    with open(JOURNAL, "a") as f:
+        f.write(json.dumps(rec) + "\n")
+    print(f"RECORDED-PRUNED {name} @ step {rec['pruned_at_step']}: est ahead {rec['ahead']:.6f} "
+          f"est imm {rec['imm']:.6f} (p_a {marker['p_ahead']:.2e}, p_i {marker['p_imm']:.2e})")
+
+
 def cmd_record_baseline(ahead, imm):
     rec = {"name": "baseline", "param": "baseline", "config": dict(DEFAULTS),
            "ahead": round(float(ahead), 6), "imm": round(float(imm), 6)}
@@ -268,9 +306,10 @@ def cmd_loop():
 
 def cmd_status():
     recs = load_journal()
-    print(f"{'name':30} {'param':14} {'ahead':>9} {'imm':>9} {'obj':>9}")
+    print(f"{'name':30} {'param':14} {'ahead':>9} {'imm':>9} {'obj':>9}  note")
     for r in recs:
-        print(f"{r['name']:30} {r['param']:14} {r['ahead']:9.6f} {r['imm']:9.6f} {obj(r):9.6f}")
+        note = f"PRUNED@{r['pruned_at_step']} (estimated)" if r.get("pruned") else ""
+        print(f"{r['name']:30} {r['param']:14} {r['ahead']:9.6f} {r['imm']:9.6f} {obj(r):9.6f}  {note}")
     out = compute(recs)
     if out[0] == "done":
         best = out[1]
@@ -293,6 +332,8 @@ if __name__ == "__main__":
         cmd_next()
     elif cmd == "record":
         cmd_record(sys.argv[2])
+    elif cmd == "record-pruned":
+        cmd_record_pruned(sys.argv[2])
     elif cmd == "record-baseline":
         cmd_record_baseline(sys.argv[2], sys.argv[3])
     elif cmd == "status":

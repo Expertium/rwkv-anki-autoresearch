@@ -74,6 +74,11 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    champion's metadata to `champion_5k_history.jsonl`. No hand-editing of stored traces, ever.
    ⚠ Trace comparability requires identical data config (db, MAX_TRAIN_GLOBAL_LEN, seeds) — changing any
    of those invalidates step-pairing and needs a fresh champion trace run.
+   **HP tuner integration (done 2026-07-03):** every `hp_tuner_5k.py` trial writes its own WS trace and
+   auto-prunes when `champion_5k.json` exists (RWKV_PRUNE_MIN_STEP = 2× the trial's warmup, so
+   warmup-heavy configs aren't false-pruned while still climbing). A pruned trial's `.cmd` skips
+   decay/eval and runs `record-pruned` — the journal gets the ESTIMATED logloss flagged `"pruned": true`
+   and coordinate descent proceeds on it. `status` marks such rows `PRUNED@step (estimated)`.
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set MAX_TRAIN_GLOBAL_LEN=110000
