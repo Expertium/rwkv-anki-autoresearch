@@ -85,6 +85,18 @@ accepted/rejected per iter. Do NOT edit architecture.py while the tuner is runni
 trials) -- this queue runs only after the tuner converges. Re-run the HP tuner only after a VERY big arch
 change or several accumulated small ones.
 
+## Assessed, NOT adopted (don't re-review)
+- **Attention Residuals / AttnRes** (Kimi team, arXiv 2603.15031): replaces the fixed-weight residual with
+  softmax attention ACROSS DEPTH (each layer aggregates all preceding layer outputs at the current position;
+  Block AttnRes groups layers to cut memory). Validated on Kimi Linear (48B). **Verdict (2026-07-02): POOR
+  FIT.** Its whole purpose is taming residual dilution across MANY layers; our stacks are 1-4 layers (card=1
+  = literal no-op; 3-4 = almost nothing to attend over), so the motivating problem doesn't exist here. It's
+  compatible with our invariants (operates on transient per-token layer outputs, NOT the persisted WKV state
+  -> card/note state unchanged; Rust/CPU-deployable as a small per-token depth-matmul), BUT costs Q/K params
+  on a tiny d=32 model and adds expressivity in a DATA-limited regime where capacity adds already reject.
+  Only salvageable piece = a cheap **learned residual-mixing weight over the <=4 layer outputs** (few params,
+  no per-layer attention); rank LOW, and only worth a single test AT 5k scale (not while data-limited).
+
 ## Sources
 - RWKV-7 "Goose" (arXiv 2503.14456) — current core; baseline for "what's already there".
 - Gated Attention, NeurIPS 2025 — output gating (idea 1).
