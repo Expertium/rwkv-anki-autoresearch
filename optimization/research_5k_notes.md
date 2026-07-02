@@ -29,10 +29,19 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    (though unlikely to help much).
 6. **Schedule + HP-tuning cadence.** WS = **2 epochs (fixed).** Decay epochs = WS × ratio, ratio ∈
    **[1/10, 1/2.5]** → decay ∈ **[0.2, 0.8] epochs**; the **decay phase is also quant-aware.** Add this
-   decay-ratio as an HP-tuner hyperparameter (`optimization/hp_tuner_5k.py`). Do **HP tuning first**, then
-   re-tune either after several small architectural changes accumulate **or** after a major change.
+   decay-ratio as an HP-tuner hyperparameter (`optimization/hp_tuner_5k.py`). Do **HP tuning first** (after
+   the batch-size sweep, point 8), then re-tune either after several small architectural changes accumulate
+   **or** after a major change.
 7. **Rust/CPU-deployable only (hard).** Every change must be reproducible in the Rust RNN inference engine
    on CPU (deployable in Anki). No GPU-only tricks in the shipped model.
+8. **Batch-size / throughput sweep — do BEFORE HP tuning (Andrew 2026-07-02).** The 5k runs are slow, so
+   first pick the fastest effective batch size: sweep **`MAX_TRAIN_GLOBAL_LEN`** (max total reviews packed
+   per step = the WKV batch dimension) over ~100 steps each on the 5k train_db, recording steps/s (or
+   reviews/s) and peak VRAM. Keep the largest that **almost maxes the 12 GB VRAM** (leave OOM headroom) —
+   the champion at 66000 uses only ~6/12 GB, so there's room to grow. Fix batch size FIRST because it's
+   structural and LR/warmup depend on it (why it precedes HP tuning). Do NOT go below 66000 (smaller drops
+   data via `get_groups`); sweep UPWARD toward the VRAM ceiling. (This is the "bigger effective batch"
+   headroom flagged in the SPEED notes.)
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, and make WS/decay/eval apply

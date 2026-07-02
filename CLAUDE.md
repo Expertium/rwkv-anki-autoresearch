@@ -384,7 +384,10 @@ writing the fast fake-quant kernel; copy later); (b) card+note state sizes FIXED
 ~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/10, 1/2.5] (decay
 0.2-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
 then re-tune after accumulated small changes OR a major one; (e) every change must be Rust/CPU-deployable
-in Anki -- no GPU-only tricks in the shipped model. [[research-acceptance-gate]]
+in Anki -- no GPU-only tricks in the shipped model; (f) BEFORE HP tuning, sweep MAX_TRAIN_GLOBAL_LEN (the
+WKV batch dim) over ~100 steps each and fix the largest batch that ALMOST maxes the 12 GB VRAM (fastest
+training; batch size is structural so LR/warmup tune after it; don't go below 66000 = data drops).
+[[research-acceptance-gate]]
 
 ### LESSON BANK -- do NOT re-run these (full numbers in log.md / HISTORY.md)
 - KEPT: SRS heads 128->64 * card->deck rebalance (compensation deck>preset>user, NOT note) * card 2->1 layer
