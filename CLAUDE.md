@@ -381,8 +381,8 @@ research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-1
 the same >=0.0003-BOTH-modes gate + params <=225,000, and ADDS: (a) **LogLoss recorded WITH (fake)
 card- AND note-state quantization** -- beat the old fp big model *while* quantized (sibling `rwkv-state-quant` is
 writing the fast fake-quant kernel; copy later); (b) card+note state sizes FIXED, but deck/preset MAY grow
-~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/7, 1/2.5] (decay
-0.286-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
+~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/10, 1/2.5] (decay
+0.2-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
 then re-tune after accumulated small changes OR a major one; (e) every change must be Rust/CPU-deployable
 in Anki -- no GPU-only tricks in the shipped model. [[research-acceptance-gate]]
 

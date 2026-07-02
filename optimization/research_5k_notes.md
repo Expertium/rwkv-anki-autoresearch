@@ -4,7 +4,9 @@
 running notes live here. Pre-5k history: `research_log.md` / `log.md` / `HISTORY.md`.
 
 **Front-table conventions:** LogLoss to 4 decimal places; parameter counts exact (e.g. 2,762,884 /
-193,724, from `optimization/model_stats.py`). Working precision here in the notes may be higher.
+193,724, from `optimization/model_stats.py`); working precision here in the notes may be higher.
+`provenance` = **adopted** (idea from literature / existing work) or **invented** (our own idea).
+`summary` (rightmost) = pre-registered: ≤15 words, written BEFORE the result is known.
 
 ## Methodology — governing rules for the 5k phase (Andrew 2026-07-01)
 These are the accept/reject rules for every 5k experiment. Hard invariants (never change): the
@@ -26,19 +28,19 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    and global state **may grow** — they're cheap: deck/preset ~5–10×, global even up to ~100× is allowed
    (though unlikely to help much).
 6. **Schedule + HP-tuning cadence.** WS = **2 epochs (fixed).** Decay epochs = WS × ratio, ratio ∈
-   **[1/7, 1/2.5]** → decay ∈ **[0.286, 0.8] epochs**; the **decay phase is also quant-aware.** Add this
+   **[1/10, 1/2.5]** → decay ∈ **[0.2, 0.8] epochs**; the **decay phase is also quant-aware.** Add this
    decay-ratio as an HP-tuner hyperparameter (`optimization/hp_tuner_5k.py`). Do **HP tuning first**, then
    re-tune either after several small architectural changes accumulate **or** after a major change.
 7. **Rust/CPU-deployable only (hard).** Every change must be reproducible in the Rust RNN inference engine
    on CPU (deployable in Anki). No GPU-only tricks in the shipped model.
 
-DONE (2026-07-01): the `decay_ratio` lever (range [1/7, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
+DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, and make WS/decay/eval apply
 fake card- AND note-state quant (once the sibling's fast fake-quant kernel is copied).
 
 ## Setup
 - **Train** users 1–5000; **eval** users 5001–10000 (disjoint held-out half).
-- **Compute budget:** 2 WS epochs + decay = WS × decay_ratio (ratio ∈ [1/7, 1/2.5], default 0.25 → 0.5 decay ep; cosine).
+- **Compute budget:** 2 WS epochs + decay = WS × decay_ratio (ratio ∈ [1/10, 1/2.5], default 0.25 → 0.5 decay ep; cosine).
 - **Model:** H=2/K=16 champion (d=32, 2 heads × K=16, layers [1,4,3,3,3], 193,724 params, per-card
   WKV state = two 16×16 per-head matrices). Env: `RWKV_N_HEADS=2 RWKV_HEAD_DIM=16`,
   `RWKV_EMPTY_CACHE_EVERY=0`, `RWKV_DETERMINISTIC=1`, `RWKV_AUGMENT_SEED=1234`, HP from the tuner.

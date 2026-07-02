@@ -1,8 +1,8 @@
 # RWKV 5k phase
 
-Train **1–5000**, eval **5001–10000** (held-out half); budget 2 WS + 0.5 decay epochs. Detail, reasoning, and status → [research_5k_notes.md](research_5k_notes.md).
+Train **1–5000**, eval **5001–10000** (held-out half); budget 2 WS + tuned-ratio decay epochs. Detail & reasoning → [research_5k_notes.md](research_5k_notes.md).
 
-| model | trained on | eval 5001–10000 · ahead | imm | params | status |
+| trained on | ahead | imm | params | provenance | summary |
 |---|---|---|---|---|---|
-| d=128 baseline (`RWKV_trained_on_101_4999`) | 101–4999 | — | — | 2,762,884 | to beat — pending eval data |
-| H=2/K=16 (ours) | 1–5000 | — | — | 193,724 | pending — data prep deferred |
+| 101–4999 | — | — | 2,762,884 | adopted | Old d=128 leaderboard model, unquantized; the fp target to beat on 5001–10000. |
+| 1–5000 | — | — | 193,724 | invented | H=2/K=16 champion carried to 5k scale, quant-aware; the phase's starting point. |

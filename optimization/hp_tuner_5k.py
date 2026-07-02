@@ -10,8 +10,8 @@ runs the FULL champion recipe: WS (2 ep) -> write_decay_setup -> decay (0.5 ep) 
 eval (101-200) -> self-record. Mirrors scratchpad/run_h2k16.cmd.
 
 Levers (coordinate order = high-impact/cheap first): peak_lr, warmup_steps, weight_decay, clip, decay_ratio.
-WS epochs FIXED at 2; decay epochs = WS x decay_ratio, a TUNED lever with ratio in [1/7, 1/2.5] -> decay
-0.286-0.8 epochs (Andrew 2026-07-01). Defaults = the H2K16 champion HPs (decay_ratio 0.25 -> 0.5 decay ep).
+WS epochs FIXED at 2; decay epochs = WS x decay_ratio, a TUNED lever with ratio in [1/10, 1/2.5] -> decay
+0.2-0.8 epochs (Andrew 2026-07-01). Defaults = the H2K16 champion HPs (decay_ratio 0.25 -> 0.5 decay ep).
 Objective minimized = ahead + imm (fp32, by-user mean on 101-200). The strict accept gate is applied
 separately when declaring a champion. CLI matches hp_tuner.py: next / record <name> /
 record-baseline <ahead> <imm> / status / loop.
@@ -28,7 +28,7 @@ TRIAL_DIR = f"{ROOT}/scratchpad/tuner5k"
 GROUPS_PER_EPOCH = 3351
 WS_EPOCHS = 2        # FIXED (5k budget)
 # Decay epochs are now a TUNED lever (Andrew 2026-07-01): decay_ep = WS_EPOCHS * decay_ratio,
-# ratio in [1/7, 1/2.5] -> decay in [0.286, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
+# ratio in [1/10, 1/2.5] -> decay in [0.2, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
 TRAIN_DB = "train_db_sc8k_1500"
 USTART, UEND = 1000, 2499
 NUM_FETCH = 10       # max-useful fetch (GPU saturates ~8-10 on a clean box); Andrew 2026-06-30 raised
@@ -41,7 +41,7 @@ SPACE = [
     ("warmup_steps", [200, 400, 800]),
     ("weight_decay", [0.0, 0.01, 0.05, 0.1]),
     ("clip",         [0.1, 0.25, 0.5]),
-    ("decay_ratio",  [0.1429, 0.2, 0.25, 0.4]),   # decay_ep = 2*ratio in [0.286, 0.8]; ratio in [1/7, 1/2.5]
+    ("decay_ratio",  [0.1, 0.2, 0.25, 0.4]),   # decay_ep = 2*ratio in [0.2, 0.8]; ratio in [1/10, 1/2.5]
 ]
 DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
 PARAMS = [p for p, _ in SPACE]
@@ -109,7 +109,7 @@ def write_trial_files(name, param, cfg):
     folder = f"{TRIAL_DIR}/{name}"
     os.makedirs(folder, exist_ok=True)
     ws_ts = ws_steps()
-    decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/7, 1/2.5])
+    decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/10, 1/2.5])
     pval_str = f"{cfg[param]:g}" if param in cfg else "baseline"
     # --- WS training toml (H2K16 proxy recipe; tuned TOML fields = peak_lr, warmup, epochs=2) ---
     ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
