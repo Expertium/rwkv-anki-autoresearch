@@ -80,6 +80,25 @@ GROUPS_PER_EPOCH, tune-eval on a subset of 5001–10000.
   proxy overfits MORE on 1500 than on 5000, so it understates the 2-epoch budget at true 5k scale → the
   proxy is not a faithful surrogate. (Tuner stopped after the baseline; resumable from trial 2.)
 
+## Queued idea — data-driven initialization (Andrew 2026-07-02, do AFTER the 5k HP tune)
+Goal: recycle the previous run's compute into a better initial point under the fixed 2-epoch budget.
+Andrew's base proposal: record per-layer mean/SD of trained params; next run inits from seeded random
+draws matching those moments. Assessment + upgrades (Claude):
+- ⚠ Our init is NOT iid everywhere (`rwkv_model.py`): LoRA `A` + k/v-scale linears are DELIBERATE ZEROS
+  (silent-start stability), decay bias is a DETERMINISTIC per-channel ramp (-7+5·(i/(C-1))^…), mixing
+  matrices are uniform/orthogonal. Blind moment-matching clobbers all three. **Whitelist rule: only touch
+  iid-random tensors; keep zeros zero and the ramp a ramp.**
+- **Scheme A (preferred, arch unchanged): shrink-perturb** — init = λ·trained + (1−λ)·fresh, λ≈0.4–0.6,
+  seeded (Ash & Adams 2020). Keeps solution structure (correlations, ramps, zeros blend correctly),
+  restores plasticity; ideal under a fixed small budget. Probe λ ∈ {0.3, 0.5, 0.7}.
+- **Scheme B (no direct weight reuse): per-tensor seeded PERMUTATION of trained values** (bootstrap-sample
+  if shape changed) — matches the FULL empirical distribution incl. heavy tails, same cost as mean/SD,
+  strictly better as a distribution matcher; still honest "from scratch".
+- Record stats per tensor ROLE (e.g. "W_r, card stream"), not tensor identity → survives arch edits.
+- **Protocol caveats:** an init change is itself a gated experiment; if ADOPTED it changes the protocol →
+  re-run the champion under the same init before later ≥0.0003 comparisons. Warm-ish starts may shift
+  optimal warmup down (fits the re-tune-after-changes cadence).
+
 ## Data prep — HARNESS READY + SMOKE-VALIDATED, DEFERRED (Andrew 2026-07-01)
 Fully defer the 5k data build until the sibling quantization research frees the CPU, then run it with
 **more threads (~4–6), NOT 1**. Nothing launched. Scope (Andrew): train + eval, BOTH halves.
