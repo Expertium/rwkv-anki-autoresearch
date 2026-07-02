@@ -7,6 +7,8 @@ running notes live here. Pre-5k history: `research_log.md` / `log.md` / `HISTORY
 193,724, from `optimization/model_stats.py`); working precision here in the notes may be higher.
 `provenance` = **adopted** (idea from literature / existing work) or **invented** (our own idea).
 `summary` (rightmost) = pre-registered: ≤15 words, written BEFORE the result is known.
+`logloss` = **exact** (training finished, real eval) or **estimated** (run Wilcoxon-pruned early; value =
+`champ_final + (cand@s − champ@s)` at the prune step — see methodology pt 9).
 
 ## Methodology — governing rules for the 5k phase (Andrew 2026-07-01)
 These are the accept/reject rules for every 5k experiment. Hard invariants (never change): the
@@ -49,6 +51,29 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    BELOW max-VRAM — 132k (~11.4 GiB) thrashes the allocator (worse throughput + OOM risk on long runs), so
    "almost max VRAM" overshoots; 110k (~3 GiB headroom) is the fastest safe batch (1.36x the 66k floor).
    (VRAM curve is CPU-load-independent; a CPU-contended re-run confirmed identical peaks, ~3x slower wall.)
+9. **Wilcoxon early-pruning of doomed runs (Andrew 2026-07-02).** Revised run order: (1) eval the big old
+   model on 5001–10000, (2) ONE champion-HP run recording per-step train logloss at EVERY WS step (ahead +
+   imm; NOT the decay phase — its step count varies) → this run's eval numbers + trace become the 5k
+   champion reference, (3) HP tune. Every later candidate runs with the champion trace loaded and, at every
+   300n steps (300, 600, 900, …), computes a one-sided Wilcoxon signed-rank on per-step (candidate −
+   champion) over ALL steps so far (growing window); **abort iff BOTH ahead and imm are worse at p < 1e-4**
+   (strict α + both-modes ⇒ no false prunes — only abysmal runs die). Pairing is valid because the seeded
+   epoch shuffle gives every run the same batch at the same step (same db + MAX + seeds).
+   **Estimated final logloss for a pruned run** (goes in the front table, flagged `estimated`):
+   `champ_final + (cand@s − champ@s)` at the prune step s, per mode. Worked example: champ final 0.3,
+   champ@300 0.7, cand@300 0.75 → estimate 0.35. (The marker also records a mean-diff variant,
+   `champ_final + mean(cand−champ)`, which is less single-batch-noisy — reference only.)
+   **Implementation:** `train_rwkv.py` env-gated — `RWKV_STEP_TRACE=<path>` (write per-step WS trace),
+   `RWKV_PRUNE_REF=optimization/champion_5k.json` (enable pruning), `RWKV_PRUNE_EVERY` (300),
+   `RWKV_PRUNE_ALPHA` (1e-4), `RWKV_PRUNE_MIN_STEP` (0; raise past a longer warmup — a big-warmup HP trial
+   is worse early BY CONSTRUCTION and could otherwise false-prune). Pruned run: writes
+   `<trace>.pruned.json` (p-values + estimates) and exits with code 42.
+   **Champion auto-update:** accepting a champion = run `optimization/promote_champion_5k.py --name X
+   --trace <ws_trace.jsonl> --final-ahead A --final-imm I` — atomically replaces
+   `optimization/champion_5k.json` (the prune reference every candidate loads) and archives the old
+   champion's metadata to `champion_5k_history.jsonl`. No hand-editing of stored traces, ever.
+   ⚠ Trace comparability requires identical data config (db, MAX_TRAIN_GLOBAL_LEN, seeds) — changing any
+   of those invalidates step-pairing and needs a fresh champion trace run.
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set MAX_TRAIN_GLOBAL_LEN=110000

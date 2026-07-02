@@ -8,6 +8,7 @@ import json
 import math
 import multiprocessing
 from pathlib import Path
+import sys
 import time
 import traceback
 
@@ -453,6 +454,37 @@ def main_loop(config, task_queue, batch_queue):
         total_steps = min(total_steps, bench_max_steps)
         print(f"[bench] cap {total_steps} steps, warmup {bench_warmup} excluded from timing")
 
+    # Per-step WS logloss trace + Wilcoxon early-prune (Andrew 2026-07-02, 5k methodology pt 9).
+    # RWKV_STEP_TRACE=path -> append {"step","ahead","imm"} per successful step (WS PHASE ONLY -- the
+    # decay phase has a variable step count, so traces are not comparable there). Valid pairing relies
+    # on the seeded epoch shuffle: same db + MAX + seeds => same batch at the same step in every run.
+    # RWKV_PRUNE_REF=champion_5k.json -> every RWKV_PRUNE_EVERY (300) steps, one-sided Wilcoxon
+    # signed-rank on per-step (candidate - champion) over ALL common steps so far; if BOTH ahead and imm
+    # are worse at p < RWKV_PRUNE_ALPHA (1e-4), write a .pruned.json marker (incl. Andrew's estimated
+    # final logloss: champ_final + cand@s - champ@s) and exit(42). RWKV_PRUNE_MIN_STEP delays the first
+    # check (e.g. past a longer warmup, whose early losses are worse by construction). Default off.
+    step_trace_path = os.environ.get("RWKV_STEP_TRACE") or ""
+    prune_ref_path = os.environ.get("RWKV_PRUNE_REF") or ""
+    prune_every = int(os.environ.get("RWKV_PRUNE_EVERY") or "300")
+    prune_alpha = float(os.environ.get("RWKV_PRUNE_ALPHA") or "1e-4")
+    prune_min_step = int(os.environ.get("RWKV_PRUNE_MIN_STEP") or "0")
+    if config.TRAIN_MODE != "WS":
+        step_trace_path, prune_ref_path = "", ""
+    trace_file = None
+    trace_steps = {}  # step -> (ahead, imm), this run
+    if step_trace_path:
+        Path(step_trace_path).parent.mkdir(parents=True, exist_ok=True)
+        trace_file = open(step_trace_path, "a", buffering=1)  # line-buffered: survives crashes
+        print(f"[trace] per-step WS logloss -> {step_trace_path}")
+    champ_meta, champ_steps = None, {}
+    if prune_ref_path:
+        with open(prune_ref_path) as _f:
+            champ_meta = json.load(_f)
+        champ_steps = {int(s): (a, i) for s, a, i in zip(
+            champ_meta["trace_step"], champ_meta["trace_ahead"], champ_meta["trace_imm"])}
+        print(f"[prune] vs champion '{champ_meta.get('name')}' ({len(champ_steps)} steps), "
+              f"every {prune_every}, alpha {prune_alpha:g}, min_step {prune_min_step}")
+
     if config.TRAIN_MODE == "WS":
         warmup_steps = config.WARMUP_STEPS
         print("Warmup steps:", warmup_steps)
@@ -587,6 +619,11 @@ def main_loop(config, task_queue, batch_queue):
                 checkpoint_loss_n += stats.ahead_n
                 if bench_t0 is not None:
                     bench_work += int(stats.ahead_n)
+                if trace_file is not None or champ_meta is not None:
+                    _ta, _ti = float(stats.ahead_avg.item()), float(stats.imm_avg.item())
+                    trace_steps[step] = (_ta, _ti)
+                    if trace_file is not None:
+                        trace_file.write(json.dumps({"step": step, "ahead": _ta, "imm": _ti}) + "\n")
 
                 torch.nn.utils.clip_grad_norm_(master_model.parameters(), CLIP)
                 optimizer.step()
@@ -604,6 +641,47 @@ def main_loop(config, task_queue, batch_queue):
                 print("Exception caught. Nan from RWKV-7? Skipping batch.")
                 print(e)
                 log["train_nan"] = 1
+
+            # Wilcoxon early-prune: growing 300n window over all common steps so far. Both modes must be
+            # worse at p<alpha (no false positives: only abysmally-bad runs die). NaN-skipped steps are
+            # simply absent from a trace; pairing uses the intersection.
+            if (champ_meta is not None and step % prune_every == 0
+                    and step >= max(prune_min_step, prune_every)):
+                common = sorted(s for s in trace_steps if s in champ_steps)
+                if len(common) >= 50:
+                    from scipy.stats import wilcoxon
+                    diff_a = [trace_steps[s][0] - champ_steps[s][0] for s in common]
+                    diff_i = [trace_steps[s][1] - champ_steps[s][1] for s in common]
+                    try:
+                        p_a = float(wilcoxon(diff_a, alternative="greater").pvalue)
+                        p_i = float(wilcoxon(diff_i, alternative="greater").pvalue)
+                    except ValueError:  # all-zero diffs (identical traces), older scipy
+                        p_a = p_i = 1.0
+                    if math.isnan(p_a) or math.isnan(p_i):  # newer scipy: zero-diffs -> NaN
+                        p_a, p_i = 1.0, 1.0
+                    print(f"[prune] step {step}: n={len(common)} p_ahead={p_a:.3e} p_imm={p_i:.3e}")
+                    if p_a < prune_alpha and p_i < prune_alpha:
+                        s0 = common[-1]  # last paired step (== `step` unless it was NaN-skipped)
+                        est_a = champ_meta["final_ahead"] + (trace_steps[s0][0] - champ_steps[s0][0])
+                        est_i = champ_meta["final_imm"] + (trace_steps[s0][1] - champ_steps[s0][1])
+                        marker = {
+                            "pruned_at_step": step, "paired_steps": len(common),
+                            "p_ahead": p_a, "p_imm": p_i, "alpha": prune_alpha,
+                            "champion": champ_meta.get("name"),
+                            "estimated_ahead": est_a, "estimated_imm": est_i,
+                            "estimate_formula": "champ_final + (cand@s - champ@s), s=last paired step",
+                            "estimated_ahead_meandiff": champ_meta["final_ahead"] + float(np.mean(diff_a)),
+                            "estimated_imm_meandiff": champ_meta["final_imm"] + float(np.mean(diff_i)),
+                        }
+                        marker_path = (step_trace_path + ".pruned.json") if step_trace_path \
+                            else "ws_prune_marker.json"
+                        with open(marker_path, "w") as _f:
+                            json.dump(marker, _f, indent=1)
+                        print(f"PRUNED step={step} p_ahead={p_a:.3e} p_imm={p_i:.3e} "
+                              f"est_ahead={est_a:.6f} est_imm={est_i:.6f} -> {marker_path}")
+                        if trace_file is not None:
+                            trace_file.close()
+                        sys.exit(42)
 
             scheduler.step()
 
@@ -644,6 +722,9 @@ def main_loop(config, task_queue, batch_queue):
 
             if config.USE_WANDB:
                 wandb.log(log, step=step)
+
+    if trace_file is not None:
+        trace_file.close()
 
     if bench_max_steps > 0 and bench_t0 is not None:
         torch.cuda.synchronize()
