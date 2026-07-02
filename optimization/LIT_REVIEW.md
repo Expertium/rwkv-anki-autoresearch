@@ -97,6 +97,20 @@ change or several accumulated small ones.
   Only salvageable piece = a cheap **learned residual-mixing weight over the <=4 layer outputs** (few params,
   no per-layer attention); rank LOW, and only worth a single test AT 5k scale (not while data-limited).
 
+## Cross-head mixing candidate — Paired Head Attention (KellerJordan/modded-nanogpt PR #191, 2026-07-02)
+PHA is a SOFTMAX-attention mod: interleave adjacent heads' K/V (`[k1_h1,k1_h2,k2_h1,...]`) so each query
+attends to its own AND the neighboring head's representation of every position in one softmax (shared flash
+attn + staggered RoPE). Param-free; merged in nanoGPT for a small val-loss + speed win (~0.0006 loss).
+**Literal fit to RWKV = NONE** (no softmax, no K/V cache, no flash attn, no RoPE — all transformer-specific).
+**Transferable spirit = cross-head state-readout mixing:** let each head's readout also read the neighbor's
+WKV state, `o_h = r_h·(S_h + S_other)` (param-free at K=16) or `+α·S_other` (1 gate param). Compatible with
+our invariants: persisted state UNCHANGED (only the readout mixes -> card/note state fixed), Rust/CPU
+deployable (extra mat-vec in readout), ~free params. Caveats: at H=2 "neighbor" = the other head -> full
+cross-read (re-couples the heads we split, though state stays split -> possible Pareto: 512-float state +
+richer readout); it's an expressivity add in a DATA-limited regime (~0.0006 sits at the +-0.0003 gate).
+**Rank LOW-MEDIUM** (above AttnRes, below output-gating/EMA). It's essentially talking-heads mixing (cf. the
+MHLA reference below). Worth ONE cheap test at 5k scale, not now.
+
 ## Sources
 - RWKV-7 "Goose" (arXiv 2503.14456) — current core; baseline for "what's already there".
 - Gated Attention, NeurIPS 2025 — output gating (idea 1).
