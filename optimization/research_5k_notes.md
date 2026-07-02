@@ -42,10 +42,18 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    structural and LR/warmup depend on it (why it precedes HP tuning). Do NOT go below 66000 (smaller drops
    data via `get_groups`); sweep UPWARD toward the VRAM ceiling. (This is the "bigger effective batch"
    headroom flagged in the SPEED notes.)
+   → **DONE 2026-07-02: use `MAX_TRAIN_GLOBAL_LEN = 110000`.** Swept 66k/88k/110k/132k on train_db_sc8k_1500
+   (H=2/K=16, free CPU, ~120 steps each via train_rwkv's `RWKV_MAX_STEPS` bench mode; tool
+   `scratchpad/batch_sweep.py`). reviews/s: 66k=28,598 (5.90 GB) | 88k=34,928 (7.92 GB) |
+   **110k=38,968 (9.44 GB, PEAK)** | 132k=29,397 (12.20 GB, -25%). KEY FINDING: throughput peaks just
+   BELOW max-VRAM — 132k (~11.4 GiB) thrashes the allocator (worse throughput + OOM risk on long runs), so
+   "almost max VRAM" overshoots; 110k (~3 GiB headroom) is the fastest safe batch (1.36x the 66k floor).
+   (VRAM curve is CPU-load-independent; a CPU-contended re-run confirmed identical peaks, ~3x slower wall.)
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
-when the tuner is set up for 5k: repoint its data paths to the 5k train_db, and make WS/decay/eval apply
-fake card- AND note-state quant (once the sibling's fast fake-quant kernel is copied).
+when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set MAX_TRAIN_GLOBAL_LEN=110000
+(batch sweep), recompute GROUPS_PER_EPOCH, and make WS/decay/eval apply fake card- AND note-state quant
+(once the sibling's fast fake-quant kernel is copied).
 
 ## Setup
 - **Train** users 1–5000; **eval** users 5001–10000 (disjoint held-out half).

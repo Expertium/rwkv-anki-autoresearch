@@ -442,6 +442,17 @@ def main_loop(config, task_queue, batch_queue):
 
     total_steps = int(config.EPOCHS * len(groups))
 
+    # Benchmark mode (batch-size/throughput sweep): RWKV_MAX_STEPS caps the run to N steps and, after
+    # RWKV_BENCH_WARMUP steps (excluded: first-batch fetch + CUDA init), times steady-state steps/s +
+    # peak reserved VRAM. Off (0) by default -> normal training, byte-identical.
+    bench_max_steps = int(os.environ.get("RWKV_MAX_STEPS") or "0")
+    bench_warmup = int(os.environ.get("RWKV_BENCH_WARMUP") or "30")
+    bench_t0 = None
+    bench_work = 0
+    if bench_max_steps > 0:
+        total_steps = min(total_steps, bench_max_steps)
+        print(f"[bench] cap {total_steps} steps, warmup {bench_warmup} excluded from timing")
+
     if config.TRAIN_MODE == "WS":
         warmup_steps = config.WARMUP_STEPS
         print("Warmup steps:", warmup_steps)
@@ -509,6 +520,11 @@ def main_loop(config, task_queue, batch_queue):
             if step > total_steps:
                 break
 
+            if bench_max_steps > 0 and step == config.STEP_OFFSET + bench_warmup:
+                torch.cuda.synchronize()
+                torch.cuda.reset_peak_memory_stats()
+                bench_t0 = time.time()
+
             if (
                 empty_cache_every > 0
                 and step < config.STEP_OFFSET + 1000
@@ -569,6 +585,8 @@ def main_loop(config, task_queue, batch_queue):
 
                 checkpoint_step_count += 1
                 checkpoint_loss_n += stats.ahead_n
+                if bench_t0 is not None:
+                    bench_work += int(stats.ahead_n)
 
                 torch.nn.utils.clip_grad_norm_(master_model.parameters(), CLIP)
                 optimizer.step()
@@ -626,6 +644,17 @@ def main_loop(config, task_queue, batch_queue):
 
             if config.USE_WANDB:
                 wandb.log(log, step=step)
+
+    if bench_max_steps > 0 and bench_t0 is not None:
+        torch.cuda.synchronize()
+        bench_elapsed = time.time() - bench_t0
+        measured = total_steps - (config.STEP_OFFSET + bench_warmup) + 1
+        sps = measured / bench_elapsed if bench_elapsed > 0 else 0.0
+        rps = bench_work / bench_elapsed if bench_elapsed > 0 else 0.0
+        peak_gb = torch.cuda.max_memory_reserved() / 1e9
+        print(f"BENCH_RESULT max_len={config.MAX_TRAIN_GLOBAL_LEN} steps_per_sec={sps:.4f} "
+              f"reviews_per_sec={rps:.1f} peak_reserved_gb={peak_gb:.3f} "
+              f"measured_steps={measured} elapsed_s={bench_elapsed:.2f}")
 
 
 def main(config):

@@ -1,0 +1,4 @@
+{"maxlen": 66000, "ok": true, "oom": 0, "steps_per_sec": 1.0056, "reviews_per_sec": 28598.2, "peak_reserved_gb": 5.897, "elapsed_s": 89.5}
+{"maxlen": 88000, "ok": true, "oom": 0, "steps_per_sec": 0.9489, "reviews_per_sec": 34928.5, "peak_reserved_gb": 7.919, "elapsed_s": 94.84}
+{"maxlen": 110000, "ok": true, "oom": 0, "steps_per_sec": 0.8278, "reviews_per_sec": 38967.9, "peak_reserved_gb": 9.441, "elapsed_s": 108.72}
+{"maxlen": 132000, "ok": true, "oom": 0, "steps_per_sec": 0.5105, "reviews_per_sec": 29396.8, "peak_reserved_gb": 12.195, "elapsed_s": 176.29}
