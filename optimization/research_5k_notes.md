@@ -221,3 +221,10 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   verified by 10-step E2E training traces bit-identical to the pre-change path (fwd+bwd+optimizer chain).
   Plain det step 578→**384 ms** (det tax now ~57 ms vs the 327 ms non-det floor). **Stacked with the QAT
   fix, the full quant-aware deterministic step = 4,122→450 ms (9.2×); a 5k champion run ≈ 4–5 h.**
+- 2026-07-03 **zeros_like→empty_like for the 24 WKV backward grad buffers** — validated bit-exact (goldens
+  + 10-step E2E trace; the kernels fully write every slot, incl. the explicit t=0 zeroing for a/kd), but
+  measured **≈neutral** (450.0→449.2 ms; only the fp32 w_grad fill vanished). Kept as strictly-less-work.
+  LESSON: the 4% bf16 FillFunctor mass is NOT the WKV grad zeros — it's spread through autograd/model
+  plumbing. **The speedup hunt has hit the flat tail**: remaining step = 250 ms elementwise mass in dozens
+  of small kernels (norms ~8%, residual det-indexing ~6%, fills ~4%, pageable HtoD ~2%) — no single lever
+  left; torch.compile (Windows-blocked) is the only tool that would fuse it.
