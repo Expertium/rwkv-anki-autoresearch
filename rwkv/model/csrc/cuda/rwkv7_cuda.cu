@@ -310,6 +310,9 @@ __device__ float g_pq_cb[8192];
 
 // In-place: normalize `col` (K-dim) to unit, replace each of m sub-vectors by its nearest of ncent
 // centroids, rescale by the original norm. EXACT mirror of engine model.rs PqCodebook::encode_decode.
+// NOTE: no longer called on the hot path -- qat_lr_rank1 inlines a BLOCK-PARALLEL version of this search
+// (same per-distance FMA order + first-strict-min centroid choice, so bit-identical results). Kept as the
+// readable serial reference of the deploy algorithm.
 __device__ inline void pq_encode_decode(int role, float* col, int K) {
     float nn = 0.f;
     for (int i = 0; i < K; i++) nn += col[i] * col[i];
@@ -340,90 +343,140 @@ __device__ inline void pq_encode_decode(int role, float* col, int K) {
 __device__ inline float qat_lr_rank1(float a_val, int K, float qmax) {
     const int x = threadIdx.y, y = threadIdx.x;
     const int tid = x * blockDim.x + y;
+    const int nthreads = blockDim.x * blockDim.y;
     __shared__ float As[32 * 32];
     __shared__ float uvec[32], tvec[32], nvec[32], ufq[32], vfq[32];
     __shared__ float red[32];
-    __shared__ float sc_nrm, sc_dot, sc_su, sc_sv, sc_sgn;
-    __shared__ int sc_ok;
+    __shared__ int s_bidx[32];
+    __shared__ float sc_nrm, sc_dot, sc_su, sc_sv, sc_sgn, sc_nu, sc_nv;
+    __shared__ int sc_ok, sc_best;
     As[x * K + y] = a_val;
     float amax = qat_blockmax(fabsf(a_val), red);          // block max-abs (has __syncthreads inside)
     float scale = (isfinite(amax) && amax > 1e-30f) ? amax : 1.0f;
     float invs = 1.0f / scale;
-    if (tid < K) uvec[tid] = rsqrtf((float)K);             // u init = 1/sqrt(K)
-    __syncthreads();
-    for (int it = 0; it < 64; it++) {
-        if (tid < K) {                                     // atu[j] = invs * sum_x As[x,j]*u[x]
+    // ---- WARP-0 REGION. K <= 32, so every participant (tid < K workers + the tid==0 scalar steps) lives
+    // in warp 0: the whole power iteration + factor extraction can synchronize with __syncwarp instead of
+    // block-wide barriers (the other warps just wait at the single publishing __syncthreads below). Same
+    // arithmetic, same participants, same order as the original block-wide version -> bit-identical.
+    if (tid < 32) {
+        if (tid < K) uvec[tid] = rsqrtf((float)K);             // u init = 1/sqrt(K)
+        __syncwarp();
+        for (int it = 0; it < 64; it++) {
+            if (tid < K) {                                     // atu[j] = invs * sum_x As[x,j]*u[x]
+                int j = tid; float s = 0.f;
+                for (int xx = 0; xx < K; xx++) s += As[xx * K + j] * uvec[xx];
+                tvec[j] = s * invs;
+            }
+            __syncwarp();
+            if (tid < K) {                                     // nu[i] = invs * sum_y As[i,y]*atu[y]
+                int i = tid; float s = 0.f;
+                for (int yy = 0; yy < K; yy++) s += As[i * K + yy] * tvec[yy];
+                nvec[i] = s * invs;
+            }
+            __syncwarp();
+            if (tid == 0) { float nn = 0.f; for (int i = 0; i < K; i++) nn += nvec[i] * nvec[i]; sc_nrm = sqrtf(nn); }
+            __syncwarp();
+            float nrm = sc_nrm;
+            if (!isfinite(nrm) || nrm < 1e-30f) break;         // uniform across warp 0 -> safe
+            if (tid < K) nvec[tid] = nvec[tid] / nrm;
+            __syncwarp();
+            if (tid == 0) { float d = 0.f; for (int i = 0; i < K; i++) d += uvec[i] * nvec[i]; sc_dot = fabsf(d); }
+            __syncwarp();
+            if (tid < K) uvec[tid] = nvec[tid];
+            __syncwarp();
+            if (1.0f - sc_dot < 1e-7f) break;                  // uniform
+        }
+        if (tid < K) {                                         // v_un[j] = sum_x As[x,j]*u[x] (ORIGINAL A)
             int j = tid; float s = 0.f;
             for (int xx = 0; xx < K; xx++) s += As[xx * K + j] * uvec[xx];
-            tvec[j] = s * invs;
+            tvec[j] = s;
         }
-        __syncthreads();
-        if (tid < K) {                                     // nu[i] = invs * sum_y As[i,y]*atu[y]
-            int i = tid; float s = 0.f;
-            for (int yy = 0; yy < K; yy++) s += As[i * K + yy] * tvec[yy];
-            nvec[i] = s * invs;
+        __syncwarp();
+        if (tid == 0) {
+            float ss = 0.f; for (int j = 0; j < K; j++) ss += tvec[j] * tvec[j];
+            float sigma = sqrtf(ss);
+            sc_nrm = sigma;
+            int uok = 1; for (int i = 0; i < K; i++) if (!isfinite(uvec[i])) uok = 0;
+            sc_ok = (sigma > 1e-20f && isfinite(sigma) && uok) ? 1 : 0;
         }
-        __syncthreads();
-        if (tid == 0) { float nn = 0.f; for (int i = 0; i < K; i++) nn += nvec[i] * nvec[i]; sc_nrm = sqrtf(nn); }
-        __syncthreads();
-        float nrm = sc_nrm;
-        if (!isfinite(nrm) || nrm < 1e-30f) break;         // uniform (all threads read sc_nrm) -> safe
-        if (tid < K) nvec[tid] = nvec[tid] / nrm;
-        __syncthreads();
-        if (tid == 0) { float d = 0.f; for (int i = 0; i < K; i++) d += uvec[i] * nvec[i]; sc_dot = fabsf(d); }
-        __syncthreads();
-        if (tid < K) uvec[tid] = nvec[tid];
-        __syncthreads();
-        if (1.0f - sc_dot < 1e-7f) break;                  // uniform
+        __syncwarp();
+        float sigma = sc_nrm; int ok = sc_ok;
+        if (tid < K) {                                         // split-sqrt factors uf=u*sj, vf=(v_un/sigma)*sj
+            float ufi = 0.f, vfi = 0.f;
+            if (ok) { float sj = sqrtf(sigma); ufi = uvec[tid] * sj; vfi = (tvec[tid] / sigma) * sj; }
+            ufq[tid] = ufi; vfq[tid] = vfi;
+        }
+        __syncwarp();
+        if (!c_pq_active) {                                    // ---- int-N per-column quant (default deploy path)
+            if (tid == 0) {                                    // per-column int-N scales (amax/qmax, clamp 1e-12)
+                float au = 0.f, av = 0.f;
+                for (int i = 0; i < K; i++) { au = fmaxf(au, fabsf(ufq[i])); av = fmaxf(av, fabsf(vfq[i])); }
+                sc_su = fmaxf(au / qmax, 1e-12f); sc_sv = fmaxf(av / qmax, 1e-12f);
+            }
+            __syncwarp();
+            if (tid < K) {                                     // quantize (round HALF-AWAY = deploy f64::round)
+                float su = sc_su, sv = sc_sv;
+                ufq[tid] = fminf(fmaxf(roundf(ufq[tid] / su), -qmax), qmax) * su;
+                vfq[tid] = fminf(fmaxf(roundf(vfq[tid] / sv), -qmax), qmax) * sv;
+            }
+        } else {                                               // ---- PQ prep: sign-canon + direction norms
+            if (tid == 0) {                                    // sign-canon: flip so u's dominant-abs entry >= 0
+                float am = 0.f, sgn = 1.f;
+                for (int i = 0; i < K; i++) { float av = fabsf(ufq[i]); if (av > am) { am = av; sgn = ufq[i] >= 0.f ? 1.f : -1.f; } }
+                sc_sgn = sgn;
+            }
+            __syncwarp();
+            if (sc_sgn < 0.f && tid < K) { ufq[tid] = -ufq[tid]; vfq[tid] = -vfq[tid]; }
+            __syncwarp();
+            if (tid == 0) {                                    // norms, same serial order as pq_encode_decode
+                float nu = 0.f, nv = 0.f;
+                for (int i = 0; i < K; i++) nu += ufq[i] * ufq[i];
+                for (int i = 0; i < K; i++) nv += vfq[i] * vfq[i];
+                sc_nu = sqrtf(nu); sc_nv = sqrtf(nv);
+            }
+        }
     }
-    if (tid < K) {                                         // v_un[j] = sum_x As[x,j]*u[x] (ORIGINAL A)
-        int j = tid; float s = 0.f;
-        for (int xx = 0; xx < K; xx++) s += As[xx * K + j] * uvec[xx];
-        tvec[j] = s;
-    }
-    __syncthreads();
-    if (tid == 0) {
-        float ss = 0.f; for (int j = 0; j < K; j++) ss += tvec[j] * tvec[j];
-        float sigma = sqrtf(ss);
-        sc_nrm = sigma;
-        int uok = 1; for (int i = 0; i < K; i++) if (!isfinite(uvec[i])) uok = 0;
-        sc_ok = (sigma > 1e-20f && isfinite(sigma) && uok) ? 1 : 0;
-    }
-    __syncthreads();
-    float sigma = sc_nrm; int ok = sc_ok;
-    if (tid < K) {                                         // split-sqrt factors uf=u*sj, vf=(v_un/sigma)*sj
-        float ufi = 0.f, vfi = 0.f;
-        if (ok) { float sj = sqrtf(sigma); ufi = uvec[tid] * sj; vfi = (tvec[tid] / sigma) * sj; }
-        ufq[tid] = ufi; vfq[tid] = vfi;
-    }
-    __syncthreads();
-    if (!c_pq_active) {                                    // ---- int-N per-column quant (default deploy path)
-        if (tid == 0) {                                    // per-column int-N scales (amax/qmax, clamp 1e-12)
-            float au = 0.f, av = 0.f;
-            for (int i = 0; i < K; i++) { au = fmaxf(au, fabsf(ufq[i])); av = fmaxf(av, fabsf(vfq[i])); }
-            sc_su = fmaxf(au / qmax, 1e-12f); sc_sv = fmaxf(av / qmax, 1e-12f);
+    __syncthreads();                                       // publish ufq/vfq (+ sc_nu/sc_nv) to the whole block
+    if (c_pq_active) {
+        // ---- BLOCK-PARALLEL PQ codebook search (replaces the single-threaded pq_encode_decode calls;
+        // bit-identical: per-distance FMA order unchanged, and the (dist, index) reduction keeps the
+        // FIRST strict minimum exactly like the serial "d < bestd" scan -- ties resolve to the lower c,
+        // all-NaN/inf distance sets fall back to centroid 0 just like the serial init best=0).
+        for (int role = 0; role < 2; role++) {
+            float norm = (role == 0) ? sc_nu : sc_nv;
+            if (!isfinite(norm) || norm < 1e-20f) continue;    // mirror the early return (block-uniform)
+            float inv = 1.0f / norm;
+            float* col = (role == 0) ? ufq : vfq;
+            for (int p = 0; p < c_pq_m; p++) {
+                int s = p * c_pq_subdim;
+                const float* cents = &g_pq_cb[((role * c_pq_m + p) * c_pq_ncent) * c_pq_subdim];
+                float bd = INFINITY; int bi = 0x7fffffff;
+                for (int c = tid; c < c_pq_ncent; c += nthreads) {
+                    const float* cc = cents + c * c_pq_subdim;
+                    float d = 0.f;
+                    for (int j = 0; j < c_pq_subdim; j++) { float diff = col[s + j] * inv - cc[j]; d += diff * diff; }
+                    if (d < bd) { bd = d; bi = c; }
+                }
+                for (int o = 16; o > 0; o >>= 1) {             // warp argmin
+                    float od = __shfl_down_sync(FULL_MASK, bd, o);
+                    int oi = __shfl_down_sync(FULL_MASK, bi, o);
+                    if (od < bd || (od == bd && oi < bi)) { bd = od; bi = oi; }
+                }
+                if ((tid & 31) == 0) { red[tid >> 5] = bd; s_bidx[tid >> 5] = bi; }
+                __syncthreads();
+                if (tid == 0) {                                // cross-warp argmin + all-bad fallback
+                    int nwarps = (nthreads + 31) / 32;
+                    float fd = red[0]; int fi = s_bidx[0];
+                    for (int i = 1; i < nwarps; i++) {
+                        if (red[i] < fd || (red[i] == fd && s_bidx[i] < fi)) { fd = red[i]; fi = s_bidx[i]; }
+                    }
+                    sc_best = (fi == 0x7fffffff) ? 0 : fi;
+                }
+                __syncthreads();
+                if (tid < c_pq_subdim) col[s + tid] = cents[sc_best * c_pq_subdim + tid] * norm;
+                __syncthreads();                               // col write-back + red/s_bidx reuse fence
+            }
         }
-        __syncthreads();
-        if (tid < K) {                                     // quantize (round HALF-AWAY = deploy f64::round)
-            float su = sc_su, sv = sc_sv;
-            ufq[tid] = fminf(fmaxf(roundf(ufq[tid] / su), -qmax), qmax) * su;
-            vfq[tid] = fminf(fmaxf(roundf(vfq[tid] / sv), -qmax), qmax) * sv;
-        }
-        __syncthreads();
-    } else {                                               // ---- PRODUCT-QUANTIZATION of the directions
-        if (tid == 0) {                                    // sign-canon: flip so u's dominant-abs entry >= 0
-            float am = 0.f, sgn = 1.f;
-            for (int i = 0; i < K; i++) { float av = fabsf(ufq[i]); if (av > am) { am = av; sgn = ufq[i] >= 0.f ? 1.f : -1.f; } }
-            sc_sgn = sgn;
-        }
-        __syncthreads();
-        if (sc_sgn < 0.f && tid < K) { ufq[tid] = -ufq[tid]; vfq[tid] = -vfq[tid]; }
-        __syncthreads();
-        if (tid == 0) {                                    // codebook-encode both directions (roles 0=u, 1=v)
-            pq_encode_decode(0, ufq, K);
-            pq_encode_decode(1, vfq, K);
-        }
-        __syncthreads();
     }
     return ufq[x] * vfq[y];                                // recon[x][y] = uf_q[x] * vf_q[y]
 }
@@ -766,8 +819,15 @@ __global__ void rwkv7_wkv_qat_lr_forward_kernel(
         float r_dot = ns * r_y;                            // output from RAW post-update state
         for (int o = K / 2; o > 0; o /= 2) r_dot += __shfl_down_sync(FULL_MASK, r_dot, o, K);
         if (y == 0) out_BTHK[global_x] = to_F<F>(r_dot);
-        float trunc = qat_lr_rank1(ns, K, qmax);           // rank-1 int-N truncation (STE forward)
-        st = skip ? in_st : trunc;
+        // Skip-step elision: on skip (query) rows the carried state reverts to in_st and the truncation
+        // result is used NOWHERE (out already came from the raw ns) -- so don't compute it. ~half of all
+        // rows are query duplicates => ~2x less rank-1+quant work. skip is uniform per (b,t) across the
+        // block, so branching around the barrier-bearing call is safe. Bit-identical outputs.
+        if (skip) {
+            st = in_st;
+        } else {
+            st = qat_lr_rank1(ns, K, qmax);                // rank-1 int-N truncation (STE forward)
+        }
         global_x += H * K;
         global_y += H * K;
     }
@@ -832,8 +892,11 @@ __global__ void rwkv7_wkv_qat_lr_backward_kernel(
             state_xy = state_xy_decayed - state_k_dot * a_y * k_deformed_y;
             state_xy += v_x * k_y;
             state_xy_chunk[c] = state_xy;                  // raw post-update (grad formulas + out use this)
-            float trunc = qat_lr_rank1(state_xy, K, qmax); // re-apply truncation (all threads; has syncs)
-            state_xy = skip ? in_state_xy : trunc;
+            if (skip) {                                    // skip-step elision (see forward kernel): the
+                state_xy = in_state_xy;                    // truncation of a reverted state is unused
+            } else {
+                state_xy = qat_lr_rank1(state_xy, K, qmax); // re-apply truncation (block-uniform branch)
+            }
         }
 
         for (int t = std::min(T - 1, (l + 1) * CHUNK_LEN - 1); t >= l * CHUNK_LEN; t--) {

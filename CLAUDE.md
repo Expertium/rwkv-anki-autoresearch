@@ -443,6 +443,19 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   ~half the WKV-kernel work for a net 1.16x WS speedup; bigger effective batch is the remaining headroom.
   Param breakdown (~193k): 5 RWKV streams 75.5% (deck 4L 21.6%, note/preset/user 3L 16.2% each, card 1L 5.4%),
   SRS heads 16.0%, input FC 8.4%; ~10.4k params per d=32 layer.
+- **RE-PROFILED 2026-07-03 at the 5k regime (H=2/K=16, MAX=110000, RWKV_PROFILE_STEP env hook in
+  train_rwkv): the WKV floor is NO LONGER dominant.** Plain step = 578 ms GPU: elementwise/other 78%, WKV
+  recurrence 18%, gemm 5% => the chunked-matmul (fla delta-rule) rewrite is DEAD as a priority (addresses
+  <=18%); the new top surface is the PyTorch elementwise mass (torch.compile Windows-blocked -> hard).
+- **QAT KERNEL SPEEDUP BANKED 2026-07-03 (the big one): quant-aware training was 7.1x slower than plain**
+  (4,122 ms/step, 87% in the qat_lr kernels -- would have made every methodology-(a) 5k run ~30-40 h).
+  Three bit-exact fixes in `qat_lr_rank1` + call sites: (1) skip-step elision (~half of rows are query
+  duplicates whose truncation result was computed then discarded), (2) BLOCK-PARALLEL PQ codebook search
+  (was single-threaded ~8k serial FMAs/step while 255 threads idled) with first-strict-min tie-breaking,
+  (3) warp-0-scoped power iteration (__syncwarp instead of ~6 block barriers x <=64 iters). Result:
+  **QAT share 3,577 -> 96 ms/step (37x), full step 4,122 -> 651 ms (6.3x); quant-aware now costs ~13%
+  over plain. BIT-EXACT verified** (32-tensor golden fwd+bwd, int-N + PQ paths, both shapes) + deploy
+  parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-03, 5k phase opened)
 - **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
@@ -452,6 +465,11 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   lr/initial_lr/weight_decay over config/env -- affected EVERY warm-started run) + non-finite loss/grad
   guards. Validated here: plain path bit-exact vs golden; PQ parity 3.2e-07; int-N 7.5e-04; 25-step QAT
   smoke green (`scratchpad/qat_parity/`). Deploy recipe + numbers: see CHAMPION section "DEPLOY config".
+- **★ QAT KERNELS OPTIMIZED 37x (2026-07-03, bit-exact):** see the SPEED section -- quant-aware 5k runs
+  are back to ~6-7 h (were headed for ~30-40 h). Profile hook added: `RWKV_PROFILE_STEP=N` +
+  `RWKV_PROFILE_COUNT` in train_rwkv -> bucketed kernel self-time summary, then exit.
+- **★ TELEGRAM BRIDGE LIVE (2026-07-03):** Andrew can steer this session from his phone + sees mirrored
+  output (see Ops). His injected messages arrive Esc-first (interrupt, then message).
 - **★ 5k LMDB BUILD RUNNING (launched 2026-07-03, detached, 6 threads):** `scratchpad/run_build_5k.cmd` ->
   6 sequential resumable steps (find_equalize 5001-10000 -> test_db 5001-10000 (F:) -> train_db 1-5000 (C:)
   -> find_equalize 1-5000 -> test_db 1-5000 -> train_db 5001-10000 (F:)); log `scratchpad/build_5k.log`;
@@ -472,7 +490,10 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   then yield idle and STOP beating the heartbeat. `/compact <focus>` fires only from a FRESH (<=30 min) +
   focus-bearing flag (stale/empty = purged). Never hand-create `pending_compact.txt`. The injector is 24/7
   (ClaudeLoopController every 3 min; acts only on a stale heartbeat) and may inject EXACTLY `/compact <focus>`
-  or a short `Continue` -- nothing else.
+  or a short `Continue` -- nothing else Claude-originated. (Since 2026-07-03 the **Telegram bridge**
+  (`claude-automation/telegram_bridge.py`, task `ClaudeTelegramBridge`) additionally injects messages
+  AUTHORED BY ANDREW from his authenticated Telegram account + mirrors chat output to his phone -- human
+  steering, not self-injection. Master switch `telegram_bridge_active.txt`; see automation README.)
 - **ESC-PROOF detached launches:** Esc / session teardown tree-kills Claude's Bash/PowerShell bg jobs INCLUDING
   training. Launch each training as a self-contained `.cmd` via `scratchpad/detach.ps1` (WMI Win32_Process ->
   parented to WmiPrvSE, survives); log to a STABLE repo path (`scratchpad/*.log`, NOT the rotating session

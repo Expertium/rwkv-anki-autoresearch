@@ -369,6 +369,48 @@ class KeyValueStatistics:
         log["imm_binary_equalize_avg"] = self.imm_binary_equalize_average.get_value()
 
 
+def _dump_kernel_profile(profiler, n_steps):
+    """Bucketed self-GPU-time summary for RWKV_PROFILE_STEP mode (plain ASCII)."""
+    def cuda_us(e):  # self GPU time in us, robust across torch versions
+        for attr in ("self_device_time_total", "self_cuda_time_total"):
+            v = getattr(e, attr, None)
+            if v:
+                return v
+        return 0.0
+
+    def bucket(name):
+        n = name.lower()
+        if "qat" in n:
+            return "wkv QAT (card/note, per-timestep)"
+        if "scan_kernel" in n or "add_kernel" in n:
+            return "wkv scan (matmul)"
+        if ("time_parallel" in n or "wkv_forward_kernel" in n or "wkv_backward_kernel" in n
+                or "lr_trunc" in n):
+            return "wkv plain recurrence (chunked-rewrite target)"
+        if "gemm" in n or "cutlass" in n or "cublas" in n or "dot_kernel" in n:
+            return "gemm (linear layers)"
+        return "other (elementwise/reduce/copy/optim)"
+
+    tot, per_kernel = {}, {}
+    for e in profiler.key_averages():
+        t = cuda_us(e)
+        if t <= 0:
+            continue
+        b = bucket(e.key)
+        tot[b] = tot.get(b, 0.0) + t
+        per_kernel[e.key] = per_kernel.get(e.key, 0.0) + t
+    grand = sum(tot.values())
+    print(f"\n===== KERNEL PROFILE ({n_steps} steps) =====")
+    print(f"total GPU kernel time: {grand / 1e3:.2f} ms  ({grand / 1e3 / n_steps:.2f} ms/step)")
+    for b in sorted(tot, key=lambda x: -tot[x]):
+        print(f"  {tot[b] / grand * 100:6.2f}%  {tot[b] / 1e3 / n_steps:8.2f} ms/step  {b}")
+    print("  --- top 15 kernels ---")
+    for name in sorted(per_kernel, key=lambda x: -per_kernel[x])[:15]:
+        short = name if len(name) < 90 else name[:87] + "..."
+        print(f"    {per_kernel[name] / grand * 100:6.2f}%  {short}")
+    print("PROFILE_DONE")
+
+
 def main_loop(config, task_queue, batch_queue):
     data_fetcher = DataFetcher(task_queue=task_queue, out_queue=batch_queue)
 
@@ -474,6 +516,16 @@ def main_loop(config, task_queue, batch_queue):
         total_steps = min(total_steps, bench_max_steps)
         print(f"[bench] cap {total_steps} steps, warmup {bench_warmup} excluded from timing")
 
+    # Kernel-profile mode: RWKV_PROFILE_STEP=N wraps steps [N, N+RWKV_PROFILE_COUNT) in
+    # torch.profiler (CUDA activity only), prints a bucketed self-GPU-time summary + top kernels,
+    # then exits. GPU self-times are valid even when the CPU is contended (fetch stalls inflate
+    # wall time, not kernel time). Off (0) by default -> byte-identical training.
+    prof_start = int(os.environ.get("RWKV_PROFILE_STEP") or "0")
+    prof_count = int(os.environ.get("RWKV_PROFILE_COUNT") or "5")
+    profiler = None
+    if prof_start > 0:
+        print(f"[profile] will profile steps {prof_start}..{prof_start + prof_count - 1} then exit")
+
     # Per-step WS logloss trace + Wilcoxon early-prune (Andrew 2026-07-02, 5k methodology pt 9).
     # RWKV_STEP_TRACE=path -> append {"step","ahead","imm"} per successful step (WS PHASE ONLY -- the
     # decay phase has a variable step count, so traces are not comparable there). Valid pairing relies
@@ -571,6 +623,17 @@ def main_loop(config, task_queue, batch_queue):
             step += 1
             if step > total_steps:
                 break
+
+            if prof_start > 0 and profiler is None and step == prof_start:
+                torch.cuda.synchronize()
+                from torch.profiler import profile as _tprof, ProfilerActivity as _PA
+                profiler = _tprof(activities=[_PA.CUDA])
+                profiler.__enter__()
+            elif profiler is not None and step == prof_start + prof_count:
+                torch.cuda.synchronize()
+                profiler.__exit__(None, None, None)
+                _dump_kernel_profile(profiler, prof_count)
+                raise SystemExit(0)
 
             if bench_max_steps > 0 and step == config.STEP_OFFSET + bench_warmup:
                 torch.cuda.synchronize()

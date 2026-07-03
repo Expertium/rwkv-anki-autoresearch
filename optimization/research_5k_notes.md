@@ -194,3 +194,19 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   cheap tensor-core win DEAD. Only path to TCs = from-scratch chunked-matmul (fla delta-rule) rewrite of
   the recurrence — multi-day + parity-risky (±0.0005 gate; K=16 underfills TC tiles). Revisit only if 5k
   proves painfully slow.
+- 2026-07-03 **Real-step re-profile at the 5k regime** (new `RWKV_PROFILE_STEP`/`RWKV_PROFILE_COUNT` env
+  hook in train_rwkv; H=2/K=16, MAX=110000, train_db_sc8k_1500): plain step = **578 ms GPU** — elementwise
+  "other" 78%, WKV recurrence 18%, gemm 5%. The WKV floor is no longer dominant → the **chunked-matmul
+  rewrite is DEAD as a priority** (would address ≤18% of the step).
+- 2026-07-03 **QAT kernel speedup — 37× on the qat_lr share, 6.3× on the quant-aware step (bit-exact).**
+  The methodology-(a) quant-aware forward was **7.1× slower than plain** (4,122 ms/step, **86.8%** in
+  `rwkv7_wkv_qat_lr_{forward,backward}` — every 5k run would have been ~30–40 h instead of ~6–7 h; the
+  batch sweep's 38,968 rev/s was measured WITHOUT the QAT env, so the plan's time budget was blind to
+  this). Root causes inside `qat_lr_rank1` (per timestep!): single-threaded PQ codebook search (~8k serial
+  FMAs on tid 0 while 255 threads idle), ~6 block barriers × ≤64 power iterations, and the whole
+  truncation computed-then-DISCARDED on skip (query) rows ≈ half of all rows. Fixes (all bit-exact by
+  construction): skip-step elision (block-uniform branch), block-parallel PQ search (identical per-distance
+  FMA order + first-strict-min (dist,index) reduction), warp-0-scoped power loop (`__syncwarp`). Verified:
+  32-tensor fwd+bwd golden BITEXACT_PASS (int-N + PQ, short-T/many-B + multi-chunk long-T), deploy PQ
+  parity re-run max REL 3.2e-07. After: QAT share 3,577→96 ms/step, full step 4,122→**651 ms** = quant-aware
+  costs **~13%** over plain. Goldens + harness: `scratchpad/qat_speed/golden_gen.py`.
