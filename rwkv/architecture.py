@@ -139,7 +139,7 @@ if _lora_env:
         _c.gate_lora = _lv
 
 # ---- State-QAT scope parsing (set RWKV_NO_JIT=1 too). Mirrors the Rust deploy env vars. ----
-_QMAX = {"int8": 127.0, "int4": 7.0, "int2": 1.0, "fp32": float("inf")}
+_QMAX = {"int8": 127.0, "int4": 7.0, "int3": 3.0, "int2": 1.0, "fp32": float("inf")}
 _QAT_NAME = {"card": "card_id", "deck": "deck_id", "note": "note_id",
              "preset": "preset_id", "user": "user_id"}
 # RWKV_QAT_SCOPE="card:int2,note:int2": per-step int-N fake-quant of each named stream's WKV state.
@@ -168,6 +168,20 @@ if _lr_scope:
     print("[QAT-LOWRANK] set: " +
           ", ".join(f"{n}=rank{c.state_lowrank_rank}/fq{c.state_lowrank_fqmax}"
                     for n, c in _layers if c.state_lowrank_rank > 0))
+# RWKV_QAT_SHIFT_SCOPE="card:int3,note:int3": per-step int-N fake-quant of each named stream's token-shift
+# vectors -- the QAT analog of the deploy RWKV_QUANT_SHIFTS + RWKV_STATE_SHIFT_LEVEL. Independent of the WKV
+# factor level, so shifts can be trained robust to a COARSER bit-width than the WKV (e.g. WKV int4 + shift int3).
+_shift_scope = os.environ.get("RWKV_QAT_SHIFT_SCOPE", "").strip()
+if _shift_scope:
+    _sh = {}
+    for _entry in _shift_scope.split(","):
+        _n, _, _lvl = _entry.strip().partition(":")
+        _sh[_QAT_NAME[_n]] = _QMAX[_lvl]
+    for _name, _cfg in _layers:
+        if _name in _sh:
+            _cfg.state_shift_qmax = _sh[_name]
+    print("[QAT-SHIFT] state_shift_qmax set: " +
+          ", ".join(f"{n}={c.state_shift_qmax}" for n, c in _layers if c.state_shift_qmax != float("inf")))
 
 # SRS-head resolution env overrides (research-phase arch lever, 2026-06-30): default 64 = champion (iter29
 # halved 128->64 for params). Set RWKV_NUM_CURVES / RWKV_NUM_POINTS to sweep (e.g. 128) -- pure params, ZERO

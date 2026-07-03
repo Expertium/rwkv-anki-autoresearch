@@ -23,9 +23,11 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
 3. **Latitude.** Try own ideas and do literature searches freely.
 4. **Quant-aware eval (NEW, central).** Every recorded LogLoss is measured **with (fake) card-state and note-state
    quantization applied** — the goal is to beat the old fp big model *while* being more efficient via
-   quantization, not just to beat it. The old d=128 baseline stays fp (it is the target). The sibling
-   `rwkv-state-quant` Claude is writing a fast fake-quant CUDA kernel; we copy it when ready (until then
-   this is the recorded-number convention, applied once the kernel + 5k data exist).
+   quantization, not just to beat it. The old d=128 baseline stays fp (it is the target).
+   **PORTED (2026-07-03): the sibling's fused fake-quant machinery is now in-repo** (see "Quantization
+   port" section below): env `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
+   RWKV_QAT_PQ=reference/pq_cb_m2b8.txt RWKV_QAT_FUSED=1` turns any train/eval forward quant-aware
+   (rank-1 PQ m2b8 WKV per the LOCKED sibling recipe; int4 shift PTQ is ~free and applied at deploy).
 5. **State-size rules.** Card and note per-entity state sizes are **FIXED (cannot change).** Deck, preset,
    and global state **may grow** — they're cheap: deck/preset ~5–10×, global even up to ~100× is allowed
    (though unlikely to help much).
@@ -156,6 +158,30 @@ Ready-to-run infra (just bump threads then launch):
 - Launch detached (survives Esc): `powershell -NoProfile -File scratchpad/detach.ps1 -Script
   C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\run_build_5k.cmd`; monitor via OS truth (tail the
   log + FREE space on C:/F: + python PID). Smoke confirmed: configs parse, find_equalize runs, F:+C: writes work.
+
+## Quantization port (2026-07-03) — the sibling's locked recipe + fused kernels are IN-REPO
+Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `research_log_h2k16.md`):
+- **LOCKED deploy recipe @ ~352 b/card:** per WKV 16×16 head-matrix, rank-1 factors (power-iteration,
+  split-√σ, sign-canon) PQ-encoded with the fixed global codebook **`reference/pq_cb_m2b8.txt`** (2×dim-8
+  sub-vectors, 256 centroids) ≈ 96 b/layer + **int4 token-shifts** ≈ 256 b → card ≈ 352 b, note ≈ 1056 b.
+  Deploy env (Rust): `RWKV_STATE_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_LOWRANK_PQ=<codebook>
+  RWKV_QUANT_SHIFTS=1 RWKV_LOWRANK_PERCOL=1`.
+- **QAT result to beat carried over:** e150_pq (1.5-ep QAT on the h2k16 champion) = VAL **+0.0010 imm /
+  −0.0003 ahead** vs fp32 — compressed BEATS fp32 on ahead. Weights `reference/qat_pq_ep150.safetensors`
+  (local, gitignored). Key finding: epochs monotone (PQ acts as a regularizer); LR/WD/clip/EMA/co-adapt dead.
+- **What was ported:** fused QAT CUDA kernels (`rwkv7_wkv_qat_{forward,backward}` full-matrix int-N;
+  `rwkv7_wkv_qat_lr_*` + `qat_lr_rank1` rank-1 low-rank with PQ branch; `rwkv7_set_pq_codebook`; 150–490×
+  over the Python loop) in `rwkv7_cuda.cu`/`rwkv7.cpp`; `rwkv_ops.py` autograd wrappers + `_sanitize_state`
+  + `maybe_upload_pq_codebook`; `rwkv_model.py` shift-QAT (`fake_quant_shift`, JIT-annotated here — the
+  sibling ran NO_JIT); `architecture.py` int3 + `RWKV_QAT_SHIFT_SCOPE`; `train_rwkv.py` **LR- and
+  WD-clobber fixes** (optim load restores saved lr/initial_lr/weight_decay, silently overriding config/env
+  — now reset after load) + non-finite loss/grad-norm guards. Training env for QAT:
+  `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_QAT_PQ=reference/pq_cb_m2b8.txt RWKV_QAT_FUSED=1`.
+- **Validated in our tree (2026-07-03):** plain WKV path bit-exact vs golden (QAT additions untouched it);
+  PQ parity CUDA-vs-Python-deploy max REL 3.2e-07 (== sibling's number); int-N low-rank parity 7.5e-04
+  (== sibling's); 25-step end-to-end QAT smoke from the champion ckpt+optim — all env prints + clobber-fix
+  resets fired, losses sane. Parity harness kept in `scratchpad/qat_parity/`. Recipe provenance toml:
+  `optimization/qat_pq_ep150_recipe.toml`.
 
 ## Speedups banked (detail also in CLAUDE.md)
 - 2026-07-01 **Tier 1 DEPLOYED in-place** — production `rwkv/model/RWKV_CUDA.cp312-win_amd64.pyd` is

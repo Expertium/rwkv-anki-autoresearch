@@ -385,12 +385,32 @@ def main_loop(config, task_queue, batch_queue):
         optim_path = f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}_optim.pth"
         print("Loading model:", model_path)
         master_model.load_state_dict(torch.load(model_path, weights_only=True))
+        # weights_only=False for the optim: some champion optim files (e.g. the decay champion
+        # h2k16d_optim_904) hold a numpy scalar in their state which weights_only=True rejects.
+        # These are trusted local checkpoints; this is a deserialization-security flag, NOT a
+        # numerics flag -- the loaded optimizer state is byte-identical either way.
+        # Capture the INTENDED per-group weight_decay before the load: load_state_dict restores the
+        # SAVED param_group hyperparams (same clobber class as the lr bug below), which silently
+        # overrode RWKV_WEIGHT_DECAY (discovered 2026-07-02 in the sibling quant loop: a WD=0 run
+        # came out hash-identical to its WD=0.01 twin). Per-group: the groups carry different WDs.
+        _intended_wd = [g["weight_decay"] for g in optimizer.param_groups]
         optimizer.load_state_dict(
             torch.load(
                 optim_path,
-                weights_only=True,
+                weights_only=False,
             )
         )
+        for _g, _wd in zip(optimizer.param_groups, _intended_wd):
+            _g["weight_decay"] = _wd
+        print(f"[wd] reset optimizer per-group weight_decay to intended {_intended_wd} after loading champion optim")
+        # The champion optim was saved under a LambdaLR, so its param_groups carry initial_lr = the
+        # champion's PEAK_LR (1e-3) and lr = 0 (end of decay). load_state_dict restores BOTH; LambdaLR then
+        # reuses initial_lr as its base_lr, SILENTLY OVERRIDING config.PEAK_LR. Reset lr AND initial_lr to
+        # config.PEAK_LR so the configured LR actually controls the fine-tune tail (warm moments are kept).
+        for _g in optimizer.param_groups:
+            _g["lr"] = config.PEAK_LR
+            _g["initial_lr"] = config.PEAK_LR
+        print(f"[lr] reset optimizer lr/initial_lr to config.PEAK_LR = {config.PEAK_LR} after loading champion optim")
     else:
         print("No model loaded.")
     model.copy_downcast_(master_model, dtype=config.DTYPE)
@@ -592,6 +612,8 @@ def main_loop(config, task_queue, batch_queue):
                 stats = model.get_loss(prepared_batch)
                 if stats is None:
                     raise Exception("Stats is none.")
+                if not torch.isfinite(stats.average_loss):  # NaN/inf safeguard: skip, don't backprop garbage
+                    raise Exception("non-finite training loss")
 
                 print(
                     f"{epoch_i} {group_i} {step}, all: {stats.average_loss.item():3f}, ahead: {stats.ahead_avg.item():.4f} ({stats.ahead_raw_avg.item():.4f}), imm: {stats.imm_avg.item():.3f}"
@@ -625,8 +647,14 @@ def main_loop(config, task_queue, batch_queue):
                     if trace_file is not None:
                         trace_file.write(json.dumps({"step": step, "ahead": _ta, "imm": _ti}) + "\n")
 
-                torch.nn.utils.clip_grad_norm_(master_model.parameters(), CLIP)
-                optimizer.step()
+                # NaN/inf safeguard: clip_grad_norm_ returns the total grad norm; if it's non-finite, a NaN
+                # grad slipped through -> DO NOT step (that would write NaN into the weights and kill the model).
+                total_norm = torch.nn.utils.clip_grad_norm_(master_model.parameters(), CLIP)
+                if torch.isfinite(total_norm):
+                    optimizer.step()
+                else:
+                    print("Non-finite grad norm; skipping optimizer step (weights protected).")
+                    log["train_nan"] = 1
                 optimizer.zero_grad()
                 if ema_decay > 0 and step >= ema_start:
                     msd = master_model.state_dict()

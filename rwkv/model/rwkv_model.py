@@ -61,6 +61,22 @@ class RWKV7Config:
     # Rust deploy RWKV_STATE_LOWRANK_SCOPE. Only used with RWKV_NO_JIT.
     state_lowrank_rank: int = 0
     state_lowrank_fqmax: float = float("inf")
+    # Shift-QAT: per-step int-N round-trip of the token-shift vectors (inf = off). The QAT analog of the
+    # deploy RWKV_QUANT_SHIFTS + RWKV_STATE_SHIFT_LEVEL — matches what the engine persists+quantizes per
+    # review for a compressed stream (the layernorm'd previous-token input). (The sibling ran this with
+    # RWKV_NO_JIT; here it is TorchScript-annotated so the JIT-on path compiles it too.)
+    state_shift_qmax: float = float("inf")
+
+
+def fake_quant_shift(x_BTC: torch.Tensor, qmax: float) -> torch.Tensor:
+    """STE per-row symmetric int-N quant of a token-shift tensor (B,T,C), matching the Rust deploy
+    `quant_vec_inplace`: scale = max(amax/qmax, 1e-12) per (b,t) vector, q = round(x/scale).clamp(±qmax)*scale.
+    forward = quantized shift, backward = identity (the shift is transparent to the gradient)."""
+    with torch.no_grad():
+        amax = x_BTC.abs().amax(dim=-1, keepdim=True)
+        scale = (amax / qmax).clamp_min(1e-12)
+        q = (x_BTC / scale).round().clamp(-qmax, qmax) * scale
+    return x_BTC + (q - x_BTC).detach()
 
 
 class RWKV7(ModuleType):
@@ -119,6 +135,7 @@ class RWKV7ChannelMixer(ModuleType):
         # (K-aware warp reduction, 2026-06-30; parity-verified for K=16). K must divide 32.
         assert 32 % (config.d_model // config.n_heads) == 0
         self.d_model = config.d_model
+        self.state_shift_qmax = config.state_shift_qmax  # shift-QAT: inf = off
         with torch.no_grad():
             ratio_1_to_almost_0 = 1.0 - (layer_id / config.total_layers)
             self.layer_norm = torch.nn.LayerNorm(config.d_model)
@@ -151,6 +168,8 @@ class RWKV7ChannelMixer(ModuleType):
             dim=1,
             index=time_shift_select_BT.unsqueeze(-1).expand(-1, -1, self.d_model),
         )
+        if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
+            x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
         k_BTK = self.W_k(torch.lerp(x_BTC, x_shift_BTC, self.lerp_k))
         o_BTC = self.W_v(torch.square(torch.nn.functional.relu(k_BTK)))
         return in_BTC + self.dropout(o_BTC)
@@ -229,6 +248,7 @@ class RWKV7TimeMixer(ModuleType):
         self.state_qmax = config.state_qmax  # QAT: inf = off (fp32 kernel path)
         self.state_lowrank_rank = config.state_lowrank_rank      # low-rank QAT: 0 = off
         self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
+        self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
 
         with torch.no_grad():
             ratio_0_to_1 = layer_id / max(config.n_layers - 1, 1)  # guard 1-layer stream (iter35 card=1)
@@ -335,6 +355,8 @@ class RWKV7TimeMixer(ModuleType):
             dim=1,
             index=time_shift_select_BT.unsqueeze(-1).expand(-1, -1, self.d_model),
         )
+        if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
+            x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
 
         rkvdag_8BTC = torch.lerp(
             x_BTC.unsqueeze(0), x_shift_BTC.unsqueeze(0), self.rkvdag_lerp

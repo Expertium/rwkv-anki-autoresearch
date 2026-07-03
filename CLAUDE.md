@@ -452,6 +452,17 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   SRS heads 16.0%, input FC 8.4%; ~10.4k params per d=32 layer.
 
 ### LIVE STATE (2026-06-30 late, post-h2k16)
+- **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
+  Sibling final result: **e150_pq @ ~352 b/card** (rank-1 PQ m2b8 WKV + int4 shifts + 1.5-ep QAT) = VAL
+  **+0.0010 imm / -0.0003 ahead** vs fp32 (compressed BEATS fp32 on ahead). Ported: fused QAT CUDA kernels
+  (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python loop), PQ codebook
+  `reference/pq_cb_m2b8.txt`, shift-QAT (JIT-annotated here; sibling ran NO_JIT), architecture int3 +
+  RWKV_QAT_SHIFT_SCOPE, and train_rwkv **LR+WD clobber fixes** (optim load silently restored saved
+  lr/initial_lr/weight_decay over config/env -- affects EVERY warm-started run) + non-finite loss/grad
+  guards. QAT env: `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_QAT_PQ=reference/pq_cb_m2b8.txt
+  RWKV_QAT_FUSED=1`. Validated here: plain path bit-exact vs golden; PQ parity 3.2e-07; int-N parity
+  7.5e-04; 25-step QAT smoke green. Full detail: `optimization/research_5k_notes.md` "Quantization port";
+  sibling log `rwkv-state-quant/research_log_h2k16.md`. Weights `reference/qat_pq_ep150.safetensors` (local).
 - **★ H=2/K=16 WON -> NEW CHAMPION (see CHAMPION section).** fp32 ahead 0.309723 / imm 0.276566 (eval 101-200,
   100 users) = accuracy PARITY with champ_1500d (within 0.0002), per-card state HALVED (576 floats), WS train
   1.16x faster (1.182 vs 1.020 steps/s). Logged to research_log.jsonl (`h2k16` row) + log.md rebuilt. Weights

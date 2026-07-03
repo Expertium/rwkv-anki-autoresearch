@@ -40,5 +40,16 @@ namespace rwkv {
         m.def("rwkv7_wkv_backward_stateful_bfloat16(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, Tensor state_checkpoints_BLHKK, Tensor grad_BTHK) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)");
         m.def("rwkv7_wkv_forward_stateful_half(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, Tensor state0_BHKK) -> (Tensor, Tensor, Tensor)");
         m.def("rwkv7_wkv_backward_stateful_half(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, Tensor state_checkpoints_BLHKK, Tensor grad_BTHK) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)");
+        // Fused QAT: per-step WKV + full-matrix int-N state quant (STE). forward returns (out, quantized
+        // state_checkpoints, per-step scale_BT); backward consumes scale_BT so it can stay per-(b,h). qmax=int8:127/int4:7/int2:1.
+        m.def("rwkv7_wkv_qat_forward_float(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, float qmax) -> (Tensor, Tensor, Tensor)");
+        m.def("rwkv7_wkv_qat_backward_float(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, Tensor state_checkpoints_BLHKK, Tensor scale_BT, Tensor grad_BTHK, float qmax) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)");
+        // Stage-A validation: rank-1 int-N low-rank truncation of a [B,H,K,K] state (matches deploy compress_wkv_state r==1).
+        m.def("rwkv7_lr_trunc_test_float(Tensor state_BHKK, float qmax) -> Tensor");
+        // Fused rank-1 int-N low-rank QAT (matches deploy rank-1 deploy). forward -> (out, truncated checkpoints).
+        m.def("rwkv7_wkv_qat_lr_forward_float(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, float qmax) -> (Tensor, Tensor)");
+        m.def("rwkv7_wkv_qat_lr_backward_float(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, Tensor state_checkpoints_BLHKK, Tensor grad_BTHK, float qmax) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)");
+        // Upload the rank-1 PQ codebook to device globals (m<=0 disables PQ -> qat_lr_rank1 uses int-N). Global state.
+        m.def("rwkv7_set_pq_codebook(Tensor cb_flat, int m, int sub, int ncent) -> ()");
     }
 }
