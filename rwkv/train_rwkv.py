@@ -526,6 +526,34 @@ def main_loop(config, task_queue, batch_queue):
     if prof_start > 0:
         print(f"[profile] will profile steps {prof_start}..{prof_start + prof_count - 1} then exit")
 
+    # RWKV_COMPILE=1: torch.compile (inductor/triton-windows) on the training-step method.
+    # EXPERIMENTAL; requires RWKV_NO_JIT=1 (Dynamo cannot trace ScriptModules). dynamic=True
+    # because every step has different per-split shapes. Custom torch.ops.rwkv.* calls graph-break
+    # (expected); the win, if any, is fusing the elementwise mass between the breaks.
+    if os.environ.get("RWKV_COMPILE") == "1":
+        if not os.environ.get("RWKV_NO_JIT"):
+            raise RuntimeError("RWKV_COMPILE=1 requires RWKV_NO_JIT=1 (Dynamo can't trace ScriptModules)")
+        # Run-to-run determinism: inductor's runtime autotune picks kernel configs by TIMING,
+        # which varies across runs and can change reduction order -> two identical runs diverge
+        # (observed 2026-07-03). Disable every timing-dependent selection path.
+        import torch._inductor.config as inductor_config
+        for knob, val in [("deterministic", True), ("max_autotune", False),
+                          ("coordinate_descent_tuning", False), ("benchmark_kernel", False),
+                          ("benchmark_epilogue_fusion", False)]:
+            if hasattr(inductor_config, knob):
+                setattr(inductor_config, knob, val)
+                print(f"[compile] inductor_config.{knob} = {val}")
+        # Compile the MIXER forwards only (not get_loss): whole-graph Dynamo traces blow Python
+        # 3.12's FIXED per-thread C-recursion cap (RecursionError on most steps, silently eaten by
+        # the NaN-safety except -> hollow steps). The mixers hold the fusable norm/lerp/LoRA
+        # elementwise chains anyway; the glue stays eager.
+        n_wrapped = 0
+        for m in model.modules():
+            if m.__class__.__name__ in ("RWKV7TimeMixer", "RWKV7ChannelMixer"):
+                m.forward = torch.compile(m.forward, dynamic=True)
+                n_wrapped += 1
+        print(f"[compile] wrapped {n_wrapped} mixer forwards with torch.compile(dynamic=True)")
+
     # Per-step WS logloss trace + Wilcoxon early-prune (Andrew 2026-07-02, 5k methodology pt 9).
     # RWKV_STEP_TRACE=path -> append {"step","ahead","imm"} per successful step (WS PHASE ONLY -- the
     # decay phase has a variable step count, so traces are not comparable there). Valid pairing relies

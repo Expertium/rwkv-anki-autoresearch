@@ -409,8 +409,11 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
 - GPU-training speedups (arch-agnostic, non-gating): `torch._foreach_*` for copy_downcast_/grad-transfer +
   skip grad_norm/log_model when wandb off + JIT restored via `@torch.jit.ignore` on `quant_aware_rwkv7` (the
   QAT-lowrank `torch.linalg.svd` had SILENTLY broken TorchScript -> would crash plain WS/eval) = ~1.38x over
-  the no-JIT body. `torch.compile` is Windows-blocked (no Triton). Gate parallelism (run_qat_eval.sh NPROC)
-  made the Rust gate ~8x faster.
+  the no-JIT body. `torch.compile` WORKS on Windows now (STALE-CLAIM FIX 2026-07-03: triton-windows 3.7.1
+  is in the venv; smoke test compiles + runs bit-correct) -- but it was 0.79x on a mixer-like chain at our
+  tiny C=32 sizes (per-call overhead; 4070 too few SMs for max_autotune_gemm), so it must EARN its way in
+  via a real profile A/B, and needs RWKV_NO_JIT (Dynamo can't trace ScriptModules). Gate parallelism
+  (run_qat_eval.sh NPROC) made the Rust gate ~8x faster.
 - **DONE (was BLOCKED): K<32** -- the WKV kernel is now K-DYNAMIC (any K dividing 32; byte-identical at K=32,
   K=16 parity-verified) and H=2/K=16 is the champion. OUR `rust/rwkv-infer` is still K=32-hardwired; the
   sibling's engine already runs K=16+PQ -> port from there when deploy-side work resumes.
@@ -446,7 +449,13 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
 - **RE-PROFILED 2026-07-03 at the 5k regime (H=2/K=16, MAX=110000, RWKV_PROFILE_STEP env hook in
   train_rwkv): the WKV floor is NO LONGER dominant.** Plain step = 578 ms GPU: elementwise/other 78%, WKV
   recurrence 18%, gemm 5% => the chunked-matmul (fla delta-rule) rewrite is DEAD as a priority (addresses
-  <=18%); the new top surface is the PyTorch elementwise mass (torch.compile Windows-blocked -> hard).
+  <=18%); the new top surface is the PyTorch elementwise mass.
+- **torch.compile: WORKS on Windows (triton-windows in venv; the old "blocked" claim was STALE — Andrew
+  caught it 2026-07-03) but SHELVED at an honest 1.05x.** Whole-graph compile hits Python 3.12's fixed
+  C-recursion cap in Dynamo (RecursionErrors swallowed by the NaN-except -> HOLLOW steps -> a fake 1.27x
+  profile); mixer-scoped compile is clean + deterministic but only 365 vs 384 ms. Costs (NO_JIT switch,
+  warmup, recompile risk, numerics break) outweigh 5%. Plumbing kept: RWKV_COMPILE=1 + RWKV_NO_JIT=1 +
+  scratchpad/train_bigstack.py. LESSON: count "Exception caught" before trusting any run's numbers.
 - **DETERMINISTIC-INDEXING SPEEDUP BANKED 2026-07-03 (1.5x plain step, BIT-EXACT):** RWKV_DETERMINISTIC=1
   cost 251 of the 578 ms (sort-based index_add from 2 gather sites). Fixes: **PermGather** (srs_model --
   stream gather is a permutation+pads -> backward = index_select by the inverse permutation; escape hatch

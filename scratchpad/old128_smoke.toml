@@ -1,0 +1,18 @@
+# Pre-flight for run_base5k_eval.cmd: re-evaluate users 101-105 of the KNOWN d=128 baseline
+# (RWKV-old128.jsonl, 2026-06-30) through the CURRENT code + the same arch-swap machinery.
+# Per-user LogLoss must match the old jsonl (det env, aug off -> expect exact).
+FILE_AHEAD = "RWKV-smoke128"
+FILE_IMM = "RWKV-P-smoke128"
+MODEL_PATH = "scratchpad/old128_ws/old128_3888.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "test_db"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000  # MUST match the size the build workers hold it mapped at
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = 101
+USER_END = 105
+NUM_FETCH_PROCESSES = 5

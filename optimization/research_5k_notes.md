@@ -226,5 +226,25 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   measured **≈neutral** (450.0→449.2 ms; only the fp32 w_grad fill vanished). Kept as strictly-less-work.
   LESSON: the 4% bf16 FillFunctor mass is NOT the WKV grad zeros — it's spread through autograd/model
   plumbing. **The speedup hunt has hit the flat tail**: remaining step = 250 ms elementwise mass in dozens
-  of small kernels (norms ~8%, residual det-indexing ~6%, fills ~4%, pageable HtoD ~2%) — no single lever
-  left; torch.compile (Windows-blocked) is the only tool that would fuse it.
+  of small kernels (norms ~8%, residual det-indexing ~6%, fills ~4%, pageable HtoD ~2%).
+- 2026-07-03 **torch.compile investigated end-to-end and SHELVED (honest 1.05×).** Andrew caught the stale
+  "Windows-blocked" claim — triton-windows 3.7.1 is installed and inductor works. Full trail: (1)
+  whole-`get_loss` compile hits Python 3.12's FIXED per-thread C-recursion cap inside Dynamo (immune to
+  setrecursionlimit AND to a 64 MB thread stack — `scratchpad/train_bigstack.py`); the RecursionErrors were
+  swallowed by the NaN-safety except → HOLLOW steps → a fake 303 ms/step (1.27×) profile and fake
+  determinism failures (runs "diverged" because each skipped different steps). (2) Mixer-scoped compile
+  (RWKV7TimeMixer/ChannelMixer forwards only) traces cleanly: 0 exceptions, run-to-run determinism PASS,
+  honest profile **365 ms vs 384 ms JIT = 1.05×** (elementwise 254→234 ms; WKV/QAT untouchable custom ops).
+  5% doesn't buy the costs: NO_JIT mode switch, minutes of compile warmup per run, recompile-storm risk
+  across full-epoch shape diversity, numerics break vs the JIT path. Plumbing kept for a future revisit:
+  `RWKV_COMPILE=1` (requires RWKV_NO_JIT=1) + inductor determinism knobs in train_rwkv + the big-stack
+  launcher. LESSONS: always count "Exception caught" in any NO_JIT/compile run before trusting its
+  numbers; eager NO_JIT is run-to-run deterministic (control-verified).
+- 2026-07-03 **QAT power-iteration warm-start considered and REJECTED**: warm-starting u across timesteps
+  would cut the ≤64-iteration power loop (~2× on the 96 ms QAT share ≈ 11% of step) but breaks the
+  train==deploy EXACTNESS of the fake-quant (deploy cold-starts per save) — the guarantee the sibling's
+  research was built on. Not worth it at 11%.
+- **Remaining honest unknown (post-build clean window): the wall-clock gap.** GPU-busy is 449 ms/step
+  (quant-aware) but wall step time under the batch sweep implied ~2+ s — Python/TorchScript-interpreter
+  gaps between kernels are unmeasurable under build contention. Measure GPU-idle fraction in a clean
+  window; if large, host-side batching of the per-split loop is the next (and last) lever.
