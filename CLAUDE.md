@@ -491,6 +491,10 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   -> find_equalize 1-5000 -> test_db 1-5000 -> train_db 5001-10000 (F:)); log `scratchpad/build_5k.log`;
   ~2-4 days. Eval data for 5001-10000 lands FIRST so the d=128 baseline eval can start before the train_dbs
   finish. Monitor via OS truth; the 6 configs are `rwkv/*_5k_*.toml` (PROCESSES=6).
+- **★ EVAL SHARDING READY (2026-07-03, Andrew-approved):** `optimization/eval_sharded.py --config
+  <eval toml>` = 2-process size-balanced (LPT) full eval, ~1.5-2x wall-clock, numerics-IDENTICAL
+  (additive USERS_FILE selector in get_result; merge + means printed). d=32 evals only (two d=128s
+  OOM); E2E smoke pending -- watch the first champion-era sharded eval. Details in notes.
 - **NEXT (per methodology g), in order once data allows:** (1) d=128 baseline eval on 5001-10000 --
   ARMED: watcher auto-fires `run_base5k_eval.cmd` after build STEP2 (machinery smoke-verified to <=7e-6);
   (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware forward -> promote via
@@ -501,8 +505,13 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   100u/1500u dbs are no longer referenced by anything live (kept on disk, C: has 383 GB free). Any TIMING
   numbers taken while build workers run are fetch-contaminated; take final numbers with the build idle.
 - Queued research ideas: data-driven init (shrink-perturb / permutation-init, post-HP-tune -- notes
-  "Queued idea" section); cross-head readout mix (PHA analog, LIT_REVIEW, low-med). Lit-review queue:
-  `optimization/LIT_REVIEW.md`. Everything through the quant port is COMMITTED + pushed (local == GitHub).
+  "Queued idea" section); **warmup-only distillation from the d=128 teacher** (Andrew 2026-07-03: soft
+  targets from `RWKV_trained_on_101_4999.pth` for the first ~200-800 steps only, annealed 1->0, then hard
+  labels so the student can surpass the teacher; STORED-dump design -- teacher+student can't share a
+  process (module-level arch config) -- full design + gate fit in the notes "Queued idea" section;
+  post-HP-tune; test SEPARATELY from data-driven init, both touch early training); cross-head readout
+  mix (PHA analog, LIT_REVIEW, low-med). Lit-review queue: `optimization/LIT_REVIEW.md`. Everything
+  through the quant port is COMMITTED + pushed (local == GitHub).
 
 ### Ops
 - **Compaction (ONLY sanctioned way):** run `claude-automation/request_compact.ps1 -Focus "<carry-through>"`

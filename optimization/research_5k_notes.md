@@ -131,6 +131,51 @@ draws matching those moments. Assessment + upgrades (Claude):
   re-run the champion under the same init before later ≥0.0003 comparisons. Warm-ish starts may shift
   optimal warmup down (fits the re-tune-after-changes cadence).
 
+## Queued idea — warmup-only distillation from the d=128 teacher (Andrew 2026-07-03, do AFTER the 5k HP tune)
+Andrew's proposal: during the first ~200–800 training steps, replace hard labels with the OLD d=128
+net's predictions (soft targets carry more information than 0/1 labels); hard labels for the rest of
+training so the student can SURPASS the teacher, not converge to it. Assessment + design (Claude):
+- **Loss mapping is drop-in** (`srs_model.py::get_loss`): `label_y` (0/1 recall) → teacher's
+  `curve_probs` at the same `label_elapsed_seconds` (BCEWithLogits accepts soft targets in [0,1]
+  natively — feeds `curve_loss` + `curve_raw_loss` on ahead rows); `label_rating` → teacher's 4-way
+  `out_p_probs` (torch CE accepts prob targets since 1.10 — feeds `p_loss` on query rows).
+  Regularizer terms unchanged.
+- **Teacher = `pretrain/RWKV_trained_on_101_4999.pth`** (the baseline-to-beat). No eval leakage: it
+  never saw users 5001–10000. Its targets on 101–4999 are its own train set (overconfident-ish) —
+  standard for KD, acceptable.
+- **STORE predictions, don't run the teacher in-process** (Andrew's instinct is right): the arch config
+  is module-level (`architecture.py`), so teacher+student can't coexist in one process — the d=128 arch
+  works via file swap (like `run_base5k_eval.cmd`). Dump mode: run the SAME training data pipeline
+  (same db/MAX/seeds → batch composition is deterministic; the Wilcoxon pairing already relies on this)
+  with the old arch + no_grad for the first N steps, saving per-row (soft_y, p_probs[4]) fp16 per step
+  → ~10 B/review ≈ 0.9 GB at N=800×MAX=110000, ~15 min GPU. Student loads step-indexed files for
+  steps ≤ N.
+- **Anneal, don't hard-switch:** loss targets = α(t)·teacher + (1−α(t))·hard, α linear 1→0 over the
+  KD window (a step-800 cliff is a needless loss-landscape jump). Optional temperature T>1 on p_probs
+  (probe later; T=1 first). Make the KD window its OWN knob (fixed step count), decoupled from the
+  LR-warmup HP.
+- **Gate fit:** accuracy-research change → ≥0.0003-both-modes gate. Training-only: params/state/inputs/
+  hierarchy/deploy (methodology e) all unchanged. Batch composition unchanged → per-step Wilcoxon
+  pairing stays valid (loss values differ, but pairing compares like-for-like steps... NOTE: early-window
+  train-loss trace is against SOFT targets → the per-step prune comparison vs a hard-label champion
+  trace is only meaningful AFTER the KD window; set RWKV_PRUNE_MIN_STEP > KD window).
+- **Interaction warning:** this and data-driven init (above) both target early training — test
+  SEPARATELY, then compose if both pass. Order after the HP tune per methodology (d).
+
+## Eval sharding (Andrew approved 2026-07-03) — 2-process full evals
+`optimization/eval_sharded.py --config <eval toml>`: sizes all users from the test LMDB's
+`{user}_batches` keys, LPT-splits them into 2 size-balanced shards (measured: 338,450,172 vs
+338,450,387 — 215-review gap), launches 2 parallel `get_result` processes (3 fetch procs +
+OMP_NUM_THREADS=3 each; QAT/arch env inherited), merges shard jsonls into the canonical result
+files, prints by-user means. Numerics-IDENTICAL to a single-process eval (users are independent;
+selection via the additive `USERS_FILE` key in get_result — absent = original behavior). Resume =
+rerun (shards skip done users). Refuses to clobber existing canonical result files. Expect
+~1.5–2x wall-clock. ⚠ d=32 evals only (two d=128s would OOM 12 GB); ⚠ E2E smoke still pending —
+first champion-era eval should be watched (VRAM via nvidia-smi) before trusting it unattended.
+Classic LPT-reordering within ONE process buys nothing (GPU processes users sequentially — total
+= sum regardless of order); cross-user batch PACKING would be 2-4x more but shifts bf16 numerics
+-> phase-boundary-only change, not adopted.
+
 ## Data prep — RUNNING since 2026-07-03 (6 threads, detached)
 Launched after the sibling quant research finished (Andrew): `scratchpad/run_build_5k.cmd` detached
 (WMI, Esc-proof), all six configs at `PROCESSES = 6`, log `scratchpad/build_5k.log`, ETA ~2–4 days.

@@ -280,7 +280,15 @@ def sort_jsonl(file):
 
 
 def main(config):
-    target_users = list(range(config.USER_START, config.USER_END + 1))
+    # Optional explicit user list (JSON array of ids) -- used by optimization/eval_sharded.py to
+    # run size-balanced shards in parallel processes. Absent -> the original USER_START..USER_END
+    # range, byte-identical behavior. Selection only; per-user numerics are untouched.
+    users_file = getattr(config, "USERS_FILE", "")
+    if users_file:
+        with open(users_file, encoding="utf-8") as fh:
+            target_users = sorted(json.load(fh))
+    else:
+        target_users = list(range(config.USER_START, config.USER_END + 1))
 
     Path("result").mkdir(parents=True, exist_ok=True)
     Path("raw").mkdir(parents=True, exist_ok=True)
