@@ -495,8 +495,10 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   <eval toml>` = 2-process size-balanced (LPT) full eval, ~1.5-2x wall-clock, numerics-IDENTICAL
   (additive USERS_FILE selector in get_result; merge + means printed). d=32 evals only (two d=128s
   OOM); E2E smoke pending -- watch the first champion-era sharded eval. Details in notes.
-- **NEXT (per methodology g), in order once data allows:** (1) d=128 baseline eval on 5001-10000 --
-  ARMED: watcher auto-fires `run_base5k_eval.cmd` after build STEP2 (machinery smoke-verified to <=7e-6);
+- **★ BASELINE-TO-BEAT LANDED (2026-07-03): d=128 on 5001-10000 = ahead 0.2964 / imm 0.2649**
+  (0.296385/0.264905, n=5000 both modes, fp unquantized; consistent with the published 10k-pooled
+  0.29743/0.26600; recorded in research_5k.md; result jsonls result/RWKV-base5k*.jsonl; arch restored).
+- **NEXT (per methodology g), in order once data allows:** (1) ~~d=128 baseline eval~~ DONE (above);
   (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware forward -> promote via
   `promote_champion_5k.py`; (3) HP tune -- `hp_tuner_5k.py` REPOINTED to FULL 5k 2026-07-03 (train 1-5000
   @ MAX=110000, tune-eval 5001-5200, QAT env in every trial's WS+decay+eval, proxy-era journal archived to
