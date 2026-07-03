@@ -1,0 +1,25 @@
+# Task #8: d=128 baseline (OLD 2.76M leaderboard model, UNQUANTIZED = the 5k-phase target) evaluated on
+# users 5001-10000 from the new test_db_5k. Requires the arch swap (scratchpad/architecture_old_d128.py
+# copied over rwkv/architecture.py) -- run via scratchpad/run_base5k_eval.cmd, which swaps + restores.
+# Checkpoint trained on 101-4999 -> 5001-10000 is fully held out.
+FILE_AHEAD = "RWKV-base5k"
+FILE_IMM = "RWKV-P-base5k"
+
+MODEL_PATH = "pretrain/RWKV_trained_on_101_4999.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 3_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+
+# Modest: the LMDB build workers own most of the CPU while this runs (logloss is load-independent)
+NUM_FETCH_PROCESSES = 6
