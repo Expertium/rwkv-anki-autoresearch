@@ -163,6 +163,12 @@ def run(
 
     all_db_keys = get_test_keys_batch(config, users)
 
+    # RAW db opened ONCE: lmdb refuses to re-open the same env in-process, so the old
+    # per-user open crashed on the second user (dormant RAW-path bug, hit 2026-07-03).
+    raw_db = (
+        lmdb.open(config.RAW_DB_PATH, map_size=config.RAW_DB_SIZE) if config.RAW else None
+    )
+
     for i in range(min(len(users), FETCH_AHEAD)):
         user_id = users[i]
         batches = all_db_keys[user_id]
@@ -244,7 +250,10 @@ def run(
             # ahead_raw["s"] = [dict_stats.s[review_th] for review_th in equalize_review_ths]
             # ahead_raw["d"] = [dict_stats.d[review_th] for review_th in equalize_review_ths]
             imm_raw["label_elapsed_seconds"] = [
-                label_elapsed_seconds[review_th] for review_th in equalize_review_ths
+                # .tolist() -> plain floats; np scalars/arrays are not JSON serializable
+                # (dormant RAW-path bug, hit 2026-07-03 by the entropy-floor analysis)
+                label_elapsed_seconds[review_th].tolist()
+                for review_th in equalize_review_ths
             ]
             imm_raw["p_all"] = [
                 imm_ps_all[review_th].tolist() for review_th in equalize_review_ths
@@ -260,10 +269,9 @@ def run(
             write(ahead_stats, ahead_users_result, ahead_path_result)
             write(imm_stats, imm_users_result, imm_path_result)
             if config.RAW:
-                db = lmdb.open(config.RAW_DB_PATH, map_size=config.RAW_DB_SIZE)
                 w_tensor = torch.cat(w_list, dim=0)
                 w_equalized = w_tensor[equalize_review_ths]
-                with db.begin(write=True) as txn:
+                with raw_db.begin(write=True) as txn:
                     save_tensor(txn, f"{user_id}_w", w_equalized)
 
                 write(ahead_raw, ahead_users_raw, ahead_path_raw)

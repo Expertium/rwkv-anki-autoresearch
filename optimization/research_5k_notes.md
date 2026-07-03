@@ -179,6 +179,18 @@ mixtures are non-identifiable beyond their mean — p*'s dispersion is invisible
   scaling-law asymptote across 100u/1500u/5k would bound the FAMILY floor — optional follow-up.
 - **Deps:** test_db + equalize covering users 1–100 (build STEP4+5), d=128 arch swap, QAT env off.
   ~30 min GPU. Insight, not gating — run after the champion run / HP-tune kickoff.
+- **★ RESULTS (run early 2026-07-03 — the OLD C: test_db already covered users 1–100).** By-user,
+  100 users, 3.68M equalized reviews, mean retention 0.7966. IMM: const-global 0.4376 → const-per-user
+  0.3781 → model A 0.2685 / model B 0.2684 → **floor estimate 0.2665 [CI 0.2416–0.2935]**. AHEAD:
+  models 0.2992/0.2993, floor 0.2994 (≈ models). **Key finding: the estimator COLLAPSED in the most
+  informative way — cross-model covariance (0.0950) ≈ each model's own Brier (0.0955), i.e. the two
+  disjoint-trained models make ~the same errors (residual disagreement ~1% of Brier). The family is
+  SATURATED: more same-family models/data won't move it; remaining error = true noise + SHARED blind
+  spots (indistinguishable here). Floor is upper-leaning; true floor could be lower.** Artifacts:
+  `optimization/entropy_floor.py`, raw preds `raw/RWKV{-P,}-floor{A,B}.jsonl`, `scratchpad/run_floor_est.cmd`.
+  Side catch: get_result's RAW path had TWO dormant bugs (np-in-JSON; per-user lmdb re-open) — fixed;
+  and the ORIGINAL C: test_db's reader lock table is FULL + held by an unidentified process (worked
+  around via the `test_db_floor` copy; if it recurs: kill holder or copy data.mdb to a fresh env dir).
 
 ## Eval sharding (Andrew approved 2026-07-03) — 2-process full evals
 `optimization/eval_sharded.py --config <eval toml>`: sizes all users from the test LMDB's

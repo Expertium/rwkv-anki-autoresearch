@@ -1,0 +1,17 @@
+# Task #18 irreducible-entropy: model A (trained on 101-4999) RAW eval on users 1-100
+# (users 1-100 were validation for BOTH pretrained models -- seen by neither).
+FILE_AHEAD = "RWKV-floorA"
+FILE_IMM = "RWKV-P-floorA"
+MODEL_PATH = "pretrain/RWKV_trained_on_101_4999.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "test_db_floor"
+DATASET_LMDB_SIZE = 8_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = true
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 20_000_000_000
+USER_START = 1
+USER_END = 100
+NUM_FETCH_PROCESSES = 5
