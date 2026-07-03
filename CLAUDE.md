@@ -7,8 +7,8 @@
 ## 0. Who you are / read this first
 
 You own **`C:\Users\Andrew\rwkv-anki-autoresearch`** (GitHub:
-`Expertium/rwkv-anki-autoresearch`). The repo starts **empty** — your first real job is
-to vendor the existing RWKV code into it (see §2 and Roadmap step 1).
+`Expertium/rwkv-anki-autoresearch`). (The repo started empty; the RWKV code has long since been
+vendored in — see §2/§10 for what lives where. Roadmap steps 1–3 are DONE.)
 
 - **Separate Claude instances own the sibling repos** `C:\Users\Andrew\srs-benchmark`
   (the upstream-clone benchmark + the original RWKV code) and
@@ -149,12 +149,9 @@ to the parallel CUDA training kernel. It's already implemented:
   `MAX_TRAIN_GLOBAL_LEN`), Ryzen 9 5950X (16c/32t), 64 GB RAM, 1 TB M.2 SSD + 4 TB external
   USB HDD. **The ~400 GB preprocessed dataset is the storage constraint** — put the LMDBs
   where there's room (M.2 if it fits; otherwise the 4 TB USB, which is slower I/O).
-- **⚠ CUDA build caveat (from the srs-benchmark handover):** on this machine the RWKV CUDA
-  extension has failed to build — **system CUDA toolkit (13.2) vs the cu126 torch wheel**
-  mismatch (and MSVC/`vcvars` must be on PATH on Windows). Expect to fix the toolchain
-  (install a matching CUDA toolkit, or a torch build matching the system CUDA) before GPU
-  training/eval works. The **CPU `CppExtension` / RNN-mode path sidesteps this** for
-  inference work.
+- **CUDA build: RESOLVED long ago** (torch cu130 wheel + VS2022 vcvars64; the kernel builds and is
+  the live production `.pyd`). Rebuild via `scratchpad/run_build_k16.cmd` — fails only if a process
+  holds `RWKV_CUDA.*.pyd` (use `setup.py build_ext` WITHOUT `--inplace` for an isolated build then).
 - **Native Python** here (no Docker, unlike fsrs-autoresearch). Later, **Rust** (step 3).
   Run from PowerShell. Use a venv; install torch matching your CUDA situation.
 
@@ -314,7 +311,7 @@ the gates + appends a record; `--no-write` to dry-run), `logbook.py`, `measure_t
 `{prefix}_optim_{step}.pth` → `{prefix}_{step}_optim.pth` and setting LOAD_MODEL /
 LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 
-## Optimization state (research phase, 100/100 workbench)
+## Optimization state (5k phase: train 1-5000 / eval 5001-10000)
 
 > Numeric record = `optimization/log.md` (the CANONICAL regenerated table -- now has a Research-phase
 > section fed by `research_log.jsonl`; rebuild via `python optimization/logbook.py rebuild`) + the source
@@ -324,19 +321,17 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 > This section keeps ONLY the current champion, deploy config, acceptance gate, lesson bank, live state, ops.
 
 ### Workbench + baselines
-- **Workbench:** eval 101-200 (`--short --secs`), MAX_TRAIN_GLOBAL_LEN=66000, sc8k
-  8192-chunk db, WS(+decay), **augmentation OFF** (RWKV_AUGMENT_SEED=1234) + RWKV_DETERMINISTIC=1 +
+- **5k phase (CURRENT):** train 1-5000, eval 5001-10000, budget 2 WS ep + tuned-ratio decay,
+  MAX_TRAIN_GLOBAL_LEN=110000 (swept), quant-aware logloss. Baseline-to-beat = the old d=128 model
+  (`pretrain/RWKV_trained_on_101_4999.pth`, unquantized) eval'd on 5001-10000 (PENDING, needs eval data).
+  Front table `optimization/research_5k.md`; full methodology + status `optimization/research_5k_notes.md`.
+- **Run env (all phases):** **augmentation OFF** (RWKV_AUGMENT_SEED=1234) + RWKV_DETERMINISTIC=1 +
   RWKV_EMPTY_CACHE_EVERY=0 -> run-to-run variance ~0. Eval `python -m rwkv.get_result` (CUDA, JIT-on ->
   REQUIRES the `@torch.jit.ignore` fix on `quant_aware_rwkv7`).
-  **★ TRAIN-DATA SHIFT (2026-06-30): the champion recipe is now "1 epoch on ~1500 users (1000-2499,
-  `train_db_sc8k_1500`) + decay", NOT "100 users x15 epochs"** -- data variety won decisively (see CHAMPION).
-  Future gated experiments should use the 1500-user recipe (~16 min WS + ~5 min decay + ~4 min eval = ~25 min)
-  and compare vs the NEW champion (0.309706/0.276357), NOT the old 0.314807/0.280200. (The old 100u/`train_db_sc8k`
-  workbench remains a cheap proxy for quick arch sanity checks, but accept/reject is on the 1500-user recipe.)
-- **Baseline-to-beat (accuracy TARGET, fp32, NOT deployable):** the d=128 2.76M model trained on 1-100, eval
-- **Baseline-to-beat (accuracy TARGET, fp32, NOT deployable):** the d=128 2.76M model trained on 1-100, eval
-  101-200 = **ahead 0.320295 / imm 0.281913** (eval via arch-swap `scratchpad/architecture_old_d128.py`).
-- **Iteration-0 reference:** d=128, 2,762,884 params, ahead 0.374046 / imm 0.319475 (historical floor).
+- **Historical 100/100 + 1500u workbench refs** (eval 101-200, MAX=66000, sc8k dbs): champion recipe was
+  "1 ep on 1500 users (1000-2499) + decay" (data variety >> repetition; ~25 min/experiment -- still useful
+  for cheap sanity checks). d=128-on-1-100 baseline = 0.320295/0.281913 (arch-swap
+  `scratchpad/architecture_old_d128.py`); iteration-0 floor = 0.374046/0.319475.
 
 ### CHAMPION = H=2/K=16 on the 1500-user data-variety recipe  (d=32, 2 heads x K=16; 193,724 params)
 - arch `[1,4,3,3,3]` (card,deck,note,preset,user), d_model=32 split as **2 heads x 16 (K=16)** via the NEW
@@ -348,22 +343,20 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 - **fp32: ahead 0.309723 / imm 0.276566** (eval 101-200) -- accuracy PARITY with the prior H=1 champion
   (champ_1500d 0.309706/0.276357; both modes within 0.0002, far inside the +0.0015 efficiency budget), and BEATS
   the d=128 baseline by +0.0106 ahead / +0.0053 imm. Accepted as a **SIZE/SPEED win** (state halved + faster),
-  NOT on the +0.0003 monotonic gate. **⚠ HPs NOT YET re-tuned** for this smaller-model + larger-data regime
-  (Andrew 2026-06-30) -- re-tune may turn parity into an accuracy gain (IN FLIGHT, see LIVE STATE).
+  NOT on the +0.0003 monotonic gate. HPs are re-tuned as part of the 5k phase (methodology d), not on 1500u.
 - **★ KEY FINDINGS:** (1) DATA VARIETY beats repetition -- "1 epoch on ~1500 varied users" >> "15 epochs on
   100 users" (drove the prior champion jump; the d=32 model is DATA-limited, so the path forward is MORE DATA,
   scale toward 5k). (2) K<32 UNBLOCKED -- the WKV kernel is now K-dynamic (any K dividing 32), so H=2/K=16 gives
   the 2x-smaller-state + faster model that makes 5k-user training practical. PRIOR champions kept as refs:
   champ_1500d (H=1/K=32, 0.309706/0.276357), decay15 (100u, 0.314807/0.280200).
-- **DEPLOYED (the OFFICIAL comparison number = quant + low-rank, via the Rust engine) [[champion-logloss-deployed]]
-  -- PENDING (engine port needed):** the Rust engine is still K=32-hardwired (`rust/rwkv-infer/src/model.rs`
-  H/C dims) -> needs a K<32 port before deployed rev/s + deployed logloss can be measured for H=2/K=16. The card
-  state is now **two 16x16 per layer** (per-head), which RE-FRAMES the state-quant problem (per-head low-rank of
-  16x16, NOT one 32x32) for the outsourced sibling loop at `C:\Users\Andrew\rwkv-state-quant`. Prior H=1 deployed
-  config (reference): rank-2 int4 low-rank card+note + int4 shifts = card 96 B + note 288 B (both hard targets
-  met: card <=0.15 KB, note >=2x). int2 factors DEFERRED (4-level + Hadamard CONFIRMED DEAD in logloss; Frobenius
-  anti-correlated) -- see [[deploy-known-issues]]. **This repo's Claude does NOT work the sibling folder** -- stay
-  on GPU speedups + the smaller model + more data.
+- **DEPLOY config (the sibling's LOCKED recipe, research DONE 2026-07-03) [[champion-logloss-deployed]]:**
+  **e150_pq @ ~352 b/card** = rank-1 PQ (m2b8 codebook `reference/pq_cb_m2b8.txt`) WKV factors + int4
+  token-shifts + 1.5-ep QAT -> VAL **+0.0010 imm / -0.0003 ahead** vs fp32 (compressed BEATS fp32 on ahead);
+  note = 3x card ≈ 1056 b. Deploy env (Rust): `RWKV_STATE_LOWRANK_SCOPE=card:1:int4,note:1:int4
+  RWKV_LOWRANK_PQ=<codebook> RWKV_QUANT_SHIFTS=1 RWKV_LOWRANK_PERCOL=1`. QAT weights
+  `reference/qat_pq_ep150.safetensors` (local). The sibling's engine (`rwkv-state-quant/engine`) already runs
+  H=2/K=16 + PQ; OUR `rust/rwkv-infer` is still K=32-hardwired -> port from the sibling's engine when the
+  deploy-side work resumes. Full detail: sibling `research_log_h2k16.md`.
 
 ### ACCEPTANCE GATE (research phase) -- accept iff ALL hold (record binary accepted/rejected per iter):
 1. "size" (equalized review count, 101-200) IDENTICAL to champion (data-integrity; any change = pipeline bug).
@@ -379,8 +372,9 @@ inputs / existing LMDBs (no new/changed inputs).
 **5k-PHASE METHODOLOGY (Andrew 2026-07-01) -- full text in `optimization/research_5k_notes.md`:** the 5k
 research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-10000 as the target) keeps
 the same >=0.0003-BOTH-modes gate + params <=225,000, and ADDS: (a) **LogLoss recorded WITH (fake)
-card- AND note-state quantization** -- beat the old fp big model *while* quantized (sibling `rwkv-state-quant` is
-writing the fast fake-quant kernel; copy later); (b) card+note state sizes FIXED, but deck/preset MAY grow
+card- AND note-state quantization** -- beat the old fp big model *while* quantized (fused fake-quant kernels
+PORTED from the sibling 2026-07-03; env `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
+RWKV_QAT_PQ=reference/pq_cb_m2b8.txt RWKV_QAT_FUSED=1`); (b) card+note state sizes FIXED, but deck/preset MAY grow
 ~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/10, 1/2.5] (decay
 0.2-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
 then re-tune after accumulated small changes OR a major one; (e) every change must be Rust/CPU-deployable
@@ -418,11 +412,10 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   the no-JIT body. `torch.compile` is Windows-blocked (no Triton). Gate parallelism (run_qat_eval.sh NPROC)
   made the Rust gate ~8x faster.
 - **DONE (was BLOCKED): K<32** -- the WKV kernel is now K-DYNAMIC (any K dividing 32; byte-identical at K=32,
-  K=16 parity-verified) and H=2/K=16 is the new champion: halved per-card state (1088->576 floats) + 1.16x
-  faster training at accuracy-parity. The GPU path is K<32-ready; the **Rust inference engine is NOT yet**
-  (`model.rs` K=32-hardwired) -> a K<32 Rust port is the next deploy-side task.
+  K=16 parity-verified) and H=2/K=16 is the champion. OUR `rust/rwkv-infer` is still K=32-hardwired; the
+  sibling's engine already runs K=16+PQ -> port from there when deploy-side work resumes.
 - STILL DEFERRED: CUDA graphs (variable shapes, ~1.1-1.3x only); Stateful-BPTT carry SHELVED (smaller chunks
-  don't speed training; the verified stateful WKV kernel is done + UNCOMMITTED) [[stateful-bptt-shelved]].
+  don't speed training; the verified stateful WKV kernel is done + committed) [[stateful-bptt-shelved]].
 - **TIER 1 DEPLOYED (2026-07-01):** the cudaMalloc/cudaFree->`torch::empty` caching-allocator scratch (WKV
   fwd+bwd scan, kills the synchronizing `cudaFree`, bit-exact ~1.3-1.44x microbench) is now the LIVE production
   `rwkv/model/RWKV_CUDA.cp312-win_amd64.pyd` (SHA256 == the bit-exact-validated build). Real-world WS steps/s
@@ -451,51 +444,28 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   Param breakdown (~193k): 5 RWKV streams 75.5% (deck 4L 21.6%, note/preset/user 3L 16.2% each, card 1L 5.4%),
   SRS heads 16.0%, input FC 8.4%; ~10.4k params per d=32 layer.
 
-### LIVE STATE (2026-06-30 late, post-h2k16)
+### LIVE STATE (2026-07-03, 5k phase opened)
 - **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
-  Sibling final result: **e150_pq @ ~352 b/card** (rank-1 PQ m2b8 WKV + int4 shifts + 1.5-ep QAT) = VAL
-  **+0.0010 imm / -0.0003 ahead** vs fp32 (compressed BEATS fp32 on ahead). Ported: fused QAT CUDA kernels
-  (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python loop), PQ codebook
-  `reference/pq_cb_m2b8.txt`, shift-QAT (JIT-annotated here; sibling ran NO_JIT), architecture int3 +
-  RWKV_QAT_SHIFT_SCOPE, and train_rwkv **LR+WD clobber fixes** (optim load silently restored saved
-  lr/initial_lr/weight_decay over config/env -- affects EVERY warm-started run) + non-finite loss/grad
-  guards. QAT env: `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_QAT_PQ=reference/pq_cb_m2b8.txt
-  RWKV_QAT_FUSED=1`. Validated here: plain path bit-exact vs golden; PQ parity 3.2e-07; int-N parity
-  7.5e-04; 25-step QAT smoke green. Full detail: `optimization/research_5k_notes.md` "Quantization port";
-  sibling log `rwkv-state-quant/research_log_h2k16.md`. Weights `reference/qat_pq_ep150.safetensors` (local).
-- **★ H=2/K=16 WON -> NEW CHAMPION (see CHAMPION section).** fp32 ahead 0.309723 / imm 0.276566 (eval 101-200,
-  100 users) = accuracy PARITY with champ_1500d (within 0.0002), per-card state HALVED (576 floats), WS train
-  1.16x faster (1.182 vs 1.020 steps/s). Logged to research_log.jsonl (`h2k16` row) + log.md rebuilt. Weights
-  `reference/champ_h2k16.safetensors` (from `scratchpad/exp_h2k16/h2k16d_904.pth`). K<32 kernel is K-DYNAMIC
-  (any K dividing 32), byte-identical at K=32, K=16 parity-verified (`scratchpad/test_k16_wkv.py`). arch.py
-  decoupled: `d_model = N_HEADS*HEAD_DIM`, env `RWKV_N_HEADS`/`RWKV_HEAD_DIM` (default 1/32). Rebuild kernel:
-  `scratchpad/run_build_k16.cmd`. ⚠ Rebuild FAILS if any process holds `RWKV_CUDA.*.pyd`.
-- **NEXT (IN FLIGHT): re-tune HPs** for the smaller-model + larger-data regime (Andrew 2026-06-30: "model got
-  smaller AND dataset got larger"). Use `optimization/hp_tuner.py` (greedy coord descent, resumable) on the
-  H=2/K=16 + 1500u recipe (env RWKV_N_HEADS=2 RWKV_HEAD_DIM=16). Levers: peak_lr, warmup, wd, clip, decay ratio.
-  A re-tune may turn accuracy-parity into an accuracy GAIN. Champion to beat: 0.309723/0.276566.
-- **DEFERRED until the champion is FINALIZED (post-HP-tune)** -- doing these now then again after tuning = wasted
-  work, since tuning changes the weights:
-  - **SIBLING quant-loop reframe** (`C:\Users\Andrew\rwkv-state-quant`) [[deploy-known-issues]]: h2k16 won -> card
-    state is now TWO 16x16 per layer -> the low-rank problem reframes to per-head rank-r of 16x16 (not one 32x32).
-    Will need champ_h2k16 weights + re-dumped 16x16 STATES (the sibling runs ITS engine on the input traces).
-    Input traces themselves are arch/weight-independent. This repo's Claude does NOT do the sibling's research.
-  - **TRACE EXPORT (sibling reference data): NO LONGER NEEDED (Andrew 2026-06-30) -- do NOT run or recover.**
-    The 500+500 export to the sibling's `reference_big` (users 6000-6999) ran this session and landed 836/995
-    existing-user traces (159 lost when workers crashed on dataset-absent users; `export_features_fast.py` since
-    fixed to skip-missing + per-user try/except). Andrew: we don't need the export anymore -- the 836 traces stand,
-    NO recovery, NO further trace export. (Supersedes the old 50+50 plan + the `run_export_5050.cmd` path.)
-- **ACTIVE AGENDA (Andrew):** [DONE] fetching (empty_cache banked) -> [DONE] 1500u data champion (variety wins)
-  -> [DONE] H=2/K=16 2x-smaller-state model (won) -> [IN FLIGHT] re-tune HPs -> then scale DATA toward 5000 users
-  (the proven lever; the smaller+faster model makes it practical). META-GOAL: 5k-user training practical.
-- **UNCOMMITTED code (commit-when-asked):** `rwkv/model/csrc/**` (K-DYNAMIC kernel: rwkv7_cuda.cu,
-  rwkv7_cuda_time_parallel_{forward,backward}.h, parallel_scan.cu/.h + stateful WKV kernel) + rwkv7.cpp;
-  `rwkv_model.py` (K-divides-32 assert relax); `architecture.py` (N_HEADS/HEAD_DIM decouple + env overrides);
-  `train_rwkv.py` (EMA + HP env overrides + aug seed + RWKV_EMPTY_CACHE_EVERY); `data_processing.py`
-  (label_filter-optional); `rust/rwkv-infer` (sort-fix + per-column + Hadamard/4level low-rank, the last two
-  confirmed-dead). NOTHING committed this whole arc -- commit-when-asked.
-- Tuner `optimization/hp_tuner.py` (greedy coord descent, resumable) ready -- run SPARINGLY (after a big arch
-  change like h2k16, or accumulated small changes). Lit-review queue: `optimization/LIT_REVIEW.md`.
+  Fused QAT CUDA kernels (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python
+  loop), PQ codebook `reference/pq_cb_m2b8.txt`, shift-QAT (JIT-annotated here; sibling ran NO_JIT),
+  int3 + RWKV_QAT_SHIFT_SCOPE, and train_rwkv **LR+WD clobber fixes** (optim load silently restored saved
+  lr/initial_lr/weight_decay over config/env -- affected EVERY warm-started run) + non-finite loss/grad
+  guards. Validated here: plain path bit-exact vs golden; PQ parity 3.2e-07; int-N 7.5e-04; 25-step QAT
+  smoke green (`scratchpad/qat_parity/`). Deploy recipe + numbers: see CHAMPION section "DEPLOY config".
+- **★ 5k LMDB BUILD RUNNING (launched 2026-07-03, detached, 6 threads):** `scratchpad/run_build_5k.cmd` ->
+  6 sequential resumable steps (find_equalize 5001-10000 -> test_db 5001-10000 (F:) -> train_db 1-5000 (C:)
+  -> find_equalize 1-5000 -> test_db 1-5000 -> train_db 5001-10000 (F:)); log `scratchpad/build_5k.log`;
+  ~2-4 days. Eval data for 5001-10000 lands FIRST so the d=128 baseline eval can start before the train_dbs
+  finish. Monitor via OS truth; the 6 configs are `rwkv/*_5k_*.toml` (PROCESSES=6).
+- **NEXT (per methodology g), in order once data allows:** (1) d=128 baseline eval on 5001-10000 (arch-swap,
+  needs step-1/2 data); (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware
+  forward -> promote via `promote_champion_5k.py`; (3) HP tune (`hp_tuner_5k.py`, has decay_ratio lever +
+  Wilcoxon pruning; repoint data paths + GROUPS_PER_EPOCH first). In parallel with the build: GPU speedup
+  hunting (Andrew 2026-07-03) -- but any TIMING numbers taken while build workers run are fetch-contaminated
+  (proven in the batch sweep); take final numbers with the build paused or finished.
+- Queued research ideas: data-driven init (shrink-perturb / permutation-init, post-HP-tune -- notes
+  "Queued idea" section); cross-head readout mix (PHA analog, LIT_REVIEW, low-med). Lit-review queue:
+  `optimization/LIT_REVIEW.md`. Everything through the quant port is COMMITTED + pushed (local == GitHub).
 
 ### Ops
 - **Compaction (ONLY sanctioned way):** run `claude-automation/request_compact.ps1 -Focus "<carry-through>"`

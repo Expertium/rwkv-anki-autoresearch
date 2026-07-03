@@ -131,9 +131,10 @@ draws matching those moments. Assessment + upgrades (Claude):
   re-run the champion under the same init before later ≥0.0003 comparisons. Warm-ish starts may shift
   optimal warmup down (fits the re-tune-after-changes cadence).
 
-## Data prep — HARNESS READY + SMOKE-VALIDATED, DEFERRED (Andrew 2026-07-01)
-Fully defer the 5k data build until the sibling quantization research frees the CPU, then run it with
-**more threads (~4–6), NOT 1**. Nothing launched. Scope (Andrew): train + eval, BOTH halves.
+## Data prep — RUNNING since 2026-07-03 (6 threads, detached)
+Launched after the sibling quant research finished (Andrew): `scratchpad/run_build_5k.cmd` detached
+(WMI, Esc-proof), all six configs at `PROCESSES = 6`, log `scratchpad/build_5k.log`, ETA ~2–4 days.
+Resumable — relaunch the same .cmd after any interruption. Scope: train + eval, BOTH halves.
 
 DBs to build (eval DBs currently cover only ~users 1–200):
 - `train_db(1-5000)` sc8k → **C:** (`train_db_5k_h1`, fast M.2, primary run reads every step)
