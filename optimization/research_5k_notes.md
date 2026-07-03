@@ -162,6 +162,24 @@ training so the student can SURPASS the teacher, not converge to it. Assessment 
 - **Interaction warning:** this and data-driven init (above) both target early training — test
   SEPARATELY, then compose if both pass. Order after the HP tune per methodology (d).
 
+## Queued analysis — irreducible-entropy (LogLoss floor) estimate (Andrew 2026-07-03, task #18)
+How low can ANY algorithm go on this data? No assumption-free answer exists (single-draw Bernoulli
+mixtures are non-identifiable beyond their mean — p*'s dispersion is invisible without structure), so:
+- **Estimator:** cross-model residual covariance. y = p* + noise ⇒ for models with independent errors,
+  E[(y−pA)(y−pB)] ≈ E[p*(1−p*)] = irreducible BRIER. We have the perfect pair: the two pretrained d=128
+  models were trained on DISJOINT halves (101–4999 / 5000–10000), and **users 1–100 were seen by
+  neither** → score both there (get_result RAW=true for per-review preds), average residual products.
+  Residual error correlation biases it UP (same arch family) — report as an upper-leaning estimate.
+  LogLoss floor then needs one parametric step: Beta-distributed p* within calibration bins (mean from
+  calibration, variance from the covariance estimate) → implied E[H(p*)].
+- **Baselines for scale (Andrew):** constant predictor at global mean retention → H(p̄) (~0.325 at
+  p̄≈0.9), and by-user-mean of per-user H(p̄_u); plus both models' own LogLoss/Brier on the slice.
+- **Context:** any model's loss upper-bounds the floor (best: 0.266 imm, 10k). A calibrated model's
+  loss = mean entropy of its own predictions (Jensen gap to the floor = structure it blurs). A
+  scaling-law asymptote across 100u/1500u/5k would bound the FAMILY floor — optional follow-up.
+- **Deps:** test_db + equalize covering users 1–100 (build STEP4+5), d=128 arch swap, QAT env off.
+  ~30 min GPU. Insight, not gating — run after the champion run / HP-tune kickoff.
+
 ## Eval sharding (Andrew approved 2026-07-03) — 2-process full evals
 `optimization/eval_sharded.py --config <eval toml>`: sizes all users from the test LMDB's
 `{user}_batches` keys, LPT-splits them into 2 size-balanced shards (measured: 338,450,172 vs

@@ -504,6 +504,10 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   ALL live 5k tooling now trains on 1-5000 and evals on 5001-10000 ONLY (verified sweep 2026-07-03); the
   100u/1500u dbs are no longer referenced by anything live (kept on disk, C: has 383 GB free). Any TIMING
   numbers taken while build workers run are fetch-contaminated; take final numbers with the build idle.
+- Queued analysis (task #18, Andrew 2026-07-03): **irreducible-entropy estimate** -- cross-model
+  residual covariance of the TWO disjoint-trained d=128 .pths on users 1-100 (seen by neither) ->
+  irreducible-Brier -> Beta-translated LogLoss floor; + constant-retention baselines H(p-bar).
+  Design in notes "Queued analysis" section; needs build STEP4+5 (test data for 1-100); ~30 min GPU.
 - Queued research ideas: data-driven init (shrink-perturb / permutation-init, post-HP-tune -- notes
   "Queued idea" section); **warmup-only distillation from the d=128 teacher** (Andrew 2026-07-03: soft
   targets from `RWKV_trained_on_101_4999.pth` for the first ~200-800 steps only, annealed 1->0, then hard
