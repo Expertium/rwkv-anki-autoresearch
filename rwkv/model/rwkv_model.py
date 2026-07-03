@@ -163,16 +163,26 @@ class RWKV7ChannelMixer(ModuleType):
     @FunctionType
     def forward(self, in_BTC, time_shift_select_BT):
         x_BTC = self.layer_norm(in_BTC)
-        x_shift_BTC = torch.gather(
-            x_BTC,
-            dim=1,
-            index=time_shift_select_BT.unsqueeze(-1).expand(-1, -1, self.d_model),
-        )
+        x_shift_BTC = time_shift_gather(x_BTC, time_shift_select_BT)
         if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
             x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
         k_BTK = self.W_k(torch.lerp(x_BTC, x_shift_BTC, self.lerp_k))
         o_BTC = self.W_v(torch.square(torch.nn.functional.relu(k_BTK)))
         return in_BTC + self.dropout(o_BTC)
+
+
+def time_shift_gather(x_BTC: torch.Tensor, sel_BT: torch.Tensor) -> torch.Tensor:
+    """torch.gather(x, 1, sel.expand(..,C)) reformulated as a flat ROW index_select.
+
+    Numerically identical forward (same selected values). The win is the backward under
+    torch.use_deterministic_algorithms: gather's backward scatter-adds B*T*C individually
+    keyed elements through the sort-based deterministic path (~20% of the whole training
+    step across the 14 layers), while index_select's backward is a row-wise deterministic
+    index_add -- it sorts only B*T keys and accumulates C-wide rows."""
+    B, T, C = x_BTC.shape
+    offs = torch.arange(B, dtype=torch.long, device=sel_BT.device).unsqueeze(1) * T
+    flat = (sel_BT.long() + offs).view(-1)
+    return torch.index_select(x_BTC.reshape(B * T, C), 0, flat).view(B, T, C)
 
 
 def ortho_init(x, scale):
@@ -350,11 +360,7 @@ class RWKV7TimeMixer(ModuleType):
         H, K = self.H, self.K
 
         x_BTC = self.layer_norm(in_BTC)
-        x_shift_BTC = torch.gather(
-            x_BTC,
-            dim=1,
-            index=time_shift_select_BT.unsqueeze(-1).expand(-1, -1, self.d_model),
-        )
+        x_shift_BTC = time_shift_gather(x_BTC, time_shift_select_BT)
         if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
             x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
 

@@ -210,3 +210,14 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   32-tensor fwd+bwd golden BITEXACT_PASS (int-N + PQ, short-T/many-B + multi-chunk long-T), deploy PQ
   parity re-run max REL 3.2e-07. After: QAT share 3,577→96 ms/step, full step 4,122→**651 ms** = quant-aware
   costs **~13%** over plain. Goldens + harness: `scratchpad/qat_speed/golden_gen.py`.
+- 2026-07-03 **Deterministic-indexing speedup — 1.5× on the plain step, BIT-EXACT.** A/B profiling showed
+  `RWKV_DETERMINISTIC=1` cost **251 ms of the 578 ms step (43%)** — all in sort-based deterministic
+  `index_add`/`indexing_backward` from two gather sites. Fix 1: **PermGather** (`srs_model.py`) — the
+  hierarchical stream gather references each row at most once (permutation + `-1` pads), so its backward is
+  an index_select by the runtime-built inverse permutation (collision-free scatter, deterministic by
+  construction) instead of stock index_add; escape hatch `RWKV_PERM_GATHER=0`. Fix 2: **flat-row time-shift
+  gather** (`rwkv_model.py::time_shift_gather`) — `gather(x,1,sel.expand(C))` → `index_select` on flattened
+  rows: the deterministic backward sorts B·T keys instead of B·T·C elements and row-adds over C. BOTH
+  verified by 10-step E2E training traces bit-identical to the pre-change path (fwd+bwd+optimizer chain).
+  Plain det step 578→**384 ms** (det tax now ~57 ms vs the 327 ms non-det floor). **Stacked with the QAT
+  fix, the full quant-aware deterministic step = 4,122→450 ms (9.2×); a 5k champion run ≈ 4–5 h.**

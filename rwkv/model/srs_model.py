@@ -28,6 +28,57 @@ else:
     FunctionType = torch.jit.script_method
 
 
+class _PermGather(torch.autograd.Function):
+    """index_select whose backward exploits the permutation structure of the stream gathers.
+
+    The hierarchical gather (x -> per-entity rows) references each row of x AT MOST once per
+    stream (each review belongs to exactly one card/note/deck/preset/user); -1 entries are
+    padding (clamped to row 0 in the forward, matching the original torch.clamp+index_select).
+    index_select's stock backward is index_add -- under torch.use_deterministic_algorithms it
+    takes the sort-based path that costs ~43% of the whole training step. Here the backward is
+    an index_select by the INVERSE permutation (collision-free, deterministic BY CONSTRUCTION):
+      grad_x[r] = grad_out[inv[r]]           (r referenced; unique position)
+      grad_x[r] = 0                          (r never referenced -- dead/padding rows of x)
+      grad_x[0] += sum(grad_out[pads])       (forward clamped -1 -> row 0; pad grads are 0
+                                              in practice -- skip rows get no input grad)
+    Forward is bit-identical to the original; backward is bit-identical except (at most) the
+    row-0 pad-sum order, which only ever adds exact zeros. Validated by a 10-step E2E
+    bit-identical loss-trace test vs the index_add path."""
+
+    @staticmethod
+    def forward(ctx, x, idx):
+        idx_long = torch.clamp(idx, min=0).long()
+        ctx.save_for_backward(idx)
+        ctx.n_rows = x.size(0)
+        return torch.index_select(x, 0, idx_long)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        (idx,) = ctx.saved_tensors
+        n, m = ctx.n_rows, idx.numel()
+        real = idx >= 0
+        # inverse permutation via collision-free scatter (unique targets -> deterministic);
+        # unreferenced rows keep sentinel m and read the appended zero row.
+        inv = torch.full((n,), m, dtype=torch.long, device=grad_out.device)
+        pos = torch.arange(m, dtype=torch.long, device=grad_out.device)
+        inv.scatter_(0, idx[real].long(), pos[real])
+        padded = torch.cat([grad_out, grad_out.new_zeros(1, grad_out.size(1))], dim=0)
+        grad_x = padded.index_select(0, inv)
+        n_pad = m - int(real.sum())
+        if n_pad > 0:
+            grad_x[0] = grad_x[0] + grad_out[~real].sum(dim=0)
+        return grad_x, None
+
+
+@torch.jit.ignore
+def perm_gather(x: torch.Tensor, idx: torch.Tensor) -> torch.Tensor:
+    return _PermGather.apply(x, idx)
+
+
+# RWKV_PERM_GATHER=0 restores the stock clamp+index_select (escape hatch; default ON).
+_USE_PERM_GATHER = os.environ.get("RWKV_PERM_GATHER", "1") != "0"
+
+
 class SrsRWKVIterStatistics(NamedTuple):
     average_loss: torch.Tensor
     loss_tensor: torch.Tensor
@@ -110,6 +161,7 @@ class SrsRWKV(ModuleType):
         super().__init__()
 
         self.card_features_dim = 92
+        self.use_perm_gather = _USE_PERM_GATHER
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * self.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
@@ -230,9 +282,14 @@ class SrsRWKV(ModuleType):
             for split_gather, sub_len, time_shift_select, skip in zip(
                 module_splits, sub_lens, time_shift_selects, skips
             ):
-                module_in = torch.index_select(
-                    x, dim=0, index=torch.clamp(split_gather, min=0)
-                ).view(-1, sub_len, self.d_model)
+                if self.use_perm_gather:
+                    module_in = perm_gather(x, split_gather).view(
+                        -1, sub_len, self.d_model
+                    )
+                else:
+                    module_in = torch.index_select(
+                        x, dim=0, index=torch.clamp(split_gather, min=0)
+                    ).view(-1, sub_len, self.d_model)
                 time_shift_select_BT = time_shift_select.view(-1, sub_len)
                 skip_BT = skip.view(-1, sub_len)
                 assert module_in.size(0) == time_shift_select_BT.size(
