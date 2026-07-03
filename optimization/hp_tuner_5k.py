@@ -1,8 +1,9 @@
-"""Greedy coordinate-descent HP tuner for the 5k phase -- run on the 1500-user PROXY
-(train_db_sc8k_1500, users 1000-2499, eval 101-200) with the 5k compute-budget SHAPE
-(2 WS epochs + 0.5 decay epochs) and the H=2/K=16 champion arch. The winning HPs transfer to the
-full 1-5000 run (warmup may need rescaling to the 5k step count). Full-5k tuning would be ~4-5 days
-per sweep; the proxy is ~85 min/trial.
+"""Greedy coordinate-descent HP tuner for the 5k phase -- FULL 5k: train users 1-5000
+(train_db_5k_h1, MAX=110000), tune-eval on the HELD-OUT subset 5001-5200 (test_db_5k), the H=2/K=16
+champion arch, QUANT-AWARE throughout (methodology a: WS + decay + eval all run with the fused
+card/note fake-quant env). The 1500-proxy era is over (proxy proved unfaithful, see notes 2026-06-30).
+PREREQ: build STEP3 finished + `python optimization/count_groups_5k.py` run once (writes
+optimization/groups_5k.json = the real GROUPS_PER_EPOCH for the 2-epoch WS budget).
 
 Stateless POLICY over an append-only journal (optimization/tuner_5k_log.jsonl). The agent calls `next`
 to emit the next trial, detaches the generated self-recording .cmd, and repeats until DONE. Each .cmd
@@ -20,7 +21,7 @@ growing 300n window. RWKV_PRUNE_MIN_STEP = 2x the TRIAL's warmup (a big-warmup t
 construction; delaying the first check avoids false prunes). A pruned trial records its ESTIMATED logloss
 (champ_final + cand@s - champ@s, from the .pruned.json marker) to the journal with "pruned": true --
 coordinate descent proceeds on the estimate (an abysmal trial never wins a coordinate anyway).
-Objective minimized = ahead + imm (fp32, by-user mean on 101-200). The strict accept gate is applied
+Objective minimized = ahead + imm (fp32, by-user mean on 5001-5200). The strict accept gate is applied
 separately when declaring a champion. CLI matches hp_tuner.py: next / record <name> /
 record-baseline <ahead> <imm> / status / loop.
 """
@@ -32,13 +33,30 @@ import sys
 ROOT = "C:/Users/Andrew/rwkv-anki-autoresearch"
 JOURNAL = f"{ROOT}/optimization/tuner_5k_log.jsonl"
 TRIAL_DIR = f"{ROOT}/scratchpad/tuner5k"
-# train_db_sc8k_1500 @ MAX=66000 -> get_groups gives 3351 groups (the H2K16 champion's 1 WS epoch = 3351 steps).
-GROUPS_PER_EPOCH = 3351
+# GROUPS_PER_EPOCH depends on the finished train_db_5k_h1: run `python optimization/count_groups_5k.py`
+# once after build STEP3 -> it writes optimization/groups_5k.json, loaded here.
+_GROUPS_JSON = f"{ROOT}/optimization/groups_5k.json"
+
+
+def _load_groups_per_epoch():
+    if not os.path.exists(_GROUPS_JSON):
+        raise SystemExit("groups_5k.json missing -- run `python optimization/count_groups_5k.py` "
+                         "after build STEP3 (train_db_5k_h1) completes")
+    with open(_GROUPS_JSON) as fh:
+        return int(json.load(fh)["groups_per_epoch"])
+
+
+GROUPS_PER_EPOCH = None  # resolved lazily via ws_steps()
 WS_EPOCHS = 2        # FIXED (5k budget)
 # Decay epochs are now a TUNED lever (Andrew 2026-07-01): decay_ep = WS_EPOCHS * decay_ratio,
 # ratio in [1/10, 1/2.5] -> decay in [0.2, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
-TRAIN_DB = "train_db_sc8k_1500"
-USTART, UEND = 1000, 2499
+TRAIN_DB = "train_db_5k_h1"
+USTART, UEND = 1, 5000
+EVAL_USTART, EVAL_UEND = 5001, 5200   # tune-eval: held-out subset of 5001-10000
+# Methodology (a): every 5k run trains AND evaluates quant-aware (fused card/note fake-quant).
+QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
+           "set RWKV_QAT_PQ=reference/pq_cb_m2b8.txt\n"
+           "set RWKV_QAT_FUSED=1\n")
 NUM_FETCH = 10       # max-useful fetch (GPU saturates ~8-10 on a clean box); Andrew 2026-06-30 raised
 # 5->10 as CPU frees up (FSRS postponed). Needs FETCH_AHEAD>=10 in train_rwkv.py to be usable (now 10).
 
@@ -110,7 +128,10 @@ def trial_name(param, cfg):
 
 
 def ws_steps():
-    return WS_EPOCHS * GROUPS_PER_EPOCH  # 6702
+    global GROUPS_PER_EPOCH
+    if GROUPS_PER_EPOCH is None:
+        GROUPS_PER_EPOCH = _load_groups_per_epoch()
+    return WS_EPOCHS * GROUPS_PER_EPOCH
 
 
 def write_trial_files(name, param, cfg):
@@ -131,18 +152,18 @@ def write_trial_files(name, param, cfg):
     ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
 TRAIN_USERS_START = {USTART}
 TRAIN_USERS_END = {UEND}
-VALIDATE_USERS_START = 101
-VALIDATE_USERS_END = 110
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
 
 TRAIN_DATASET_LMDB_PATH = "{TRAIN_DB}"
-TRAIN_DATASET_LMDB_SIZE = 80_000_000_000
-VALIDATE_DATASET_LMDB_PATH = "test_db"
-VALIDATE_DATASET_LMDB_SIZE = 8_000_000_000
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
 LABEL_FILTER_LMDB_PATH = "label_filter_db"
-LABEL_FILTER_LMDB_SIZE = 2_000_000_000
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
 NUM_FETCH_PROCESSES = {NUM_FETCH}
-MAX_TRAIN_GLOBAL_LEN = 66000
+MAX_TRAIN_GLOBAL_LEN = 110000
 
 TRAIN_MODE = "WS"
 STEP_OFFSET = 1
@@ -185,7 +206,7 @@ set RWKV_N_HEADS=2
 set RWKV_HEAD_DIM=16
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
 set RWKV_CLIP={cfg["clip"]:g}
-{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
+{QAT_ENV}{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
 echo === WS {WS_EPOCHS} epochs ({USTART}-{UEND}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_ws.toml >> "%LOG%" 2>&1
 if %ERRORLEVEL%==42 (
@@ -201,7 +222,7 @@ echo === DECAY {decay_ep:g} epoch (ratio {cfg["decay_ratio"]:g}) %TIME% === >> "
 del /Q result\\RWKV-{name}.jsonl result\\RWKV-P-{name}.jsonl 2>nul
 echo === WRITE EVAL TOML %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} >> "%LOG%" 2>&1
-echo === EVAL 101-200 %TIME% === >> "%LOG%"
+echo === EVAL {EVAL_USTART}-{EVAL_UEND} (quant-aware) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.get_result --config scratchpad/tuner5k/{name}/{name}_eval.toml >> "%LOG%" 2>&1
 echo === RECORD {name} %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe optimization/hp_tuner_5k.py record {name} >> "%LOG%" 2>&1

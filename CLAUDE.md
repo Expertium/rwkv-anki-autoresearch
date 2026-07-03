@@ -491,12 +491,15 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   -> find_equalize 1-5000 -> test_db 1-5000 -> train_db 5001-10000 (F:)); log `scratchpad/build_5k.log`;
   ~2-4 days. Eval data for 5001-10000 lands FIRST so the d=128 baseline eval can start before the train_dbs
   finish. Monitor via OS truth; the 6 configs are `rwkv/*_5k_*.toml` (PROCESSES=6).
-- **NEXT (per methodology g), in order once data allows:** (1) d=128 baseline eval on 5001-10000 (arch-swap,
-  needs step-1/2 data); (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware
-  forward -> promote via `promote_champion_5k.py`; (3) HP tune (`hp_tuner_5k.py`, has decay_ratio lever +
-  Wilcoxon pruning; repoint data paths + GROUPS_PER_EPOCH first). In parallel with the build: GPU speedup
-  hunting (Andrew 2026-07-03) -- but any TIMING numbers taken while build workers run are fetch-contaminated
-  (proven in the batch sweep); take final numbers with the build paused or finished.
+- **NEXT (per methodology g), in order once data allows:** (1) d=128 baseline eval on 5001-10000 --
+  ARMED: watcher auto-fires `run_base5k_eval.cmd` after build STEP2 (machinery smoke-verified to <=7e-6);
+  (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware forward -> promote via
+  `promote_champion_5k.py`; (3) HP tune -- `hp_tuner_5k.py` REPOINTED to FULL 5k 2026-07-03 (train 1-5000
+  @ MAX=110000, tune-eval 5001-5200, QAT env in every trial's WS+decay+eval, proxy-era journal archived to
+  tuner_5k_log_proxyera.jsonl; PREREQ after STEP3: `python optimization/count_groups_5k.py` -> groups_5k.json).
+  ALL live 5k tooling now trains on 1-5000 and evals on 5001-10000 ONLY (verified sweep 2026-07-03); the
+  100u/1500u dbs are no longer referenced by anything live (kept on disk, C: has 383 GB free). Any TIMING
+  numbers taken while build workers run are fetch-contaminated; take final numbers with the build idle.
 - Queued research ideas: data-driven init (shrink-perturb / permutation-init, post-HP-tune -- notes
   "Queued idea" section); cross-head readout mix (PHA analog, LIT_REVIEW, low-med). Lit-review queue:
   `optimization/LIT_REVIEW.md`. Everything through the quant port is COMMITTED + pushed (local == GitHub).
