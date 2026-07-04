@@ -1,0 +1,9 @@
+{
+  "groups_per_epoch": 6554,
+  "train_db": "train_db_5k_h1",
+  "max_train_global_len": 110000,
+  "users": [
+    1,
+    5000
+  ]
+}
