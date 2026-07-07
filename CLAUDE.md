@@ -349,14 +349,21 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
   scale toward 5k). (2) K<32 UNBLOCKED -- the WKV kernel is now K-dynamic (any K dividing 32), so H=2/K=16 gives
   the 2x-smaller-state + faster model that makes 5k-user training practical. PRIOR champions kept as refs:
   champ_1500d (H=1/K=32, 0.309706/0.276357), decay15 (100u, 0.314807/0.280200).
-- **DEPLOY config (the sibling's LOCKED recipe, research DONE 2026-07-03) [[champion-logloss-deployed]]:**
-  **e150_pq @ ~352 b/card** = rank-1 PQ (m2b8 codebook `reference/pq_cb_m2b8.txt`) WKV factors + int4
-  token-shifts + 1.5-ep QAT -> VAL **+0.0010 imm / -0.0003 ahead** vs fp32 (compressed BEATS fp32 on ahead);
-  note = 3x card ≈ 1056 b. Deploy env (Rust): `RWKV_STATE_LOWRANK_SCOPE=card:1:int4,note:1:int4
-  RWKV_LOWRANK_PQ=<codebook> RWKV_QUANT_SHIFTS=1 RWKV_LOWRANK_PERCOL=1`. QAT weights
-  `reference/qat_pq_ep150.safetensors` (local). The sibling's engine (`rwkv-state-quant/engine`) already runs
-  H=2/K=16 + PQ; OUR `rust/rwkv-infer` is still K=32-hardwired -> port from the sibling's engine when the
-  deploy-side work resumes. Full detail: sibling `research_log_h2k16.md`.
+- **DEPLOY config (the sibling's FINAL locked recipe `q72u`, research CLOSED 2026-07-07; results ported
+  here 2026-07-08) [[champion-logloss-deployed]]: 72 b/layer = 9-BYTE CARD, 27 B note, 256x compression.**
+  Format per layer: m2b12L learnable shift catalog (2 chunks x 4096 entries, 48 b) + JOINT-UV b10 WKV
+  catalog (per head ONE 10-bit code into a 1024-entry concat(u,v) 32-dim catalog, 20 b) + 1-bit norms (4 b).
+  VAL penalty vs fp32 **+0.00114/+0.00021 (seed 1234) and +0.00115/+0.00040 (seed 4321)** — 2/2 seeds pass
+  with margin; best-ever robustness (imm nbad 96-98/400); imm is ~seed-noise-FREE under joint coding.
+  **Artifacts (ported to our `reference/`):** `qat_pq_q72u.safetensors` + `pq_cb_wkv_q72u.txt` +
+  `pq_cb_shift_q72u.txt`. **Deploy env (Rust):** `RWKV_STATE_LOWRANK_SCOPE=card:1:int4,note:1:int4
+  RWKV_QUANT_SHIFTS=1 RWKV_LOWRANK_PERCOL=1 RWKV_LOWRANK_PQ=reference/pq_cb_wkv_q72u.txt
+  RWKV_SHIFT_PQ=reference/pq_cb_shift_q72u.txt RWKV_PQ_NORM_BITS=1`. **QAT recipe:** warm-start champion,
+  2.0-ep plain QAT (no rotation/anneal/KD), BOTH cbs learnable (`RWKV_QAT_PQ_LEARN=1
+  RWKV_QAT_SHIFT_PQ_LEARN=1`), `RWKV_QAT_NORM_BITS=1 RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3`, NO_JIT.
+  **The full engine (joint cb + warm search + norm quant) IS in OUR `rust/rwkv-infer` since `1d3b5b8`**
+  (byte-identical champion eval verified from the parent build). Full detail: sibling
+  `research_log_h2k16.md` + explainer `how_state_compression_works.md`.
 
 ### ACCEPTANCE GATE (research phase) -- accept iff ALL hold (record binary accepted/rejected per iter):
 1. "size" (equalized review count, 101-200) IDENTICAL to champion (data-integrity; any change = pipeline bug).
@@ -372,9 +379,12 @@ inputs / existing LMDBs (no new/changed inputs).
 **5k-PHASE METHODOLOGY (Andrew 2026-07-01) -- full text in `optimization/research_5k_notes.md`:** the 5k
 research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-10000 as the target) keeps
 the same >=0.0003-BOTH-modes gate + params <=225,000, and ADDS: (a) **LogLoss recorded WITH (fake)
-card- AND note-state quantization** -- beat the old fp big model *while* quantized (fused fake-quant kernels
-PORTED from the sibling 2026-07-03; env `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
-RWKV_QAT_PQ=reference/pq_cb_m2b8.txt RWKV_QAT_FUSED=1`); (b) card+note state sizes FIXED, but deck/preset MAY grow
+card- AND note-state quantization** -- beat the old fp big model *while* quantized. Env UPDATED 2026-07-08
+to the final q72u recipe (fixed champion codebooks, no cb-learning -- that upgrade needs per-run
+cb-export->eval wiring, queued): `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
+RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt
+RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1` (JIT on the
+grafted q72u paths unverified -- A/B once at champion-run launch); (b) card+note state sizes FIXED, but deck/preset MAY grow
 ~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/10, 1/2.5] (decay
 0.2-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
 then re-tune after accumulated small changes OR a major one; (e) every change must be Rust/CPU-deployable
@@ -415,8 +425,17 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   via a real profile A/B, and needs RWKV_NO_JIT (Dynamo can't trace ScriptModules). Gate parallelism
   (run_qat_eval.sh NPROC) made the Rust gate ~8x faster.
 - **DONE (was BLOCKED): K<32** -- the WKV kernel is now K-DYNAMIC (any K dividing 32; byte-identical at K=32,
-  K=16 parity-verified) and H=2/K=16 is the champion. OUR `rust/rwkv-infer` is still K=32-hardwired; the
-  sibling's engine already runs K=16+PQ -> port from there when deploy-side work resumes.
+  K=16 parity-verified) and H=2/K=16 is the champion. ~~OUR rust/rwkv-infer is still K=32-hardwired~~
+  RESOLVED: `1d3b5b8` ported the sibling's full engine (K-dynamic + PQ + joint cb + warm search).
+- **QUANT ENDGAME LESSONS (sibling, 2026-07-04..07, full ladder in its research_log_h2k16.md):** per-card
+  cost is INDEX bits -- catalog size is FREE (amortized): fewer/bigger chunks + huge learnable catalogs beat
+  the product form on BOTH shift (m2b12) and WKV (joint-uv b10) sides * JOINT coding of correlated vectors
+  buys robustness + seed-stability more than mean * rotation lever CLOSED (absorbed by learnable m=1
+  catalogs; negative on big catalogs; only "won" on capacity-starved rungs that died as seed luck) * EMA at
+  decay-tail = nil (3 confirmations); 2-seed weight soup HURTS (breaks weight<->cb co-adaptation) * norm
+  axis bottoms out at 1 bit (0-bit fixed norms = +0.004 cliff) * ⚠ SEED-PAIR DOCTRINE: at-the-gate passes
+  with margin < ~0.001 imm / ~0.002 ahead are UNRESOLVABLE by one run (64-b and 56-b "wins" both died on the
+  seed test); any thin-margin verdict needs the exact recipe re-run at a second RWKV_AUGMENT_SEED.
 - STILL DEFERRED: CUDA graphs (variable shapes, ~1.1-1.3x only); Stateful-BPTT carry SHELVED (smaller chunks
   don't speed training; the verified stateful WKV kernel is done + committed) [[stateful-bptt-shelved]].
 - **TIER 1 DEPLOYED (2026-07-01):** the cudaMalloc/cudaFree->`torch::empty` caching-allocator scratch (WKV
@@ -473,7 +492,18 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   over plain. BIT-EXACT verified** (32-tensor golden fwd+bwd, int-N + PQ paths, both shapes) + deploy
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
-### LIVE STATE (2026-07-03, 5k phase opened)
+### LIVE STATE (2026-07-08)
+- **★ QUANT RESEARCH CLOSED + FULLY PORTED (2026-07-08).** The sibling (`rwkv-state-quant`) finished its
+  bit-descent 2026-07-07: final champion **q72u = 72 b/layer (9-byte card)**, 2-seed-confirmed, details in
+  the CHAMPION "DEPLOY config" block above. Its full 2026-07-07 code stack (CUDA joint-uv/norm-quant/warm
+  search + train_rwkv QAT wiring + the complete Rust engine) landed here in `1d3b5b8` (the sibling's Claude
+  verified byte-identical champion eval from OUR build); the RESULTS layer (champion artifacts ->
+  `reference/`, deploy env, methodology-(a) QAT env in `hp_tuner_5k.py`, lesson bank) ported 2026-07-08.
+  Open follow-ups from the port: (i) per-run learnable-cb export->eval wiring (5k runs currently use FIXED
+  q72u catalogs), (ii) JIT unverified on the grafted q72u paths (5k QAT env sets RWKV_NO_JIT=1; A/B once at
+  champion-run launch -- affects the ~450 ms/step figure), (iii) 5k-phase state-size gates: card/note
+  budgets should now be interpreted against the 72-b deploy format.
+- *(2026-07-03 era below)*
 - **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
   Fused QAT CUDA kernels (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python
   loop), PQ codebook `reference/pq_cb_m2b8.txt`, shift-QAT (JIT-annotated here; sibling ran NO_JIT),

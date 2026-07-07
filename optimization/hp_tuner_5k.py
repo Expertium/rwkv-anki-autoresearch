@@ -54,9 +54,19 @@ TRAIN_DB = "train_db_5k_h1"
 USTART, UEND = 1, 5000
 EVAL_USTART, EVAL_UEND = 5001, 5200   # tune-eval: held-out subset of 5001-10000
 # Methodology (a): every 5k run trains AND evaluates quant-aware (fused card/note fake-quant).
+# 2026-07-08: repointed to the sibling's FINAL locked recipe q72u (72 b/layer: joint-uv b10 WKV cb +
+# m2b12 shift cb + 1-bit norms + int3 shift scope). Codebooks FIXED (no *_LEARN): the sibling's full
+# recipe LEARNS both cbs, but that needs per-run cb-export -> eval rewiring; fixed champion catalogs
+# keep train==eval==deploy consistent within each trial with zero plumbing (upgrade queued).
+# RWKV_NO_JIT=1: the grafted q72u paths (fake_pq_shift, joint cb) are unverified under TorchScript;
+# the sibling always ran NO_JIT. A/B JIT once at champion-run launch before removing.
 QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
-           "set RWKV_QAT_PQ=reference/pq_cb_m2b8.txt\n"
-           "set RWKV_QAT_FUSED=1\n")
+           "set RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt\n"
+           "set RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt\n"
+           "set RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3\n"
+           "set RWKV_QAT_NORM_BITS=1\n"
+           "set RWKV_QAT_FUSED=1\n"
+           "set RWKV_NO_JIT=1\n")
 NUM_FETCH = 10       # max-useful fetch (GPU saturates ~8-10 on a clean box); Andrew 2026-06-30 raised
 # 5->10 as CPU frees up (FSRS postponed). Needs FETCH_AHEAD>=10 in train_rwkv.py to be usable (now 10).
 

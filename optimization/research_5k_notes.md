@@ -25,9 +25,14 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    quantization applied** — the goal is to beat the old fp big model *while* being more efficient via
    quantization, not just to beat it. The old d=128 baseline stays fp (it is the target).
    **PORTED (2026-07-03): the sibling's fused fake-quant machinery is now in-repo** (see "Quantization
-   port" section below): env `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
-   RWKV_QAT_PQ=reference/pq_cb_m2b8.txt RWKV_QAT_FUSED=1` turns any train/eval forward quant-aware
-   (rank-1 PQ m2b8 WKV per the LOCKED sibling recipe; int4 shift PTQ is ~free and applied at deploy).
+   port" section below). **ENV UPDATED 2026-07-08 to the sibling's FINAL locked recipe q72u** (72 b/layer
+   = 9-byte card: joint-uv b10 WKV catalog + m2b12 shift catalog + 1-bit norms + int3 shift scope; 2-seed
+   VAL +0.00114/+0.00021 and +0.00115/+0.00040; artifacts in `reference/*q72u*`):
+   `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt
+   RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3
+   RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1`. Codebooks run FIXED in 5k trials (the sibling's
+   full recipe LEARNS them — enabling that here needs per-run cb-export→eval wiring, queued); NO_JIT until
+   TorchScript is A/B-verified on the grafted q72u paths (once, at champion-run launch).
 5. **State-size rules.** Card and note per-entity state sizes are **FIXED (cannot change).** Deck, preset,
    and global state **may grow** — they're cheap: deck/preset ~5–10×, global even up to ~100× is allowed
    (though unlikely to help much).
