@@ -255,10 +255,14 @@ def shift_pq_export(path):
         fh.write("\n".join(lines) + "\n")
 
 
+@torch.jit.ignore
 def fake_pq_shift(x_BTC: torch.Tensor, role: int) -> torch.Tensor:
     """Shift-PQ round-trip of (B,T,C), role 0 = t_xshift / 1 = c_xshift. Compute in f32 like deploy.
     Backward: straight-through to x; embedding-style gradients to the codebook when it is a Parameter
-    (selection indices are frozen per step, like a hard-EM assignment)."""
+    (selection indices are frozen per step, like a hard-EM assignment).
+    @torch.jit.ignore: internals (env-driven catalogs, rotation cache, custom autograd) are not
+    scriptable -- scripted mixer forwards call this via the python fallback (same pattern as
+    quant_aware_rwkv7)."""
     cb = shift_pq_init(x_BTC.device)
     m, sub, ncent = _SHIFT_PQ_META
     B, T, C = x_BTC.shape
@@ -372,6 +376,8 @@ class RWKV7ChannelMixer(ModuleType):
         assert 32 % (config.d_model // config.n_heads) == 0
         self.d_model = config.d_model
         self.state_shift_qmax = config.state_shift_qmax  # shift-QAT: inf = off
+        # TorchScript can't read module-level str globals from a scripted forward -> instance bool
+        self.shift_pq_on = bool(_SHIFT_PQ_PATH)
         with torch.no_grad():
             ratio_1_to_almost_0 = 1.0 - (layer_id / config.total_layers)
             self.layer_norm = torch.nn.LayerNorm(config.d_model)
@@ -401,7 +407,7 @@ class RWKV7ChannelMixer(ModuleType):
         x_BTC = self.layer_norm(in_BTC)
         x_shift_BTC = time_shift_gather(x_BTC, time_shift_select_BT)
         if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
-            if _SHIFT_PQ_PATH:
+            if self.shift_pq_on:
                 x_shift_BTC = fake_pq_shift(x_shift_BTC, 1)  # role 1 = c_xshift
             else:
                 x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
@@ -498,6 +504,8 @@ class RWKV7TimeMixer(ModuleType):
         self.state_lowrank_rank = config.state_lowrank_rank      # low-rank QAT: 0 = off
         self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
+        # TorchScript can't read module-level str globals from a scripted forward -> instance bool
+        self.shift_pq_on = bool(_SHIFT_PQ_PATH)
 
         with torch.no_grad():
             ratio_0_to_1 = layer_id / max(config.n_layers - 1, 1)  # guard 1-layer stream (iter35 card=1)
@@ -601,7 +609,7 @@ class RWKV7TimeMixer(ModuleType):
         x_BTC = self.layer_norm(in_BTC)
         x_shift_BTC = time_shift_gather(x_BTC, time_shift_select_BT)
         if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
-            if _SHIFT_PQ_PATH:
+            if self.shift_pq_on:
                 x_shift_BTC = fake_pq_shift(x_shift_BTC, 0)  # role 0 = t_xshift
             else:
                 x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)

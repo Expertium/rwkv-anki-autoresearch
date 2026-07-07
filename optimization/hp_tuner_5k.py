@@ -59,8 +59,11 @@ EVAL_USTART, EVAL_UEND = 5001, 5200   # tune-eval: held-out subset of 5001-10000
 # cbs init from the reference q72u catalogs and train per-run; the trial cmd repoints the env at each
 # phase seam (WS-final exports feed the decay, decay-final exports feed the eval — the cb Parameters
 # are process-globals initialized from these env files, NOT part of the ckpt; see resolve_run_cbs.py).
-# RWKV_NO_JIT=1: the grafted q72u paths (fake_pq_shift, joint cb) are unverified under TorchScript;
-# the sibling always ran NO_JIT. A/B JIT once at champion-run launch before removing.
+# FROZEN 5k-FAMILY SPEED ENV (A/B/C verdict 2026-07-08, scratchpad/jitab): JIT vs NO_JIT is a wash
+# (1.643 vs 1.658 s/step); NO_JIT + the sibling's sanctioned round-4 flag set (COMPILE=student +
+# ROT_CACHE + FAST_EMB + EMA_FOREACH + NO_MEMFILL) = 1.207 s/step (1.37x) -> ADOPTED. Never flip
+# these inside the comparison family. ⚠ COMPILE needs MSVC cl.exe: every trial cmd calls vcvars64
+# (without it inductor dies as "cl is not found", the NaN-except swallows it, steps go hollow).
 QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
            "set RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt\n"
            "set RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt\n"
@@ -69,7 +72,12 @@ QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
            "set RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3\n"
            "set RWKV_QAT_NORM_BITS=1\n"
            "set RWKV_QAT_FUSED=1\n"
-           "set RWKV_NO_JIT=1\n")
+           "set RWKV_NO_JIT=1\n"
+           "set RWKV_QAT_COMPILE=student\n"
+           "set RWKV_QAT_ROT_CACHE=1\n"
+           "set RWKV_QAT_FAST_EMB=1\n"
+           "set RWKV_QAT_EMA_FOREACH=1\n"
+           "set RWKV_QAT_NO_MEMFILL=1\n")
 NUM_FETCH = 10       # max-useful fetch (GPU saturates ~8-10 on a clean box); Andrew 2026-06-30 raised
 # 5->10 as CPU frees up (FSRS postponed). Needs FETCH_AHEAD>=10 in train_rwkv.py to be usable (now 10).
 
@@ -208,6 +216,8 @@ WANDB_RESUME_ID = ""
     #     applies to WS, decay AND eval. Decay starts from this trial's peak_lr (passed to write_decay_setup). ---
     cmd = f"""@echo off
 cd /d C:\\Users\\Andrew\\rwkv-anki-autoresearch
+REM RWKV_QAT_COMPILE needs MSVC cl.exe on PATH or inductor fails into hollow skipped-batch steps
+call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat" > nul
 set LOG=C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\tuner5k\\{name}.log
 set OMP_NUM_THREADS={NUM_FETCH}
 set PYTHONUNBUFFERED=1

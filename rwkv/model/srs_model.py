@@ -6,7 +6,7 @@ from rwkv.config import RWKV_SUBMODULES
 from rwkv.data_processing import RWKVSample
 from rwkv.model.rwkv_model import RWKV7
 import torch
-from typing import NamedTuple
+from typing import NamedTuple, Optional, Tuple
 
 from rwkv.architecture import AnkiRWKVConfig
 
@@ -328,7 +328,8 @@ class SrsRWKV(ModuleType):
         batch_num_data: int,
         batch_labels: torch.Tensor,
         batch_label_review_th: torch.Tensor,
-        kd=None,
+        # typed for TorchScript (an untyped kd infers as Tensor and the tuple unpack fails to script)
+        kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits = self.forward_batch(
             batch_start,
@@ -495,7 +496,8 @@ class SrsRWKV(ModuleType):
             has_label=has_label.detach(),
         )
 
-    def get_loss(self, batch: PreparedBatch, kd=None):
+    def get_loss(self, batch: PreparedBatch,
+                 kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None):
         return self._get_loss(
             batch.start,
             batch.sub_gather,

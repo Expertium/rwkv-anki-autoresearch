@@ -501,10 +501,15 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   `reference/`, deploy env, methodology-(a) QAT env in `hp_tuner_5k.py`, lesson bank) ported 2026-07-08.
   Open follow-ups from the port: (i) ~~per-run learnable-cb wiring~~ DONE 2026-07-08 (LEARN=1 in QAT_ENV;
   resolve_run_cbs.py repoints env at WS->decay and decay->eval seams; champion_5k.json carries
-  ckpt+cb_wkv+cb_shift; a champion's evals/deploys use ITS OWN cbs), (ii) JIT unverified on the grafted
-  q72u paths (5k QAT env sets RWKV_NO_JIT=1; A/B once at champion-run launch -- affects the ~450 ms/step
-  figure), (iii) 5k-phase state-size gates: card/note budgets should now be interpreted against the 72-b
-  deploy format.
+  ckpt+cb_wkv+cb_shift; a champion's evals/deploys use ITS OWN cbs), (ii) ~~JIT unverified~~ RESOLVED
+  2026-07-08 (scratchpad/jitab A/B/C): TorchScript FIXED on the grafted paths (instance-bool shift_pq_on +
+  jit.ignore fake_pq_shift + typed kd tuple) but JIT vs NO_JIT is a WASH (1.643 vs 1.658 s/step);
+  **ADOPTED + FROZEN 5k-family env = NO_JIT + the sibling's sanctioned round-4 flags (COMPILE=student +
+  ROT_CACHE + FAST_EMB + EMA_FOREACH + NO_MEMFILL) = 1.207 s/step (1.37x). Never flip flags inside the
+  family. ⚠ COMPILE runs MUST call vcvars64 first (no cl.exe -> inductor errors swallowed by the
+  NaN-except as hollow skipped batches, exit 0). q72u-era quant-aware step at MAX=110000 = 1.21 s (the
+  old ~450 ms predates joint-search/shift-PQ/learnable cbs); champion run ~= 5.6 h**, (iii) 5k-phase
+  state-size gates: card/note budgets should now be interpreted against the 72-b deploy format.
 - *(2026-07-03 era below)*
 - **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
   Fused QAT CUDA kernels (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python
