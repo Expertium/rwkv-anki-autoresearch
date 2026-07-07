@@ -29,10 +29,16 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    = 9-byte card: joint-uv b10 WKV catalog + m2b12 shift catalog + 1-bit norms + int3 shift scope; 2-seed
    VAL +0.00114/+0.00021 and +0.00115/+0.00040; artifacts in `reference/*q72u*`):
    `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt
-   RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3
-   RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1`. Codebooks run FIXED in 5k trials (the sibling's
-   full recipe LEARNS them — enabling that here needs per-run cb-export→eval wiring, queued); NO_JIT until
-   TorchScript is A/B-verified on the grafted q72u paths (once, at champion-run launch).
+   RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt RWKV_QAT_PQ_LEARN=1 RWKV_QAT_SHIFT_PQ_LEARN=1
+   RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1`.
+   **CODEBOOK LEARNING ON (2026-07-08, Andrew's direction #1):** cbs init from the reference q72u
+   catalogs and train per-run; because the cb Parameters are process-globals initialized from the env
+   files (NOT in the ckpt), the trial cmd repoints the env at each phase seam via
+   `scratchpad/resolve_run_cbs.py` (WS-final exports → decay env; decay-final exports → eval env; fails
+   LOUD with DONE_EXIT_CBFAIL_* if exports are missing). A champion = weights + ITS learned cbs —
+   `promote_champion_5k.py` now records `ckpt`/`cb_wkv`/`cb_shift` in champion_5k.json, and any
+   deploy/Rust-parity check of that champion must use those files, not the reference catalogs. NO_JIT
+   until TorchScript is A/B-verified on the grafted q72u paths (once, at champion-run launch).
 5. **State-size rules.** Card and note per-entity state sizes are **FIXED (cannot change).** Deck, preset,
    and global state **may grow** — they're cheap: deck/preset ~5–10×, global even up to ~100× is allowed
    (though unlikely to help much).

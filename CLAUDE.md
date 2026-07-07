@@ -499,10 +499,12 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   search + train_rwkv QAT wiring + the complete Rust engine) landed here in `1d3b5b8` (the sibling's Claude
   verified byte-identical champion eval from OUR build); the RESULTS layer (champion artifacts ->
   `reference/`, deploy env, methodology-(a) QAT env in `hp_tuner_5k.py`, lesson bank) ported 2026-07-08.
-  Open follow-ups from the port: (i) per-run learnable-cb export->eval wiring (5k runs currently use FIXED
-  q72u catalogs), (ii) JIT unverified on the grafted q72u paths (5k QAT env sets RWKV_NO_JIT=1; A/B once at
-  champion-run launch -- affects the ~450 ms/step figure), (iii) 5k-phase state-size gates: card/note
-  budgets should now be interpreted against the 72-b deploy format.
+  Open follow-ups from the port: (i) ~~per-run learnable-cb wiring~~ DONE 2026-07-08 (LEARN=1 in QAT_ENV;
+  resolve_run_cbs.py repoints env at WS->decay and decay->eval seams; champion_5k.json carries
+  ckpt+cb_wkv+cb_shift; a champion's evals/deploys use ITS OWN cbs), (ii) JIT unverified on the grafted
+  q72u paths (5k QAT env sets RWKV_NO_JIT=1; A/B once at champion-run launch -- affects the ~450 ms/step
+  figure), (iii) 5k-phase state-size gates: card/note budgets should now be interpreted against the 72-b
+  deploy format.
 - *(2026-07-03 era below)*
 - **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
   Fused QAT CUDA kernels (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python
@@ -534,6 +536,20 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   `count_groups_5k.py` run: GROUPS_PER_EPOCH = 6554 → groups_5k.json (hp_tuner prereq DONE). Champion-run
   arithmetic: 2 WS ep = 13,108 steps + decay 0.2–0.8 ep → total ~14.4k–18.4k steps ≈ 1.8–2.3 h clean.
   EVERYTHING for the champion run is staged — only the GPU hold gates it.**
+- **★ TONIGHT'S DIRECTION (Andrew 2026-07-08, supersedes the NEXT list below where they differ):**
+  (1) ADD CODEBOOK LEARNING to 5k runs (per-run learnable cbs: train with RWKV_QAT_PQ_LEARN=1 +
+  RWKV_QAT_SHIFT_PQ_LEARN=1, export each run's learned cbs, point that run's quant-aware EVAL + any
+  deploy at ITS OWN exported cbs — the promote/champion flow carries cb artifacts with the ckpt);
+  (2) TURN JIT ON (A/B TorchScript on the grafted q72u paths: parity + speed; drop RWKV_NO_JIT if clean)
+  -> compaction about here; (3) hunt any remaining speedups (profile the q72u quant-aware step — joint
+  search / shift-PQ / norm paths are new surface; check the sibling's speed-round flags for portable
+  wins); (4) FIRST REAL 5k CHAMPION RUN (champion-HP, quant-aware, RWKV_STEP_TRACE -> promote);
+  (5) HP TUNING (hp_tuner_5k); (6) STATE-SIZE KNOBS in this order, each until gain <0.0003 (the phase
+  threshold) or its ceiling: deck up to 5x -> preset up to 10x -> global up to 50x. **RULE (write-down,
+  Andrew 2026-07-08): card and note state sizes REMAIN FIXED — the only exception is an architectural
+  change that makes a card/note state-size change INEVITABLE (not a tuning knob, a structural
+  consequence).** (7) then any architectural improvements at my discretion (queued ideas: warmup
+  distillation, data-driven init, cross-head readout mix, LIT_REVIEW).
 - **NEXT (per methodology g), in order once data allows:** (1) ~~d=128 baseline eval~~ DONE (above);
   (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware forward -> promote via
   `promote_champion_5k.py`; (3) HP tune -- `hp_tuner_5k.py` REPOINTED to FULL 5k 2026-07-03 (train 1-5000

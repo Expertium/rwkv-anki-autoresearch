@@ -54,15 +54,18 @@ TRAIN_DB = "train_db_5k_h1"
 USTART, UEND = 1, 5000
 EVAL_USTART, EVAL_UEND = 5001, 5200   # tune-eval: held-out subset of 5001-10000
 # Methodology (a): every 5k run trains AND evaluates quant-aware (fused card/note fake-quant).
-# 2026-07-08: repointed to the sibling's FINAL locked recipe q72u (72 b/layer: joint-uv b10 WKV cb +
-# m2b12 shift cb + 1-bit norms + int3 shift scope). Codebooks FIXED (no *_LEARN): the sibling's full
-# recipe LEARNS both cbs, but that needs per-run cb-export -> eval rewiring; fixed champion catalogs
-# keep train==eval==deploy consistent within each trial with zero plumbing (upgrade queued).
+# 2026-07-08: the sibling's FINAL locked recipe q72u (72 b/layer: joint-uv b10 WKV cb + m2b12 shift cb
+# + 1-bit norms + int3 shift scope), with CODEBOOK LEARNING ON (Andrew, tonight's direction #1): both
+# cbs init from the reference q72u catalogs and train per-run; the trial cmd repoints the env at each
+# phase seam (WS-final exports feed the decay, decay-final exports feed the eval — the cb Parameters
+# are process-globals initialized from these env files, NOT part of the ckpt; see resolve_run_cbs.py).
 # RWKV_NO_JIT=1: the grafted q72u paths (fake_pq_shift, joint cb) are unverified under TorchScript;
 # the sibling always ran NO_JIT. A/B JIT once at champion-run launch before removing.
 QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
            "set RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt\n"
            "set RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt\n"
+           "set RWKV_QAT_PQ_LEARN=1\n"
+           "set RWKV_QAT_SHIFT_PQ_LEARN=1\n"
            "set RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3\n"
            "set RWKV_QAT_NORM_BITS=1\n"
            "set RWKV_QAT_FUSED=1\n"
@@ -225,10 +228,26 @@ if %ERRORLEVEL%==42 (
   echo DONE_EXIT_PRUNED %DATE% %TIME% >> "%LOG%"
   exit /b 0
 )
+echo === RESOLVE WS CODEBOOKS (feed decay) %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe scratchpad/resolve_run_cbs.py scratchpad/tuner5k/{name} {name}ws scratchpad/tuner5k/{name}/cb_wkv_ws.txt scratchpad/tuner5k/{name}/cb_shift_ws.txt >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_CBFAIL_WS %DATE% %TIME% >> "%LOG%"
+  exit /b 3
+)
+set RWKV_QAT_PQ=scratchpad/tuner5k/{name}/cb_wkv_ws.txt
+set RWKV_QAT_SHIFT_PQ=scratchpad/tuner5k/{name}/cb_shift_ws.txt
 echo === DECAY SETUP %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner5k/{name} {name}ws {name}d scratchpad/tuner5k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {decay_ep:g} {cfg["peak_lr"]:g} >> "%LOG%" 2>&1
 echo === DECAY {decay_ep:g} epoch (ratio {cfg["decay_ratio"]:g}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_decay.toml >> "%LOG%" 2>&1
+echo === RESOLVE DECAY CODEBOOKS (feed eval) %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe scratchpad/resolve_run_cbs.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/cb_wkv_final.txt scratchpad/tuner5k/{name}/cb_shift_final.txt >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_CBFAIL_DECAY %DATE% %TIME% >> "%LOG%"
+  exit /b 3
+)
+set RWKV_QAT_PQ=scratchpad/tuner5k/{name}/cb_wkv_final.txt
+set RWKV_QAT_SHIFT_PQ=scratchpad/tuner5k/{name}/cb_shift_final.txt
 del /Q result\\RWKV-{name}.jsonl result\\RWKV-P-{name}.jsonl 2>nul
 echo === WRITE EVAL TOML %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} >> "%LOG%" 2>&1

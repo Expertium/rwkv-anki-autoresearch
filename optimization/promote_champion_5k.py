@@ -25,6 +25,11 @@ def main():
     ap.add_argument("--trace", required=True, help="candidate's WS step-trace jsonl (RWKV_STEP_TRACE output)")
     ap.add_argument("--final-ahead", type=float, required=True, help="final EVAL by-user-mean ahead logloss")
     ap.add_argument("--final-imm", type=float, required=True, help="final EVAL by-user-mean imm logloss")
+    # Learnable-codebook runs (2026-07-08): a champion is (weights + ITS learned codebooks) -- evals,
+    # deploys and Rust-parity checks of this champion must use these files, not the reference q72u cbs.
+    ap.add_argument("--ckpt", default="", help="champion checkpoint .pth path")
+    ap.add_argument("--cb-wkv", default="", help="champion's final learned WKV codebook (txt export)")
+    ap.add_argument("--cb-shift", default="", help="champion's final learned shift codebook (txt export)")
     args = ap.parse_args()
 
     steps, aheads, imms = [], [], []
@@ -48,13 +53,17 @@ def main():
         old = json.loads(OUT.read_text())
         with open(HISTORY, "a") as f:
             f.write(json.dumps({k: old.get(k) for k in
-                                ("name", "date", "final_ahead", "final_imm", "n_trace_steps")}) + "\n")
+                                ("name", "date", "final_ahead", "final_imm", "n_trace_steps",
+                                 "ckpt", "cb_wkv", "cb_shift")}) + "\n")
 
     OUT.write_text(json.dumps({
         "name": args.name,
         "date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "final_ahead": args.final_ahead,
         "final_imm": args.final_imm,
+        "ckpt": args.ckpt,
+        "cb_wkv": args.cb_wkv,
+        "cb_shift": args.cb_shift,
         "n_trace_steps": len(steps),
         "trace_step": steps,
         "trace_ahead": aheads,
