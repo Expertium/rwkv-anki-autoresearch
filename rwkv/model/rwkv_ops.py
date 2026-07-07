@@ -418,14 +418,31 @@ class RWKV7_WKV_QAT_LR(torch.autograd.Function):
 
 
 _PQ_UPLOADED = False
+_PQ_LEARN = os.environ.get("RWKV_QAT_PQ_LEARN", "") == "1"
+_PQ_CB_PARAM = None   # f32 Parameter [2*m*ncent*sub] (roles 0,1) when _PQ_LEARN; [ncent*sub] when joint
+_PQ_META = None       # (m, sub, ncent, header_line, tail_rows, joint) — tail = roles 2,3 rows for export
+
+
+def _set_pq_cb(cb, m, sub, ncent, joint):
+    """Upload shim: a pre-joint RWKV_CUDA .pyd exposes the 4-arg schema (it can be file-locked by a
+    still-running role-mode job while the new build waits in build/). Role-mode uploads (joint=0) are
+    semantically identical on either build; joint=1 REQUIRES the new one."""
+    try:
+        torch.ops.rwkv.rwkv7_set_pq_codebook(cb, m, sub, ncent, joint)
+    except (RuntimeError, TypeError):
+        assert not joint, "joint-uv codebook needs the rebuilt RWKV_CUDA extension (5-arg set_pq_codebook)"
+        torch.ops.rwkv.rwkv7_set_pq_codebook(cb, m, sub, ncent)
 def maybe_upload_pq_codebook():
     """One-time upload of the rank-1 PQ codebook (roles 0=u, 1=v) to the CUDA device globals when
     RWKV_QAT_PQ=<codebook file> is set. After this, the fused rank-1 low-rank QAT kernel codebook-encodes
     the factor directions (via qat_lr_rank1's PQ branch) INSTEAD of int-N quant -- the train==deploy analog
     of the engine RWKV_LOWRANK_PQ path. Codebook file format (scratchpad/pq_train.py): line1
     `m bits sub_dim k ncent`, then 4*m blocks (role-major, then pos) of ncent centroid rows; we take the
-    first 2*m blocks (roles 0,1) in layout ((role*m+pos)*ncent+c)*sub+j. No-op if RWKV_QAT_PQ unset."""
-    global _PQ_UPLOADED
+    first 2*m blocks (roles 0,1) in layout ((role*m+pos)*ncent+c)*sub+j. No-op if RWKV_QAT_PQ unset.
+    RWKV_QAT_PQ_LEARN=1 (Andrew's learnable-QAT-params doctrine, WKV analog of the shift-cb lever): the
+    codebook becomes a trainable Parameter; the lr backward kernel accumulates dL/dcentroid into a device
+    buffer (fetched per step by train_rwkv via wkv_pq_grad_fetch, re-uploaded via wkv_pq_reupload)."""
+    global _PQ_UPLOADED, _PQ_CB_PARAM, _PQ_META
     if _PQ_UPLOADED:
         return
     path = os.environ.get("RWKV_QAT_PQ", "").strip()
@@ -435,15 +452,69 @@ def maybe_upload_pq_codebook():
     with open(path) as fh:
         lines = [ln for ln in fh if ln.strip()]
     m, bits, sub, k, ncent = (int(x) for x in lines[0].split()[:5])
+    # joint-uv (task23): header sub == 2*k with m == 1 -> single catalog of concat(u,v) entries,
+    # ONE code per head selects both directions. File = 1 centroid block (no roles).
+    joint = 1 if (sub == 2 * k and m == 1) else 0
     vals = []
     for ln in lines[1:]:
         vals.extend(float(x) for x in ln.split())
-    need = 2 * m * ncent * sub  # roles 0,1 only (rank-1)
-    assert len(vals) >= need, f"PQ codebook {path}: {len(vals)} floats < {need} (2*m*ncent*sub)"
+    need = ncent * sub if joint else 2 * m * ncent * sub  # role mode: roles 0,1 only (rank-1)
+    assert len(vals) >= need, f"PQ codebook {path}: {len(vals)} floats < {need}"
     cb = torch.tensor(vals[:need], dtype=torch.float32, device="cuda")
-    torch.ops.rwkv.rwkv7_set_pq_codebook(cb, m, sub, ncent)
-    print(f"[QAT-PQ] uploaded rank-1 codebook {path}: m={m} sub={sub} ncent={ncent} ({need} floats)")
+    _set_pq_cb(cb, m, sub, ncent, joint)
+    print(f"[QAT-PQ] uploaded rank-1 codebook {path}: m={m} sub={sub} ncent={ncent} joint={joint} ({need} floats)")
+    n_rows = ncent if joint else 2 * m * ncent
+    _PQ_META = (m, sub, ncent, lines[0].strip(), [ln.strip() for ln in lines[1 + n_rows:]], joint)
+    if _PQ_LEARN:
+        _PQ_CB_PARAM = torch.nn.Parameter(cb.clone())
+        torch.ops.rwkv.rwkv7_set_pq_learn(cb, 1)
+        print(f"[QAT-PQ] WKV codebook LEARNABLE: kernel centroid-grad accumulation ON")
+    # RWKV_QAT_NORM_BITS=<n>: model the deploy norm quant (engine RWKV_PQ_NORM_BITS) in the QAT forward —
+    # WKV factor norms at n bits, log2-uniform over the engine's fixed WKV range [-3,0] octaves. The
+    # shift-path analog lives in rwkv_model.fake_pq_shift (range [2.2,2.9]).
+    nq_bits = int(os.environ.get("RWKV_QAT_NORM_BITS", "0") or 0)
+    if nq_bits > 0:
+        torch.ops.rwkv.rwkv7_set_norm_quant(cb, nq_bits, -3.0, 0.0)
+        print(f"[QAT-PQ] norm quant ON: int{nq_bits} log2-uniform over [-3,0] octaves (WKV factor norms)")
     _PQ_UPLOADED = True
+
+
+def wkv_pq_cb_param():
+    """The learnable WKV codebook Parameter (None unless RWKV_QAT_PQ_LEARN=1). Call after
+    maybe_upload_pq_codebook (train_rwkv calls this via wkv_pq_init before adding the optim group)."""
+    maybe_upload_pq_codebook()
+    return _PQ_CB_PARAM
+
+
+def wkv_pq_grad_zero():
+    """Zero the kernel's centroid-grad accumulator. Once per optimizer step, BEFORE backward."""
+    torch.ops.rwkv.rwkv7_pq_cb_grad_zero(_PQ_CB_PARAM)
+
+
+def wkv_pq_grad_fetch():
+    """Fetch the accumulated centroid grads into the Parameter's .grad (after backward, before clip)."""
+    g = torch.ops.rwkv.rwkv7_pq_cb_grad_get(_PQ_CB_PARAM)
+    _PQ_CB_PARAM.grad = g.view_as(_PQ_CB_PARAM)
+
+
+def wkv_pq_reupload():
+    """Push the stepped Parameter values back to the kernel's codebook globals (after optimizer.step)."""
+    m, sub, ncent, _, _, joint = _PQ_META
+    _set_pq_cb(_PQ_CB_PARAM.detach(), m, sub, ncent, joint)
+
+
+def wkv_pq_export(path):
+    """Write the (learned) codebook back in the engine text format: learned roles 0,1 + the ORIGINAL
+    roles 2,3 rows (rank-1 never touches them; keeps the 4-role file format the engine expects).
+    Joint mode: the single learned block (the engine loader detects joint from the header)."""
+    m, sub, ncent, header, tail, joint = _PQ_META
+    cb = _PQ_CB_PARAM.detach().float().cpu().view(ncent if joint else 2 * m * ncent, sub)
+    out_lines = [header]
+    for row in cb:
+        out_lines.append(" ".join(f"{x:.6e}" for x in row.tolist()))
+    out_lines.extend(tail)
+    with open(path, "w", newline="\n") as fh:
+        fh.write("\n".join(out_lines) + "\n")
 
 
 @torch.jit.ignore  # never scripted: the QAT per-step loop (+ torch.linalg.svd) isn't TorchScript-able,

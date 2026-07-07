@@ -9,6 +9,19 @@ use std::time::Instant;
 
 const REF_USERS: [i64; 3] = [107, 136, 156];
 
+/// INPUT directory holding the per-user traces (trace_user_*). Defaults to "reference" (leftover quick-
+/// check users); set RWKV_TRACE_DIR=reference_big for the 400+400 eval set (users 6000-6999). Lets the
+/// engine target either dataset without recompiling.
+fn ref_dir() -> String {
+    std::env::var("RWKV_TRACE_DIR").unwrap_or_else(|_| "reference".to_string())
+}
+
+/// OUTPUT directory where rust_pred_* predictions are written -- kept SEPARATE from the input trace dir
+/// so inputs and outputs never mix. Defaults to "preds" (created if missing); set RWKV_PRED_DIR to override.
+fn pred_dir() -> String {
+    std::env::var("RWKV_PRED_DIR").unwrap_or_else(|_| "preds".to_string())
+}
+
 #[derive(serde::Serialize)]
 struct UserPreds {
     user: i64,
@@ -17,9 +30,110 @@ struct UserPreds {
     pred_ahead: Vec<Option<f32>>,
 }
 
+/// Sanitize a predicted probability for scoring: clamp to [1e-7, 1-1e-7] (avoids log(0) on exactly-0/1
+/// preds), and map non-finite (NaN/inf) -> 0.5. Parity-exact for stable schemes (their preds are nowhere
+/// near these bounds); only the int2 baseline, whose recurrence can transiently blow up to inf on some
+/// power users, is affected -> finite (max-entropy) instead of NaN, so scoring never crashes.
+#[inline]
+fn san(p: f32) -> f32 {
+    if p.is_finite() {
+        p.clamp(1e-7, 1.0 - 1e-7)
+    } else {
+        0.5
+    }
+}
+
+/// Score a user and write rust_pred. Uses the FAST plain-Rust engine by default (~4.8x at B=1, with the
+/// per-step state compression now applied in the fast path too). Set RWKV_USE_CANDLE=1 to use the candle
+/// path instead (kept for parity A/B against the fast path).
 fn run_user(model: &Model, user: i64) -> Result<()> {
+    if std::env::var("RWKV_USE_CANDLE").map(|v| v == "1" || v == "true").unwrap_or(false) {
+        run_user_candle(model, user)
+    } else {
+        run_user_fast(model, user)
+    }
+}
+
+fn write_preds(user: i64, review_th: Vec<i64>, pred_imm: Vec<f32>, pred_ahead: Vec<Option<f32>>, n: usize, t0: Instant) -> Result<()> {
+    let out = UserPreds { user, review_th, pred_imm, pred_ahead };
+    let pdir = pred_dir();
+    std::fs::create_dir_all(&pdir)?;
+    let path = format!("{pdir}/rust_pred_{user}.json");
+    std::fs::write(&path, serde_json::to_string(&out)?)?;
+    let rate = n as f64 / t0.elapsed().as_secs_f64();
+    println!("user {user}: {n} reviews in {:.1}s ({rate:.1} rev/s) -> {path}", t0.elapsed().as_secs_f64());
+    Ok(())
+}
+
+/// FAST path: plain-Rust f32 forward (fast.rs) at B=1, with per-step state compression applied in the
+/// fast engine (parity with the candle path to ~1e-5; verify with RWKV_USE_CANDLE A/B).
+fn run_user_fast(model: &Model, user: i64) -> Result<()> {
+    use crate::fast::FastStreamState;
     let dev = Device::Cpu;
-    let trace = format!("reference/trace_user_{user}.safetensors");
+    let trace = format!("{}/trace_user_{user}.safetensors", ref_dir());
+    let t = candle_core::safetensors::load(&trace, &dev)?;
+
+    let feats_imm: Vec<Vec<f32>> = t.get("feats_imm").unwrap().to_vec2()?; // (N,92)
+    let feats_proc: Vec<Vec<f32>> = t.get("feats_proc").unwrap().to_vec2()?;
+    let route: Vec<Vec<i64>> = t.get("route").unwrap().to_vec2()?; // (N,4): [card,note,deck,preset]
+    let elapsed: Vec<f32> = t.get("elapsed_seconds").unwrap().to_vec1()?;
+    let review_th: Vec<i64> = t.get("review_th").unwrap().to_vec1()?;
+    let n = review_th.len();
+    let fm = &model.fast;
+
+    let mut s_card: HashMap<i64, FastStreamState> = HashMap::new();
+    let mut s_deck: HashMap<i64, FastStreamState> = HashMap::new();
+    let mut s_note: HashMap<i64, FastStreamState> = HashMap::new();
+    let mut s_preset: HashMap<i64, FastStreamState> = HashMap::new();
+    let mut s_global: Option<FastStreamState> = None;
+    let mut curve: HashMap<i64, (Vec<f32>, Vec<f32>)> = HashMap::new(); // (out_ahead_logits, out_w)
+
+    let mut pred_imm = vec![0.0f32; n];
+    let mut pred_ahead = vec![None; n];
+
+    let t0 = Instant::now();
+    for i in 0..n {
+        let (cidx, nidx, didx, pidx) = (route[i][0], route[i][1], route[i][2], route[i][3]);
+
+        if let Some((al, ow)) = curve.get(&cidx) {
+            pred_ahead[i] = Some(san(fm.predict_ahead(al, ow, elapsed[i])));
+        }
+
+        // states in chain order: [card, deck, note, preset, user]
+        let states: [Option<FastStreamState>; 5] = [
+            s_card.get(&cidx).cloned(),
+            s_deck.get(&didx).cloned(),
+            s_note.get(&nidx).cloned(),
+            s_preset.get(&pidx).cloned(),
+            s_global.clone(),
+        ];
+
+        // immediate forward (state read-only)
+        let (_, _, out_p, _) = fm.review_batched(&feats_imm[i], 1, &states)?;
+        pred_imm[i] = san(fm.imm_prob(&out_p, 1)[0]);
+
+        // ahead-of-time forward (updates state, stores curve)
+        let (al, ow, _, new_states) = fm.review_batched(&feats_proc[i], 1, &states)?;
+        let [n0, n1, n2, n3, n4] = new_states;
+        s_card.insert(cidx, n0);
+        s_deck.insert(didx, n1);
+        s_note.insert(nidx, n2);
+        s_preset.insert(pidx, n3);
+        s_global = Some(n4);
+        curve.insert(cidx, (al, ow));
+
+        if (i + 1) % 2000 == 0 {
+            let rate = (i + 1) as f64 / t0.elapsed().as_secs_f64();
+            println!("  user {user}: {}/{n}  ({rate:.1} rev/s)", i + 1);
+        }
+    }
+    write_preds(user, review_th, pred_imm, pred_ahead, n, t0)
+}
+
+/// CANDLE path (reference / parity baseline). Identical logic to the fast path but via `model.review`.
+fn run_user_candle(model: &Model, user: i64) -> Result<()> {
+    let dev = Device::Cpu;
+    let trace = format!("{}/trace_user_{user}.safetensors", ref_dir());
     let t = candle_core::safetensors::load(&trace, &dev)?;
 
     let feats_imm = t.get("feats_imm").unwrap(); // (N,92)
@@ -29,13 +143,11 @@ fn run_user(model: &Model, user: i64) -> Result<()> {
     let review_th: Vec<i64> = t.get("review_th").unwrap().to_vec1()?;
     let n = review_th.len();
 
-    // RWKV states keyed by dense per-stream id; global is a singleton.
     let mut s_card: HashMap<i64, StreamState> = HashMap::new();
     let mut s_deck: HashMap<i64, StreamState> = HashMap::new();
     let mut s_note: HashMap<i64, StreamState> = HashMap::new();
     let mut s_preset: HashMap<i64, StreamState> = HashMap::new();
     let mut s_global: Option<StreamState> = None;
-    // stored forgetting curve per card: (out_ahead_logits, out_w)
     let mut curve: HashMap<i64, (Tensor, Tensor)> = HashMap::new();
 
     let mut pred_imm = vec![0.0f32; n];
@@ -43,17 +155,12 @@ fn run_user(model: &Model, user: i64) -> Result<()> {
 
     let t0 = Instant::now();
     for i in 0..n {
-        let cidx = route[i][0];
-        let nidx = route[i][1];
-        let didx = route[i][2];
-        let pidx = route[i][3];
+        let (cidx, nidx, didx, pidx) = (route[i][0], route[i][1], route[i][2], route[i][3]);
 
-        // ahead prediction from the card's previously stored curve
         if let Some((al, ow)) = curve.get(&cidx) {
-            pred_ahead[i] = Some(model.predict_ahead(al, ow, elapsed[i])?);
+            pred_ahead[i] = Some(san(model.predict_ahead(al, ow, elapsed[i])?));
         }
 
-        // states in chain order: [card, deck, note, preset, user]
         let states: [Option<StreamState>; 5] = [
             s_card.get(&cidx).cloned(),
             s_deck.get(&didx).cloned(),
@@ -62,12 +169,10 @@ fn run_user(model: &Model, user: i64) -> Result<()> {
             s_global.clone(),
         ];
 
-        // immediate forward (state read-only)
         let fi = feats_imm.narrow(0, i, 1)?; // (1,92)
         let (_, _, out_p, _) = model.review(&fi, &states)?;
-        pred_imm[i] = model.imm_prob(&out_p)?;
+        pred_imm[i] = san(model.imm_prob(&out_p)?);
 
-        // ahead-of-time forward (updates state, stores curve)
         let fp = feats_proc.narrow(0, i, 1)?;
         let (al, ow, _, new_states) = model.review(&fp, &states)?;
         let [n0, n1, n2, n3, n4] = new_states;
@@ -77,24 +182,8 @@ fn run_user(model: &Model, user: i64) -> Result<()> {
         s_preset.insert(pidx, n3);
         s_global = Some(n4);
         curve.insert(cidx, (al, ow));
-
-        if (i + 1) % 1000 == 0 {
-            let rate = (i + 1) as f64 / t0.elapsed().as_secs_f64();
-            println!("  user {user}: {}/{n}  ({rate:.1} rev/s)", i + 1);
-        }
     }
-
-    let out = UserPreds {
-        user,
-        review_th,
-        pred_imm,
-        pred_ahead,
-    };
-    let path = format!("reference/rust_pred_{user}.json");
-    std::fs::write(&path, serde_json::to_string(&out)?)?;
-    let rate = n as f64 / t0.elapsed().as_secs_f64();
-    println!("user {user}: {n} reviews in {:.1}s ({rate:.1} rev/s) -> {path}", t0.elapsed().as_secs_f64());
-    Ok(())
+    write_preds(user, review_th, pred_imm, pred_ahead, n, t0)
 }
 
 /// Throughput bench: replay user `user`'s trace (full forward work per review) in a loop for
@@ -102,7 +191,7 @@ fn run_user(model: &Model, user: i64) -> Result<()> {
 /// runs several of these simultaneously (before vs after) for paired timed trials.
 fn bench(model: &Model, user: i64, secs: f64) -> Result<()> {
     let dev = Device::Cpu;
-    let t = candle_core::safetensors::load(&format!("reference/trace_user_{user}.safetensors"), &dev)?;
+    let t = candle_core::safetensors::load(&format!("{}/trace_user_{user}.safetensors", ref_dir()), &dev)?;
     let feats_imm = t.get("feats_imm").unwrap();
     let feats_proc = t.get("feats_proc").unwrap();
     let route: Vec<Vec<i64>> = t.get("route").unwrap().to_vec2()?;
@@ -167,7 +256,7 @@ struct Warmed {
 /// Replay a user's full trace sequentially (state-updating "ahead" path) to build warmed states.
 fn warmup(model: &Model, user: i64) -> Result<Warmed> {
     let dev = Device::Cpu;
-    let t = candle_core::safetensors::load(&format!("reference/trace_user_{user}.safetensors"), &dev)?;
+    let t = candle_core::safetensors::load(&format!("{}/trace_user_{user}.safetensors", ref_dir()), &dev)?;
     let feats_imm = t.get("feats_imm").unwrap().clone();
     let feats_proc = t.get("feats_proc").unwrap();
     let route: Vec<Vec<i64>> = t.get("route").unwrap().to_vec2()?;
@@ -605,6 +694,96 @@ fn dump_card_corpus(model: &Model, user: i64, stride: usize) -> Result<()> {
     Ok(())
 }
 
+/// --dump-corpus <user> <card|note> [stride]: warm up the user ONCE and emit fp32 WKV states (h*k*k
+/// floats each, one `STATE <floats>` line) for the chosen compressed stream, for the offline PQ-codebook
+/// autoresearch. `card` = the card stream (1 layer); `note` = the note stream (3 layers, all emitted).
+/// Skips all-zero / non-finite states. Sampled every `stride`-th entity to bound corpus size.
+fn dump_corpus(model: &Model, user: i64, stream: &str, stride: usize) -> Result<()> {
+    let wm = warmup(model, user)?;
+    let stride = stride.max(1);
+    let (h, k, _c) = model.dims();
+    let hkk = h * k * k;
+    let mut emitted = 0usize;
+    // Collect the per-entity StreamStates for the requested stream, in a deterministic order.
+    let states: Vec<&StreamState> = match stream {
+        "card" => wm.card_order.iter().filter_map(|cid| wm.s_card.get(cid)).collect(),
+        "note" => {
+            let mut keys: Vec<i64> = wm.s_note.keys().copied().collect();
+            keys.sort_unstable();
+            keys.iter().filter_map(|nid| wm.s_note.get(nid)).collect()
+        }
+        other => anyhow::bail!("unknown stream '{other}' (use card|note)"),
+    };
+    for (idx, ss) in states.iter().enumerate() {
+        if idx % stride != 0 {
+            continue;
+        }
+        for layer in ss.iter() {
+            let fp32: Vec<f32> = layer.t_state.flatten_all()?.to_vec1()?;
+            if fp32.len() != hkk || !fp32.iter().all(|x| x.is_finite()) {
+                continue;
+            }
+            let amax = fp32.iter().fold(0f32, |m, x| m.max(x.abs()));
+            if amax < 1e-12 {
+                continue; // skip never-updated states
+            }
+            let mut line = String::from("STATE");
+            for v in &fp32 {
+                line.push_str(&format!(" {v:.7e}"));
+            }
+            println!("{line}");
+            emitted += 1;
+        }
+    }
+    eprintln!("dumped {emitted} {stream} states for user {user} (stride {stride}, h={h} k={k})");
+    Ok(())
+}
+
+/// --dump-shift-corpus <user> <card|note> [stride]: warm up the user ONCE and emit the fp32 TOKEN-SHIFT
+/// vectors of the chosen compressed stream, one per line: `TS <C floats>` (time-mixer shift) and
+/// `CS <C floats>` (channel-mixer shift), per layer. Corpus builder for the shift-PQ codebook
+/// (pq_train_shift.py). Skips all-zero / non-finite vectors.
+fn dump_shift_corpus(model: &Model, user: i64, stream: &str, stride: usize) -> Result<()> {
+    let wm = warmup(model, user)?;
+    let stride = stride.max(1);
+    let (_h, _k, c) = model.dims();
+    let mut emitted = 0usize;
+    let states: Vec<&StreamState> = match stream {
+        "card" => wm.card_order.iter().filter_map(|cid| wm.s_card.get(cid)).collect(),
+        "note" => {
+            let mut keys: Vec<i64> = wm.s_note.keys().copied().collect();
+            keys.sort_unstable();
+            keys.iter().filter_map(|nid| wm.s_note.get(nid)).collect()
+        }
+        other => anyhow::bail!("unknown stream '{other}' (use card|note)"),
+    };
+    for (idx, ss) in states.iter().enumerate() {
+        if idx % stride != 0 {
+            continue;
+        }
+        for layer in ss.iter() {
+            for (tag, t) in [("TS", &layer.t_xshift), ("CS", &layer.c_xshift)] {
+                let fp32: Vec<f32> = t.flatten_all()?.to_vec1()?;
+                if fp32.len() != c || !fp32.iter().all(|x| x.is_finite()) {
+                    continue;
+                }
+                let amax = fp32.iter().fold(0f32, |m, x| m.max(x.abs()));
+                if amax < 1e-12 {
+                    continue;
+                }
+                let mut line = String::from(tag);
+                for v in &fp32 {
+                    line.push_str(&format!(" {v:.7e}"));
+                }
+                println!("{line}");
+                emitted += 1;
+            }
+        }
+    }
+    eprintln!("dumped {emitted} {stream} shift vectors for user {user} (stride {stride}, c={c})");
+    Ok(())
+}
+
 /// Convert candle batched states -> fast (flat f32) states for the plain-Rust path.
 fn batched_to_fast(
     states: &[Option<BatchedStreamState>; 5],
@@ -620,6 +799,9 @@ fn batched_to_fast(
                         t_xshift: ls.t_xshift.flatten_all()?.to_vec1()?,
                         t_state: ls.t_state.flatten_all()?.to_vec1()?,
                         c_xshift: ls.c_xshift.flatten_all()?.to_vec1()?,
+                        e_state: Vec::new(),
+                        warm_wkv: Vec::new(),
+                        warm_shift: Vec::new(),
                     });
                 }
                 out.push(Some(fs));
@@ -675,6 +857,9 @@ fn bench_synth_fast(model: &Model, secs: f64, b: usize) -> Result<()> {
                 t_xshift: rv((b, c, 1, 1))?,
                 t_state: rv((b, h, k, k))?,
                 c_xshift: rv((b, c, 1, 1))?,
+                e_state: Vec::new(),
+                warm_wkv: Vec::new(),
+                warm_shift: Vec::new(),
             });
         }
         states.push(Some(st));
@@ -779,6 +964,24 @@ fn main() -> Result<()> {
         return dump_card_corpus(&model, user, stride);
     }
 
+    // --dump-shift-corpus <user> <card|note> [stride]: emit real token-shift vectors for the shift-PQ
+    // codebook training. See dump_shift_corpus.
+    if argv.first().map(|s| s.as_str()) == Some("--dump-shift-corpus") {
+        let user: i64 = argv.get(1).expect("--dump-shift-corpus needs <user>").parse()?;
+        let stream = argv.get(2).map(|s| s.as_str()).unwrap_or("card").to_string();
+        let stride: usize = argv.get(3).and_then(|s| s.parse().ok()).unwrap_or(1);
+        return dump_shift_corpus(&model, user, &stream, stride);
+    }
+
+    // --dump-corpus <user> <card|note> [stride]: emit many real card/note WKV states (one replay) for the
+    // offline PQ-codebook autoresearch dataset. See dump_corpus.
+    if argv.first().map(|s| s.as_str()) == Some("--dump-corpus") {
+        let user: i64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(107);
+        let stream = argv.get(2).map(|s| s.as_str()).unwrap_or("card");
+        let stride: usize = argv.get(3).map(|s| s.parse().unwrap()).unwrap_or(1);
+        return dump_corpus(&model, user, stream, stride);
+    }
+
     // --bench-synth <secs> <B>: synthetic-state batched throughput at a single B (no warmup).
     // One subprocess per B lets an external driver measure peak RSS for a speed-vs-RAM frontier.
     if argv.first().map(|s| s.as_str()) == Some("--bench-synth") {
@@ -811,7 +1014,7 @@ fn main() -> Result<()> {
     if std::env::var("RWKV_DEBUG").is_ok() {
         // one-shot: review 0 of user 107 with zero state, dump intermediates
         let dev = Device::Cpu;
-        let t = candle_core::safetensors::load("reference/trace_user_107.safetensors", &dev)?;
+        let t = candle_core::safetensors::load(&format!("{}/trace_user_107.safetensors", ref_dir()), &dev)?;
         let fi = t.get("feats_imm").unwrap().narrow(0, 0, 1)?;
         let states: [Option<StreamState>; 5] = [None, None, None, None, None];
         let (_, _, out_p, _) = model.review(&fi, &states)?;

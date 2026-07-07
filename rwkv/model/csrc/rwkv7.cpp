@@ -50,6 +50,14 @@ namespace rwkv {
         m.def("rwkv7_wkv_qat_lr_forward_float(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, float qmax) -> (Tensor, Tensor)");
         m.def("rwkv7_wkv_qat_lr_backward_float(Tensor r_BTHK, Tensor k_BTHK, Tensor v_BTHK, Tensor w_BTHK, Tensor a_BTHK, Tensor k_deformed_BTHK, Tensor skip_BTH, Tensor state_checkpoints_BLHKK, Tensor grad_BTHK, float qmax) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)");
         // Upload the rank-1 PQ codebook to device globals (m<=0 disables PQ -> qat_lr_rank1 uses int-N). Global state.
-        m.def("rwkv7_set_pq_codebook(Tensor cb_flat, int m, int sub, int ncent) -> ()");
+        // joint=1: single catalog of concat(u,v) 2K-dim entries (cb = ncent*sub floats, no role blocks).
+        m.def("rwkv7_set_pq_codebook(Tensor cb_flat, int m, int sub, int ncent, int joint) -> ()");
+        // Norm quant for the PQ branch (engine RWKV_PQ_NORM_BITS analog); bits<=0 disables. Global state.
+        // `dev` is a dummy CUDA tensor: tensor-less ops can't dispatch to the CUDA-only impl.
+        m.def("rwkv7_set_norm_quant(Tensor dev, int bits, float lo_log2, float hi_log2) -> ()");
+        // Learnable WKV codebook (RWKV_QAT_PQ_LEARN): enable flag, per-step grad zero + fetch. Global state.
+        m.def("rwkv7_set_pq_learn(Tensor dev, int on) -> ()");
+        m.def("rwkv7_pq_cb_grad_zero(Tensor dev) -> ()");
+        m.def("rwkv7_pq_cb_grad_get(Tensor dev) -> Tensor");
     }
 }

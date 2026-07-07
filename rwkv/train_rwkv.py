@@ -22,6 +22,7 @@ import wandb
 
 from rwkv.parse_toml import parse_toml
 from rwkv.prepare_batch import prepare_data_train_test
+from rwkv.model import rwkv_model as _rwkv_model_rc
 from rwkv.model.srs_model import SrsRWKV
 from rwkv.architecture import *
 from rwkv.utils import (
@@ -48,6 +49,15 @@ def _maybe_enable_determinism():
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True, warn_only=True)
+    # RWKV_QAT_NO_MEMFILL=1 (default off): deterministic mode also NaN-fills EVERY freshly
+    # allocated tensor (torch.utils.deterministic.fill_uninitialized_memory, a debug aid to
+    # surface uninitialized reads — NOT part of the algorithm-determinism guarantee). Trace
+    # attribution (2026-07-06): that fill is ~73k of the 92k fill_ launches per 8 steps ≈ 9k
+    # launches/step ≈ 25% of the launch-bound step's kernel storm. Disabling changes NOTHING
+    # for correct code (empty buffers are always overwritten before use); flag-gated anyway.
+    if os.environ.get("RWKV_QAT_NO_MEMFILL", "") == "1":
+        torch.utils.deterministic.fill_uninitialized_memory = False
+        print("[determinism] fill_uninitialized_memory OFF (RWKV_QAT_NO_MEMFILL=1)")
     print("[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation seed set separately)")
 
 
@@ -72,6 +82,33 @@ def extract_numbers(name):
     if match:
         return tuple(map(int, match[0]))
     return None
+
+
+def maybe_compile_mixers(model, label=""):
+    """RWKV_QAT_COMPILE=1 (default off): torch.compile(dynamic=True) the time/channel-mixer
+    forwards — fuses the elementwise soup (mul/add/sigmoid/pow/lerp chains) between the custom WKV
+    kernels, which graph-break cleanly. Needs triton (triton-windows 3.7.1 present, Andrew OK'd
+    2026-07-06; small trajectory perturbation acceptable). Rebinds the bound forward instead of
+    wrapping the Module so parameter names stay intact (copy_downcast_ / master-child grad matching
+    depend on them). First few steps pay compile latency per new shape family; dynamic=True keeps
+    recompiles bounded across the variable-length buckets."""
+    # RWKV_QAT_COMPILE=1/all -> compile student AND teacher; =student -> student only (round-3 A/B:
+    # the compiled no_grad TEACHER got 177 ms/step SLOWER — dynamo guard overhead without a backward
+    # to amortize it — while the student won 231 ms across fwd+bwd).
+    _mode = os.environ.get("RWKV_QAT_COMPILE", "")
+    if _mode not in ("1", "all", "student"):
+        return model
+    if _mode == "student" and "teacher" in label:
+        print(f"[compile] skipping {label} (RWKV_QAT_COMPILE=student)")
+        return model
+    from rwkv.model import rwkv_model as _rm
+    n = 0
+    for m in model.modules():
+        if isinstance(m, (_rm.RWKV7TimeMixer, _rm.RWKV7ChannelMixer)):
+            m.forward = torch.compile(m.forward, dynamic=True)
+            n += 1
+    print(f"[compile] torch.compile(dynamic=True) on {n} mixer forwards {label}")
+    return model
 
 
 def get_optimizer(config, model):
@@ -420,6 +457,7 @@ def main_loop(config, task_queue, batch_queue):
         .selective_cast(config.DTYPE)
         .to(config.DEVICE)
     )
+    maybe_compile_mixers(model, "(student)")
     optimizer = get_optimizer(config, master_model)
 
     if config.LOAD_MODEL:
@@ -456,6 +494,117 @@ def main_loop(config, task_queue, batch_queue):
     else:
         print("No model loaded.")
     model.copy_downcast_(master_model, dtype=config.DTYPE)
+
+    # KD teacher (RWKV_QAT_KD=<lambda>, task22): a frozen, UN-quantized copy of the run's starting
+    # champion. QAT gating lives in per-module fields copied from the arch config at build time, so
+    # resetting those fields on this instance strips every fake-quant hook (WKV low-rank/PQ, shift
+    # PQ/rotation, norm quant all nest inside these guards) while `model` keeps them.
+    _kd_lam = float(os.environ.get("RWKV_QAT_KD", "0") or 0)
+    _teacher = None
+    if _kd_lam > 0:
+        assert config.LOAD_MODEL, "KD needs a champion checkpoint to distill from"
+        _teacher = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG)
+        _teacher.load_state_dict(torch.load(model_path, weights_only=True))
+        _teacher = _teacher.selective_cast(config.DTYPE).to(config.DEVICE)
+        _n_stripped = 0
+        for _m in _teacher.modules():
+            if getattr(_m, "state_shift_qmax", float("inf")) != float("inf"):
+                _m.state_shift_qmax = float("inf"); _n_stripped += 1
+            if getattr(_m, "state_qmax", float("inf")) != float("inf"):
+                _m.state_qmax = float("inf"); _n_stripped += 1
+            if getattr(_m, "state_lowrank_rank", 0) > 0:
+                _m.state_lowrank_rank = 0; _n_stripped += 1
+        _teacher.eval()
+        for _p in _teacher.parameters():
+            _p.requires_grad_(False)
+        maybe_compile_mixers(_teacher, "(teacher)")
+        print(f"[KD] teacher = {model_path}, {_n_stripped} QAT hooks stripped, lambda = {_kd_lam}")
+
+    # Shift-PQ learnable codebook (RWKV_QAT_SHIFT_PQ_LEARN=1): register the codebook Parameter with the
+    # optimizer AFTER the champion-optim restore (so load_state_dict sees matching groups) and BEFORE the
+    # scheduler is built (so the LambdaLR covers the new group). wd=0 — centroids are a codebook, not
+    # weights to shrink. Gradients arrive from `model`'s forward directly on the shared global Parameter.
+    _shift_cb_param = None
+    _shift_rot_param = None
+    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and os.environ.get("RWKV_QAT_SHIFT_PQ_LEARN", "") == "1":
+        from rwkv.model import rwkv_model as _rwkv_model_mod
+        _shift_cb_param = _rwkv_model_mod.shift_pq_init(config.DEVICE)
+        optimizer.add_param_group(
+            {"params": [_shift_cb_param], "lr": config.PEAK_LR, "weight_decay": 0.0}
+        )
+        print(f"[shift-pq] codebook LEARNABLE: {tuple(_shift_cb_param.shape)} added as optim group (wd=0)")
+    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and os.environ.get("RWKV_QAT_SHIFT_ROT", "") == "1":
+        from rwkv.model import rwkv_model as _rwkv_model_mod
+        _c = int(os.environ.get("RWKV_N_HEADS", "2")) * int(os.environ.get("RWKV_HEAD_DIM", "16"))
+        _shift_rot_param = _rwkv_model_mod.shift_rot_init(config.DEVICE, _c)
+        optimizer.add_param_group(
+            {"params": [_shift_rot_param], "lr": config.PEAK_LR, "weight_decay": 0.0}
+        )
+        print(f"[shift-rot] learned pre-rotation: {tuple(_shift_rot_param.shape)} added as optim group (wd=0)")
+    # Soft-to-hard selection annealing (RWKV_QAT_SHIFT_ANNEAL=<tau0>): per-step temperature schedule,
+    # linear tau0 -> 0 at RWKV_QAT_SHIFT_ANNEAL_END of training, exactly-hard thereafter (no end gap).
+    _rm_anneal = None
+    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and float(os.environ.get("RWKV_QAT_SHIFT_ANNEAL", "0") or 0) > 0:
+        from rwkv.model import rwkv_model as _rm_anneal
+        print(f"[shift-anneal] soft-to-hard selection annealing ON: tau0={_rm_anneal._SHIFT_ANNEAL_TAU0} "
+              f"-> fully HARD from {_rm_anneal._SHIFT_ANNEAL_END:.0%} of training")
+    # WKV-PQ learnable codebook (RWKV_QAT_PQ_LEARN=1): same treatment. Grads do NOT arrive via autograd —
+    # the lr backward kernel accumulates them in a device buffer; the loop below zeroes it before backward
+    # and fetches it into .grad after, then re-uploads the stepped centroids to the kernel globals.
+    _wkv_cb_param = None
+    if os.environ.get("RWKV_QAT_PQ", "") and os.environ.get("RWKV_QAT_PQ_LEARN", "") == "1":
+        from rwkv.model import rwkv_ops as _rwkv_ops_mod
+        _wkv_cb_param = _rwkv_ops_mod.wkv_pq_cb_param()
+        optimizer.add_param_group(
+            {"params": [_wkv_cb_param], "lr": config.PEAK_LR, "weight_decay": 0.0}
+        )
+        print(f"[wkv-pq] codebook LEARNABLE: {tuple(_wkv_cb_param.shape)} added as optim group (wd=0)")
+
+    # Dead-centroid resurrection (RWKV_QAT_CB_RESURRECT=1, task22): with 16-32-entry catalogs, a
+    # centroid nothing selects receives ~zero gradient and is wasted capacity exactly where capacity
+    # binds. Grads for both learnable codebooks already exist every step, so track a per-centroid
+    # grad-norm EMA and periodically re-seed dead entries next to the busiest centroid of their block.
+    _resurrect = os.environ.get("RWKV_QAT_CB_RESURRECT", "") == "1"
+    _res_ema = {}
+    _RES_EVERY, _RES_WARMUP, _RES_REL, _RES_DECAY = 250, 500, 0.02, 0.99
+
+    def _resurrect_step(step_no):
+        specs = []
+        if _shift_cb_param is not None and _shift_cb_param.grad is not None:
+            _r2, _m, _nc, _sd = _shift_cb_param.shape
+            specs.append(("shiftcb", _shift_cb_param, (_r2 * _m, _nc, _sd), None))
+        if _wkv_cb_param is not None and _wkv_cb_param.grad is not None:
+            from rwkv.model import rwkv_ops as _ro
+            _m, _sd, _nc = _ro._PQ_META[0], _ro._PQ_META[1], _ro._PQ_META[2]
+            _jt = _ro._PQ_META[5] if len(_ro._PQ_META) > 5 else 0  # joint-uv: 1 block (whole catalog)
+            specs.append(("wkvcb", _wkv_cb_param, ((1 if _jt else 2 * _m), _nc, _sd), _ro))
+        for name, p, (nb, nc, sd), ro in specs:
+            gn = p.grad.detach().float().view(nb, nc, sd).norm(dim=-1)  # [blocks, centroids]
+            ema = _res_ema.get(name)
+            _res_ema[name] = gn.clone() if ema is None else _RES_DECAY * ema + (1 - _RES_DECAY) * gn
+            if step_no < _RES_WARMUP or step_no % _RES_EVERY != 0:
+                continue
+            ema = _res_ema[name]
+            data = p.data.view(nb, nc, sd)
+            n_res = 0
+            with torch.no_grad():
+                for b in range(nb):
+                    med = ema[b].median()
+                    if med <= 0:
+                        continue
+                    dead = (ema[b] < _RES_REL * med).nonzero().flatten()
+                    if dead.numel() == 0:
+                        continue
+                    busy = int(ema[b].argmax())
+                    noise = 0.05 * data[b].std()
+                    for c in dead.tolist():
+                        data[b, c] = data[b, busy] + noise * torch.randn(sd, device=data.device)
+                        ema[b, c] = ema[b, busy]  # grace period before it can be re-killed
+                        n_res += 1
+            if n_res:
+                print(f"[resurrect] step {step_no}: {name} re-seeded {n_res} dead centroid(s)")
+                if ro is not None:
+                    ro.wkv_pq_reupload()  # push the edited centroids to the kernel globals
 
     num_trainable_parameters = get_number_of_trainable_parameters(model)
     print(f"Trainable parameters: {num_trainable_parameters}")
@@ -621,8 +770,14 @@ def main_loop(config, task_queue, batch_queue):
     ema_decay = float(os.environ.get("RWKV_EMA_DECAY") or "0")
     ema_start = config.WARMUP_STEPS if config.TRAIN_MODE == "WS" else 0
     ema_state = None
+    # RWKV_QAT_EMA_FOREACH=1 (default off): vectorize the per-step EMA update via _foreach_mul_/_foreach_add_
+    # -- ~880 tiny kernel launches -> 4. Same in-place ops on the same tensors element-wise, so unlike the
+    # other speed flags this one IS bit-identical; kept flag-gated anyway so in-flight runs stay untouched.
+    ema_foreach = os.environ.get("RWKV_QAT_EMA_FOREACH", "") == "1"
+    ema_lists = None  # cached ([ema tensors...], [master tensors...]) -- objects are stable across steps
     if ema_decay > 0:
-        print(f"[ema] weight averaging ON, decay={ema_decay}, start after step {ema_start}")
+        print(f"[ema] weight averaging ON, decay={ema_decay}, start after step {ema_start}"
+              + (", foreach" if ema_foreach else ""))
 
     # The early-step torch.cuda.empty_cache() (next 1000 steps) guards against allocator
     # fragmentation OOM under the variable-seq-length workload, but it COSTS ~150 ms/step
@@ -684,6 +839,12 @@ def main_loop(config, task_queue, batch_queue):
             log = {}
             log["step"] = step
             log["lr"] = optimizer.param_groups[0]["lr"]
+            if _rm_anneal is not None:
+                _rm_anneal.set_shift_anneal_progress(step / total_steps)
+
+            # Rotation-cache hygiene (RWKV_QAT_ROT_CACHE): drop the previous step's graph-carrying
+            # cached Cayley R before this step's forward. No-op when the cache flag is off.
+            _rwkv_model_rc.shift_rot_cache_clear()
 
             keys = str(groups[group_i])
             print(f"\n{keys}")
@@ -700,7 +861,26 @@ def main_loop(config, task_queue, batch_queue):
             model.copy_downcast_(master_model, dtype=config.DTYPE)
             model.train()
             try:
-                stats = model.get_loss(prepared_batch)
+                kd_args = None
+                if _teacher is not None:
+                    with torch.no_grad():
+                        t_ahead, t_w, _t_wlp, t_p = _teacher.forward_batch(
+                            prepared_batch.start,
+                            prepared_batch.sub_gather,
+                            prepared_batch.sub_gather_lens,
+                            prepared_batch.time_shift_selects,
+                            prepared_batch.skips,
+                            prepared_batch.num_data,
+                        )
+                        _les = prepared_batch.labels.float()[..., 0].unsqueeze(-1)
+                        _tcr = _teacher.forgetting_curve(t_w, _les).clamp(1e-5, 1 - 1e-5)
+                        _tcl = torch.log(_tcr / (1 - _tcr)) + _teacher.interp(t_ahead, _les)
+                        kd_args = (
+                            t_p.float(),
+                            torch.sigmoid(_tcl).clamp(1e-5, 1 - 1e-5).float(),
+                            _kd_lam,
+                        )
+                stats = model.get_loss(prepared_batch, kd=kd_args)
                 if stats is None:
                     raise Exception("Stats is none.")
                 if not torch.isfinite(stats.average_loss):  # NaN/inf safeguard: skip, don't backprop garbage
@@ -710,8 +890,13 @@ def main_loop(config, task_queue, batch_queue):
                     f"{epoch_i} {group_i} {step}, all: {stats.average_loss.item():3f}, ahead: {stats.ahead_avg.item():.4f} ({stats.ahead_raw_avg.item():.4f}), imm: {stats.imm_avg.item():.3f}"
                 )
                 log["train_nan"] = 0
+                if _wkv_cb_param is not None:
+                    from rwkv.model import rwkv_ops as _rwkv_ops_mod
+                    _rwkv_ops_mod.wkv_pq_grad_zero()
                 stats.average_loss.backward()
                 transfer_child_grad_to_master(master=master_model, child=model)
+                if _wkv_cb_param is not None:
+                    _rwkv_ops_mod.wkv_pq_grad_fetch()
 
                 if validate_iter and config.USE_WANDB:
                     log_model(log, master_model)
@@ -740,9 +925,21 @@ def main_loop(config, task_queue, batch_queue):
 
                 # NaN/inf safeguard: clip_grad_norm_ returns the total grad norm; if it's non-finite, a NaN
                 # grad slipped through -> DO NOT step (that would write NaN into the weights and kill the model).
-                total_norm = torch.nn.utils.clip_grad_norm_(master_model.parameters(), CLIP)
+                # The learnable QAT codebooks/rotation (if any) join the clip so a NaN centroid grad also blocks the step.
+                _clip_params = list(master_model.parameters())
+                if _shift_cb_param is not None:
+                    _clip_params.append(_shift_cb_param)
+                if _shift_rot_param is not None:
+                    _clip_params.append(_shift_rot_param)
+                if _wkv_cb_param is not None:
+                    _clip_params.append(_wkv_cb_param)
+                total_norm = torch.nn.utils.clip_grad_norm_(_clip_params, CLIP)
                 if torch.isfinite(total_norm):
                     optimizer.step()
+                    if _wkv_cb_param is not None:  # push stepped centroids to the kernel globals
+                        _rwkv_ops_mod.wkv_pq_reupload()
+                    if _resurrect:
+                        _resurrect_step(step)
                 else:
                     print("Non-finite grad norm; skipping optimizer step (weights protected).")
                     log["train_nan"] = 1
@@ -752,6 +949,12 @@ def main_loop(config, task_queue, batch_queue):
                     if ema_state is None:  # init EMA to the post-warmup weights
                         ema_state = {k: v.detach().float().clone()
                                      for k, v in msd.items() if v.is_floating_point()}
+                    elif ema_foreach:
+                        if ema_lists is None:
+                            ema_lists = ([ema_state[k] for k in msd if k in ema_state],
+                                         [msd[k].detach() for k in msd if k in ema_state])
+                        torch._foreach_mul_(ema_lists[0], ema_decay)
+                        torch._foreach_add_(ema_lists[0], ema_lists[1], alpha=1 - ema_decay)
                     else:
                         for k, v in msd.items():
                             if k in ema_state:
@@ -815,6 +1018,21 @@ def main_loop(config, task_queue, batch_queue):
                 if ema_state is not None:  # save the averaged weights for eval ({prefix}_ema_{step}.pth)
                     ema_full = {k: ema_state.get(k, v) for k, v in master_model.state_dict().items()}
                     torch.save(ema_full, f"{config.SAVE_MODEL_FOLDER}/{config.SAVE_MODEL_PREFIX}_ema_{step}.pth")
+                if _shift_cb_param is not None:  # export the LEARNED shift codebook (engine text format)
+                    from rwkv.model import rwkv_model as _rwkv_model_mod
+                    _rwkv_model_mod.shift_pq_export(
+                        f"{config.SAVE_MODEL_FOLDER}/{config.SAVE_MODEL_PREFIX}_shiftcb_{step}.txt"
+                    )
+                if _wkv_cb_param is not None:  # export the LEARNED WKV codebook (engine text format)
+                    from rwkv.model import rwkv_ops as _rwkv_ops_mod2
+                    _rwkv_ops_mod2.wkv_pq_export(
+                        f"{config.SAVE_MODEL_FOLDER}/{config.SAVE_MODEL_PREFIX}_wkvcb_{step}.txt"
+                    )
+                if _shift_rot_param is not None:  # export the LEARNED shift rotation (engine format)
+                    from rwkv.model import rwkv_model as _rwkv_model_mod
+                    _rwkv_model_mod.shift_rot_export(
+                        f"{config.SAVE_MODEL_FOLDER}/{config.SAVE_MODEL_PREFIX}_shiftrot_{step}.txt"
+                    )
                 print("MODEL SAVED.")
                 elapsed = time.time() - group_start
                 log["elapsed"] = elapsed

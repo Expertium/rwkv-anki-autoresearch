@@ -21,10 +21,17 @@ struct FastW {
     d1: usize,
 }
 
+#[derive(Clone)]
 pub struct FastLayerState {
     pub t_xshift: Vec<f32>, // B*C
     pub t_state: Vec<f32>,  // B*H*K*K
     pub c_xshift: Vec<f32>, // B*C
+    pub e_state: Vec<f32>,  // B*H*K*K error-feedback buffer (Idea EF); empty when EF off
+    /// task25 warm-start indices (previous winning centroids for THIS entity; travel with the state
+    /// through the per-entity HashMaps). Speed-only — the search results are provably pick-identical,
+    /// so these change NO predictions. Empty when the respective PQ path is off.
+    pub warm_wkv: Vec<i32>,   // B*H*2 joint-WKV picks ([bi][head][rank_comp]); -1 = none
+    pub warm_shift: Vec<i32>, // B*2*m shift-PQ picks ([bi][role][pos]); -1 = none
 }
 pub type FastStreamState = Vec<FastLayerState>;
 
@@ -35,6 +42,9 @@ pub struct FastModel {
     pub stream_layers: Vec<usize>,
     pub num_curves: usize,
     pub num_points: usize,
+    s_space: Vec<f32>,    // (num_curves) forgetting-curve time constants
+    point_space: Vec<f32>, // (num_points) interp grid
+    compress: crate::model::CompressCfg, // per-stream state compression (matches the candle path)
     fw: HashMap<String, FastW>,  // raw weights (norms, lerps, bias, bonus, ...) as f32
     fwt: HashMap<String, FastW>, // linear weights pre-transposed to (in,out) f32
 }
@@ -45,6 +55,7 @@ fn to_vec(t: &Tensor) -> Result<Vec<f32>> {
 
 impl FastModel {
     /// Build from the candle weight maps (raw `w` + pre-transposed `lin_wt`) and derived dims.
+    #[allow(clippy::too_many_arguments)]
     pub fn build(
         w: &HashMap<String, Tensor>,
         lin_wt: &HashMap<String, Tensor>,
@@ -54,6 +65,9 @@ impl FastModel {
         stream_layers: Vec<usize>,
         num_curves: usize,
         num_points: usize,
+        s_space: Vec<f32>,
+        point_space: Vec<f32>,
+        compress: crate::model::CompressCfg,
     ) -> Result<Self> {
         let mut fw = HashMap::new();
         for (key, t) in w.iter() {
@@ -70,7 +84,7 @@ impl FastModel {
             let dims = t.dims(); // (in,out)
             fwt.insert(key.clone(), FastW { v: to_vec(t)?, d0: dims[0], d1: dims[1] });
         }
-        Ok(Self { c, h, k, stream_layers, num_curves, num_points, fw, fwt })
+        Ok(Self { c, h, k, stream_layers, num_curves, num_points, s_space, point_space, compress, fw, fwt })
     }
 
     fn raw(&self, key: &str) -> Result<&FastW> {
@@ -342,13 +356,19 @@ impl FastModel {
             let cp = format!("rwkv_modules.{m}.blocks.{l}.channel_mixer");
             let ls = state.map(|s| &s[l]);
             let t_st = ls.map(|s| (s.t_xshift.as_slice(), s.t_state.as_slice()));
-            let (xt, v0_out, t_xshift, t_state) =
+            let (xt, v0_out, mut t_xshift, mut t_state) =
                 self.time_mixer(&tp, l, &x, b, v0.as_deref(), t_st)?;
             v0 = Some(v0_out);
             let c_st = ls.map(|s| s.c_xshift.as_slice());
-            let (xc, c_xshift) = self.channel_mixer(&cp, &xt, b, c_st)?;
+            let (xc, mut c_xshift) = self.channel_mixer(&cp, &xt, b, c_st)?;
             x = xc;
-            new_state.push(FastLayerState { t_xshift, t_state, c_xshift });
+            // Per-step state compression on the PERSISTED state (matches candle forward_stream): the
+            // current step's output (xt) was already computed from the pre-compression state, so this
+            // only affects what the NEXT step reads back.
+            let e_prev = ls.map(|s| s.e_state.as_slice());
+            let (e_state, warm_wkv, warm_shift) =
+                self.compress_stream_state(m, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls);
+            new_state.push(FastLayerState { t_xshift, t_state, c_xshift, e_state, warm_wkv, warm_shift });
         }
         Ok((x, new_state))
     }
@@ -410,6 +430,183 @@ impl FastModel {
         let mut v = out_p.to_vec();
         softmax_rows_(&mut v, b, 4);
         (0..b).map(|bi| 1.0 - v[bi * 4]).collect()
+    }
+
+    /// Per-step state compression for stream `m`, in place on the persisted (B,H,K,K)/(B,C) buffers.
+    /// Mirrors the candle `forward_stream`: low-rank (card/note) takes precedence over full-matrix quant;
+    /// shift vectors quantized at the stream's bit-width when `quant_shifts`. Per card (b).
+    /// Returns (new error-feedback buffer for the WKV state when EF is on, new warm_wkv, new warm_shift)
+    /// — the warm vecs carry this entity's previous winning centroid indices (task25, speed-only).
+    #[allow(clippy::too_many_arguments)]
+    fn compress_stream_state(
+        &self,
+        m: usize,
+        b: usize,
+        t_state: &mut [f32],
+        t_xshift: &mut [f32],
+        c_xshift: &mut [f32],
+        e_prev: Option<&[f32]>,
+        ls: Option<&FastLayerState>,
+    ) -> (Vec<f32>, Vec<i32>, Vec<i32>) {
+        let (c, h, k) = (self.c, self.h, self.k);
+        let hkk = h * k * k;
+        let cfg = &self.compress;
+        let mut e_new: Vec<f32> = Vec::new();
+        // Warm-index buffers: seed from the entity's previous step (size-checked — a mismatch, e.g. a
+        // state saved before this feature, just falls back to cold -1s). Only allocated for live paths.
+        let want_wkv = if cfg.pq.as_deref().map(|p| p.joint).unwrap_or(false)
+            && cfg.lowrank.contains_key(&m)
+        {
+            b * h * 2
+        } else {
+            0
+        };
+        let mut warm_wkv: Vec<i32> = ls
+            .map(|s| s.warm_wkv.clone())
+            .filter(|v| v.len() == want_wkv)
+            .unwrap_or_else(|| vec![-1; want_wkv]);
+        let shift_m = cfg.shift_pq.as_deref().map(|p| p.m).unwrap_or(0);
+        let want_shift = if cfg.quant_shifts { b * 2 * shift_m } else { 0 };
+        let mut warm_shift: Vec<i32> = ls
+            .map(|s| s.warm_shift.clone())
+            .filter(|v| v.len() == want_shift)
+            .unwrap_or_else(|| vec![-1; want_shift]);
+        if let Some(&(rank, fqmax)) = cfg.lowrank.get(&m) {
+            if cfg.ef {
+                // Idea EF: add the carried quant error back to the fresh state, re-compress, then store the
+                // NEW quant error (A' - Â) to carry forward. Cancels the compounding DC bias of the factor
+                // quantization. `e` is full precision here (POC ceiling; budget ignored). Per card (bi).
+                e_new = vec![0.0f32; b * hkk];
+                let ef_ok = e_prev.map(|ep| ep.len() == b * hkk).unwrap_or(false);
+                for bi in 0..b {
+                    let slice = &mut t_state[bi * hkk..(bi + 1) * hkk];
+                    if ef_ok {
+                        let ep = e_prev.unwrap();
+                        for j in 0..hkk {
+                            slice[j] += ep[bi * hkk + j];
+                        }
+                    }
+                    // snapshot the compensated state A' before compress overwrites it with Â
+                    let comp: Vec<f32> = slice.to_vec();
+                    // EF path stays COLD (warm None): it compresses two different matrices per step
+                    // (compensated state + error), which would fight over one warm slot. EF is off in
+                    // the production recipe.
+                    crate::model::compress_wkv_state(
+                        slice, h, k, rank, fqmax, cfg.percol, cfg.hadamard, cfg.four_level,
+                        cfg.mixed53, cfg.compand, cfg.vqmax, cfg.als, cfg.pq.as_deref(), None,
+                    );
+                    let eb = &mut e_new[bi * hkk..(bi + 1) * hkk];
+                    for j in 0..hkk {
+                        let e = comp[j] - slice[j];
+                        // never carry a non-finite correction (would poison every future step of this card)
+                        eb[j] = if e.is_finite() { e } else { 0.0 };
+                    }
+                    // shrink the carried `e` to a deploy-honest size (low-rank + optional quant) so the
+                    // fed-back correction matches what deploy can actually store. None erank => full `e` (POC).
+                    if let Some(er) = cfg.ef_erank {
+                        // RWKV_EF_PQ: PQ the error direction too (cheap stabilizer). Else int-quantize it.
+                        let epq = if cfg.ef_pq { cfg.pq.as_deref() } else { None };
+                        crate::model::compress_wkv_state(
+                            eb, h, k, er, cfg.ef_elevel, cfg.percol, false, false, false, None, None,
+                            None, epq, None,
+                        );
+                    }
+                }
+            } else {
+                for bi in 0..b {
+                    let wslice = (!warm_wkv.is_empty())
+                        .then(|| &mut warm_wkv[bi * h * 2..(bi + 1) * h * 2]);
+                    crate::model::compress_wkv_state(
+                        &mut t_state[bi * hkk..(bi + 1) * hkk], h, k, rank, fqmax, cfg.percol,
+                        cfg.hadamard, cfg.four_level, cfg.mixed53, cfg.compand, cfg.vqmax, cfg.als,
+                        cfg.pq.as_deref(), wslice,
+                    );
+                }
+            }
+        } else if let Some(&qmax) = cfg.quant_qmax.get(&m) {
+            for bi in 0..b {
+                crate::model::quant_vec_inplace(&mut t_state[bi * hkk..(bi + 1) * hkk], qmax);
+            }
+        }
+        if cfg.quant_shifts {
+            let base = cfg
+                .lowrank
+                .get(&m)
+                .and_then(|&(_, fq)| fq)
+                .or_else(|| cfg.quant_qmax.get(&m).copied());
+            // RWKV_SHIFT_PQ: codebook-encode the shift vectors of compressed streams (roles 0=t, 1=c)
+            // instead of int-N — the WKV-PQ idea applied to the shift payload (40 b/vector at m4b8).
+            // RWKV_SHIFT_ROT: optional learned pre-rotation — rotate, encode, un-rotate (norms invariant).
+            if let (Some(pq), true) = (&cfg.shift_pq, base.is_some()) {
+                for bi in 0..b {
+                    for (role, xs) in [(0usize, &mut t_xshift[..]), (1, &mut c_xshift[..])] {
+                        let sl = &mut xs[bi * c..(bi + 1) * c];
+                        // warm slots for this (entity, role): the rotation is fixed at eval, so the
+                        // rotated vector drifts as slowly as the raw one — warm applies either way
+                        let ws = (!warm_shift.is_empty()).then(|| {
+                            &mut warm_shift[(bi * 2 + role) * shift_m..(bi * 2 + role + 1) * shift_m]
+                        });
+                        if let Some(rot) = &cfg.shift_rot {
+                            let rb = &rot[role * c * c..(role + 1) * c * c];
+                            crate::model::rot_apply(rb, sl, false);
+                            pq.encode_decode_warm(role, sl, ws);
+                            crate::model::rot_apply(rb, sl, true);
+                        } else {
+                            pq.encode_decode_warm(role, sl, ws);
+                        }
+                    }
+                }
+            } else {
+                // Override the shift LEVEL for already-compressed streams (RWKV_STATE_SHIFT_LEVEL); leave
+                // uncompressed streams unquantized. Lets shifts go coarser than the WKV factors.
+                let shift_qmax = base.map(|b| cfg.shift_qmax_override.unwrap_or(b));
+                if let Some(q) = shift_qmax {
+                    for bi in 0..b {
+                        crate::model::quant_vec_inplace(&mut t_xshift[bi * c..(bi + 1) * c], q);
+                        crate::model::quant_vec_inplace(&mut c_xshift[bi * c..(bi + 1) * c], q);
+                    }
+                }
+            }
+        }
+        (e_new, warm_wkv, warm_shift)
+    }
+
+    /// forgetting_curve(out_w, elapsed) -> probability. out_w is (num_curves). Mirrors model.rs.
+    fn forgetting_curve(&self, out_w: &[f32], elapsed: f32) -> f32 {
+        let e = elapsed.max(1.0);
+        let ln09 = 0.9f64.ln() as f32;
+        let mut s = 0f32;
+        for i in 0..self.num_curves {
+            s += out_w[i] * (ln09 * e / self.s_space[i]).exp();
+        }
+        1e-5 + (1.0 - 2e-5) * s
+    }
+
+    /// interp(out_ahead_logits, elapsed) -> logit residual. logits is (num_points). bisect_left + lerp.
+    fn interp(&self, logits: &[f32], elapsed: f32) -> f32 {
+        let e = elapsed.max(1.0);
+        let ps = &self.point_space;
+        let mut right = ps.partition_point(|&v| v < e);
+        if right < 1 {
+            right = 1;
+        }
+        if right > ps.len() - 1 {
+            right = ps.len() - 1;
+        }
+        let left = right - 1;
+        let (xl, xr) = (ps[left], ps[right]);
+        let (yl, yr) = (logits[left], logits[right]);
+        let val = yl + (yr - yl) * (e - xl) / (xr - xl);
+        1e-5 + (1.0 - 2e-5) * val
+    }
+
+    /// Combined ahead prediction from a stored curve (out_ahead_logits, out_w) at elapsed. Mirrors model.rs.
+    pub fn predict_ahead(&self, out_ahead_logits: &[f32], out_w: &[f32], elapsed: f32) -> f32 {
+        let p_raw = self.forgetting_curve(out_w, elapsed);
+        let logit_raw = (p_raw / (1.0 - p_raw)).ln();
+        let residual = self.interp(out_ahead_logits, elapsed);
+        let logit = logit_raw + residual;
+        1.0 / (1.0 + (-logit).exp())
     }
 }
 

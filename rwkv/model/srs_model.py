@@ -328,6 +328,7 @@ class SrsRWKV(ModuleType):
         batch_num_data: int,
         batch_labels: torch.Tensor,
         batch_label_review_th: torch.Tensor,
+        kd=None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits = self.forward_batch(
             batch_start,
@@ -430,6 +431,24 @@ class SrsRWKV(ModuleType):
             + AHEAD_LOGITS_MAG_LOSS_SCALE * ahead_logits_mag_avg
             + AHEAD_LOGITS_DIFF_LOSS_SCALE * ahead_logits_diff_avg
         )
+        # KD (RWKV_QAT_KD, task22): distill from the un-quantized fp32 champion during QAT. Anchors the
+        # base against drift while the net learns quant robustness. kd = (teacher_p_logits,
+        # teacher_curve_probs, lambda), computed in train_rwkv under no_grad. Soft-label CE on the 4-way
+        # immediate head + soft-label BCE on the retention-curve head, same masks/scales as the data terms.
+        if kd is not None:
+            t_p_logits, t_curve_probs, kd_lam = kd
+            kd_p = -(
+                torch.softmax(t_p_logits, dim=-1)
+                * torch.log_softmax(out_p_logits.float(), dim=-1)
+            ).sum(dim=-1)
+            kd_p_avg = (kd_p * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
+            kd_c = torch.nn.functional.binary_cross_entropy_with_logits(
+                curve_logits.float(), t_curve_probs, reduction="none"
+            )
+            kd_c_avg = (kd_c * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
+            loss_avg = loss_avg + kd_lam * (
+                IMMEDIATE_SCALE * kd_p_avg + AHEAD_SCALE * kd_c_avg
+            )
         loss_tensor = (
             AHEAD_SCALE * curve_loss.detach()
             + p_loss.detach()
@@ -476,7 +495,7 @@ class SrsRWKV(ModuleType):
             has_label=has_label.detach(),
         )
 
-    def get_loss(self, batch: PreparedBatch):
+    def get_loss(self, batch: PreparedBatch, kd=None):
         return self._get_loss(
             batch.start,
             batch.sub_gather,
@@ -486,6 +505,7 @@ class SrsRWKV(ModuleType):
             batch.num_data,
             batch.labels,
             batch.label_review_th,
+            kd=kd,
         )
 
     def copy_downcast_(self, master_model, dtype):
