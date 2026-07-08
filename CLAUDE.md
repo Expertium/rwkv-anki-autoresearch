@@ -509,6 +509,13 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   get_benchmark_info killed eval shard 0 at user 2007 with a bogus ENOENT swallowed to exit 0 --
   the n=5000 finish gate caught it (7d095e3 -- env now opened once/process). Results recorded:
   research_log.jsonl + research_5k.md (p-value col = 1.0/1.0 vs target, honest) + log.md rebuilt.
+- **★ LIVE LOSS PLOT (2026-07-08, Andrew asked):** `scratchpad/liveplot/liveplot.py` = matplotlib
+  window, champion-vs-candidate WS train loss (ahead+imm panels), EMA-smoothed, paired one-sided
+  Wilcoxon p + mean delta per panel, warmup-end + decay-start vlines, 15 s refresh. Auto-discovers
+  the newest `*_ws_trace.jsonl` (tuner trials AND champion runs both set RWKV_STEP_TRACE), champion
+  ref = champion_5k.json embedded trace -> works for ALL runs; switches to a new trial automatically.
+  Relaunch: `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (survives Esc; close window to
+  stop). NOTE: WMI-launching pythonw GUI directly stalls at 0 CPU -- use the .cmd wrapper.
 - **★ HP TUNING RUNNING (launched 2026-07-08 18:35, detached pid 4468):** hp_tuner_5k `loop` --
   coordinate descent over peak_lr/warmup/wd/clip/decay_ratio, trials are self-recording full-recipe
   .cmds (WS 2ep + decay + tune-eval 5001-5200, LEARN=1 cbs, Wilcoxon-pruned vs champ5k_r1's trace).
