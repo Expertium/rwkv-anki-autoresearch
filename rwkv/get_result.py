@@ -18,7 +18,10 @@ from rwkv.parse_toml import parse_toml
 from rwkv.prepare_batch import prepare_data
 from rwkv.utils import load_tensor, save_tensor  # type: ignore
 
-FETCH_AHEAD = 20
+# Prefetch depth in USERS (was 20; cut 2026-07-08 for RAM): eval batches are single-user and can
+# reach 800k reviews, so 20-deep queues several GB of prepared batches while the GPU-bound shards
+# wait ~4 ms per fetch anyway. Depth only throttles the workers -- numerics/order untouched.
+FETCH_AHEAD = 5
 
 
 def get_benchmark_info(db_path, db_size, user_id):
