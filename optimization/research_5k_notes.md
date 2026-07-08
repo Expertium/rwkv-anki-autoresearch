@@ -18,6 +18,17 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    the old d=128 model already has weights → just eval it on 5001–10000, same eval set = fair). A change
    is **accepted only if it beats the current champion by ≥ 0.0003 in BOTH modes** — immediate (imm) AND
    forgetting-curve (ahead). Monotonic-both-modes champion.
+   **+ p-gate (Andrew 2026-07-08):** additionally, the paired per-user one-sided Wilcoxon signed-rank
+   (candidate vs current champion, same 5000 eval users — the data is already in the result jsonls, zero
+   GPU cost) must give **p < 0.0001 in BOTH modes**. Tool: `python optimization/paired_pvalue.py
+   --cand-ahead ... --cand-imm ... --champ-ahead ... --champ-imm ...` (exit 0 = p-gate pass; prints a
+   `PAIRED_P_JSON` line). Rationale: SE of the by-user mean diff over 5000 users is ~0.0002–0.0003, so a
+   bare point estimate clearing 0.0003 is only ~1σ; the paired test turns that into a real significance
+   statement and neutralizes eval-side noise (training-seed noise is still covered by the seed-pair
+   doctrine for thin margins). Record both p-values in the `p-value` column of `research_5k.md`
+   (`ahead / imm`). The p-gate applies to accuracy accepts (monotonic-champion changes); SIZE/SPEED-
+   exception accepts (efficiency-budget parity changes) are exempt — they don't claim an improvement.
+   Wilcoxon-pruned (estimated) runs never reach the gate anyway; the p-gate is computed on real evals only.
 2. **Param budget ≤ 225,000** (current champion 193,724 → ~31k headroom for experiments). Reducing params
    is welcome; reducing **both** LogLoss and params is the goal.
 3. **Latitude.** Try own ideas and do literature searches freely.

@@ -369,7 +369,12 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 1. "size" (equalized review count, 101-200) IDENTICAL to champion (data-integrity; any change = pipeline bug).
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
 4. ahead improves by >= **0.0003** vs the CURRENT champion.   5. imm improves by >= **0.0003**.
-=> accept ONLY changes that improve BOTH modes by >=0.0003 (a monotonic champion). [[research-acceptance-gate]]
+6. **p-gate (Andrew 2026-07-08):** paired per-user one-sided Wilcoxon (candidate vs champion, same 5000
+   eval users) gives **p < 0.0001 in BOTH modes** -- `python optimization/paired_pvalue.py` (zero GPU cost,
+   reads the result jsonls; exit 0 = pass). Record both p-values in research_5k.md's `p-value` column.
+   Applies to accuracy accepts only (SIZE/SPEED-exception accepts claim parity, not improvement -> exempt).
+=> accept ONLY changes that improve BOTH modes by >=0.0003 AND pass the p-gate (a monotonic champion).
+[[research-acceptance-gate]]
 **EXCEPTION -- SIZE/SPEED changes** (e.g. H=2/K=16): judged on the **efficiency budget** instead -- accept if
 both modes stay within **+0.0015** of the champion AND the change shrinks state and/or speeds training (it
 Pareto-dominates at accuracy-parity). H=2/K=16 was accepted this way (halved card state, 1.16x faster, accuracy
