@@ -20,6 +20,7 @@ import os
 import re
 import sys
 import time
+import traceback
 
 import numpy as np
 
@@ -187,30 +188,44 @@ def main():
         fig.canvas.manager.set_window_title("RWKV 5k: champion vs candidate")
         plt.show(block=False)  # map the window ONCE; refreshes must never call show/pause
                                # again (plt.pause re-raises the window = steals focus)
+    did_layout = False
     while True:
-        trace = discover_trace(champ["name"])
-        if trace:
-            try:
-                draw(fig, axes, champ, trace)
-            except Exception as e:  # file mid-rotation etc. -- keep the window alive
-                axes[0].set_title(f"(draw error, retrying: {e})", fontsize=9)
-        else:
-            axes[0].clear()
-            axes[0].set_title("no candidate trace found yet -- waiting")
-        fig.tight_layout(rect=(0, 0, 1, 0.95))
-        if ONCE:
-            out = os.path.join("scratchpad", "liveplot", "liveplot_test.png")
-            fig.savefig(out, dpi=110)
-            print(f"saved {out}")
-            return
-        fig.canvas.draw_idle()
+        # NOTHING may kill the window: a toolbar save can raise from deep inside the
+        # renderer (seen live: FT_Render_Glyph "raster overflow"), and those exceptions
+        # surface here via flush_events/draw_idle. Log + continue, always.
+        try:
+            trace = discover_trace(champ["name"])
+            if trace:
+                try:
+                    draw(fig, axes, champ, trace)
+                except Exception as e:  # file mid-rotation etc. -- keep the window alive
+                    axes[0].set_title(f"(draw error, retrying: {e})", fontsize=9)
+            else:
+                axes[0].clear()
+                axes[0].set_title("no candidate trace found yet -- waiting")
+            if not did_layout:
+                fig.tight_layout(rect=(0, 0, 1, 0.95))
+                did_layout = True
+            if ONCE:
+                out = os.path.join("scratchpad", "liveplot", "liveplot_test.png")
+                fig.savefig(out, dpi=110)
+                print(f"saved {out}")
+                return
+            fig.canvas.draw_idle()
+        except Exception:
+            print(f"[{time.strftime('%H:%M:%S')}] refresh-cycle error (window kept alive):")
+            traceback.print_exc()
         # stay responsive between refreshes; exit when the window is closed.
         # flush_events (NOT plt.pause) -- pause calls show() every tick, stealing focus.
         t0 = time.time()
         while time.time() - t0 < REFRESH_S:
             if not plt.fignum_exists(fig.number):
                 return
-            fig.canvas.flush_events()
+            try:
+                fig.canvas.flush_events()
+            except Exception:
+                print(f"[{time.strftime('%H:%M:%S')}] flush_events error (window kept alive):")
+                traceback.print_exc()
             time.sleep(0.25)
 
 
