@@ -281,6 +281,19 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   resets fired, losses sane. Parity harness kept in `scratchpad/qat_parity/`. Recipe provenance toml:
   `optimization/qat_pq_ep150_recipe.toml`.
 
+## Incidents
+- 2026-07-08 **champ5k_r1 WS->decay seam crash (fixed, f71f43b; ~15 min lost).** First-ever
+  LEARN=1 -> LEARN=1 optimizer handoff: train_rwkv registered the learnable-cb param groups only
+  AFTER `optimizer.load_state_dict` (correct for warm-starts from 5-group pre-LEARN champion
+  optims), but a LEARN=1 run saves 7 groups (5 base + shift-cb + wkv-cb) -> decay's fresh 5-group
+  optimizer raised "different number of parameter groups"; the .cmd then fell through to
+  DONE_EXIT_CBFAIL_DECAY. Fix: cb Parameters are created up front; when the resumed state's group
+  count == base+cb they register BEFORE the load (cb Adam moments resume across the seam --
+  the right semantic, values still come from the exported cb files), else the old add-after path
+  is unchanged (warm-starts unaffected). Also fixes mid-run crash-resume for any LEARN=1 run.
+  Resumed via `run_champ5k_r1_resume.cmd` (decay-onward, same frozen env, appends to the same
+  log); WS artifacts were all intact (ckpt + optim + resolved WS cbs).
+
 ## Speedups banked (detail also in CLAUDE.md)
 - 2026-07-08 **EVAL CPU PATH VECTORIZED (byte-identical, banked mid-champion-run).** The per-review
   Python loops in the eval post-processing were the CPU drag between users: `extract_p` (per-index dict
