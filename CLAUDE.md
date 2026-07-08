@@ -399,10 +399,13 @@ training; batch size is structural so LR/warmup tune after it; don't go below 66
 **DONE 2026-07-02: MAX=110000** (peak 38,968 rev/s @ 9.44 GB; 132k thrashes, -25%); (g) **Wilcoxon
 early-pruning (2026-07-02):** run order = old-model eval -> ONE champion-HP run logging per-step WS train
 logloss (RWKV_STEP_TRACE; NOT decay) -> HP tune; candidates then check one-sided Wilcoxon (candidate vs
-champion, paired by step, growing window) every 300 steps and ABORT iff BOTH modes worse at p<1e-4
-(exit 42 + .pruned.json with estimated finals = champ_final + cand@s - champ@s -> front-table `logloss`
-column says exact|estimated). Champion accept = `python optimization/promote_champion_5k.py` (auto-replaces
-optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs identical db/MAX/seeds.
+champion, paired by step, **last-1500-paired-steps window** -- RWKV_PRUNE_WINDOW, 0=old full window;
+changed 2026-07-08 after the 0p0014 audit: full-window drags stale early history -> ~2k-step lag on late
+regressions AND would kill late-bloomer configs) every 300 steps and ABORT iff BOTH modes worse at p<1e-4
+(exit 42 + .pruned.json with estimated finals = champ_final + mean(diff over last 300 paired steps) ->
+front-table `logloss` column says exact|estimated). Champion accept = `python optimization/
+promote_champion_5k.py` (auto-replaces optimization/champion_5k.json = the prune ref; never hand-edit).
+Pairing needs identical db/MAX/seeds.
 [[research-acceptance-gate]]
 
 ### LESSON BANK -- do NOT re-run these (full numbers in log.md / HISTORY.md)

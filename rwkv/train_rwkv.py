@@ -735,6 +735,12 @@ def main_loop(config, task_queue, batch_queue):
     prune_every = int(os.environ.get("RWKV_PRUNE_EVERY") or "300")
     prune_alpha = float(os.environ.get("RWKV_PRUNE_ALPHA") or "1e-4")
     prune_min_step = int(os.environ.get("RWKV_PRUNE_MIN_STEP") or "0")
+    # Test window in paired steps (2026-07-08 audit of the 0p0014 prune): the original
+    # full-growing-window test drags the entire early history along, so it (a) lags ~2-3k
+    # steps behind a sustained late regression and (b) would keep killing late-bloomer
+    # configs (big warmup / distillation warm phases) on a stale early deficit. Testing
+    # only the LAST K paired steps judges current form. 0 = original full window.
+    prune_window = int(os.environ.get("RWKV_PRUNE_WINDOW") or "1500")
     if config.TRAIN_MODE != "WS":
         step_trace_path, prune_ref_path = "", ""
     trace_file = None
@@ -750,7 +756,8 @@ def main_loop(config, task_queue, batch_queue):
         champ_steps = {int(s): (a, i) for s, a, i in zip(
             champ_meta["trace_step"], champ_meta["trace_ahead"], champ_meta["trace_imm"])}
         print(f"[prune] vs champion '{champ_meta.get('name')}' ({len(champ_steps)} steps), "
-              f"every {prune_every}, alpha {prune_alpha:g}, min_step {prune_min_step}")
+              f"every {prune_every}, alpha {prune_alpha:g}, min_step {prune_min_step}, "
+              f"window {prune_window or 'full'}")
 
     if config.TRAIN_MODE == "WS":
         warmup_steps = config.WARMUP_STEPS
@@ -982,16 +989,17 @@ def main_loop(config, task_queue, batch_queue):
                 print(e)
                 log["train_nan"] = 1
 
-            # Wilcoxon early-prune: growing 300n window over all common steps so far. Both modes must be
-            # worse at p<alpha (no false positives: only abysmally-bad runs die). NaN-skipped steps are
-            # simply absent from a trace; pairing uses the intersection.
+            # Wilcoxon early-prune over the LAST prune_window paired steps (0 = all common steps).
+            # Both modes must be worse at p<alpha (no false positives: only clearly-bad runs die).
+            # NaN-skipped steps are simply absent from a trace; pairing uses the intersection.
             if (champ_meta is not None and step % prune_every == 0
                     and step >= max(prune_min_step, prune_every)):
                 common = sorted(s for s in trace_steps if s in champ_steps)
                 if len(common) >= 50:
                     from scipy.stats import wilcoxon
-                    diff_a = [trace_steps[s][0] - champ_steps[s][0] for s in common]
-                    diff_i = [trace_steps[s][1] - champ_steps[s][1] for s in common]
+                    win = common[-prune_window:] if prune_window > 0 else common
+                    diff_a = [trace_steps[s][0] - champ_steps[s][0] for s in win]
+                    diff_i = [trace_steps[s][1] - champ_steps[s][1] for s in win]
                     try:
                         p_a = float(wilcoxon(diff_a, alternative="greater").pvalue)
                         p_i = float(wilcoxon(diff_i, alternative="greater").pvalue)
@@ -999,19 +1007,21 @@ def main_loop(config, task_queue, batch_queue):
                         p_a = p_i = 1.0
                     if math.isnan(p_a) or math.isnan(p_i):  # newer scipy: zero-diffs -> NaN
                         p_a, p_i = 1.0, 1.0
-                    print(f"[prune] step {step}: n={len(common)} p_ahead={p_a:.3e} p_imm={p_i:.3e}")
+                    print(f"[prune] step {step}: n={len(win)}/{len(common)} "
+                          f"p_ahead={p_a:.3e} p_imm={p_i:.3e}")
                     if p_a < prune_alpha and p_i < prune_alpha:
-                        s0 = common[-1]  # last paired step (== `step` unless it was NaN-skipped)
-                        est_a = champ_meta["final_ahead"] + (trace_steps[s0][0] - champ_steps[s0][0])
-                        est_i = champ_meta["final_imm"] + (trace_steps[s0][1] - champ_steps[s0][1])
+                        # estimate = champ_final + mean diff over the last 300 paired steps
+                        # (a single step's diff carries ~+-0.003 batch noise; the tail mean
+                        # reflects current form without the early-transient bias)
+                        est_a = champ_meta["final_ahead"] + float(np.mean(diff_a[-300:]))
+                        est_i = champ_meta["final_imm"] + float(np.mean(diff_i[-300:]))
                         marker = {
                             "pruned_at_step": step, "paired_steps": len(common),
+                            "window": len(win),
                             "p_ahead": p_a, "p_imm": p_i, "alpha": prune_alpha,
                             "champion": champ_meta.get("name"),
                             "estimated_ahead": est_a, "estimated_imm": est_i,
-                            "estimate_formula": "champ_final + (cand@s - champ@s), s=last paired step",
-                            "estimated_ahead_meandiff": champ_meta["final_ahead"] + float(np.mean(diff_a)),
-                            "estimated_imm_meandiff": champ_meta["final_imm"] + float(np.mean(diff_i)),
+                            "estimate_formula": "champ_final + mean(cand-champ over last 300 paired steps)",
                         }
                         marker_path = (step_trace_path + ".pruned.json") if step_trace_path \
                             else "ws_prune_marker.json"

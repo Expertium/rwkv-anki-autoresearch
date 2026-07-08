@@ -109,19 +109,22 @@ def ema(x, span):
     return out
 
 
-DELTA_TAIL = 100  # mean delta over the last N paired steps (full-window mean is inflated
-                  # by the early transient where both losses are huge and far apart)
+DELTA_TAIL = 100   # mean delta over the last N paired steps (full-window mean is inflated
+                   # by the early transient where both losses are huge and far apart)
+P_WINDOW = 1500    # Wilcoxon over the last N paired steps -- MATCHES the pruner's
+                   # RWKV_PRUNE_WINDOW (2026-07-08: full-window drags stale early history)
 
 
 def paired_p(champ_dense, cand_steps, cand_vals):
-    """One-sided Wilcoxon p that the candidate is BETTER (lower loss), paired by step.
-    p uses the FULL common window (same as the prune test); the delta is last-N-steps."""
+    """One-sided Wilcoxon p that the candidate is BETTER (lower loss), paired by step,
+    over the last P_WINDOW paired steps (same window the pruner tests). Delta = last-N mean."""
     ok = cand_steps <= len(champ_dense)
     if ok.sum() < 20:
         return None, None
     d = champ_dense[cand_steps[ok] - 1] - cand_vals[ok]  # >0 = candidate better
     d_tail = float(d[-DELTA_TAIL:].mean())
-    nz = d[d != 0]
+    nz = d[-P_WINDOW:]
+    nz = nz[nz != 0]
     if len(nz) < 20:
         return None, d_tail
     return float(wilcoxon(nz, alternative="greater").pvalue), d_tail
@@ -146,7 +149,8 @@ def draw(fig, axes, champ, trace_path):
         if len(steps):
             ax.plot(steps, ema(cand_v, span), color=C_CAND, lw=1.6, label=f"candidate ({name})")
         p, dmean = paired_p(champ_dense, steps, cand_v) if len(steps) else (None, None)
-        ptxt = "p(cand better) = n/a" if p is None else f"p(cand better) = {p:.2g}"
+        ptxt = (f"p(cand better, last {P_WINDOW}) = n/a" if p is None
+                else f"p(cand better, last {P_WINDOW}) = {p:.2g}")
         if dmean is not None:
             ptxt += f"\ndelta (last {DELTA_TAIL} steps) = {dmean:+.4f}"
         ax.text(0.985, 0.945, ptxt, transform=ax.transAxes, ha="right", va="top",
