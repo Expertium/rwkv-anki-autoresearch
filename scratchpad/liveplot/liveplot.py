@@ -156,7 +156,7 @@ def draw(fig, axes, champ, trace_path):
             ax.text(warmup, 0.02, " warmup end", transform=ax.get_xaxis_transform(),
                     fontsize=8, color=C_LINEMARK, ha="left", va="bottom")
         ax.axvline(ws_steps, color=C_LINEMARK, lw=1.0, ls=":", alpha=0.8)
-        ax.text(ws_steps, 0.02, "QAT phase starts ", transform=ax.get_xaxis_transform(),
+        ax.text(ws_steps, 0.02, "decay starts ", transform=ax.get_xaxis_transform(),
                 fontsize=8, color=C_LINEMARK, ha="right", va="bottom")
         # y-window: ignore the first few % of steps (huge init losses squash the tail)
         ref = []
