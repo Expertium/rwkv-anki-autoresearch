@@ -24,8 +24,21 @@ from rwkv.utils import load_tensor, save_tensor  # type: ignore
 FETCH_AHEAD = 5
 
 
+# label_filter env opened ONCE per process and cached (2026-07-08): the old per-user
+# lmdb.open(map_size=40GB) never closed its envs -- after ~2000 users the accumulated
+# environments exhausted process resources and the next open died with a bogus
+# "No such file or directory" (killed shard 0 of the first champ5k eval at user 2007,
+# swallowed by main()'s catch-all -> partial results, caught by the n=5000 finish gate).
+# readonly + lock=False: the db is a frozen deterministic cache, readers need no lock.
+_equalize_envs = {}
+
+
 def get_benchmark_info(db_path, db_size, user_id):
-    equalize_env = lmdb.open(db_path, db_size)
+    equalize_env = _equalize_envs.get(db_path)
+    if equalize_env is None:
+        equalize_env = lmdb.open(db_path, db_size, readonly=True, lock=False,
+                                 max_readers=1024)
+        _equalize_envs[db_path] = equalize_env
     key_review_ths = f"{user_id}_review_ths"
     key_rmse_bins = f"{user_id}_rmse_bins"
     with equalize_env.begin(write=False) as txn:
