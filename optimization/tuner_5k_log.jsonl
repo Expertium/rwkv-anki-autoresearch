@@ -1,1 +1,1 @@
-{"name": "baseline", "param": "baseline", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}, "ahead": 0.294204, "imm": 0.270881}
+{"name": "baseline", "param": "baseline", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}, "ahead": 0.29449, "imm": 0.270492}

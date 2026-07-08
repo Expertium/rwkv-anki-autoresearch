@@ -111,7 +111,12 @@ when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set 
 
 ## Setup
 - **Train** users 1–5000; **eval** users 5001–10000 (disjoint held-out half).
-- **Compute budget:** 2 WS epochs + decay = WS × decay_ratio (ratio ∈ [1/10, 1/2.5], default 0.25 → 0.5 decay ep; cosine).
+- **Compute budget:** **1 WS epoch** + decay = WS × decay_ratio (ratio ∈ [1/10, 1/2.5], default 0.25 →
+  0.25 decay ep; cosine). *(2→1 epochs Andrew 2026-07-09, via the champ5k_b1 budget A/B: identical
+  recipe at half budget came out ahead −0.000058 (p=0.31) / imm +0.000430 BETTER (p=6.1e-62) vs
+  champ5k_r1 on the full paired 5000-user eval — the 2nd pass over the same 5000 users adds nothing;
+  the data-variety-beats-repetition lesson holds at 5k. Applies to ALL runs: tuner trials and research
+  candidates. Pre-ship: the final champion gets one 2-ep confirmation run.)*
 - **Model:** H=2/K=16 champion (d=32, 2 heads × K=16, layers [1,4,3,3,3], 193,724 params, per-card
   WKV state = two 16×16 per-head matrices). Env: `RWKV_N_HEADS=2 RWKV_HEAD_DIM=16`,
   `RWKV_EMPTY_CACHE_EVERY=0`, `RWKV_DETERMINISTIC=1`, `RWKV_AUGMENT_SEED=1234`, HP from the tuner.

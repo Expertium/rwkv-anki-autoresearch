@@ -390,8 +390,9 @@ cb-export->eval wiring, queued): `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
 RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt
 RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1` (JIT on the
 grafted q72u paths unverified -- A/B once at champion-run launch); (b) card+note state sizes FIXED, but deck/preset MAY grow
-~5-10x and global up to ~100x; (c) WS FIXED at 2 epochs, decay = WS x ratio, ratio in [1/10, 1/2.5] (decay
-0.2-0.8 epochs, ALSO quant-aware) -- add decay_ratio as an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
+~5-10x and global up to ~100x; (c) WS FIXED at **1 epoch** (2->1 Andrew 2026-07-09 via the champ5k_b1
+budget A/B: 2nd epoch adds nothing -- ahead -0.00006 p=0.31, imm +0.00043 BETTER p=6e-62), decay = WS x
+ratio, ratio in [1/10, 1/2.5] (ALSO quant-aware), decay_ratio is an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
 then re-tune after accumulated small changes OR a major one; (e) every change must be Rust/CPU-deployable
 in Anki -- no GPU-only tricks in the shipped model; (f) BEFORE HP tuning, sweep MAX_TRAIN_GLOBAL_LEN (the
 WKV batch dim) over ~100 steps each and fix the largest batch that ALMOST maxes the 12 GB VRAM (fastest
@@ -519,18 +520,17 @@ Pairing needs identical db/MAX/seeds.
   ref = champion_5k.json embedded trace -> works for ALL runs; switches to a new trial automatically.
   Relaunch: `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (survives Esc; close window to
   stop). NOTE: WMI-launching pythonw GUI directly stalls at 0 CPU -- use the .cmd wrapper.
-- **★ BUDGET A/B PENDING (Andrew 2026-07-08 ~20:30): champ5k_b1 = champion recipe at HALF budget
-  (WS 1 ep = 6554 steps + 0.25 ep decay), staged in scratchpad/champ5k_b1/ (toml + .cmd, committed).**
-  Launches automatically when the running tuner trial finishes (watcher armed); ~3h train + 1h full
-  eval 5001-10000; .cmd ends with paired_pvalue vs champ5k_r1. **ADOPTION RULE (Andrew): if NOT
-  significantly worse (SIZE/SPEED-class: both modes within +0.0015 of champ5k_r1), adopt WS 1 ep +
-  ratio-0.25 decay for ALL 5k runs -- HP-tune trials AND research/algorithmic-improvement runs.**
-  On adoption: (1) promote champ5k_b1 via promote_champion_5k.py (its trace = new 6554-step prune
-  ref, its finals = the gate reference); (2) hp_tuner_5k.py WS_EPOCHS 2->1; (3) archive the tuner
-  journal + re-record baseline from b1's 5001-5200 subset (2-ep trials are NOT comparable to 1-ep
-  trials -- same-budget comparisons only; the 0p0014 trial's early-LR signal still informs the grid);
-  (4) amend methodology (c) in research_5k_notes.md (WS fixed at 1 ep, Andrew-approved). If b1 is
-  significantly worse: keep 2 ep, relaunch tuner loop as-is (journal replay resumes it).
+- **★ BUDGET A/B RESOLVED + ADOPTED (2026-07-09 01:40): champ5k_b1 = NEW CHAMPION at HALF budget.**
+  WS 1 ep (6554) + 0.25 ep decay (1638), otherwise champ5k_r1's exact recipe. Full-eval finals
+  **ahead 0.306629 / imm 0.277893** -- paired vs r1: ahead -0.000058 (p=0.31, indistinguishable),
+  imm +0.000430 BETTER (p=6.1e-62). The 2nd WS epoch (same 5000 users reshuffled) adds NOTHING
+  (data-variety lesson holds at 5k). SIZE/SPEED accept; **1-ep budget now standard for ALL 5k runs**
+  (tuner trials AND research runs; champion pipeline ~3.5h: WS 2h27m + decay 37m + eval 89m).
+  Adoption executed: promoted (champion_5k.json = ckpt champ5kb1d_1638.pth + its cbs + 6554-step
+  trace = the new prune ref), hp_tuner WS_EPOCHS=1, 2-ep journal archived
+  (tuner_5k_log_2ep_era.jsonl), new baseline recorded (5001-5200: 0.294490/0.270492), tuner loop
+  RELAUNCHED (1-ep era; 2-ep prune verdicts for peak_lr 7e-4/1.4e-3 will be re-tested at 1 ep).
+  Pre-ship note: the final champion should get ONE full-budget (2 ep) confirmation run.
 - **★ HP TUNING RUNNING (launched 2026-07-08 18:35, detached pid 4468):** hp_tuner_5k `loop` --
   coordinate descent over peak_lr/warmup/wd/clip/decay_ratio, trials are self-recording full-recipe
   .cmds (WS 2ep + decay + tune-eval 5001-5200, LEARN=1 cbs, Wilcoxon-pruned vs champ5k_r1's trace).

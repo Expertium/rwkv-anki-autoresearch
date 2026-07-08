@@ -47,7 +47,8 @@ def _load_groups_per_epoch():
 
 
 GROUPS_PER_EPOCH = None  # resolved lazily via ws_steps()
-WS_EPOCHS = 2        # FIXED (5k budget)
+WS_EPOCHS = 1        # FIXED (5k budget; 2->1 Andrew 2026-07-09 -- the champ5k_b1 budget A/B showed
+                     # the 2nd epoch adds nothing: ahead -0.00006 p=0.31, imm +0.00043 BETTER p=6e-62)
 # Decay epochs are now a TUNED lever (Andrew 2026-07-01): decay_ep = WS_EPOCHS * decay_ratio,
 # ratio in [1/10, 1/2.5] -> decay in [0.2, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
 TRAIN_DB = "train_db_5k_h1"
@@ -83,7 +84,7 @@ NUM_FETCH = 4        # RAM-conscious cut 10->4 (Andrew 2026-07-08): each worker 
 # 5k champion run) -- 4 still fully hides prep. Worker count never affects batch content/order.
 
 # (param, grid). EPOCHS is NOT tuned (fixed budget). peak_lr around the champion 1e-3 (larger data may
-# want more); warmup over the 6702-step WS; wd/clip robust levers.
+# want more); warmup over the 6554-step WS; wd/clip robust levers.
 SPACE = [
     ("peak_lr",      [7e-4, 1.0e-3, 1.4e-3, 2.0e-3]),
     ("warmup_steps", [200, 400, 800]),
