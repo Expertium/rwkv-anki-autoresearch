@@ -555,12 +555,6 @@ class AnkiRWKVDictStatistics:
 def extract_p(stats: SrsRWKVIterStatistics):
     """Creates a nicer summary"""
     assert stats.label_review_th.size(0) == 1  # Only allow batch sizes of 1
-    ahead_ps_dict = {}
-    imm_ps_dict = {}
-    label_ratings_dict = {}
-    label_elapsed_seconds_dict = {}
-    imm_ps_all_dict = {}
-
     label_review_ths = stats.label_review_th.squeeze(0).cpu().numpy()
     label_elapsed_seconds_list = stats.label_elapsed_seconds.squeeze(0).cpu().numpy()
     label_ratings_list = stats.label_rating.squeeze(0).cpu().numpy()
@@ -571,23 +565,19 @@ def extract_p(stats: SrsRWKVIterStatistics):
     p_imm_alls = stats.p_imm_all.squeeze(0).cpu().numpy()
     ws = stats.w.squeeze(0).cpu()
 
-    for i in range(len(label_review_ths)):
-        label_review_th = label_review_ths[i]
-        label_elapsed_seconds_dict[label_review_th] = label_elapsed_seconds_list[i]
-        label_rating = label_ratings_list[i]
-        has_label = has_labels[i]
-        is_query = is_querys[i]
-        imm_p = p_imms[i]
-        imm_p_all = p_imm_alls[i]
-        ahead_p = p_curves[i]
+    # Vectorized dict builds: same keys/values as the old per-index loop (iterating a
+    # 1-D numpy selection yields the identical np scalars in the same order, so later
+    # duplicates of a review_th still overwrite earlier ones); the masks mirror the
+    # per-element `if has_label` / `if is_query` branches.
+    label_mask = has_labels.astype(bool)
+    query_mask = label_mask & is_querys.astype(bool)
+    ahead_mask = label_mask & ~is_querys.astype(bool)
 
-        if has_label:
-            label_ratings_dict[label_review_th] = label_rating
-            if is_query:
-                imm_ps_dict[label_review_th] = imm_p
-                imm_ps_all_dict[label_review_th] = imm_p_all
-            else:
-                ahead_ps_dict[label_review_th] = ahead_p
+    label_elapsed_seconds_dict = dict(zip(label_review_ths, label_elapsed_seconds_list))
+    label_ratings_dict = dict(zip(label_review_ths[label_mask], label_ratings_list[label_mask]))
+    imm_ps_dict = dict(zip(label_review_ths[query_mask], p_imms[query_mask]))
+    imm_ps_all_dict = dict(zip(label_review_ths[query_mask], p_imm_alls[query_mask]))
+    ahead_ps_dict = dict(zip(label_review_ths[ahead_mask], p_curves[ahead_mask]))
 
     return AnkiRWKVDictStatistics(
         ahead_ps=ahead_ps_dict,

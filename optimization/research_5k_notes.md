@@ -282,6 +282,20 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   `optimization/qat_pq_ep150_recipe.toml`.
 
 ## Speedups banked (detail also in CLAUDE.md)
+- 2026-07-08 **EVAL CPU PATH VECTORIZED (byte-identical, banked mid-champion-run).** The per-review
+  Python loops in the eval post-processing were the CPU drag between users: `extract_p` (per-index dict
+  builds over every timestep), `get_stats` (per-eq-review gather loop + an up-to-800k-row Python
+  rows-list → DataFrame), and `run()`'s per-batch `{**a, **b}` dict rebuilds + per-th raw comprehensions.
+  All replaced with numpy mask/`dict(zip())` builds and a sorted-key `searchsorted` gather (`_eq_gather`),
+  preserving EXACT dtypes/values (np-scalar keys+values from array iteration; DataFrame dtype matched via
+  a one-row probe of the old `np.array(rows)` promotion; within-bin row order preserved → groupby-mean
+  bit-identical). Timing (300k-review user): extract_p 308→118 ms, get_stats 1151→87 ms (×2 calls/user).
+  Verified: 6-trial exact-equality harness incl. dup-keys + int/float bins (`scratchpad/eval_speed/
+  stats_ab.py`, ALL_PASS) + E2E GPU A/B on 3 real users (5005/5033/5044, champ_h2k16 bf16) —
+  result jsonls byte-identical (`fc.exe` no differences). RNN/trace callers (run_as_rnn,
+  export_rnn_trace) pass tensor dicts → auto-fallback to the untouched original loop. Picked up
+  automatically by the champ5k_r1 eval phase (shards import get_result at launch). FOLLOW-UP at eval
+  launch: sample per-shard VRAM + GPU util → decide if future evals get --shards 3-4 (d=32 only).
 - 2026-07-01 **Tier 1 DEPLOYED in-place** — production `rwkv/model/RWKV_CUDA.cp312-win_amd64.pyd` is
   byte-identical (SHA256) to the bit-exact-validated build (cudaMalloc/cudaFree → caching-allocator
   scan scratch; ~1.3–1.44× WKV microbench). Real-world WS steps/s A/B deferred to the next training run.

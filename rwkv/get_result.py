@@ -34,9 +34,103 @@ def get_benchmark_info(db_path, db_size, user_id):
     return [], []
 
 
+def _eq_gather(d, eq_int64, what):
+    """Vectorized eq-ordered gather of d[th] for numpy-valued dicts: same values and the
+    same presence guarantee as the old per-element `assert th in d` loop."""
+    keys = np.fromiter(d.keys(), dtype=np.int64, count=len(d))
+    vals = np.asarray(list(d.values()))
+    order = np.argsort(keys, kind="stable")
+    keys = keys[order]
+    pos = np.searchsorted(keys, eq_int64)
+    if len(keys):
+        pos_clip = np.minimum(pos, len(keys) - 1)
+        found = keys[pos_clip] == eq_int64
+    else:
+        pos_clip = pos
+        found = np.zeros(len(eq_int64), dtype=bool)
+    assert bool(found.all()), f"{eq_int64[~found][0]} not found in {what}"
+    return vals[order[pos_clip]]
+
+
+def _get_stats_fast(user_id, equalize_review_ths, rmse_bins_dict, pred_dict, label_rating_dict):
+    """Vectorized get_stats for numpy-scalar dicts (the get_result path). Produces the exact
+    arrays the old loop fed sklearn/pandas (same dtypes, same within-bin row order), so all
+    metrics are bit-identical; only the per-review Python loops are gone."""
+    eq64 = np.asarray(equalize_review_ths, dtype=np.int64)
+    preds = _eq_gather(pred_dict, eq64, "pred_dict")
+    ratings = _eq_gather(label_rating_dict, eq64, "label_rating_dict")
+    label_ys = np.clip(ratings, a_min=0, a_max=1)  # 0-3 -> 0-1
+    bins_v = _eq_gather(rmse_bins_dict, eq64, "rmse_bins_dict")
+
+    rmse_raw = root_mean_squared_error(y_true=label_ys, y_pred=preds)
+    logloss = log_loss(y_true=label_ys, y_pred=preds, labels=[0, 1])
+    try:
+        auc = round(roc_auc_score(y_true=label_ys, y_score=preds), 6)
+    except Exception:
+        auc = None
+    if auc is not None and np.isnan(auc):
+        auc = None
+
+    # The old path built pd.DataFrame(list-of-rows), whose dtype numpy promotes from the
+    # mixed row scalars; probe one row the same way so the frame dtype (and therefore the
+    # groupby-mean arithmetic) is unchanged. Row order within a bin also matches the old
+    # bin-blocked frame, so per-group accumulation order -- and the sums -- are identical.
+    probe_dtype = np.array([[bins_v[0], label_ys[0], preds[0], 1]]).dtype
+    tmp = pd.DataFrame(
+        {
+            "bin": bins_v.astype(probe_dtype),
+            "y": label_ys.astype(probe_dtype),
+            "p": preds.astype(probe_dtype),
+            "weights": np.ones(len(eq64), dtype=probe_dtype),
+        }
+    )
+    tmp = (
+        tmp.groupby("bin")
+        .agg({"y": "mean", "p": "mean", "weights": "sum"})
+        .reset_index()
+    )
+    rmse_bins = root_mean_squared_error(
+        tmp["y"], tmp["p"], sample_weight=tmp["weights"]
+    )
+
+    print(
+        f"rmse raw: {rmse_raw:.4f}, logloss: {logloss:.4f}, rmse_bins: {rmse_bins:.4f}, auc: {np.nan if auc is None else auc:.4f}, len: {len(equalize_review_ths)}"
+    )
+    if len(equalize_review_ths) >= 5e5:
+        print("Emptying cache.")
+        torch.cuda.empty_cache()
+
+    stats = {
+        "metrics": {
+            "RMSE": round(rmse_raw, 6),
+            "LogLoss": round(logloss, 6),
+            "RMSE(bins)": round(rmse_bins, 6),
+            "AUC": auc,
+        },
+        "user": int(user_id),
+        "size": len(equalize_review_ths),
+    }
+    raw = {
+        "user": int(user_id),
+        "size": len(equalize_review_ths),
+        "p": preds.tolist(),
+        "y": label_ys.tolist(),
+        "review_th": equalize_review_ths,
+    }
+    return stats, raw
+
+
 def get_stats(
     user_id, equalize_review_ths, rmse_bins_dict, pred_dict, label_rating_dict
 ):
+    # Fast path for the get_result eval (numpy-scalar dicts from extract_p). The RNN/trace
+    # callers (run_as_rnn, export_rnn_trace) pass tensor-valued dicts and keep the old loop.
+    if len(equalize_review_ths) and isinstance(
+        next(iter(pred_dict.values()), None), np.generic
+    ) and isinstance(next(iter(label_rating_dict.values()), None), np.generic):
+        return _get_stats_fast(
+            user_id, equalize_review_ths, rmse_bins_dict, pred_dict, label_rating_dict
+        )
     gather_pred = []
     gather_y = []
     bin_pred = {}
@@ -211,14 +305,13 @@ def run(
                         f"{user_id} ahead_loss: {stats.ahead_equalize_avg.item():.3f}, imm_loss: {stats.imm_binary_equalize_avg.item():.3f}, imm_n: {stats.imm_binary_equalize_n}"
                     )
                     dict_stats = extract_p(stats)
-                    ahead_ps = {**ahead_ps, **dict_stats.ahead_ps}
-                    imm_ps = {**imm_ps, **dict_stats.imm_ps}
-                    label_ratings = {**label_ratings, **dict_stats.label_ratings}
-                    label_elapsed_seconds = {
-                        **label_elapsed_seconds,
-                        **dict_stats.label_elapsed_seconds,
-                    }
-                    imm_ps_all = {**imm_ps_all, **dict_stats.imm_ps_all}
+                    # in-place update == the old {**a, **b} rebuild (same last-wins
+                    # semantics), minus the per-batch full-dict copy
+                    ahead_ps.update(dict_stats.ahead_ps)
+                    imm_ps.update(dict_stats.imm_ps)
+                    label_ratings.update(dict_stats.label_ratings)
+                    label_elapsed_seconds.update(dict_stats.label_elapsed_seconds)
+                    imm_ps_all.update(dict_stats.imm_ps_all)
                     w_list.append(dict_stats.w)
                     if len(dict_stats.label_ratings) > 300000:
                         print("Emptying cache.")
@@ -249,15 +342,14 @@ def run(
             # print(type(ahead_raw['w'][0][0]))
             # ahead_raw["s"] = [dict_stats.s[review_th] for review_th in equalize_review_ths]
             # ahead_raw["d"] = [dict_stats.d[review_th] for review_th in equalize_review_ths]
-            imm_raw["label_elapsed_seconds"] = [
-                # .tolist() -> plain floats; np scalars/arrays are not JSON serializable
-                # (dormant RAW-path bug, hit 2026-07-03 by the entropy-floor analysis)
-                label_elapsed_seconds[review_th].tolist()
-                for review_th in equalize_review_ths
-            ]
-            imm_raw["p_all"] = [
-                imm_ps_all[review_th].tolist() for review_th in equalize_review_ths
-            ]
+            # vectorized gathers; .tolist() -> plain floats, same values the old per-th
+            # comprehensions produced (np scalars/arrays are not JSON serializable --
+            # dormant RAW-path bug, hit 2026-07-03 by the entropy-floor analysis)
+            eq64 = np.asarray(equalize_review_ths, dtype=np.int64)
+            imm_raw["label_elapsed_seconds"] = _eq_gather(
+                label_elapsed_seconds, eq64, "label_elapsed_seconds"
+            ).tolist()
+            imm_raw["p_all"] = _eq_gather(imm_ps_all, eq64, "imm_ps_all").tolist()
             # print(ahead_raw["s"])
             # print(imm_raw["p_all"])
 
