@@ -516,6 +516,18 @@ optimization/champion_5k.json = the prune ref; never hand-edit). Pairing needs i
   ref = champion_5k.json embedded trace -> works for ALL runs; switches to a new trial automatically.
   Relaunch: `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (survives Esc; close window to
   stop). NOTE: WMI-launching pythonw GUI directly stalls at 0 CPU -- use the .cmd wrapper.
+- **★ BUDGET A/B PENDING (Andrew 2026-07-08 ~20:30): champ5k_b1 = champion recipe at HALF budget
+  (WS 1 ep = 6554 steps + 0.25 ep decay), staged in scratchpad/champ5k_b1/ (toml + .cmd, committed).**
+  Launches automatically when the running tuner trial finishes (watcher armed); ~3h train + 1h full
+  eval 5001-10000; .cmd ends with paired_pvalue vs champ5k_r1. **ADOPTION RULE (Andrew): if NOT
+  significantly worse (SIZE/SPEED-class: both modes within +0.0015 of champ5k_r1), adopt WS 1 ep +
+  ratio-0.25 decay for ALL 5k runs -- HP-tune trials AND research/algorithmic-improvement runs.**
+  On adoption: (1) promote champ5k_b1 via promote_champion_5k.py (its trace = new 6554-step prune
+  ref, its finals = the gate reference); (2) hp_tuner_5k.py WS_EPOCHS 2->1; (3) archive the tuner
+  journal + re-record baseline from b1's 5001-5200 subset (2-ep trials are NOT comparable to 1-ep
+  trials -- same-budget comparisons only; the 0p0014 trial's early-LR signal still informs the grid);
+  (4) amend methodology (c) in research_5k_notes.md (WS fixed at 1 ep, Andrew-approved). If b1 is
+  significantly worse: keep 2 ep, relaunch tuner loop as-is (journal replay resumes it).
 - **★ HP TUNING RUNNING (launched 2026-07-08 18:35, detached pid 4468):** hp_tuner_5k `loop` --
   coordinate descent over peak_lr/warmup/wd/clip/decay_ratio, trials are self-recording full-recipe
   .cmds (WS 2ep + decay + tune-eval 5001-5200, LEARN=1 cbs, Wilcoxon-pruned vs champ5k_r1's trace).
