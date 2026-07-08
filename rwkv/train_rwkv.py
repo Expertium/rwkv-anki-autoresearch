@@ -460,6 +460,40 @@ def main_loop(config, task_queue, batch_queue):
     maybe_compile_mixers(model, "(student)")
     optimizer = get_optimizer(config, master_model)
 
+    # Learnable codebooks (shift cb / shift rotation / WKV cb): create the Parameters up front so
+    # that when a resumed optimizer state ALREADY CONTAINS their groups (any LEARN=1 run's own
+    # checkpoint -- the WS->decay seam of a champion run, or a mid-run crash resume), the groups
+    # can be registered BEFORE optimizer.load_state_dict and the group counts match (2026-07-08:
+    # the first 5k champion run died here with "different number of parameter groups"). A state
+    # saved WITHOUT them (warm-start from a pre-LEARN champion optim) still loads first and the
+    # groups are registered after, exactly as before. wd=0 -- centroids are a codebook, not
+    # weights to shrink. Registration order MUST stay shift, rot, wkv (== save order).
+    _extra_cb_groups = []
+    _shift_cb_param = None
+    _shift_rot_param = None
+    _wkv_cb_param = None
+    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and os.environ.get("RWKV_QAT_SHIFT_PQ_LEARN", "") == "1":
+        from rwkv.model import rwkv_model as _rwkv_model_mod
+        _shift_cb_param = _rwkv_model_mod.shift_pq_init(config.DEVICE)
+        _extra_cb_groups.append((_shift_cb_param, "[shift-pq] codebook LEARNABLE"))
+    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and os.environ.get("RWKV_QAT_SHIFT_ROT", "") == "1":
+        from rwkv.model import rwkv_model as _rwkv_model_mod
+        _c = int(os.environ.get("RWKV_N_HEADS", "2")) * int(os.environ.get("RWKV_HEAD_DIM", "16"))
+        _shift_rot_param = _rwkv_model_mod.shift_rot_init(config.DEVICE, _c)
+        _extra_cb_groups.append((_shift_rot_param, "[shift-rot] learned pre-rotation"))
+    if os.environ.get("RWKV_QAT_PQ", "") and os.environ.get("RWKV_QAT_PQ_LEARN", "") == "1":
+        from rwkv.model import rwkv_ops as _rwkv_ops_mod
+        _wkv_cb_param = _rwkv_ops_mod.wkv_pq_cb_param()
+        _extra_cb_groups.append((_wkv_cb_param, "[wkv-pq] codebook LEARNABLE"))
+    _cb_groups_added = False
+
+    def _register_cb_groups():
+        for _p, _tag in _extra_cb_groups:
+            optimizer.add_param_group(
+                {"params": [_p], "lr": config.PEAK_LR, "weight_decay": 0.0}
+            )
+            print(f"{_tag}: {tuple(_p.shape)} added as optim group (wd=0)")
+
     if config.LOAD_MODEL:
         model_path = f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}.pth"
         optim_path = f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}_optim.pth"
@@ -473,13 +507,18 @@ def main_loop(config, task_queue, batch_queue):
         # SAVED param_group hyperparams (same clobber class as the lr bug below), which silently
         # overrode RWKV_WEIGHT_DECAY (discovered 2026-07-02 in the sibling quant loop: a WD=0 run
         # came out hash-identical to its WD=0.01 twin). Per-group: the groups carry different WDs.
+        _optim_state = torch.load(optim_path, weights_only=False)
+        if _extra_cb_groups and len(_optim_state["param_groups"]) == len(
+            optimizer.param_groups
+        ) + len(_extra_cb_groups):
+            # state saved by a LEARN=1 run (own-checkpoint resume / WS->decay seam):
+            # register the cb groups first so counts match AND the cbs' Adam moments resume
+            _register_cb_groups()
+            _cb_groups_added = True
+            print(f"[optim] resumed state includes {len(_extra_cb_groups)} learnable-cb "
+                  f"group(s); registered before load (moments resume)")
         _intended_wd = [g["weight_decay"] for g in optimizer.param_groups]
-        optimizer.load_state_dict(
-            torch.load(
-                optim_path,
-                weights_only=False,
-            )
-        )
+        optimizer.load_state_dict(_optim_state)
         for _g, _wd in zip(optimizer.param_groups, _intended_wd):
             _g["weight_decay"] = _wd
         print(f"[wd] reset optimizer per-group weight_decay to intended {_intended_wd} after loading champion optim")
@@ -520,27 +559,13 @@ def main_loop(config, task_queue, batch_queue):
         maybe_compile_mixers(_teacher, "(teacher)")
         print(f"[KD] teacher = {model_path}, {_n_stripped} QAT hooks stripped, lambda = {_kd_lam}")
 
-    # Shift-PQ learnable codebook (RWKV_QAT_SHIFT_PQ_LEARN=1): register the codebook Parameter with the
-    # optimizer AFTER the champion-optim restore (so load_state_dict sees matching groups) and BEFORE the
-    # scheduler is built (so the LambdaLR covers the new group). wd=0 — centroids are a codebook, not
-    # weights to shrink. Gradients arrive from `model`'s forward directly on the shared global Parameter.
-    _shift_cb_param = None
-    _shift_rot_param = None
-    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and os.environ.get("RWKV_QAT_SHIFT_PQ_LEARN", "") == "1":
-        from rwkv.model import rwkv_model as _rwkv_model_mod
-        _shift_cb_param = _rwkv_model_mod.shift_pq_init(config.DEVICE)
-        optimizer.add_param_group(
-            {"params": [_shift_cb_param], "lr": config.PEAK_LR, "weight_decay": 0.0}
-        )
-        print(f"[shift-pq] codebook LEARNABLE: {tuple(_shift_cb_param.shape)} added as optim group (wd=0)")
-    if os.environ.get("RWKV_QAT_SHIFT_PQ", "") and os.environ.get("RWKV_QAT_SHIFT_ROT", "") == "1":
-        from rwkv.model import rwkv_model as _rwkv_model_mod
-        _c = int(os.environ.get("RWKV_N_HEADS", "2")) * int(os.environ.get("RWKV_HEAD_DIM", "16"))
-        _shift_rot_param = _rwkv_model_mod.shift_rot_init(config.DEVICE, _c)
-        optimizer.add_param_group(
-            {"params": [_shift_rot_param], "lr": config.PEAK_LR, "weight_decay": 0.0}
-        )
-        print(f"[shift-rot] learned pre-rotation: {tuple(_shift_rot_param.shape)} added as optim group (wd=0)")
+    # Learnable-codebook groups: created up front (pre-load, above); register here when the
+    # loaded (or absent) optim state did not already carry them -- AFTER the champion-optim
+    # restore and BEFORE the scheduler is built (so the LambdaLR covers the new groups).
+    # Gradients arrive from `model`'s forward directly on the shared global Parameters.
+    if not _cb_groups_added:
+        _register_cb_groups()
+        _cb_groups_added = True
     # Soft-to-hard selection annealing (RWKV_QAT_SHIFT_ANNEAL=<tau0>): per-step temperature schedule,
     # linear tau0 -> 0 at RWKV_QAT_SHIFT_ANNEAL_END of training, exactly-hard thereafter (no end gap).
     _rm_anneal = None
@@ -548,17 +573,10 @@ def main_loop(config, task_queue, batch_queue):
         from rwkv.model import rwkv_model as _rm_anneal
         print(f"[shift-anneal] soft-to-hard selection annealing ON: tau0={_rm_anneal._SHIFT_ANNEAL_TAU0} "
               f"-> fully HARD from {_rm_anneal._SHIFT_ANNEAL_END:.0%} of training")
-    # WKV-PQ learnable codebook (RWKV_QAT_PQ_LEARN=1): same treatment. Grads do NOT arrive via autograd —
-    # the lr backward kernel accumulates them in a device buffer; the loop below zeroes it before backward
-    # and fetches it into .grad after, then re-uploads the stepped centroids to the kernel globals.
-    _wkv_cb_param = None
-    if os.environ.get("RWKV_QAT_PQ", "") and os.environ.get("RWKV_QAT_PQ_LEARN", "") == "1":
-        from rwkv.model import rwkv_ops as _rwkv_ops_mod
-        _wkv_cb_param = _rwkv_ops_mod.wkv_pq_cb_param()
-        optimizer.add_param_group(
-            {"params": [_wkv_cb_param], "lr": config.PEAK_LR, "weight_decay": 0.0}
-        )
-        print(f"[wkv-pq] codebook LEARNABLE: {tuple(_wkv_cb_param.shape)} added as optim group (wd=0)")
+    # (WKV-PQ learnable codebook: created up front pre-load with the other cb Parameters; its
+    # grads do NOT arrive via autograd — the lr backward kernel accumulates them in a device
+    # buffer; the loop below zeroes it before backward and fetches it into .grad after, then
+    # re-uploads the stepped centroids to the kernel globals.)
 
     # Dead-centroid resurrection (RWKV_QAT_CB_RESURRECT=1, task22): with 16-32-entry catalogs, a
     # centroid nothing selects receives ~zero gradient and is wasted capacity exactly where capacity
