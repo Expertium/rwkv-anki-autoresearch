@@ -78,8 +78,9 @@ QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
            "set RWKV_QAT_FAST_EMB=1\n"
            "set RWKV_QAT_EMA_FOREACH=1\n"
            "set RWKV_QAT_NO_MEMFILL=1\n")
-NUM_FETCH = 10       # max-useful fetch (GPU saturates ~8-10 on a clean box); Andrew 2026-06-30 raised
-# 5->10 as CPU frees up (FSRS postponed). Needs FETCH_AHEAD>=10 in train_rwkv.py to be usable (now 10).
+NUM_FETCH = 4        # RAM-conscious cut 10->4 (Andrew 2026-07-08): each worker holds ~2.6 GB at
+# MAX=110000 and fetch runs far ahead of demand (~4 ms get() waits at 1.34 s/step with 7 workers on the
+# 5k champion run) -- 4 still fully hides prep. Worker count never affects batch content/order.
 
 # (param, grid). EPOCHS is NOT tuned (fixed budget). peak_lr around the champion 1e-3 (larger data may
 # want more); warmup over the 6702-step WS; wd/clip robust levers.

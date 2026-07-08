@@ -46,7 +46,10 @@ VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
 LABEL_FILTER_LMDB_PATH = "label_filter_db"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
-NUM_FETCH_PROCESSES = 7
+# 4 fetch workers (was 7, Andrew 2026-07-08): each costs ~2.6 GB RAM and fetch runs far
+# ahead of demand (~4 ms get() waits); 4 still fully hides prep. Worker count never
+# affects batch content/order (seeded shuffle), only parallelism.
+NUM_FETCH_PROCESSES = 4
 MAX_TRAIN_GLOBAL_LEN = 110000
 
 TRAIN_MODE = "D"

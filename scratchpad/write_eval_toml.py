@@ -38,6 +38,6 @@ RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = {user_start}
 USER_END = {user_end}
-NUM_FETCH_PROCESSES = 7
+NUM_FETCH_PROCESSES = 4
 ''')
 print(f"wrote {out} -> {path} (step {step})")
