@@ -108,8 +108,8 @@ def ema(x, span):
     return out
 
 
-DELTA_TAIL = 20  # mean delta over the last N paired steps (full-window mean is inflated
-                 # by the early transient where both losses are huge and far apart)
+DELTA_TAIL = 100  # mean delta over the last N paired steps (full-window mean is inflated
+                  # by the early transient where both losses are huge and far apart)
 
 
 def paired_p(champ_dense, cand_steps, cand_vals):
@@ -131,8 +131,12 @@ def draw(fig, axes, champ, trace_path):
     name, warmup, ws_steps = run_meta(trace_path)
     ws_steps = ws_steps or champ["n"]
     span = max(25, len(steps) // 30)
-    for ax, mode, champ_dense, cand_v in ((axes[0], "ahead", champ["ahead"], cand_a),
-                                          (axes[1], "imm", champ["imm"], cand_i)):
+    # NOTE: the trace's "imm" is the 4-WAY rating cross-entropy (chance = log4 = 1.39), NOT the
+    # benchmark's binary imm logloss -- so it sits above "ahead" (binary curve BCE, chance = log2)
+    # even though benchmark-imm < benchmark-ahead. Same fields in both traces -> pairing is valid.
+    panels = ((axes[0], "ahead", "ahead loss (curve BCE, binary)", champ["ahead"], cand_a),
+              (axes[1], "imm", "imm loss (4-way rating CE)", champ["imm"], cand_i))
+    for ax, mode, ylab, champ_dense, cand_v in panels:
         ax.clear()
         n_show = min(len(steps), champ["n"]) if len(steps) else champ["n"]
         cx = np.arange(1, max(n_show, 2) + 1)
@@ -164,7 +168,7 @@ def draw(fig, axes, champ, trace_path):
         pad = 0.06 * (allv.max() - allv.min() + 1e-9)
         ax.set_ylim(allv.min() - pad, allv.max() + 3 * pad)
         ax.set_xlim(0, ws_steps * 1.02)
-        ax.set_ylabel(f"{mode} loss", color=C_INK)
+        ax.set_ylabel(ylab, color=C_INK)
         ax.grid(alpha=0.25, lw=0.5)
         for s in ("top", "right"):
             ax.spines[s].set_visible(False)
