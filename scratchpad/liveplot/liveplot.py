@@ -108,16 +108,22 @@ def ema(x, span):
     return out
 
 
+DELTA_TAIL = 20  # mean delta over the last N paired steps (full-window mean is inflated
+                 # by the early transient where both losses are huge and far apart)
+
+
 def paired_p(champ_dense, cand_steps, cand_vals):
-    """One-sided Wilcoxon p that the candidate is BETTER (lower loss), paired by step."""
+    """One-sided Wilcoxon p that the candidate is BETTER (lower loss), paired by step.
+    p uses the FULL common window (same as the prune test); the delta is last-N-steps."""
     ok = cand_steps <= len(champ_dense)
     if ok.sum() < 20:
         return None, None
     d = champ_dense[cand_steps[ok] - 1] - cand_vals[ok]  # >0 = candidate better
+    d_tail = float(d[-DELTA_TAIL:].mean())
     nz = d[d != 0]
     if len(nz) < 20:
-        return None, float(d.mean())
-    return float(wilcoxon(nz, alternative="greater").pvalue), float(d.mean())
+        return None, d_tail
+    return float(wilcoxon(nz, alternative="greater").pvalue), d_tail
 
 
 def draw(fig, axes, champ, trace_path):
@@ -137,7 +143,7 @@ def draw(fig, axes, champ, trace_path):
         p, dmean = paired_p(champ_dense, steps, cand_v) if len(steps) else (None, None)
         ptxt = "p(cand better) = n/a" if p is None else f"p(cand better) = {p:.2g}"
         if dmean is not None:
-            ptxt += f"\nmean delta = {dmean:+.4f}"
+            ptxt += f"\ndelta (last {DELTA_TAIL} steps) = {dmean:+.4f}"
         ax.text(0.985, 0.945, ptxt, transform=ax.transAxes, ha="right", va="top",
                 fontsize=10, color=C_INK,
                 bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="#cccccc", alpha=0.85))
@@ -173,7 +179,10 @@ def draw(fig, axes, champ, trace_path):
 def main():
     champ = load_champion()
     fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
-    fig.canvas.manager.set_window_title("RWKV 5k: champion vs candidate") if not ONCE else None
+    if not ONCE:
+        fig.canvas.manager.set_window_title("RWKV 5k: champion vs candidate")
+        plt.show(block=False)  # map the window ONCE; refreshes must never call show/pause
+                               # again (plt.pause re-raises the window = steals focus)
     while True:
         trace = discover_trace(champ["name"])
         if trace:
@@ -191,12 +200,14 @@ def main():
             print(f"saved {out}")
             return
         fig.canvas.draw_idle()
-        # stay responsive between refreshes; exit when the window is closed
+        # stay responsive between refreshes; exit when the window is closed.
+        # flush_events (NOT plt.pause) -- pause calls show() every tick, stealing focus.
         t0 = time.time()
         while time.time() - t0 < REFRESH_S:
             if not plt.fignum_exists(fig.number):
                 return
-            plt.pause(0.25)
+            fig.canvas.flush_events()
+            time.sleep(0.25)
 
 
 if __name__ == "__main__":
