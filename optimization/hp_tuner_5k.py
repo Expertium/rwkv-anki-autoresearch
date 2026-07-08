@@ -232,6 +232,9 @@ set RWKV_HEAD_DIM=16
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
 set RWKV_CLIP={cfg["clip"]:g}
 {QAT_ENV}{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
+REM re-run hygiene: STEP_TRACE opens in APPEND mode -- a leftover trace/marker from a prior-era
+REM run of this same config would pollute this run's file (liveplot + post-hoc analysis).
+del /Q scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl.pruned.json 2>nul
 echo === WS {WS_EPOCHS} epochs ({USTART}-{UEND}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_ws.toml >> "%LOG%" 2>&1
 if %ERRORLEVEL%==42 (

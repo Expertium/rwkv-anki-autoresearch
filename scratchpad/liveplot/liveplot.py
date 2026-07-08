@@ -73,7 +73,16 @@ def read_trace(path):
             steps.append(r["step"])
             ahead.append(r["ahead"])
             imm.append(r["imm"])
-    return np.asarray(steps), np.asarray(ahead, dtype=np.float64), np.asarray(imm, dtype=np.float64)
+    steps = np.asarray(steps)
+    ahead = np.asarray(ahead, dtype=np.float64)
+    imm = np.asarray(imm, dtype=np.float64)
+    # STEP_TRACE appends: a re-run trial (config revisited across eras) leaves the old run's
+    # lines in front. Keep only the last monotonic segment (after the final step reset).
+    resets = np.where(np.diff(steps) < 0)[0]
+    if len(resets):
+        cut = resets[-1] + 1
+        steps, ahead, imm = steps[cut:], ahead[cut:], imm[cut:]
+    return steps, ahead, imm
 
 
 def run_meta(trace_path):
