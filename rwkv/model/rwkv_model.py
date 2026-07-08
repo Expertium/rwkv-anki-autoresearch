@@ -139,6 +139,41 @@ _SHIFT_ROT_CACHE_ON = os.environ.get("RWKV_QAT_ROT_CACHE", "") == "1"
 _SHIFT_ROT_CACHE = {}    # role -> R (graph-carrying); valid within one training step only
 _FAST_EMB = os.environ.get("RWKV_QAT_FAST_EMB", "") == "1"
 
+# Shift-PQ nearest-centroid search tiers (2026-07-08; the eager torch.cdist search was ~45% of the
+# q72u quant-aware step: sqrt+clamp+argmin over a never-needed N x ncent fp32 distance matrix).
+# Tier 1 (default): the fused CUDA kernel rwkv7_pq_argmin -- direct squared-distance accumulation,
+#   no materialized matrix, first-strict-min ties like torch.cdist().argmin(). Index-identical to
+#   cdist except on fp32 near-ties (different rounding path; noise-class). RWKV_SHIFT_SEARCH_KERNEL=0
+#   disables. CPU tensors fall through automatically (RNN/Rust-parity paths).
+# Tier 2 (RWKV_SHIFT_SQ_SEARCH=1, default): squared distances via aten::_euclidean_dist's exact
+#   augmented matmul (pre-sqrt values bit-identical to cdist's mm path; unit-proven), then
+#   clamp_min(0)+argmin -- drops only cdist's sqrt pass. Indices bit-identical to cdist.
+# Tier 3 (both =0): the original torch.cdist path.
+_SHIFT_SEARCH_KERNEL = os.environ.get("RWKV_SHIFT_SEARCH_KERNEL", "1") == "1"
+_SHIFT_SQ_SEARCH = os.environ.get("RWKV_SHIFT_SQ_SEARCH", "1") == "1"
+_PQ_ARGMIN_OP = None  # resolved lazily: None = unprobed, False = unavailable (old .pyd)
+
+
+def _pq_argmin_op():
+    global _PQ_ARGMIN_OP
+    if _PQ_ARGMIN_OP is None:
+        try:
+            _PQ_ARGMIN_OP = torch.ops.rwkv.rwkv7_pq_argmin
+        except (AttributeError, RuntimeError):
+            print("[QAT-SHIFT-PQ] rwkv7_pq_argmin op missing (old RWKV_CUDA build); matmul search fallback")
+            _PQ_ARGMIN_OP = False
+    return _PQ_ARGMIN_OP
+
+
+def _sq_dist_rows(a, b):
+    """aten::_euclidean_dist minus its final sqrt_: same augmented-cat layout, same matmul call ->
+    the pre-sqrt distance matrix is bit-identical to what cdist's mm path computes internally."""
+    a_norm = a.pow(2).sum(-1, keepdim=True)
+    b_norm = b.pow(2).sum(-1, keepdim=True)
+    a_ = torch.cat([a.mul(-2), a_norm, torch.ones_like(a_norm)], -1)
+    b_ = torch.cat([b, torch.ones_like(b_norm), b_norm], -1)
+    return a_.matmul(b_.mT)
+
 
 def shift_rot_cache_clear():
     """Train-loop hook: call at the TOP of every training step (before the forward). Clearing per step
@@ -294,6 +329,16 @@ def fake_pq_shift(x_BTC: torch.Tensor, role: int) -> torch.Tensor:
         # N x 4096 ~ 1 GB fp32 at N~66k, too big a transient on 12 GB). Rows are independent, so
         # slicing N changes NOTHING (bit-identical indices); small catalogs keep the one-shot path.
         def _nearest(u_p, cb_p):
+            if _SHIFT_SEARCH_KERNEL and u_p.is_cuda:
+                op = _pq_argmin_op()
+                if op is not False:
+                    return op(u_p, cb_p)  # fused: no N x ncent matrix, no row chunking needed
+            if _SHIFT_SQ_SEARCH:
+                # same chunk boundaries as the cdist path -> identical gemm shapes/rounding
+                if u_p.shape[0] * cb_p.shape[0] <= (1 << 27):
+                    return _sq_dist_rows(u_p, cb_p).clamp_min_(0).argmin(dim=1)
+                return torch.cat([_sq_dist_rows(u_p[s:s + 8192], cb_p).clamp_min_(0).argmin(dim=1)
+                                  for s in range(0, u_p.shape[0], 8192)])
             if u_p.shape[0] * cb_p.shape[0] <= (1 << 27):
                 return torch.cdist(u_p, cb_p).argmin(dim=1)
             outs = [torch.cdist(u_p[s:s + 8192], cb_p).argmin(dim=1)

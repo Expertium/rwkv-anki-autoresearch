@@ -1495,6 +1495,148 @@ std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tenso
     return std::make_tuple(r_grad_BTHK, k_grad_BTHK, v_grad_BTHK, w_grad_BTHK, a_grad_BTHK, k_deformed_grad_BTHK);
 }
 
+// ---------------------------------------------------------------------------------------------
+// Standalone PQ nearest-centroid search for the python shift-PQ path (fake_pq_shift):
+// out[n] = argmin_c sum_j (u[n][j] - cb[c][j])^2, ties -> LOWEST c (the same first-strict-min
+// semantics as torch.cdist().argmin() and the in-WKV joint search above). Direct squared-distance
+// accumulation (always >= 0: no clamp subtlety) and the N x ncent distance matrix is NEVER
+// materialized -- the eager cdist path wrote + re-read ~1.8 GB per call at the q72u m2b12 catalog
+// (4096 x 16), ~370 ms/step total. One block per row; cb is re-read by every block -> L2-resident.
+// Arch-agnostic: ncent/sub come from the tensor shapes.
+// Row-tiled: PQA_ROWS rows share one block, so each centroid is loaded into registers ONCE per
+// thread and reused across all PQA_ROWS rows (a one-row-per-block version was L2-bound re-reading
+// the 256 KB catalog per row: 28 GB/call at N=110k -- slower than cdist). Templated on SUB so the
+// bd/bi/cc tiles are compile-time-indexed (runtime bounds spill them to local memory: 9 ms/call
+// instead of ~1). OOB row slots are zero-padded and computed anyway (results discarded on write).
+#define PQA_ROWS 16
+template <int SUB>
+__global__ void rwkv7_pq_argmin_kernel(const float* __restrict__ u, const float* __restrict__ cb,
+                                       int64_t* __restrict__ out, const int nrows, const int ncent) {
+    __shared__ float srows[PQA_ROWS * SUB];             // this block's u rows (0-padded tail)
+    __shared__ float rbd[32];                           // per-warp best distance (reused per row)
+    __shared__ int rbi[32];                             // per-warp best index
+    const int64_t row0 = (int64_t)blockIdx.x * PQA_ROWS;
+    const int tid = threadIdx.x, nthreads = blockDim.x;
+    const int nrow_here = (row0 + PQA_ROWS <= nrows) ? PQA_ROWS : (int)(nrows - row0);
+    for (int j = tid; j < PQA_ROWS * SUB; j += nthreads)
+        srows[j] = (j / SUB < nrow_here) ? u[row0 * SUB + j] : 0.f;
+    __syncthreads();
+    float bd[PQA_ROWS]; int bi[PQA_ROWS];
+    #pragma unroll
+    for (int r = 0; r < PQA_ROWS; r++) { bd[r] = INFINITY; bi[r] = 0x7fffffff; }
+    float cc[SUB];
+    for (int c = tid; c < ncent; c += nthreads) {       // ascending c per thread + strict < = lowest c on ties
+        const float* cg = cb + (int64_t)c * SUB;
+        #pragma unroll
+        for (int j = 0; j < SUB; j++) cc[j] = cg[j];
+        #pragma unroll
+        for (int r = 0; r < PQA_ROWS; r++) {
+            float d = 0.f;
+            #pragma unroll
+            for (int j = 0; j < SUB; j++) { float diff = srows[r * SUB + j] - cc[j]; d += diff * diff; }
+            if (d < bd[r]) { bd[r] = d; bi[r] = c; }
+        }
+    }
+    #pragma unroll
+    for (int r = 0; r < PQA_ROWS; r++) {                // per-row block argmin, ties -> lower index
+        if (r < nrow_here) {                            // nrow_here is block-uniform: syncs stay uniform
+            float d = bd[r]; int i = bi[r];
+            for (int o = 16; o > 0; o >>= 1) {
+                float od = __shfl_down_sync(FULL_MASK, d, o);
+                int oi = __shfl_down_sync(FULL_MASK, i, o);
+                if (od < d || (od == d && oi < i)) { d = od; i = oi; }
+            }
+            if ((tid & 31) == 0) { rbd[tid >> 5] = d; rbi[tid >> 5] = i; }
+            __syncthreads();
+            if (tid == 0) {
+                const int nwarps = (nthreads + 31) / 32;
+                float fd = rbd[0]; int fi = rbi[0];
+                for (int w = 1; w < nwarps; w++)
+                    if (rbd[w] < fd || (rbd[w] == fd && rbi[w] < fi)) { fd = rbd[w]; fi = rbi[w]; }
+                out[row0 + r] = (fi == 0x7fffffff) ? 0 : (int64_t)fi;  // all-NaN row -> 0 (masked upstream)
+            }
+            __syncthreads();                            // rbd/rbi reuse fence for the next row
+        }
+    }
+}
+
+// Generic-sub fallback (runtime sub, register tiles spill -- correct but slower; hit only for
+// catalog dims outside the dispatch table below).
+__global__ void rwkv7_pq_argmin_kernel_generic(const float* __restrict__ u, const float* __restrict__ cb,
+                                               int64_t* __restrict__ out, const int nrows,
+                                               const int ncent, const int sub) {
+    extern __shared__ float sm[];
+    float* srows = sm;
+    float* rbd = sm + PQA_ROWS * sub;
+    int* rbi = (int*)(rbd + 32);
+    const int64_t row0 = (int64_t)blockIdx.x * PQA_ROWS;
+    const int tid = threadIdx.x, nthreads = blockDim.x;
+    const int nrow_here = (row0 + PQA_ROWS <= nrows) ? PQA_ROWS : (int)(nrows - row0);
+    for (int j = tid; j < nrow_here * sub; j += nthreads) srows[j] = u[row0 * sub + j];
+    __syncthreads();
+    float bd[PQA_ROWS]; int bi[PQA_ROWS];
+    for (int r = 0; r < PQA_ROWS; r++) { bd[r] = INFINITY; bi[r] = 0x7fffffff; }
+    for (int c = tid; c < ncent; c += nthreads) {
+        const float* cg = cb + (int64_t)c * sub;
+        for (int r = 0; r < nrow_here; r++) {
+            const float* srow = srows + r * sub;
+            float d = 0.f;
+            for (int j = 0; j < sub; j++) { float diff = srow[j] - cg[j]; d += diff * diff; }
+            if (d < bd[r]) { bd[r] = d; bi[r] = c; }
+        }
+    }
+    for (int r = 0; r < nrow_here; r++) {
+        float d = bd[r]; int i = bi[r];
+        for (int o = 16; o > 0; o >>= 1) {
+            float od = __shfl_down_sync(FULL_MASK, d, o);
+            int oi = __shfl_down_sync(FULL_MASK, i, o);
+            if (od < d || (od == d && oi < i)) { d = od; i = oi; }
+        }
+        if ((tid & 31) == 0) { rbd[tid >> 5] = d; rbi[tid >> 5] = i; }
+        __syncthreads();
+        if (tid == 0) {
+            const int nwarps = (nthreads + 31) / 32;
+            float fd = rbd[0]; int fi = rbi[0];
+            for (int w = 1; w < nwarps; w++)
+                if (rbd[w] < fd || (rbd[w] == fd && rbi[w] < fi)) { fd = rbd[w]; fi = rbi[w]; }
+            out[row0 + r] = (fi == 0x7fffffff) ? 0 : (int64_t)fi;
+        }
+        __syncthreads();
+    }
+}
+
+at::Tensor rwkv7_pq_argmin_cuda(const at::Tensor& u_NS, const at::Tensor& cb_CS) {
+    TORCH_CHECK(u_NS.device().type() == at::DeviceType::CUDA && cb_CS.device().type() == at::DeviceType::CUDA,
+                "rwkv7_pq_argmin: CUDA tensors required");
+    TORCH_CHECK(u_NS.scalar_type() == at::kFloat && cb_CS.scalar_type() == at::kFloat,
+                "rwkv7_pq_argmin: float32 required");
+    TORCH_CHECK(u_NS.dim() == 2 && cb_CS.dim() == 2 && u_NS.size(1) == cb_CS.size(1),
+                "rwkv7_pq_argmin: [N,sub] x [ncent,sub] required");
+    const at::Tensor u = u_NS.contiguous();
+    const at::Tensor cb = cb_CS.contiguous();
+    const int64_t n = u.size(0);
+    TORCH_CHECK(n <= 0x7fffffffLL, "rwkv7_pq_argmin: too many rows");
+    at::Tensor out = torch::empty({n}, u.options().dtype(torch::kInt64));
+    if (n == 0) return out;
+    const int threads = 256;
+    const unsigned int blocks = (unsigned int)((n + PQA_ROWS - 1) / PQA_ROWS);
+    const int ncent = (int)cb.size(0), sub = (int)cb.size(1);
+    const float* up = u.data_ptr<float>();
+    const float* cp = cb.data_ptr<float>();
+    int64_t* op = out.data_ptr<int64_t>();
+    switch (sub) {  // compile-time SUB keeps the per-thread tiles in registers (see kernel note)
+        case 8:  rwkv7_pq_argmin_kernel<8><<<blocks, threads>>>(up, cp, op, (int)n, ncent); break;
+        case 16: rwkv7_pq_argmin_kernel<16><<<blocks, threads>>>(up, cp, op, (int)n, ncent); break;
+        case 32: rwkv7_pq_argmin_kernel<32><<<blocks, threads>>>(up, cp, op, (int)n, ncent); break;
+        default: {
+            const size_t smem = (size_t)PQA_ROWS * sub * sizeof(float)
+                                + 32 * (sizeof(float) + sizeof(int));
+            rwkv7_pq_argmin_kernel_generic<<<blocks, threads, smem>>>(up, cp, op, (int)n, ncent, sub);
+        }
+    }
+    return out;
+}
+
 const int CHECKPOINT_LEN = 32;
 TORCH_LIBRARY_IMPL(rwkv, CUDA, m) {
     m.impl("rwkv7_wkv_forward_float", &rwkv7_wkv_forward_cuda<CHECKPOINT_LEN, float>);
@@ -1519,5 +1661,6 @@ TORCH_LIBRARY_IMPL(rwkv, CUDA, m) {
     m.impl("rwkv7_set_pq_learn", &rwkv7_set_pq_learn_cuda);
     m.impl("rwkv7_pq_cb_grad_zero", &rwkv7_pq_cb_grad_zero_cuda);
     m.impl("rwkv7_pq_cb_grad_get", &rwkv7_pq_cb_grad_get_cuda);
+    m.impl("rwkv7_pq_argmin", &rwkv7_pq_argmin_cuda);
 }
 }

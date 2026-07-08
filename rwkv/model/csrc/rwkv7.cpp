@@ -59,5 +59,9 @@ namespace rwkv {
         m.def("rwkv7_set_pq_learn(Tensor dev, int on) -> ()");
         m.def("rwkv7_pq_cb_grad_zero(Tensor dev) -> ()");
         m.def("rwkv7_pq_cb_grad_get(Tensor dev) -> Tensor");
+        // Standalone nearest-centroid search for the python shift-PQ path (fake_pq_shift):
+        // out[n] = argmin_c ||u[n]-cb[c]||^2, ties -> lowest c. Never materializes the N x ncent
+        // distance matrix (the torch.cdist path burned ~370 ms/step at the m2b12 catalog size).
+        m.def("rwkv7_pq_argmin(Tensor u_NS, Tensor cb_CS) -> Tensor");
     }
 }

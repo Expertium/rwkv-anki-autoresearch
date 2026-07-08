@@ -62,9 +62,10 @@ def run_all():
     for pq in (False, True):
         if pq:
             cbt, m, sub, ncent = load_codebook()
-            torch.ops.rwkv.rwkv7_set_pq_codebook(cbt, m, sub, ncent)
+            # joint=0: these goldens predate the joint-uv catalog (role-blocked cb semantics)
+            torch.ops.rwkv.rwkv7_set_pq_codebook(cbt, m, sub, ncent, 0)
         else:
-            torch.ops.rwkv.rwkv7_set_pq_codebook(torch.zeros(1, device="cuda"), 0, 0, 0)
+            torch.ops.rwkv.rwkv7_set_pq_codebook(torch.zeros(1, device="cuda"), 0, 0, 0, 0)
         for si, (B, T, H, K) in enumerate(SHAPES):
             r, k, v, w, a, kd, skip, grad = make_inputs(B, T, H, K, seed=1234 + si)
             fwd_out, ckpt = torch.ops.rwkv.rwkv7_wkv_qat_lr_forward_float.default(

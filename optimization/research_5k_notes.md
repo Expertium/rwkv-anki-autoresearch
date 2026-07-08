@@ -334,3 +334,35 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   (quant-aware) but wall step time under the batch sweep implied ~2+ s — Python/TorchScript-interpreter
   gaps between kernels are unmeasurable under build contention. Measure GPU-idle fraction in a clean
   window; if large, host-side batching of the per-split loop is the next (and last) lever.
+- 2026-07-08 **Wall-clock gap RESOLVED (clean window, build done): none.** q72u frozen-env quant-aware
+  step: 1184 ms GPU-busy vs 1207 ms wall — fully GPU-bound, host-side batching lever DEAD.
+- 2026-07-08 **Shift-PQ search kernel — 1.21x on the q72u quant-aware step (1.207 -> 0.996 s/step,
+  65+327 protocol).** Profile of the q72u step (first profile since the joint/shift-PQ/learnable-cb
+  port) showed ~45% = the LEARNABLE shift-PQ nearest-centroid search running eager `torch.cdist().
+  argmin()` in `fake_pq_shift`: sqrt (173 ms) + clamp (173 ms) + argmin (101 ms) + sgemm (99 ms) over a
+  never-needed N x 4096 fp32 distance matrix (~1.8 GB per call, 16 calls/step at MAX=110000).
+  Fix ladder (all in `rwkv_model.py::_nearest` + csrc):
+  (1) `_sq_dist_rows` — aten::_euclidean_dist's exact augmented matmul minus the sqrt; pre-sqrt values
+      bitwise-identical to cdist's mm path (unit-proven incl. exact-tie adversarials); saves the sqrt
+      pass only (1.189 s/step). A nested-torch.compile fused clamp+argmin attempt DID NOT ENGAGE
+      in-process (only 20 ms of fused triton appeared; the big clamp+argmin stayed eager) — dropped.
+  (2) **`rwkv7_pq_argmin` CUDA kernel (the win)**: direct squared-distance accumulation, no
+      materialized matrix, first-strict-min ties == torch.cdist().argmin() semantics. v1 one-row-per-
+      block was L2-BOUND re-reading the 256 KB catalog per row (28 GB/call -> 30 ms, SLOWER than
+      cdist). v2 row-tiled (16 rows/block) 9.0 ms; v3 templated on SUB (compile-time register tiles;
+      runtime-indexed tiles were spilling to local memory) **5.9 ms/call vs cdist 23.9** -> ~95 ms/step
+      search total. Dispatch: sub 8/16/32 fast path, generic fallback; CPU tensors fall through to the
+      matmul tier (RNN/Rust-parity safe). Escape hatches: RWKV_SHIFT_SEARCH_KERNEL=0 (tier 1) and
+      RWKV_SHIFT_SQ_SEARCH=0 (tier 2) -> original cdist.
+  Correctness: index-identical to cdist on 330k random rows + exact-tie adversarials (0 mismatches);
+  goldens BITEXACT_PASS after both rebuilds; eval-path (no_grad) numerics change only on fp32 near-tie
+  index flips (none observed). E2E: 3-arm 110-step A/B (sq0a/sq0b control + sq1) — **the frozen env is
+  inherently NOT run-to-run reproducible** (controls diverge at step 27, trace noise <=3e-4, weight
+  drift 1.7e-2 by step 110; inductor autotune nondeterminism suspected), so bit-exact E2E is
+  unattainable for ANY change; the rewrite's drift (diverges step 15, <=6e-4) is the same noise class.
+  ⚠ PROTOCOL NOTE: the old "run-to-run variance ~0" doctrine does NOT hold under the compiled frozen
+  env — per-step trace noise ~1e-4..3e-4 (zero-mean; Wilcoxon prune pairing still valid).
+  Stacked 2026-07-08: 1.643 (NO_JIT) -> 1.207 (sanctioned flags) -> 0.996 s/step (search kernel) =
+  1.65x; champion-run training ~4.6 h. Next targets if ever needed: QAT kernels (210 ms, already
+  37x-optimized), elementwise mass via compile-all-mixers/recompile-limit raise (PERTURBING — needs
+  trajectory revalidation; Dynamo's 8-entry cache cap leaves ~1 of 9 mixer guard-sets eager).
