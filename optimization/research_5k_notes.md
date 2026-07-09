@@ -135,17 +135,24 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    this era and cost one false kill + one bogus row — net positive but only for the gross-failure class.
    **VALIDATION-BASED PRUNE (the replacement rule, Andrew asked to brainstorm a better one, 2026-07-09).**
    Candidates validate every 500 steps (`VALIDATE_USERS` 5001–5010, ~596k labeled reviews/pass, ~50 s) and
-   die iff **BOTH modes' val loss is worse than the champion's val trajectory at the same step by ≥ 0.005**
-   (`RWKV_VPRUNE_DELTA`) at **2 consecutive** val checkpoints (`RWKV_VPRUNE_PERSIST`), from step 2500
-   (`RWKV_VPRUNE_MIN_STEP`). Calibration: the champ5k_r1-vs-b1 identical-twin val trajectories agree to
-   |Δ| ≤ 0.0012 ahead / 0.0005 imm from step 2000 on (early points are steep-slope-noisy, 0.0029 @ 500) →
-   0.005 = 4–10× null. Why it's right: val is SIGN-CORRECT for regularization levers (wd=0.1's val would
-   look better, not worse), magnitude replaces the uncalibrated Wilcoxon p (autocorrelated diffs), and only
-   unambiguous disasters die (LR/warmup class ≈ step 3000 → saves ~2 h each); subtle regressions run to an
-   honest full eval. Wiring: train_rwkv `RWKV_VPRUNE_*` + a `<trace>.val.jsonl` sidecar whenever
-   RWKV_STEP_TRACE is on; `promote_champion_5k --val-trace` embeds the val arrays (champ5k_b1's were
-   attached from its log via `scratchpad/attach_val_ref.py`); tuner trials set VALIDATE_EVERY=500 +
-   RWKV_VPRUNE_REF. Exit 42 + the same marker path (`rule: "val"`, estimates = champ_final + val_delta).
+   die iff **BOTH modes' val loss is worse than the champion's val trajectory at the same step by ≥ 0.004
+   ahead AND ≥ 0.006 imm** (`RWKV_VPRUNE_DELTA_AHEAD/_IMM`) at **2 consecutive** val checkpoints
+   (`RWKV_VPRUNE_PERSIST`), from step 1000 (`RWKV_VPRUNE_MIN_STEP`).
+   **Parameterization is early-window by necessity (Andrew's flat-curve catch):** past ~step 2500 the val
+   curves are nearly flat (ahead 0.3350→0.3313, imm 0.3182→0.3149 over the last 4000 steps), so no late
+   threshold can catch the failures worth catching — peak_lr 7e-4's whole ahead gap was ~+0.003. The signal
+   lives at steps 1000–2000 where the curves still drop ~0.01/1000 steps: a slow-convergence disaster sits
+   hundreds of steps behind → gaps +0.004–0.011, while the champ5k_r1-vs-b1 twin-null there is ≤ 0.0025
+   ahead / 0.0029 imm (≤ 0.0012/0.0005 after 2000). Thresholds = 2–3× the early null per mode; the
+   joint-AND at 2 consecutive checkpoints carries the safety (the twins never neared a joint hit).
+   Why it's right: val is SIGN-CORRECT for regularization levers (wd=0.1's val would look better, not
+   worse), magnitude replaces the uncalibrated Wilcoxon p (autocorrelated diffs), disasters die by ~step
+   1500 (saves ~2.8 h of 3.5 h), and LATE-emerging regressions intentionally never fire — the run is
+   60–80% done and an honest eval is worth the tail. Wiring: train_rwkv `RWKV_VPRUNE_*` + a
+   `<trace>.val.jsonl` sidecar whenever RWKV_STEP_TRACE is on; `promote_champion_5k --val-trace` embeds the
+   val arrays (champ5k_b1's were attached from its log via `scratchpad/attach_val_ref.py`); tuner trials
+   set VALIDATE_EVERY=500 + RWKV_VPRUNE_REF. Exit 42 + the same marker path (`rule: "val"`, estimates =
+   champ_final + val_delta).
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set MAX_TRAIN_GLOBAL_LEN=110000

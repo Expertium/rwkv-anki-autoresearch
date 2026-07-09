@@ -182,9 +182,11 @@ def write_trial_files(name, param, cfg):
     # from the reference run's, every trial carries a systematic train-loss offset.
     # REPLACED by VALIDATION-based pruning (same audit, Andrew asked for a better rule): the trial
     # validates every 500 steps (VALIDATE_USERS 5001-5010) and dies only if BOTH modes' val loss is
-    # worse than the champion's val trajectory at the same step by >= 0.005 (4-10x the r1/b1
-    # identical-twin null spread) at 2 consecutive val checkpoints, from step 2500. Right-signed
-    # for regularization levers, magnitude-based, catches only unambiguous disasters.
+    # worse than the champion's val trajectory at the same step by >= 0.004 ahead AND 0.006 imm at
+    # 2 consecutive val checkpoints, from step 1000 (Andrew's flat-curve catch: the val curves are
+    # ~flat past 2500, so disasters are only catchable EARLY where curves are steep; thresholds are
+    # 2-3x the early r1/b1 twin-null). Right-signed for regularization levers, magnitude-based,
+    # kills slow-convergence disasters by ~step 1500; late regressions run to an honest eval.
     trace_rel = f"scratchpad/tuner5k/{name}/{name}_ws_trace.jsonl"
     prune_lines = f"set RWKV_STEP_TRACE={trace_rel}\n"
     champion_ref = f"{ROOT}/optimization/champion_5k.json"

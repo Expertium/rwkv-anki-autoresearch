@@ -783,15 +783,21 @@ def main_loop(config, task_queue, batch_queue):
     # "CONFIRMED FALSE KILL"): train-loss pruning is sign-biased against regularization levers
     # (wd raises train loss while IMPROVING eval), so candidates compare their VALIDATE_USERS
     # validation loss against the champion's val trajectory, paired by exact step (both run the
-    # same VALIDATE_EVERY cadence). Kill iff BOTH modes are worse by >= RWKV_VPRUNE_DELTA at
-    # RWKV_VPRUNE_PERSIST consecutive val checkpoints, from RWKV_VPRUNE_MIN_STEP on. Threshold
-    # calibration (champ5k_r1 vs champ5k_b1 identical-config twins, steps >= 2000): null |delta|
-    # <= 0.0012 ahead / 0.0005 imm -> default 0.005 = 4-10x the null; early val points are
-    # steep-slope-noisy (up to 0.0029 @ 500), hence min_step 2500. Magnitude-based by design:
-    # only unambiguous disasters die; subtle regressions run to an honest full eval. WS only.
+    # same VALIDATE_EVERY cadence). Kill iff BOTH modes are worse by >= their per-mode delta at
+    # RWKV_VPRUNE_PERSIST consecutive val checkpoints, from RWKV_VPRUNE_MIN_STEP on.
+    # Parameterization (Andrew's flat-curve catch, 2026-07-09): past ~step 2500 the val curves are
+    # nearly FLAT (ahead 0.3350->0.3313, imm 0.3182->0.3149 over the last 4000 steps), so a late
+    # threshold can never catch the disasters worth catching -- the signal lives EARLY where the
+    # curves are steep (~0.01/1000 steps at 1000-2000). min_step 1000, ahead >= 0.004, imm >= 0.006
+    # (each 2-3x its early twin-null: champ5k_r1-vs-b1 |delta| <= 0.0025 ahead / 0.0029 imm at
+    # 500-2000, <= 0.0012/0.0005 after; the joint-AND at 2 consecutive checkpoints carries the
+    # safety -- the twins never neared a joint hit). Slow-convergence disasters (bad LR/warmup:
+    # +0.004-0.011 gaps at 1000-1500) die by ~1500 (saves ~2.8h of 3.5h); LATE-emerging regressions
+    # intentionally never fire (run is 60-80% done -- an honest eval is worth the tail). WS only.
     vprune_ref_path = os.environ.get("RWKV_VPRUNE_REF") or ""
-    vprune_delta = float(os.environ.get("RWKV_VPRUNE_DELTA") or "0.005")
-    vprune_min_step = int(os.environ.get("RWKV_VPRUNE_MIN_STEP") or "2500")
+    vprune_delta_ahead = float(os.environ.get("RWKV_VPRUNE_DELTA_AHEAD") or "0.004")
+    vprune_delta_imm = float(os.environ.get("RWKV_VPRUNE_DELTA_IMM") or "0.006")
+    vprune_min_step = int(os.environ.get("RWKV_VPRUNE_MIN_STEP") or "1000")
     vprune_persist = int(os.environ.get("RWKV_VPRUNE_PERSIST") or "2")
     vprune_strikes = 0
     vchamp_meta, vchamp_vals = None, {}
@@ -804,8 +810,8 @@ def main_loop(config, task_queue, batch_queue):
             vchamp_vals = {int(s): (a, i) for s, a, i in zip(
                 vchamp_meta["val_step"], vchamp_meta["val_ahead"], vchamp_meta["val_imm"])}
             print(f"[vprune] vs champion '{vchamp_meta.get('name')}' ({len(vchamp_vals)} val points), "
-                  f"delta {vprune_delta:g} BOTH modes, min_step {vprune_min_step}, "
-                  f"persist {vprune_persist}")
+                  f"delta ahead {vprune_delta_ahead:g} AND imm {vprune_delta_imm:g}, "
+                  f"min_step {vprune_min_step}, persist {vprune_persist}")
         else:
             print("[vprune] ref has no val_step arrays -- val-prune disabled")
             vchamp_meta = None
@@ -1152,7 +1158,7 @@ def main_loop(config, task_queue, batch_queue):
                         _ca, _ci = vchamp_vals[step]
                         _da = validation_out[0] - _ca
                         _di = validation_out[1] - _ci
-                        if _da >= vprune_delta and _di >= vprune_delta:
+                        if _da >= vprune_delta_ahead and _di >= vprune_delta_imm:
                             vprune_strikes += 1
                         else:
                             vprune_strikes = 0
@@ -1163,7 +1169,9 @@ def main_loop(config, task_queue, batch_queue):
                             marker = {
                                 "pruned_at_step": step, "rule": "val",
                                 "val_delta_ahead": _da, "val_delta_imm": _di,
-                                "delta_threshold": vprune_delta, "persist": vprune_persist,
+                                "delta_threshold_ahead": vprune_delta_ahead,
+                                "delta_threshold_imm": vprune_delta_imm,
+                                "persist": vprune_persist,
                                 "champion": vchamp_meta.get("name"),
                                 "estimated_ahead": vchamp_meta["final_ahead"] + _da,
                                 "estimated_imm": vchamp_meta["final_imm"] + _di,
