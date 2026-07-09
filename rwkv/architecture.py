@@ -11,9 +11,13 @@ from rwkv.model.rwkv_model import RWKV7Config
 N_HEADS = int(os.environ.get("RWKV_N_HEADS") or "1")
 HEAD_DIM = int(os.environ.get("RWKV_HEAD_DIM") or "32")
 
-DROPOUT = 0.02
-DROPOUT_LONG = 0.05
-DROPOUT_LAYER = 0.01
+# RWKV_DROPOUT_SCALE (HP-tuner lever, 2026-07-09): one multiplier on all three dropout rates
+# (they were hand-set in the 100u era; at 5k users the regularization optimum may differ).
+# Unset == 1.0 == byte-identical. Dropout modules are torch.nn.Dropout -> inactive in eval().
+_DROPOUT_SCALE = float(os.environ.get("RWKV_DROPOUT_SCALE") or "1")
+DROPOUT = 0.02 * _DROPOUT_SCALE
+DROPOUT_LONG = 0.05 * _DROPOUT_SCALE
+DROPOUT_LAYER = 0.01 * _DROPOUT_SCALE
 
 
 @dataclass

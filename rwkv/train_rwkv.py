@@ -63,8 +63,12 @@ def _maybe_enable_determinism():
 
 FINAL_LR = 0
 
-ADAMW_BETAS = (0.90, 0.999)
+ADAMW_BETAS = (0.90, float(os.environ.get("RWKV_ADAMW_BETA2") or "0.999"))
 ADAMW_EPS = 1e-18
+# RWKV_CB_LR_MULT (HP-tuner lever, 2026-07-09): LR multiplier for the learnable-codebook optim
+# groups (they default to PEAK_LR like everything else; tiny param sets co-adapting with big
+# weights may want a different rate). Unset == 1.0 == byte-identical.
+CB_LR_MULT = float(os.environ.get("RWKV_CB_LR_MULT") or "1")
 # HP-tuner env overrides (Andrew 2026-06-30): default == current champion values, so an UNSET env var
 # leaves behavior byte-identical. The greedy coordinate-descent tuner sweeps these without source edits.
 WEIGHT_DECAY = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
@@ -490,9 +494,10 @@ def main_loop(config, task_queue, batch_queue):
     def _register_cb_groups():
         for _p, _tag in _extra_cb_groups:
             optimizer.add_param_group(
-                {"params": [_p], "lr": config.PEAK_LR, "weight_decay": 0.0}
+                {"params": [_p], "lr": config.PEAK_LR * CB_LR_MULT, "weight_decay": 0.0}
             )
-            print(f"{_tag}: {tuple(_p.shape)} added as optim group (wd=0)")
+            print(f"{_tag}: {tuple(_p.shape)} added as optim group (wd=0"
+                  + (f", lr x{CB_LR_MULT:g}" if CB_LR_MULT != 1.0 else "") + ")")
 
     if config.LOAD_MODEL:
         model_path = f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}.pth"
@@ -517,19 +522,27 @@ def main_loop(config, task_queue, batch_queue):
             _cb_groups_added = True
             print(f"[optim] resumed state includes {len(_extra_cb_groups)} learnable-cb "
                   f"group(s); registered before load (moments resume)")
+        # Capture per-group INTENDED lr and betas alongside wd (same clobber class): at this point the
+        # groups carry exactly what get_optimizer/_register_cb_groups set from config+env -- PEAK_LR
+        # (x CB_LR_MULT for cb groups) and the configured ADAMW_BETAS. All three restores are no-ops
+        # when env levers are unset (intended == what the old flatten-to-PEAK_LR produced).
         _intended_wd = [g["weight_decay"] for g in optimizer.param_groups]
+        _intended_lr = [g["lr"] for g in optimizer.param_groups]
+        _intended_betas = [g["betas"] for g in optimizer.param_groups]
         optimizer.load_state_dict(_optim_state)
-        for _g, _wd in zip(optimizer.param_groups, _intended_wd):
+        for _g, _wd, _betas in zip(optimizer.param_groups, _intended_wd, _intended_betas):
             _g["weight_decay"] = _wd
+            _g["betas"] = _betas
         print(f"[wd] reset optimizer per-group weight_decay to intended {_intended_wd} after loading champion optim")
         # The champion optim was saved under a LambdaLR, so its param_groups carry initial_lr = the
         # champion's PEAK_LR (1e-3) and lr = 0 (end of decay). load_state_dict restores BOTH; LambdaLR then
         # reuses initial_lr as its base_lr, SILENTLY OVERRIDING config.PEAK_LR. Reset lr AND initial_lr to
-        # config.PEAK_LR so the configured LR actually controls the fine-tune tail (warm moments are kept).
-        for _g in optimizer.param_groups:
-            _g["lr"] = config.PEAK_LR
-            _g["initial_lr"] = config.PEAK_LR
-        print(f"[lr] reset optimizer lr/initial_lr to config.PEAK_LR = {config.PEAK_LR} after loading champion optim")
+        # the intended per-group values (== config.PEAK_LR, x CB_LR_MULT for cb groups) so the configured
+        # LR actually controls the fine-tune tail (warm moments are kept).
+        for _g, _lr in zip(optimizer.param_groups, _intended_lr):
+            _g["lr"] = _lr
+            _g["initial_lr"] = _lr
+        print(f"[lr] reset optimizer lr/initial_lr to intended {_intended_lr} after loading champion optim")
     else:
         print("No model loaded.")
     model.copy_downcast_(master_model, dtype=config.DTYPE)

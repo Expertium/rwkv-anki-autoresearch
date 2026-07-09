@@ -91,15 +91,25 @@ SPACE = [
     ("weight_decay", [0.0, 0.01, 0.05, 0.1]),
     ("clip",         [0.1, 0.25, 0.5]),
     ("decay_ratio",  [0.1, 0.2, 0.25, 0.4]),   # decay_ep = ratio in [0.1, 0.4]; ratio in [1/10, 1/2.5]
+    # Round-2 levers (Andrew 2026-07-09, "1 ep freed budget -- check what's high-impact left"):
+    ("adamw_beta2",  [0.98, 0.99, 0.999]),     # hardcoded 0.999 since forever; short noisy runs often prefer lower
+    ("dropout_scale", [0.0, 0.5, 1.0, 2.0]),   # x(0.02/0.05/0.01) hand-set in the 100u era; 50x data moved the reg optimum? (wd=0 hint)
+    ("cb_lr_mult",   [0.1, 1.0, 10.0]),        # learnable-cb groups ran at PEAK_LR untuned since cb learning landed
 ]
-DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
+DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25,
+            "adamw_beta2": 0.999, "dropout_scale": 1.0, "cb_lr_mult": 1.0}
 PARAMS = [p for p, _ in SPACE]
 
 
 def canon(cfg):
+    # .get with the DEFAULT for every later-added lever: journal rows written before a lever existed
+    # ran with the (env-unset ==) default value, so they canon onto the same point in the new space.
     return (round(float(cfg["peak_lr"]), 8), int(cfg["warmup_steps"]),
             round(float(cfg["weight_decay"]), 6), round(float(cfg["clip"]), 6),
-            round(float(cfg.get("decay_ratio", 0.25)), 6))  # .get: pre-lever journal recs == implicit 0.25 (0.5 decay ep)
+            round(float(cfg.get("decay_ratio", 0.25)), 6),
+            round(float(cfg.get("adamw_beta2", 0.999)), 8),
+            round(float(cfg.get("dropout_scale", 1.0)), 6),
+            round(float(cfg.get("cb_lr_mult", 1.0)), 6))
 
 
 def obj(rec):
@@ -231,6 +241,9 @@ set RWKV_N_HEADS=2
 set RWKV_HEAD_DIM=16
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
 set RWKV_CLIP={cfg["clip"]:g}
+set RWKV_ADAMW_BETA2={cfg.get("adamw_beta2", 0.999):g}
+set RWKV_DROPOUT_SCALE={cfg.get("dropout_scale", 1.0):g}
+set RWKV_CB_LR_MULT={cfg.get("cb_lr_mult", 1.0):g}
 {QAT_ENV}{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
 REM re-run hygiene: STEP_TRACE opens in APPEND mode -- a leftover trace/marker from a prior-era
 REM run of this same config would pollute this run's file (liveplot + post-hoc analysis).
