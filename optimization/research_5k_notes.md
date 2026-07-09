@@ -80,8 +80,10 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    imm; NOT the decay phase — its step count varies) → this run's eval numbers + trace become the 5k
    champion reference, (3) HP tune. Every later candidate runs with the champion trace loaded and, at every
    300n steps (300, 600, 900, …), computes a one-sided Wilcoxon signed-rank on per-step (candidate −
-   champion) over ALL steps so far (growing window); **abort iff BOTH ahead and imm are worse at p < 1e-4**
-   (strict α + both-modes ⇒ no false prunes — only abysmal runs die). Pairing is valid because the seeded
+   champion) over the **last 1500 paired steps** (RWKV_PRUNE_WINDOW; was a growing full window until the
+   2026-07-08 0p0014 audit — full window lags late regressions ~2k steps and kills late-bloomers on stale
+   early deficits); **abort iff BOTH ahead and imm are worse at p < 1e-4 at TWO consecutive checkpoints**
+   (RWKV_PRUNE_PERSIST=2, added 2026-07-09 — see the null-control entry below). Pairing is valid because the seeded
    epoch shuffle gives every run the same batch at the same step (same db + MAX + seeds).
    **Estimated final logloss for a pruned run** (goes in the front table, flagged `estimated`):
    `champ_final + (cand@s − champ@s)` at the prune step s, per mode. Worked example: champ final 0.3,
@@ -103,6 +105,20 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    warmup-heavy configs aren't false-pruned while still climbing). A pruned trial's `.cmd` skips
    decay/eval and runs `record-pruned` — the journal gets the ESTIMATED logloss flagged `"pruned": true`
    and coordinate descent proceeds on it. `status` marks such rows `PRUNED@step (estimated)`.
+   **NULL CONTROL (2026-07-09, `scratchpad/prune_audit/null_control.py`) — triggered by Andrew's "5 trials,
+   5 prunes" suspicion.** Paired two IDENTICAL-config runs (champ5k_r1 epoch 1 vs champ5k_b1, same seed/data
+   order/env — differ only by the frozen compiled env's run-to-run noise) through the exact windowed test.
+   Result: **no false fire** (the both-modes conjunction held) BUT the margin was thin — run-to-run drift is
+   AUTOCORRELATED, and one transient episode (~cp 2400–3600) held imm at p ≤ 6e-15 for 4 consecutive
+   checkpoints while ahead simultaneously dipped to 1.7e-3. Single-mode p-values are therefore hugely
+   overconfident (1500 paired steps ≠ 1500 independent samples); a joint transient could plausibly false-fire.
+   **Fix: RWKV_PRUNE_PERSIST=2** — both modes must be < α at two CONSECUTIVE checkpoints (600 steps). Real HP
+   regressions persist by mechanism (replay: 0p0014's collapse strengthened 4500→5100: imm 1.5e-4→1.6e-16→
+   2.2e-43); null transients come and go. Cost: real prunes fire ≤300 steps (~6 min) later. Of this era's 5
+   prunes, the 3 early ones (7e-4, warmup 400/800: p 1e-36..1e-242 at steps where null noise is tiny) are
+   beyond doubt; 0p0014 showed a strengthening real collapse; **0p002 is the one thin verdict** (abrupt
+   1.0→1.1e-6 imm collapse in one checkpoint mirrors the null's transient signature — but 2×-optimal LR with
+   1.4e-3 already regressing makes "genuinely worse" the strong prior; not worth a re-run).
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set MAX_TRAIN_GLOBAL_LEN=110000

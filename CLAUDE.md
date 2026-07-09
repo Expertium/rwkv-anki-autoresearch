@@ -403,6 +403,9 @@ logloss (RWKV_STEP_TRACE; NOT decay) -> HP tune; candidates then check one-sided
 champion, paired by step, **last-1500-paired-steps window** -- RWKV_PRUNE_WINDOW, 0=old full window;
 changed 2026-07-08 after the 0p0014 audit: full-window drags stale early history -> ~2k-step lag on late
 regressions AND would kill late-bloomer configs) every 300 steps and ABORT iff BOTH modes worse at p<1e-4
+at TWO CONSECUTIVE checkpoints (RWKV_PRUNE_PERSIST=2, added 2026-07-09: the identical-config null control
+champ5k_r1-ep1-vs-b1 showed autocorrelated drift transients hit imm p~1e-15 under the NULL -- single-mode
+p is overconfident; the persist rule guards the joint test. No false fire in the control itself.)
 (exit 42 + .pruned.json with estimated finals = champ_final + mean(diff over last 300 paired steps) ->
 front-table `logloss` column says exact|estimated). Champion accept = `python optimization/
 promote_champion_5k.py` (auto-replaces optimization/champion_5k.json = the prune ref; never hand-edit).

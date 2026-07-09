@@ -741,6 +741,13 @@ def main_loop(config, task_queue, batch_queue):
     # configs (big warmup / distillation warm phases) on a stale early deficit. Testing
     # only the LAST K paired steps judges current form. 0 = original full window.
     prune_window = int(os.environ.get("RWKV_PRUNE_WINDOW") or "1500")
+    # Persistence (2026-07-09 null control, scratchpad/prune_audit/null_control.py): pairing two
+    # IDENTICAL-config runs (champ5k_r1 ep1 vs champ5k_b1) showed run-to-run compile noise is
+    # AUTOCORRELATED -- one drift episode held imm at p<1e-12 for ~4 consecutive checkpoints while
+    # ahead dipped to 1.7e-3, i.e. a transient can near-fire the joint test under the null. Real HP
+    # regressions persist by mechanism, so require BOTH modes < alpha at N consecutive checkpoints.
+    prune_persist = int(os.environ.get("RWKV_PRUNE_PERSIST") or "2")
+    prune_strikes = 0
     if config.TRAIN_MODE != "WS":
         step_trace_path, prune_ref_path = "", ""
     trace_file = None
@@ -757,7 +764,7 @@ def main_loop(config, task_queue, batch_queue):
             champ_meta["trace_step"], champ_meta["trace_ahead"], champ_meta["trace_imm"])}
         print(f"[prune] vs champion '{champ_meta.get('name')}' ({len(champ_steps)} steps), "
               f"every {prune_every}, alpha {prune_alpha:g}, min_step {prune_min_step}, "
-              f"window {prune_window or 'full'}")
+              f"window {prune_window or 'full'}, persist {prune_persist}")
 
     if config.TRAIN_MODE == "WS":
         warmup_steps = config.WARMUP_STEPS
@@ -1007,9 +1014,14 @@ def main_loop(config, task_queue, batch_queue):
                         p_a = p_i = 1.0
                     if math.isnan(p_a) or math.isnan(p_i):  # newer scipy: zero-diffs -> NaN
                         p_a, p_i = 1.0, 1.0
-                    print(f"[prune] step {step}: n={len(win)}/{len(common)} "
-                          f"p_ahead={p_a:.3e} p_imm={p_i:.3e}")
                     if p_a < prune_alpha and p_i < prune_alpha:
+                        prune_strikes += 1
+                    else:
+                        prune_strikes = 0
+                    print(f"[prune] step {step}: n={len(win)}/{len(common)} "
+                          f"p_ahead={p_a:.3e} p_imm={p_i:.3e}"
+                          + (f" strikes={prune_strikes}/{prune_persist}" if prune_strikes else ""))
+                    if prune_strikes >= prune_persist:
                         # estimate = champ_final + mean diff over the last 300 paired steps
                         # (a single step's diff carries ~+-0.003 batch noise; the tail mean
                         # reflects current form without the early-transient bias)
@@ -1019,6 +1031,7 @@ def main_loop(config, task_queue, batch_queue):
                             "pruned_at_step": step, "paired_steps": len(common),
                             "window": len(win),
                             "p_ahead": p_a, "p_imm": p_i, "alpha": prune_alpha,
+                            "persist": prune_persist,
                             "champion": champ_meta.get("name"),
                             "estimated_ahead": est_a, "estimated_imm": est_i,
                             "estimate_formula": "champ_final + mean(cand-champ over last 300 paired steps)",
