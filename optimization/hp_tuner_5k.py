@@ -90,7 +90,7 @@ SPACE = [
     ("warmup_steps", [200, 400, 800]),
     ("weight_decay", [0.0, 0.01, 0.05, 0.1]),
     ("clip",         [0.1, 0.25, 0.5]),
-    ("decay_ratio",  [0.1, 0.2, 0.25, 0.4]),   # decay_ep = 2*ratio in [0.2, 0.8]; ratio in [1/10, 1/2.5]
+    ("decay_ratio",  [0.1, 0.2, 0.25, 0.4]),   # decay_ep = ratio in [0.1, 0.4]; ratio in [1/10, 1/2.5]
 ]
 DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
 PARAMS = [p for p, _ in SPACE]
