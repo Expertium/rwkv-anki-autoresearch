@@ -406,6 +406,11 @@ regressions AND would kill late-bloomer configs) every 300 steps and ABORT iff B
 at TWO CONSECUTIVE checkpoints (RWKV_PRUNE_PERSIST=2, added 2026-07-09: the identical-config null control
 champ5k_r1-ep1-vs-b1 showed autocorrelated drift transients hit imm p~1e-15 under the NULL -- single-mode
 p is overconfident; the persist rule guards the joint test. No false fire in the control itself.)
+⚠ SCOPE (2026-07-09 decay_ratio_0p1 FALSE-KILL audit): prune ONLY candidates at MATCHED regularization
+vs the reference -- train-loss pruning is sign-biased against regularization levers (wd=0.1 ran train-hot
+vs the wd=0.01 champion trace yet WON eval both modes; its WS-identical twin got killed at imm p=3e-45 --
+drift scales with config, no fixed alpha calibrates across bases). HP-TUNER trials therefore run WITHOUT
+pruning (traces kept); prune stays for research candidates at champion-matched regularization.
 (exit 42 + .pruned.json with estimated finals = champ_final + mean(diff over last 300 paired steps) ->
 front-table `logloss` column says exact|estimated). Champion accept = `python optimization/
 promote_champion_5k.py` (auto-replaces optimization/champion_5k.json = the prune ref; never hand-edit).

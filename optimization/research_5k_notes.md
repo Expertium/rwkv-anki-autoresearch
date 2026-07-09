@@ -119,6 +119,20 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
    beyond doubt; 0p0014 showed a strengthening real collapse; **0p002 is the one thin verdict** (abrupt
    1.0→1.1e-6 imm collapse in one checkpoint mirrors the null's transient signature — but 2×-optimal LR with
    1.4e-3 already regressing makes "genuinely worse" the strong prior; not worth a re-run).
+   **CONFIRMED FALSE KILL → TUNER PRUNING DISABLED (2026-07-09, later the same day).** `hp5k_decay_ratio_0p1`
+   (WS config byte-identical to `hp5k_weight_decay_0p1` — decay_ratio only affects the post-WS phase) was
+   pruned at 4200 (p 1.2e-11 / 3.4e-45) while its twin survived AND **won eval in both modes**. Two lessons:
+   (1) **train-loss pruning is SIGN-BIASED against regularization levers** — wd=0.1 runs persistently
+   train-hot vs the wd=0.01 champion trace (that's what regularization does) yet evals better; wd=0.05 was
+   only saved from the same fate by persist=2 (joint hit at its final checkpoint) and recorded an honest
+   eval. (2) **run-to-run drift scales with the config** — between the two wd=0.1 twins, imm hit p=3e-45
+   (the r1/b1 null pair at wd=0.01 peaked at 6e-15), so no fixed α is calibrated across bases. And once the
+   descent's base regularization ≠ the reference run's, EVERY subsequent trial carries a systematic offset.
+   ⇒ tuner trials now run WITHOUT RWKV_PRUNE_REF (traces kept); the bogus decay_ratio_0p1 row was removed
+   from the journal (backup `scratchpad/tuner5k/tuner_5k_log_backup_before_dr0p1_removal.jsonl`). Pruning
+   remains valid for research candidates at MATCHED regularization vs the champion (persist=2, α 1e-4), and
+   the five LR/warmup-class kills stand (gross-failure magnitudes, corroborated). The prune saved ~8-10 GPU-h
+   this era and cost one false kill + one bogus row — net positive but only for the gross-failure class.
 
 DONE (2026-07-01): the `decay_ratio` lever (range [1/10, 1/2.5]) is now in `hp_tuner_5k.py`. Still TODO
 when the tuner is set up for 5k: repoint its data paths to the 5k train_db, set MAX_TRAIN_GLOBAL_LEN=110000

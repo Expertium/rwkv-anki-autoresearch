@@ -174,14 +174,17 @@ def write_trial_files(name, param, cfg):
     ws_ts = ws_steps()
     decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/10, 1/2.5])
     pval_str = f"{cfg[param]:g}" if param in cfg else "baseline"
-    # Early-prune env (methodology pt 9): trace always on; prune only when a champion reference exists.
-    # min_step = 2x this trial's warmup so warmup-heavy configs aren't false-pruned while still climbing.
+    # Step trace always on (liveplot + post-hoc). PRUNING DISABLED for tuner trials (2026-07-09,
+    # the decay_ratio_0p1 false-kill audit): (a) train-loss pruning is SIGN-BIASED against
+    # regularization levers -- wd=0.1 ran persistently train-hot vs the wd=0.01 champion trace yet
+    # WON eval in both modes; its WS-identical twin decay_ratio_0p1 was killed by run-to-run drift
+    # (imm p 3e-45 between identical configs -- drift dwarfs the r1/b1 null scale at wd=0.1);
+    # (b) once the descent's base regularization differs from the reference run's, EVERY trial
+    # carries a systematic train-loss offset -> the test is miscalibrated for the whole descent.
+    # Disasters now just run to an honest (bad) eval (~3.5h each). Pruning remains valid for
+    # research candidates compared at MATCHED regularization (see research_5k_notes).
     trace_rel = f"scratchpad/tuner5k/{name}/{name}_ws_trace.jsonl"
-    champion_ref = f"{ROOT}/optimization/champion_5k.json"
     prune_lines = f"set RWKV_STEP_TRACE={trace_rel}\n"
-    if os.path.exists(champion_ref):
-        prune_lines += ("set RWKV_PRUNE_REF=optimization/champion_5k.json\n"
-                        f"set RWKV_PRUNE_MIN_STEP={2 * int(cfg['warmup_steps'])}\n")
     # --- WS training toml (H2K16 proxy recipe; tuned TOML fields = peak_lr, warmup, epochs=2) ---
     ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
 TRAIN_USERS_START = {USTART}
