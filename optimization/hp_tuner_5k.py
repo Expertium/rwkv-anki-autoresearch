@@ -267,6 +267,11 @@ if %ERRORLEVEL%==42 (
   echo DONE_EXIT_PRUNED %DATE% %TIME% >> "%LOG%"
   exit /b 0
 )
+REM a crashed WS must NOT cascade into decay/eval (hp5k_weight_decay_0p2 decayed a step-50 ckpt)
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_WSFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 4
+)
 echo === RESOLVE WS CODEBOOKS (feed decay) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/resolve_run_cbs.py scratchpad/tuner5k/{name} {name}ws scratchpad/tuner5k/{name}/cb_wkv_ws.txt scratchpad/tuner5k/{name}/cb_shift_ws.txt >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
@@ -279,6 +284,10 @@ echo === DECAY SETUP %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner5k/{name} {name}ws {name}d scratchpad/tuner5k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {decay_ep:g} {cfg["peak_lr"]:g} >> "%LOG%" 2>&1
 echo === DECAY {decay_ep:g} epoch (ratio {cfg["decay_ratio"]:g}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_decay.toml >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_DECAYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 5
+)
 echo === RESOLVE DECAY CODEBOOKS (feed eval) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/resolve_run_cbs.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/cb_wkv_final.txt scratchpad/tuner5k/{name}/cb_shift_final.txt >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
@@ -292,6 +301,10 @@ echo === WRITE EVAL TOML %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} >> "%LOG%" 2>&1
 echo === EVAL {EVAL_USTART}-{EVAL_UEND} (quant-aware) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.get_result --config scratchpad/tuner5k/{name}/{name}_eval.toml >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_EVALFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 6
+)
 echo === RECORD {name} %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe optimization/hp_tuner_5k.py record {name} >> "%LOG%" 2>&1
 echo DONE_EXIT_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"

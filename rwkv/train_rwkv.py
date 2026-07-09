@@ -1144,6 +1144,9 @@ def main_loop(config, task_queue, batch_queue):
                     model, data_fetcher, all_db_keys, VALIDATION_USERS, config.DEVICE
                 )
                 if validation_out is not None:
+                    # validate() returns torch scalars; json.dumps on the val sidecar / prune
+                    # marker cannot serialize Tensors (crashed hp5k_weight_decay_0p2 at step 50)
+                    validation_out = (float(validation_out[0]), float(validation_out[1]))
                     log["validation_ahead_loss"], log["validation_imm_loss"] = (
                         validation_out
                     )
