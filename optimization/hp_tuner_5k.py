@@ -174,17 +174,22 @@ def write_trial_files(name, param, cfg):
     ws_ts = ws_steps()
     decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/10, 1/2.5])
     pval_str = f"{cfg[param]:g}" if param in cfg else "baseline"
-    # Step trace always on (liveplot + post-hoc). PRUNING DISABLED for tuner trials (2026-07-09,
-    # the decay_ratio_0p1 false-kill audit): (a) train-loss pruning is SIGN-BIASED against
+    # Step trace always on (liveplot + post-hoc). TRAIN-LOSS pruning DISABLED for tuner trials
+    # (2026-07-09, the decay_ratio_0p1 false-kill audit): (a) train-loss is SIGN-BIASED against
     # regularization levers -- wd=0.1 ran persistently train-hot vs the wd=0.01 champion trace yet
     # WON eval in both modes; its WS-identical twin decay_ratio_0p1 was killed by run-to-run drift
-    # (imm p 3e-45 between identical configs -- drift dwarfs the r1/b1 null scale at wd=0.1);
-    # (b) once the descent's base regularization differs from the reference run's, EVERY trial
-    # carries a systematic train-loss offset -> the test is miscalibrated for the whole descent.
-    # Disasters now just run to an honest (bad) eval (~3.5h each). Pruning remains valid for
-    # research candidates compared at MATCHED regularization (see research_5k_notes).
+    # (imm p 3e-45 between identical configs); (b) once the descent's base regularization differs
+    # from the reference run's, every trial carries a systematic train-loss offset.
+    # REPLACED by VALIDATION-based pruning (same audit, Andrew asked for a better rule): the trial
+    # validates every 500 steps (VALIDATE_USERS 5001-5010) and dies only if BOTH modes' val loss is
+    # worse than the champion's val trajectory at the same step by >= 0.005 (4-10x the r1/b1
+    # identical-twin null spread) at 2 consecutive val checkpoints, from step 2500. Right-signed
+    # for regularization levers, magnitude-based, catches only unambiguous disasters.
     trace_rel = f"scratchpad/tuner5k/{name}/{name}_ws_trace.jsonl"
     prune_lines = f"set RWKV_STEP_TRACE={trace_rel}\n"
+    champion_ref = f"{ROOT}/optimization/champion_5k.json"
+    if os.path.exists(champion_ref) and "val_step" in json.load(open(champion_ref)):
+        prune_lines += "set RWKV_VPRUNE_REF=optimization/champion_5k.json\n"
     # --- WS training toml (H2K16 proxy recipe; tuned TOML fields = peak_lr, warmup, epochs=2) ---
     ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
 TRAIN_USERS_START = {USTART}
@@ -206,7 +211,7 @@ TRAIN_MODE = "WS"
 STEP_OFFSET = 1
 WARMUP_STEPS = {int(cfg["warmup_steps"])}
 EPOCHS = {WS_EPOCHS}
-VALIDATE_EVERY = 1000000
+VALIDATE_EVERY = 500
 PEAK_LR = {cfg["peak_lr"]:g}
 
 LOAD_MODEL = false
@@ -249,9 +254,9 @@ set RWKV_ADAMW_BETA2={cfg.get("adamw_beta2", 0.999):g}
 set RWKV_DROPOUT_SCALE={cfg.get("dropout_scale", 1.0):g}
 set RWKV_CB_LR_MULT={cfg.get("cb_lr_mult", 1.0):g}
 {QAT_ENV}{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
-REM re-run hygiene: STEP_TRACE opens in APPEND mode -- a leftover trace/marker from a prior-era
-REM run of this same config would pollute this run's file (liveplot + post-hoc analysis).
-del /Q scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl.pruned.json 2>nul
+REM re-run hygiene: STEP_TRACE (and its .val sidecar) open in APPEND mode -- a leftover trace/marker
+REM from a prior-era run of this same config would pollute this run's files (liveplot + post-hoc).
+del /Q scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl.pruned.json scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl.val.jsonl 2>nul
 echo === WS {WS_EPOCHS} epochs ({USTART}-{UEND}) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_ws.toml >> "%LOG%" 2>&1
 if %ERRORLEVEL%==42 (
@@ -335,19 +340,27 @@ def cmd_record(name):
 
 
 def cmd_record_pruned(name):
-    """Record a Wilcoxon-pruned trial from its .pruned.json marker: journal gets the ESTIMATED
-    logloss (champ_final + cand@s - champ@s) flagged "pruned": true, so descent proceeds."""
+    """Record a pruned trial from its .pruned.json marker: journal gets the ESTIMATED logloss
+    flagged "pruned": true, so descent proceeds. Handles both marker shapes: the old Wilcoxon
+    train-loss rule (p_ahead/p_imm) and the val rule (rule="val", val_delta_*)."""
     side = json.load(open(f"{TRIAL_DIR}/{name}/{name}.json"))
     marker = json.load(open(f"{TRIAL_DIR}/{name}/{name}_ws_trace.jsonl.pruned.json"))
     rec = {"name": name, "param": side["param"], "config": side["config"],
            "ahead": round(float(marker["estimated_ahead"]), 6),
            "imm": round(float(marker["estimated_imm"]), 6),
            "pruned": True, "pruned_at_step": int(marker["pruned_at_step"]),
-           "p_ahead": marker["p_ahead"], "p_imm": marker["p_imm"]}
+           "rule": marker.get("rule", "wilcoxon")}
+    if "p_ahead" in marker:
+        rec["p_ahead"], rec["p_imm"] = marker["p_ahead"], marker["p_imm"]
+        detail = f"(p_a {marker['p_ahead']:.2e}, p_i {marker['p_imm']:.2e})"
+    else:
+        rec["val_delta_ahead"] = marker["val_delta_ahead"]
+        rec["val_delta_imm"] = marker["val_delta_imm"]
+        detail = f"(val d_a {marker['val_delta_ahead']:+.4f}, d_i {marker['val_delta_imm']:+.4f})"
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(rec) + "\n")
     print(f"RECORDED-PRUNED {name} @ step {rec['pruned_at_step']}: est ahead {rec['ahead']:.6f} "
-          f"est imm {rec['imm']:.6f} (p_a {marker['p_ahead']:.2e}, p_i {marker['p_imm']:.2e})")
+          f"est imm {rec['imm']:.6f} {detail}")
 
 
 def cmd_record_baseline(ahead, imm):

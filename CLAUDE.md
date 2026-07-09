@@ -410,7 +410,12 @@ p is overconfident; the persist rule guards the joint test. No false fire in the
 vs the reference -- train-loss pruning is sign-biased against regularization levers (wd=0.1 ran train-hot
 vs the wd=0.01 champion trace yet WON eval both modes; its WS-identical twin got killed at imm p=3e-45 --
 drift scales with config, no fixed alpha calibrates across bases). HP-TUNER trials therefore run WITHOUT
-pruning (traces kept); prune stays for research candidates at champion-matched regularization.
+train-loss pruning; they use the REPLACEMENT **VALIDATION-based prune** (Andrew 2026-07-09): validate
+every 500 steps, die iff BOTH modes' val loss >= champion's val at the same step + 0.005
+(RWKV_VPRUNE_DELTA; twin-null |delta| <= 0.0012/0.0005 from step 2000) at 2 consecutive val checkpoints
+from step 2500 (RWKV_VPRUNE_MIN_STEP/PERSIST). Sign-correct for regularization, magnitude-based, kills
+only unambiguous disasters. RWKV_VPRUNE_REF=champion_5k.json (carries val_step/val_ahead/val_imm;
+promote_champion_5k --val-trace embeds them; train_rwkv writes <trace>.val.jsonl when STEP_TRACE is on).
 (exit 42 + .pruned.json with estimated finals = champ_final + mean(diff over last 300 paired steps) ->
 front-table `logloss` column says exact|estimated). Champion accept = `python optimization/
 promote_champion_5k.py` (auto-replaces optimization/champion_5k.json = the prune ref; never hand-edit).

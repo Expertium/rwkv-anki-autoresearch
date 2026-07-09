@@ -30,6 +30,10 @@ def main():
     ap.add_argument("--ckpt", default="", help="champion checkpoint .pth path")
     ap.add_argument("--cb-wkv", default="", help="champion's final learned WKV codebook (txt export)")
     ap.add_argument("--cb-shift", default="", help="champion's final learned shift codebook (txt export)")
+    # Validation trajectory (2026-07-09, vprune): train_rwkv writes <trace>.val.jsonl alongside the
+    # step trace; embedding it makes this champion the RWKV_VPRUNE_REF (validation-based pruning --
+    # the train-loss prune is sign-biased against regularization levers, see research_5k_notes).
+    ap.add_argument("--val-trace", default="", help="candidate's WS val-trace jsonl (<trace>.val.jsonl)")
     args = ap.parse_args()
 
     steps, aheads, imms = [], [], []
@@ -56,7 +60,26 @@ def main():
                                 ("name", "date", "final_ahead", "final_imm", "n_trace_steps",
                                  "ckpt", "cb_wkv", "cb_shift")}) + "\n")
 
-    OUT.write_text(json.dumps({
+    val_step, val_ahead, val_imm = [], [], []
+    if args.val_trace:
+        vseen = set()
+        for line in open(args.val_trace):
+            line = line.strip()
+            if not line:
+                continue
+            r = json.loads(line)
+            if r["step"] in vseen:
+                continue
+            vseen.add(r["step"])
+            val_step.append(int(r["step"]))
+            val_ahead.append(float(r["val_ahead"]))
+            val_imm.append(float(r["val_imm"]))
+        if not val_step:
+            raise SystemExit(f"no val points parsed from {args.val_trace}")
+    else:
+        print("WARNING: no --val-trace -- future candidates cannot val-prune against this champion")
+
+    out = {
         "name": args.name,
         "date": time.strftime("%Y-%m-%d %H:%M:%S"),
         "final_ahead": args.final_ahead,
@@ -68,7 +91,12 @@ def main():
         "trace_step": steps,
         "trace_ahead": aheads,
         "trace_imm": imms,
-    }))
+    }
+    if val_step:
+        out["val_step"] = val_step
+        out["val_ahead"] = val_ahead
+        out["val_imm"] = val_imm
+    OUT.write_text(json.dumps(out))
     print(f"PROMOTED '{args.name}' -> {OUT}  ({len(steps)} WS steps, "
           f"final ahead {args.final_ahead:.6f} / imm {args.final_imm:.6f})")
 

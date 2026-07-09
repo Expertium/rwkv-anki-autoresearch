@@ -779,6 +779,40 @@ def main_loop(config, task_queue, batch_queue):
               f"every {prune_every}, alpha {prune_alpha:g}, min_step {prune_min_step}, "
               f"window {prune_window or 'full'}, persist {prune_persist}")
 
+    # VALIDATION-based early prune (2026-07-09, the decay_ratio_0p1 false-kill audit -- notes
+    # "CONFIRMED FALSE KILL"): train-loss pruning is sign-biased against regularization levers
+    # (wd raises train loss while IMPROVING eval), so candidates compare their VALIDATE_USERS
+    # validation loss against the champion's val trajectory, paired by exact step (both run the
+    # same VALIDATE_EVERY cadence). Kill iff BOTH modes are worse by >= RWKV_VPRUNE_DELTA at
+    # RWKV_VPRUNE_PERSIST consecutive val checkpoints, from RWKV_VPRUNE_MIN_STEP on. Threshold
+    # calibration (champ5k_r1 vs champ5k_b1 identical-config twins, steps >= 2000): null |delta|
+    # <= 0.0012 ahead / 0.0005 imm -> default 0.005 = 4-10x the null; early val points are
+    # steep-slope-noisy (up to 0.0029 @ 500), hence min_step 2500. Magnitude-based by design:
+    # only unambiguous disasters die; subtle regressions run to an honest full eval. WS only.
+    vprune_ref_path = os.environ.get("RWKV_VPRUNE_REF") or ""
+    vprune_delta = float(os.environ.get("RWKV_VPRUNE_DELTA") or "0.005")
+    vprune_min_step = int(os.environ.get("RWKV_VPRUNE_MIN_STEP") or "2500")
+    vprune_persist = int(os.environ.get("RWKV_VPRUNE_PERSIST") or "2")
+    vprune_strikes = 0
+    vchamp_meta, vchamp_vals = None, {}
+    if config.TRAIN_MODE != "WS":
+        vprune_ref_path = ""
+    if vprune_ref_path:
+        with open(vprune_ref_path) as _f:
+            vchamp_meta = json.load(_f)
+        if "val_step" in vchamp_meta:
+            vchamp_vals = {int(s): (a, i) for s, a, i in zip(
+                vchamp_meta["val_step"], vchamp_meta["val_ahead"], vchamp_meta["val_imm"])}
+            print(f"[vprune] vs champion '{vchamp_meta.get('name')}' ({len(vchamp_vals)} val points), "
+                  f"delta {vprune_delta:g} BOTH modes, min_step {vprune_min_step}, "
+                  f"persist {vprune_persist}")
+        else:
+            print("[vprune] ref has no val_step arrays -- val-prune disabled")
+            vchamp_meta = None
+    # Per-step validation trace sidecar (written whenever the step trace is on): future champion
+    # runs record their val trajectory here so promote_champion_5k can embed it as the vprune ref.
+    val_trace_path = (step_trace_path + ".val.jsonl") if step_trace_path else ""
+
     if config.TRAIN_MODE == "WS":
         warmup_steps = config.WARMUP_STEPS
         print("Warmup steps:", warmup_steps)
@@ -1108,6 +1142,44 @@ def main_loop(config, task_queue, batch_queue):
                         validation_out
                     )
                     log["validation_nan"] = 0
+                    if val_trace_path:
+                        with open(val_trace_path, "a") as _vf:
+                            _vf.write(json.dumps({
+                                "step": step, "val_ahead": validation_out[0],
+                                "val_imm": validation_out[1]}) + "\n")
+                    if (vchamp_meta is not None and step in vchamp_vals
+                            and step >= vprune_min_step):
+                        _ca, _ci = vchamp_vals[step]
+                        _da = validation_out[0] - _ca
+                        _di = validation_out[1] - _ci
+                        if _da >= vprune_delta and _di >= vprune_delta:
+                            vprune_strikes += 1
+                        else:
+                            vprune_strikes = 0
+                        print(f"[vprune] step {step}: d_ahead {_da:+.4f} d_imm {_di:+.4f}"
+                              + (f" strikes={vprune_strikes}/{vprune_persist}"
+                                 if vprune_strikes else ""))
+                        if vprune_strikes >= vprune_persist:
+                            marker = {
+                                "pruned_at_step": step, "rule": "val",
+                                "val_delta_ahead": _da, "val_delta_imm": _di,
+                                "delta_threshold": vprune_delta, "persist": vprune_persist,
+                                "champion": vchamp_meta.get("name"),
+                                "estimated_ahead": vchamp_meta["final_ahead"] + _da,
+                                "estimated_imm": vchamp_meta["final_imm"] + _di,
+                                "estimate_formula":
+                                    "champ_final + (cand_val - champ_val) at the prune step",
+                            }
+                            marker_path = (step_trace_path + ".pruned.json") \
+                                if step_trace_path else "ws_prune_marker.json"
+                            with open(marker_path, "w") as _f:
+                                json.dump(marker, _f, indent=1)
+                            print(f"PRUNED(val) step={step} d_ahead={_da:+.4f} d_imm={_di:+.4f} "
+                                  f"est_ahead={marker['estimated_ahead']:.6f} "
+                                  f"est_imm={marker['estimated_imm']:.6f} -> {marker_path}")
+                            if trace_file is not None:
+                                trace_file.close()
+                            sys.exit(42)
                 else:
                     log["validation_nan"] = 1
 
