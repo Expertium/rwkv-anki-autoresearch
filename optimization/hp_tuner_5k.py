@@ -88,7 +88,8 @@ NUM_FETCH = 4        # RAM-conscious cut 10->4 (Andrew 2026-07-08): each worker 
 SPACE = [
     ("peak_lr",      [7e-4, 1.0e-3, 1.4e-3, 2.0e-3]),
     ("warmup_steps", [200, 400, 800]),
-    ("weight_decay", [0.0, 0.01, 0.05, 0.1]),
+    ("weight_decay", [0.0, 0.01, 0.05, 0.1, 0.2]),  # 0.2 appended 2026-07-09: 0.1 won ON THE GRID EDGE
+                                                     # with real paired signal (both modes, p 7e-4/2e-5)
     ("clip",         [0.1, 0.25, 0.5]),
     ("decay_ratio",  [0.1, 0.2, 0.25, 0.4]),   # decay_ep = ratio in [0.1, 0.4]; ratio in [1/10, 1/2.5]
     # Round-2 levers (Andrew 2026-07-09, "1 ep freed budget -- check what's high-impact left"):
