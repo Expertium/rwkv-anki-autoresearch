@@ -4,7 +4,8 @@ Train **1–5000**, eval **5001–10000** (held-out half); budget **1 WS epoch**
 
 `p-value` = paired per-user one-sided Wilcoxon (candidate vs the then-current champion, same 5000 eval
 users; `optimization/paired_pvalue.py`), shown `ahead / imm`. **Accept gate (Andrew 2026-07-08): BOTH
-modes need p < 0.0001** in addition to the ≥0.0003-both-modes improvement.
+modes need p < 0.0001** in addition to the ≥0.0003-both-modes improvement, and **params ≤ 225,000**
+(the phase's hard cap; current champion sits at 193,724).
 
 | trained on | ahead | imm | logloss | p-value | params | provenance | summary |
 |---|---|---|---|---|---|---|---|
