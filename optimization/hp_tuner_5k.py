@@ -356,10 +356,72 @@ def cmd_record(name):
     print(f"RECORDED {name}: ahead {ahead:.6f} imm {imm:.6f} (users {na}/{ni}) obj {ahead+imm:.6f}")
 
 
+def fit_vprune_alpha(recs):
+    """Calibrate the val-delta -> final-tune-eval-delta shrinkage slope (per mode), from trials
+    that COMPLETED honestly and carry a val sidecar: x = (trial val - champion val) at each WS
+    checkpoint >= 1000, y = (trial tune-eval - baseline tune-eval). Early val gaps compress as
+    training converges AND val (review-pooled, 10 users) is a different scale from the recorded
+    metric (by-user mean, 200 users) -- a single through-origin slope absorbs both. Caveat: pairs
+    within a trial share one y (effective n = #trials, not #pairs), and completed trials only
+    populate small |x| (~0.002), so kill-scale (>=0.004) estimates are linear extrapolation --
+    hence the clamp. Returns (alpha_ahead, alpha_imm, n_pairs, n_trials); alpha=1.0 fallback."""
+    champ_path = f"{ROOT}/optimization/champion_5k.json"
+    if not os.path.exists(champ_path):
+        return 1.0, 1.0, 0, 0
+    champ = json.load(open(champ_path))
+    if "val_step" not in champ:
+        return 1.0, 1.0, 0, 0
+    cvals = {int(s): (a, i) for s, a, i in zip(champ["val_step"], champ["val_ahead"], champ["val_imm"])}
+    base = next((r for r in recs if r["param"] == "baseline"), None)
+    if base is None:
+        return 1.0, 1.0, 0, 0
+    xa, ya, xi, yi, n_trials = [], [], [], [], 0
+    for r in recs:
+        if r.get("pruned") or r["param"] == "baseline":
+            continue
+        sidecar = f"{TRIAL_DIR}/{r['name']}/{r['name']}_ws_trace.jsonl.val.jsonl"
+        side_path = f"{TRIAL_DIR}/{r['name']}/{r['name']}.json"
+        if not os.path.exists(sidecar) or not os.path.exists(side_path):
+            continue
+        # re-probes at a new base REUSE the trial name (and overwrite the dir): only pair a
+        # sidecar with the journal row whose config matches the dir's current side json
+        side = json.load(open(side_path))
+        if canon(side["config"]) != canon(r["config"]):
+            continue
+        pts = 0
+        for line in open(sidecar):
+            line = line.strip()
+            if not line:
+                continue
+            v = json.loads(line)
+            s = int(v["step"])
+            if s < 1000 or s not in cvals:  # the vprune-active window only
+                continue
+            xa.append(v["val_ahead"] - cvals[s][0]); ya.append(r["ahead"] - base["ahead"])
+            xi.append(v["val_imm"] - cvals[s][1]);   yi.append(r["imm"] - base["imm"])
+            pts += 1
+        n_trials += 1 if pts else 0
+
+    def slope(x, y):
+        sxx = sum(v * v for v in x)
+        if n_trials < 3 or sxx < 1e-10:
+            return 1.0
+        a = sum(u * v for u, v in zip(x, y)) / sxx
+        if a <= 0:  # noise/anti-correlation = no information -> naive slope, not a fake floor
+            return 1.0
+        return min(max(a, 0.25), 1.5)  # clamp: tiny-x fits extrapolated to kill-scale x
+    return slope(xa, ya), slope(xi, yi), len(xa), n_trials
+
+
 def cmd_record_pruned(name):
     """Record a pruned trial from its .pruned.json marker: journal gets the ESTIMATED logloss
     flagged "pruned": true, so descent proceeds. Handles both marker shapes: the old Wilcoxon
-    train-loss rule (p_ahead/p_imm) and the val rule (rule="val", val_delta_*)."""
+    train-loss rule (p_ahead/p_imm) and the val rule (rule="val", val_delta_*). For the val rule
+    the estimate is (Andrew 2026-07-10): baseline_tune_eval + alpha * mean(strike-window deltas)
+    -- window mean cuts single-checkpoint noise, fitted alpha corrects early-gap compression and
+    the val->tune-eval scale, and anchoring on the BASELINE JOURNAL ROW (not the champion's
+    full-eval final) keeps pruned rows on the same 200-user scale as honest rows (the old anchor
+    carried a spurious +0.012 offset)."""
     side = json.load(open(f"{TRIAL_DIR}/{name}/{name}.json"))
     marker = json.load(open(f"{TRIAL_DIR}/{name}/{name}_ws_trace.jsonl.pruned.json"))
     rec = {"name": name, "param": side["param"], "config": side["config"],
@@ -374,6 +436,22 @@ def cmd_record_pruned(name):
         rec["val_delta_ahead"] = marker["val_delta_ahead"]
         rec["val_delta_imm"] = marker["val_delta_imm"]
         detail = f"(val d_a {marker['val_delta_ahead']:+.4f}, d_i {marker['val_delta_imm']:+.4f})"
+        recs = load_journal()
+        base = next((r for r in recs if r["param"] == "baseline"), None)
+        if base is not None:
+            window = marker.get("window") or [[marker["pruned_at_step"],
+                                               marker["val_delta_ahead"], marker["val_delta_imm"]]]
+            mda = sum(w[1] for w in window) / len(window)
+            mdi = sum(w[2] for w in window) / len(window)
+            a_a, a_i, n_pairs, n_trials = fit_vprune_alpha(recs)
+            rec["ahead"] = round(base["ahead"] + a_a * mda, 6)
+            rec["imm"] = round(base["imm"] + a_i * mdi, 6)
+            rec["est_alpha"] = [round(a_a, 4), round(a_i, 4)]
+            rec["est_window_mean"] = [round(mda, 6), round(mdi, 6)]
+            rec["est_naive"] = [round(float(marker["estimated_ahead"]), 6),
+                                round(float(marker["estimated_imm"]), 6)]
+            detail += (f" est = baseline + alpha*window_mean, alpha ({a_a:.2f},{a_i:.2f}) "
+                       f"from {n_trials} trials/{n_pairs} pairs")
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(rec) + "\n")
     print(f"RECORDED-PRUNED {name} @ step {rec['pruned_at_step']}: est ahead {rec['ahead']:.6f} "

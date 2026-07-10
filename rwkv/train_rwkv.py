@@ -800,6 +800,7 @@ def main_loop(config, task_queue, batch_queue):
     vprune_min_step = int(os.environ.get("RWKV_VPRUNE_MIN_STEP") or "1000")
     vprune_persist = int(os.environ.get("RWKV_VPRUNE_PERSIST") or "2")
     vprune_strikes = 0
+    vprune_window = []  # [step, d_ahead, d_imm] of each strike checkpoint (marker gets it)
     vchamp_meta, vchamp_vals = None, {}
     if config.TRAIN_MODE != "WS":
         vprune_ref_path = ""
@@ -1163,8 +1164,10 @@ def main_loop(config, task_queue, batch_queue):
                         _di = validation_out[1] - _ci
                         if _da >= vprune_delta_ahead and _di >= vprune_delta_imm:
                             vprune_strikes += 1
+                            vprune_window.append([step, _da, _di])
                         else:
                             vprune_strikes = 0
+                            vprune_window = []
                         print(f"[vprune] step {step}: d_ahead {_da:+.4f} d_imm {_di:+.4f}"
                               + (f" strikes={vprune_strikes}/{vprune_persist}"
                                  if vprune_strikes else ""))
@@ -1175,11 +1178,13 @@ def main_loop(config, task_queue, batch_queue):
                                 "delta_threshold_ahead": vprune_delta_ahead,
                                 "delta_threshold_imm": vprune_delta_imm,
                                 "persist": vprune_persist,
+                                "window": vprune_window,
                                 "champion": vchamp_meta.get("name"),
                                 "estimated_ahead": vchamp_meta["final_ahead"] + _da,
                                 "estimated_imm": vchamp_meta["final_imm"] + _di,
                                 "estimate_formula":
-                                    "champ_final + (cand_val - champ_val) at the prune step",
+                                    "champ_final + (cand_val - champ_val) at the prune step "
+                                    "(naive; record-pruned applies window-mean x fitted alpha)",
                             }
                             marker_path = (step_trace_path + ".pruned.json") \
                                 if step_trace_path else "ws_prune_marker.json"
