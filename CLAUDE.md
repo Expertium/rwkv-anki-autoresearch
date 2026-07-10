@@ -381,6 +381,13 @@ Pareto-dominates at accuracy-parity). H=2/K=16 was accepted this way (halved car
 within 0.0002). Such a change MAY shrink card/note state (gate #3 is for accuracy-research iters, not these).
 Two HARD INVARIANTS (never change): hierarchy card->note->deck->preset->global; same preprocessed 92-dim
 inputs / existing LMDBs (no new/changed inputs).
+**RESEARCH-PHASE CONDUCT (Andrew 2026-07-10) -- for the phase after HP tuning + the deck/preset/global
+state-size ladders:** (1) try LOTS of different tweaks of both the ARCHITECTURE and the TRAINING
+PIPELINE, from different FAMILIES of ideas (not many variants of one); (2) if an idea BARELY misses the
+logloss threshold, don't give up early -- try a slightly different implementation of the same idea first;
+(3) MIX literature review (optimization/LIT_REVIEW.md) with self-generated ideas; (4) spend AT LEAST 50
+iterations (NOT counting HP-tuning trials) before even considering declaring "nothing left to improve".
+[[research-phase-conduct]]
 **5k-PHASE METHODOLOGY (Andrew 2026-07-01) -- full text in `optimization/research_5k_notes.md`:** the 5k
 research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-10000 as the target) keeps
 the same >=0.0003-BOTH-modes gate + params <=225,000, and ADDS: (a) **LogLoss recorded WITH (fake)
