@@ -535,21 +535,28 @@ Pairing needs identical db/MAX/seeds.
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-12)
-- **★ STATE-SIZE LADDER RUNNING (2026-07-12 morning).** Per-stream arch hooks LANDED (d6fca68):
+- **★ STATE-SIZE LADDER (2026-07-12).** Per-stream arch hooks LANDED (d6fca68):
   `RWKV_STREAM_HEADS="deck:1"` (per-stream n_heads at fixed d_model; WKV state/layer = d_model^2/H,
   params ~H-independent -> H=1 DOUBLES that stream's per-entity state ~free) + `RWKV_STREAM_LAYERS`
   (per-stream depth, ~10.4k params/layer). **Rung 1 deck H=1 REJECTED** (lad_deck1: 0.306900/0.278131,
   -0.000271/-0.000238 vs b1, p=1.0 both = no effect; deck not state-limited; deck knob CLOSED).
   **Rung 2 preset H=1 REJECTED** (lad_preset1, iter 5: 0.306845/0.278338, -0.000215/-0.000445 vs
-  iter 2, p=1.0 both -- the long-recurrence prior did NOT materialize; H=1 free state now 0/2).
-  **Rung 3 user/global H=1 RUNNING** (lad_user1, iter 6, detached pid 38144, launched 15:15,
-  verdict ~20:30): user state 1728->3264 (1.89x), 193,526 params; THE strongest prior (user
-  sank blanket state-quant) and the LAST free H-rung -- if it nulls, the ladder CLOSES and the
-  >=50-iteration research phase begins (layer-adds move there as capacity questions; no H-rung
-  showed a state signal). Its .cmd evals with SEQUENTIAL shards (dry-run plan -> shard_0 ->
-  shard_1 -> relaunch-skip-merge) per the iter-5 VRAM lesson.
-  Pipeline template = scratchpad/lad_deck1/{run_lad_deck1.cmd,lad_deck1_ws.toml} (candidate runs:
-  vprune ON vs champion_5k.json; exit-42 branch; full sharded eval + paired gate in-.cmd).
+  iter 2, p=1.0 both -- the long-recurrence prior did NOT materialize).
+  **Rung 3 user H=1 = iter 6 lad_user1 REJECTED at the gate but THE FIRST REAL SIGNAL (20:44):
+  ahead 0.306285 (+0.000345 vs iter 2, CLEARS 0.0003, p=1.3e-20); imm 0.277635 (+0.000258,
+  p=1.5e-29 -- misses the 0.0003 bar by 0.000042).** Both modes better with overwhelming
+  significance (deck/preset were p=1.0): the user stream IS the state-sensitive one, per the
+  blanket-quant prior; H=1 alone just isn't quite enough. Artifacts: laduser1d_1638.pth +
+  cb_{wkv,shift}_final.txt in scratchpad/lad_user1; results result/RWKV[-P]-lad_user1.jsonl.
+  **-> iter 7 lad_user2 RUNNING (research-conduct rule 2: near-miss -> push the knob harder):
+  user H=1 + user layers 3->4** (RWKV_STREAM_LAYERS=user:4; user state 3264->4352 = 2.52x
+  champion, 203,928 params <= 225k; model_stats-verified, card/note/deck/preset unchanged).
+  Detached pid 22248, launched 20:48, verdict ~02:20; sequential-shard eval; vprune ON.
+  Clears BOTH bars -> promote (future runs then carry RWKV_STREAM_HEADS=user:1 +
+  RWKV_STREAM_LAYERS=user:4); imm still sub-0.0003 -> record + try a different user-state
+  variant or fold into the research phase.
+  Pipeline template = scratchpad/lad_user2/{run_lad_user2.cmd,lad_user2_ws.toml} (candidate runs:
+  vprune ON vs champion_5k.json; exit-42 branch; sequential sharded eval + paired gate in-.cmd).
   ⚠ EVAL-SHARD VRAM LESSON (2026-07-12 13:30): lad_preset1's 2-parallel-shard eval WEDGED (both
   shards 50-85+ min on their mega-users, VRAM 11.5/12 GB) -- preset-K=32 chunk-state buffers
   (~+0.8 GB/shard on 1M-token batches) pushed 2 concurrent shards into WDDM oversubscription

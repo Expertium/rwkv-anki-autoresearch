@@ -1,0 +1,42 @@
+# STATE-SIZE LADDER, USER RUNG 2: lad_user2 (2026-07-12, iter 7). Follow-up to the iter-6 NEAR-MISS
+# (user H=1: ahead +0.000345 p=1.3e-20 PASSED, imm +0.000258 p=1.5e-29 -- missed the 0.0003 bar by
+# 0.000042; the FIRST rung with a real signal after deck/preset nulled at p=1.0). Research-conduct
+# rule 2: near-miss -> push the same knob harder. ONE change vs iter 6: user layers 3->4
+# (RWKV_STREAM_LAYERS=user:4 on top of RWKV_STREAM_HEADS=user:1) -- user per-entity WKV state
+# 3264->4352 floats (2.52x champion, cap ~50x), params 193,526->203,928 (<=225k cap; +10.4k = one
+# d=32 layer). Card/note/deck/preset state UNCHANGED. Champion recipe/HPs, 1-ep budget, q72u
+# learnable cbs, vprune ON, sequential-shard eval (user-K=32 = elevated VRAM class).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/lad_user2"
+SAVE_MODEL_PREFIX = "laduser2ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
