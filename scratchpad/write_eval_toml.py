@@ -1,8 +1,9 @@
 """Find the latest {folder}/{prefix}_{step}.pth (excluding *_optim*) and write a get_result eval toml
-to <out> pointing at it. 5k-phase defaults (2026-07-03): eval users 5001-5200 on test_db_5k -- the
-100/1500-user workbench era is over. Used when the final step count is data-dependent. Usage:
+to <out> pointing at it. 5k-phase defaults: eval users 5001-6000 on test_db_5k (tune-eval subset
+200->1000 users, Andrew 2026-07-12 after the champ5k_t1 subset-overfit rejection; was 5001-5200).
+Used when the final step count is data-dependent. Usage:
   python scratchpad/write_eval_toml.py <folder> <prefix> <out_toml> <FILE_AHEAD> <FILE_IMM> [user_start user_end]
-user_start/user_end (optional, default 5001 5200): champion runs pass 5001 10000 for the full eval."""
+user_start/user_end (optional, default 5001 6000): champion runs pass 5001 10000 for the full eval."""
 import glob
 import os
 import re
@@ -10,7 +11,7 @@ import sys
 
 folder, prefix, out, fa, fi = sys.argv[1:6]
 user_start = sys.argv[6] if len(sys.argv) > 6 else "5001"
-user_end = sys.argv[7] if len(sys.argv) > 7 else "5200"
+user_end = sys.argv[7] if len(sys.argv) > 7 else "6000"
 cands = []
 for p in glob.glob(f"{folder}/{prefix}_*.pth"):
     b = os.path.basename(p)

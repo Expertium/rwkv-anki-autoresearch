@@ -438,6 +438,11 @@ Pairing needs identical db/MAX/seeds.
   -0.0005/-0.0007 at n=5000. Sub-0.001 effects measured on 200 users do NOT transfer; confirm on the
   full eval before adopting. Champion HPs (wd 0.01, dropout 1.0, beta2 0.999, cb_lr 1x, peak_lr 1e-3,
   warmup 200, clip 0.25, decay_ratio 0.25) are CONFIRMED at 5k -- don't re-tune without new structure.
+  **REMEDY ADOPTED (Andrew 2026-07-12): future HP tuning uses a 1000-user tune-eval (5001-6000)** --
+  SE ~sqrt(5)x smaller, resolves ~0.001 effects. Wired: hp_tuner_5k EVAL range + trial template now
+  passes the range explicitly; write_eval_toml default 5200->6000. When tuning reopens: re-record the
+  tuner baseline on 5001-6000 FIRST (old journal rows are 200-user, not comparable); sub-0.001
+  verdicts still need full-eval confirmation.
 - KEPT: SRS heads 128->64 * card->deck rebalance (compensation deck>preset>user, NOT note) * card 2->1 layer
   * 4-epoch decay * **HP tuning (peak_lr 7e-4->1e-3, clip 0.5->0.25, epochs->15) = the big win; the model was
   undertuned** * scoped state-quant card int4 + note int8 ~free * QAT makes card int2 + note int4 ~free

@@ -1,5 +1,6 @@
 """Greedy coordinate-descent HP tuner for the 5k phase -- FULL 5k: train users 1-5000
-(train_db_5k_h1, MAX=110000), tune-eval on the HELD-OUT subset 5001-5200 (test_db_5k), the H=2/K=16
+(train_db_5k_h1, MAX=110000), tune-eval on the HELD-OUT subset 5001-6000 (test_db_5k; 200->1000
+users Andrew 2026-07-12 after the champ5k_t1 subset-overfit rejection), the H=2/K=16
 champion arch, QUANT-AWARE throughout (methodology a: WS + decay + eval all run with the fused
 card/note fake-quant env). The 1500-proxy era is over (proxy proved unfaithful, see notes 2026-06-30).
 PREREQ: build STEP3 finished + `python optimization/count_groups_5k.py` run once (writes
@@ -21,7 +22,7 @@ growing 300n window. RWKV_PRUNE_MIN_STEP = 2x the TRIAL's warmup (a big-warmup t
 construction; delaying the first check avoids false prunes). A pruned trial records its ESTIMATED logloss
 (champ_final + cand@s - champ@s, from the .pruned.json marker) to the journal with "pruned": true --
 coordinate descent proceeds on the estimate (an abysmal trial never wins a coordinate anyway).
-Objective minimized = ahead + imm (fp32, by-user mean on 5001-5200). The strict accept gate is applied
+Objective minimized = ahead + imm (fp32, by-user mean on 5001-6000). The strict accept gate is applied
 separately when declaring a champion. CLI matches hp_tuner.py: next / record <name> /
 record-baseline <ahead> <imm> / status / loop.
 """
@@ -53,7 +54,13 @@ WS_EPOCHS = 1        # FIXED (5k budget; 2->1 Andrew 2026-07-09 -- the champ5k_b
 # ratio in [1/10, 1/2.5] -> decay in [0.2, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
 TRAIN_DB = "train_db_5k_h1"
 USTART, UEND = 1, 5000
-EVAL_USTART, EVAL_UEND = 5001, 5200   # tune-eval: held-out subset of 5001-10000
+# Tune-eval subset 200->1000 users (Andrew 2026-07-12, after the champ5k_t1 subset-overfit
+# rejection: 200 users could not resolve sub-0.001 HP effects -- the descent winner's
+# +0.0008/+0.0010 subset margin INVERTED at n=5000. n=1000 cuts the by-user-mean SE ~sqrt(5)x
+# to ~0.0004-0.0006, resolving ~0.001 effects; eval cost rises only ~5x on a small phase).
+# NOTE when tuning reopens: re-record the tuner BASELINE on 5001-6000 first (old journal rows
+# are on 5001-5200 and NOT comparable), and full-eval-confirm any sub-0.001 verdict regardless.
+EVAL_USTART, EVAL_UEND = 5001, 6000   # tune-eval: held-out subset of 5001-10000
 # Methodology (a): every 5k run trains AND evaluates quant-aware (fused card/note fake-quant).
 # 2026-07-08: the sibling's FINAL locked recipe q72u (72 b/layer: joint-uv b10 WKV cb + m2b12 shift cb
 # + 1-bit norms + int3 shift scope), with CODEBOOK LEARNING ON (Andrew, tonight's direction #1): both
@@ -300,7 +307,7 @@ set RWKV_QAT_PQ=scratchpad/tuner5k/{name}/cb_wkv_final.txt
 set RWKV_QAT_SHIFT_PQ=scratchpad/tuner5k/{name}/cb_shift_final.txt
 del /Q result\\RWKV-{name}.jsonl result\\RWKV-P-{name}.jsonl 2>nul
 echo === WRITE EVAL TOML %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} >> "%LOG%" 2>&1
+.venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} {EVAL_USTART} {EVAL_UEND} >> "%LOG%" 2>&1
 echo === EVAL {EVAL_USTART}-{EVAL_UEND} (quant-aware) %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe -u -m rwkv.get_result --config scratchpad/tuner5k/{name}/{name}_eval.toml >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
