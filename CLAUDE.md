@@ -547,6 +547,13 @@ Pairing needs identical db/MAX/seeds.
   layer-adds ONLY if an H-rung shows signal (each +1 layer costs ~10.4k of the ~31k param headroom).
   Pipeline template = scratchpad/lad_deck1/{run_lad_deck1.cmd,lad_deck1_ws.toml} (candidate runs:
   vprune ON vs champion_5k.json; exit-42 branch; full sharded eval + paired gate in-.cmd).
+  ⚠ EVAL-SHARD VRAM LESSON (2026-07-12 13:30): lad_preset1's 2-parallel-shard eval WEDGED (both
+  shards 50-85+ min on their mega-users, VRAM 11.5/12 GB) -- preset-K=32 chunk-state buffers
+  (~+0.8 GB/shard on 1M-token batches) pushed 2 concurrent shards into WDDM oversubscription
+  (100% GPU util while 10-50x slow = the thrash signature; iter-4's deck-K=32 eval was fine at
+  presumably ~1 GB more headroom). FIX = run the SAME shard tomls SEQUENTIALLY (get_result
+  resumes per-shard output) then eval_sharded relaunch-skip-merge: run_lad_preset1_evalfix.cmd.
+  RULE: any elevated-VRAM arch rung (K=32 streams etc.) -> sequential shards or --shards 1.
 - **★ HP TUNING CLOSED (2026-07-12): champ5k_t1 (the tuner winner: wd 0.01->0.2 + dropout_scale
   1.0->0.5) REJECTED at full eval** -- ahead 0.307174 / imm 0.278570 = WORSE than champ5k_b1 by
   0.000545/0.000677 (p=1.0 both) despite winning tune-eval 5001-5200 by +0.0008/+0.0010.
