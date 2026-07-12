@@ -1,0 +1,40 @@
+# TUNED-HP CHAMPION CANDIDATE champ5k_t1 (2026-07-11): champ5k_b1's recipe + the hp_tuner_5k
+# coordinate-descent winner -- weight_decay 0.01->0.2 (the only real-signal HP win: paired
+# p 8e-3/5e-8 vs wd=0.1 on tune-eval) and dropout_scale 1.0->0.5 (nominal, noise-level).
+# All other coords settled AT champion values (peak_lr 1e-3, warmup 200, clip 0.25,
+# decay_ratio 0.25, adamw_beta2 0.999, cb_lr_mult 1.0). wd/dropout arrive via env
+# (RWKV_WEIGHT_DECAY / RWKV_DROPOUT_SCALE in run_champ5k_t1.cmd).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/champ5k_t1"
+SAVE_MODEL_PREFIX = "champ5kt1ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

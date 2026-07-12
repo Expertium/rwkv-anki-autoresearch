@@ -433,6 +433,11 @@ Pairing needs identical db/MAX/seeds.
 [[research-acceptance-gate]]
 
 ### LESSON BANK -- do NOT re-run these (full numbers in log.md / HISTORY.md)
+- **TUNE-EVAL SUBSET OVERFIT (2026-07-12, champ5k_t1):** the 200-user tune-eval (5001-5200) is for
+  COARSE ranking only -- a +0.0008/+0.0010 subset win (in-subset paired imm p=5e-8!) INVERTED to
+  -0.0005/-0.0007 at n=5000. Sub-0.001 effects measured on 200 users do NOT transfer; confirm on the
+  full eval before adopting. Champion HPs (wd 0.01, dropout 1.0, beta2 0.999, cb_lr 1x, peak_lr 1e-3,
+  warmup 200, clip 0.25, decay_ratio 0.25) are CONFIRMED at 5k -- don't re-tune without new structure.
 - KEPT: SRS heads 128->64 * card->deck rebalance (compensation deck>preset>user, NOT note) * card 2->1 layer
   * 4-epoch decay * **HP tuning (peak_lr 7e-4->1e-3, clip 0.5->0.25, epochs->15) = the big win; the model was
   undertuned** * scoped state-quant card int4 + note int8 ~free * QAT makes card int2 + note int4 ~free
@@ -524,7 +529,24 @@ Pairing needs identical db/MAX/seeds.
   over plain. BIT-EXACT verified** (32-tensor golden fwd+bwd, int-N + PQ paths, both shapes) + deploy
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
-### LIVE STATE (2026-07-08)
+### LIVE STATE (2026-07-12)
+- **★ HP TUNING CLOSED (2026-07-12): champ5k_t1 (the tuner winner: wd 0.01->0.2 + dropout_scale
+  1.0->0.5) REJECTED at full eval** -- ahead 0.307174 / imm 0.278570 = WORSE than champ5k_b1 by
+  0.000545/0.000677 (p=1.0 both) despite winning tune-eval 5001-5200 by +0.0008/+0.0010.
+  **champ5k_b1 REMAINS CHAMPION; its HPs are confirmed vs 19 alternatives** (peak_lr, warmup, wd,
+  clip, decay_ratio, adamw_beta2, dropout_scale, cb_lr_mult all settled at champion values on the
+  full-eval verdict). ⚠ LESSON (bank + research_log note): the 200-user tune-eval CANNOT resolve
+  sub-0.001 HP effects -- even in-subset paired p=5e-8 inverted at n=5000; any future sub-0.001
+  tuner verdict needs full-eval confirmation before adoption. Round-2 levers wired + kept
+  (RWKV_ADAMW_BETA2 / RWKV_DROPOUT_SCALE / RWKV_CB_LR_MULT, defaults byte-identical). The
+  VALIDATION prune (replaced the sign-biased train-loss rule mid-tuning) ran the whole descent
+  clean: 0 kills, no false fires, joint-AND correctly spared single-mode transients (incl.
+  cb_lr_mult=10's imm-only breach); its estimated-logloss formula is now window-mean x
+  fitted-alpha anchored on the baseline journal row (fa724c0). Trial .cmds now GATE every phase
+  on exit codes (d289d9a, after a WS crash cascaded into decaying a step-50 ckpt -- caught before
+  the journal). NEXT = state-size ladders (deck <=5x -> preset <=10x -> global <=50x, FULL-eval
+  gate each rung), then the >=50-iteration research phase [[research-phase-conduct]].
+- *(2026-07-08 era below)*
 - **★ FIRST 5k CHAMPION PROMOTED (2026-07-08 18:23): champ5k_r1 = ahead 0.306572 / imm 0.278323**
   (quant-aware q72u + per-run learned cbs, n=5000 both modes, eval 5001-10000). Behind the d=128 fp
   target (0.296385/0.264905) by +0.0102/+0.0134 -- THE GAP THE PHASE NOW CLOSES. champion_5k.json

@@ -1,1 +1,1 @@
-{"name": "hp5k_peak_lr_0p0007", "param": "peak_lr", "config": {"peak_lr": 0.0007, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25}, "ws_steps": 6702}
+{"name": "hp5k_peak_lr_0p0007", "param": "peak_lr", "config": {"peak_lr": 0.0007, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}, "ws_steps": 6554}
