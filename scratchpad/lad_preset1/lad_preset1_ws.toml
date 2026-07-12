@@ -1,0 +1,41 @@
+# STATE-SIZE LADDER, PRESET RUNG 1: lad_preset1 (2026-07-12). champ5k_b1's exact recipe + champion
+# HPs, ONE arch change: preset stream n_heads 2->1 at fixed d_model=32 (RWKV_STREAM_HEADS=preset:1
+# in the .cmd). Preset per-entity WKV state 1728->3264 floats (1.89x, cap 10x), params
+# 193,724->193,526 (-198). Card/note/deck state UNCHANGED. Motivation: preset is a LONG-recurrence
+# stream (most users have 1 preset = near-whole-history sequences), the class the blanket-quant
+# lesson flagged as state-sensitive -- better prior for extra WKV memory than deck (rung rejected,
+# no effect).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/lad_preset1"
+SAVE_MODEL_PREFIX = "ladpre1ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

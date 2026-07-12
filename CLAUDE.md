@@ -530,6 +530,18 @@ Pairing needs identical db/MAX/seeds.
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-12)
+- **★ STATE-SIZE LADDER RUNNING (2026-07-12 morning).** Per-stream arch hooks LANDED (d6fca68):
+  `RWKV_STREAM_HEADS="deck:1"` (per-stream n_heads at fixed d_model; WKV state/layer = d_model^2/H,
+  params ~H-independent -> H=1 DOUBLES that stream's per-entity state ~free) + `RWKV_STREAM_LAYERS`
+  (per-stream depth, ~10.4k params/layer). **Rung 1 deck H=1 REJECTED** (lad_deck1: 0.306900/0.278131,
+  -0.000271/-0.000238 vs b1, p=1.0 both = no effect; deck not state-limited; deck knob CLOSED).
+  **Rung 2 preset H=1 RUNNING** (lad_preset1, detached pid 31928, ~4.6h pipeline, verdict ~13:00):
+  preset state 1728->3264 (1.89x, cap 10x), 193,526 params; better prior than deck -- preset is
+  long-recurrence (~whole-history sequences), the state-sensitive class per the blanket-quant lesson.
+  Ladder queue after preset: user/global H=1 (same free lever, the "global <=50x" knob), then
+  layer-adds ONLY if an H-rung shows signal (each +1 layer costs ~10.4k of the ~31k param headroom).
+  Pipeline template = scratchpad/lad_deck1/{run_lad_deck1.cmd,lad_deck1_ws.toml} (candidate runs:
+  vprune ON vs champion_5k.json; exit-42 branch; full sharded eval + paired gate in-.cmd).
 - **★ HP TUNING CLOSED (2026-07-12): champ5k_t1 (the tuner winner: wd 0.01->0.2 + dropout_scale
   1.0->0.5) REJECTED at full eval** -- ahead 0.307174 / imm 0.278570 = WORSE than champ5k_b1 by
   0.000545/0.000677 (p=1.0 both) despite winning tune-eval 5001-5200 by +0.0008/+0.0010.
