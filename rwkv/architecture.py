@@ -187,6 +187,39 @@ if _shift_scope:
     print("[QAT-SHIFT] state_shift_qmax set: " +
           ", ".join(f"{n}={c.state_shift_qmax}" for n, c in _layers if c.state_shift_qmax != float("inf")))
 
+# ---- State-size-ladder per-stream overrides (2026-07-12, Andrew's deck<=5x/preset<=10x/global<=50x plan).
+# RWKV_STREAM_HEADS="deck:1,preset:1": per-stream n_heads at FIXED d_model. Physics: WKV state per layer
+# = H*K^2 = d_model^2/H, while params are H-independent (r_k totals H*K = d_model; GroupNorm(H,C) = 2C
+# params regardless) -- so halving H DOUBLES that stream's per-entity WKV state at IDENTICAL params.
+# K = d_model/H must divide 32 (CUDA kernel limit; asserted in rwkv_model.py).
+# RWKV_STREAM_LAYERS="deck:5": per-stream layer count (state AND params grow linearly; ~10.4k params
+# per d=32 layer). Each stream is its own stack (layer_offset=0), so total_layers tracks n_layers.
+# Default unset == byte-identical. Card/note are gated frozen by protocol -- don't target them here.
+_stream_heads = os.environ.get("RWKV_STREAM_HEADS", "").strip()
+if _stream_heads:
+    _sh_over = {}
+    for _entry in _stream_heads.split(","):
+        _n, _, _h = _entry.strip().partition(":")
+        _sh_over[_QAT_NAME[_n]] = int(_h)
+    for _name, _cfg in _layers:
+        if _name in _sh_over:
+            _cfg.n_heads = _sh_over[_name]
+    print("[STREAM-HEADS] n_heads: " +
+          ", ".join(f"{n}={c.n_heads} (K={c.d_model // c.n_heads})"
+                    for n, c in _layers if n in _sh_over))
+_stream_layers = os.environ.get("RWKV_STREAM_LAYERS", "").strip()
+if _stream_layers:
+    _sl_over = {}
+    for _entry in _stream_layers.split(","):
+        _n, _, _l = _entry.strip().partition(":")
+        _sl_over[_QAT_NAME[_n]] = int(_l)
+    for _name, _cfg in _layers:
+        if _name in _sl_over:
+            _cfg.n_layers = _sl_over[_name]
+            _cfg.total_layers = _sl_over[_name]
+    print("[STREAM-LAYERS] n_layers: " +
+          ", ".join(f"{n}={c.n_layers}" for n, c in _layers if n in _sl_over))
+
 # SRS-head resolution env overrides (research-phase arch lever, 2026-06-30): default 64 = champion (iter29
 # halved 128->64 for params). Set RWKV_NUM_CURVES / RWKV_NUM_POINTS to sweep (e.g. 128) -- pure params, ZERO
 # state cost; the Rust engine auto-derives these from weight shapes. Both train AND eval must set the same value.
