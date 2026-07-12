@@ -548,15 +548,19 @@ Pairing needs identical db/MAX/seeds.
   significance (deck/preset were p=1.0): the user stream IS the state-sensitive one, per the
   blanket-quant prior; H=1 alone just isn't quite enough. Artifacts: laduser1d_1638.pth +
   cb_{wkv,shift}_final.txt in scratchpad/lad_user1; results result/RWKV[-P]-lad_user1.jsonl.
-  **-> iter 7 lad_user2 RUNNING (research-conduct rule 2: near-miss -> push the knob harder):
-  user H=1 + user layers 3->4** (RWKV_STREAM_LAYERS=user:4; user state 3264->4352 = 2.52x
-  champion, 203,928 params <= 225k; model_stats-verified, card/note/deck/preset unchanged).
-  Detached pid 22248, launched 20:48, verdict ~02:20; sequential-shard eval; vprune ON.
-  Clears BOTH bars -> promote (future runs then carry RWKV_STREAM_HEADS=user:1 +
-  RWKV_STREAM_LAYERS=user:4); imm still sub-0.0003 -> record + try a different user-state
-  variant or fold into the research phase.
-  Pipeline template = scratchpad/lad_user2/{run_lad_user2.cmd,lad_user2_ws.toml} (candidate runs:
-  vprune ON vs champion_5k.json; exit-42 branch; sequential sharded eval + paired gate in-.cmd).
+  **Iter 7 lad_user2 (iter 6 + user layers 3->4, 203,928 params) REJECTED (2026-07-13 02:28) --
+  a mode TRADE:** ahead -0.000299 WORSE (p=1.0) / imm +0.000604 better (p=7.8e-143) vs iter 2;
+  vs iter 6: ahead -0.000643 / imm +0.000346. Attribution: user STATE up (H=1, params flat) ->
+  +ahead strongly +imm weakly; user DEPTH up -> +imm strongly, -ahead.
+  **-> iter 8 lad_user1b RUNNING (launched 02:32, detached pid 5532, verdict ~08:00): the
+  SEED-PAIR test of iter 6** -- exact lad_user1 recipe at RWKV_AUGMENT_SEED=4321 (lesson-bank
+  seed-pair doctrine: the 0.000042 imm miss is a thin-margin verdict, unresolvable by one run).
+  vprune ON with deltas widened to 0.006/0.008 (champion ref trace is seed-1234; seed wobble
+  must not false-kill; disaster class +0.004-0.011 still caught). Outcomes: both bars clear ->
+  1/2 seeds pass = ANDREW'S JUDGMENT CALL in the morning; same sub-bar pattern -> reject stands
+  (real but small; revisit if a later change adds imm); null -> iter 6 was partly seed luck.
+  Pipeline template = scratchpad/lad_user1b/{run_lad_user1b.cmd,lad_user1b_ws.toml} (candidate
+  runs: vprune ON vs champion_5k.json; exit-42 branch; sequential sharded eval + gate in-.cmd).
   ⚠ EVAL-SHARD VRAM LESSON (2026-07-12 13:30): lad_preset1's 2-parallel-shard eval WEDGED (both
   shards 50-85+ min on their mega-users, VRAM 11.5/12 GB) -- preset-K=32 chunk-state buffers
   (~+0.8 GB/shard on 1M-token batches) pushed 2 concurrent shards into WDDM oversubscription

@@ -1,0 +1,42 @@
+# SEED-PAIR TEST of the iter-6 near-miss: lad_user1b (2026-07-13, iter 8). EXACT lad_user1 recipe
+# (user H=1 via RWKV_STREAM_HEADS=user:1, 3 user layers, 193,526 params, champion HPs, 1-ep budget,
+# q72u learnable cbs) with ONE change: RWKV_AUGMENT_SEED 1234 -> 4321 (a second independent
+# training-noise draw; the seed shuffles the training fetch order). Rationale = the lesson-bank
+# SEED-PAIR DOCTRINE: iter 6 was rejected on imm +0.000258 vs the 0.0003 bar -- a 0.000042 margin,
+# far inside seed noise; thin-margin verdicts need the exact recipe re-run at a second seed.
+# Outcomes: both bars clear -> 1/2 seeds pass = Andrew's judgment call; same sub-bar pattern ->
+# reject stands (real but small); null -> iter 6 was partly seed luck.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/lad_user1b"
+SAVE_MODEL_PREFIX = "laduser1bws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
