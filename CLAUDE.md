@@ -540,11 +540,14 @@ Pairing needs identical db/MAX/seeds.
   params ~H-independent -> H=1 DOUBLES that stream's per-entity state ~free) + `RWKV_STREAM_LAYERS`
   (per-stream depth, ~10.4k params/layer). **Rung 1 deck H=1 REJECTED** (lad_deck1: 0.306900/0.278131,
   -0.000271/-0.000238 vs b1, p=1.0 both = no effect; deck not state-limited; deck knob CLOSED).
-  **Rung 2 preset H=1 RUNNING** (lad_preset1, detached pid 31928, ~4.6h pipeline, verdict ~13:00):
-  preset state 1728->3264 (1.89x, cap 10x), 193,526 params; better prior than deck -- preset is
-  long-recurrence (~whole-history sequences), the state-sensitive class per the blanket-quant lesson.
-  Ladder queue after preset: user/global H=1 (same free lever, the "global <=50x" knob), then
-  layer-adds ONLY if an H-rung shows signal (each +1 layer costs ~10.4k of the ~31k param headroom).
+  **Rung 2 preset H=1 REJECTED** (lad_preset1, iter 5: 0.306845/0.278338, -0.000215/-0.000445 vs
+  iter 2, p=1.0 both -- the long-recurrence prior did NOT materialize; H=1 free state now 0/2).
+  **Rung 3 user/global H=1 RUNNING** (lad_user1, iter 6, detached pid 38144, launched 15:15,
+  verdict ~20:30): user state 1728->3264 (1.89x), 193,526 params; THE strongest prior (user
+  sank blanket state-quant) and the LAST free H-rung -- if it nulls, the ladder CLOSES and the
+  >=50-iteration research phase begins (layer-adds move there as capacity questions; no H-rung
+  showed a state signal). Its .cmd evals with SEQUENTIAL shards (dry-run plan -> shard_0 ->
+  shard_1 -> relaunch-skip-merge) per the iter-5 VRAM lesson.
   Pipeline template = scratchpad/lad_deck1/{run_lad_deck1.cmd,lad_deck1_ws.toml} (candidate runs:
   vprune ON vs champion_5k.json; exit-42 branch; full sharded eval + paired gate in-.cmd).
   ⚠ EVAL-SHARD VRAM LESSON (2026-07-12 13:30): lad_preset1's 2-parallel-shard eval WEDGED (both
