@@ -93,11 +93,33 @@ set RWKV_QAT_SHIFT_PQ=scratchpad/iter11_gemb/cb_shift_final.txt
 del /Q result\RWKV-iter11_gemb.jsonl result\RWKV-P-iter11_gemb.jsonl result\RWKV-iter11_gemb-s0.jsonl result\RWKV-P-iter11_gemb-s0.jsonl result\RWKV-iter11_gemb-s1.jsonl result\RWKV-P-iter11_gemb-s1.jsonl 2>nul
 echo === WRITE EVAL TOML (FULL 5001-10000) %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/iter11_gemb iter11gembd scratchpad/iter11_gemb/iter11_gemb_eval.toml RWKV-iter11_gemb RWKV-P-iter11_gemb 5001 10000 >> "%LOG%" 2>&1
-echo === EVAL (2 PARALLEL shards + merge; champion arch, no elevated VRAM) %TIME% === >> "%LOG%"
+REM SEQUENTIAL shards for ALL evals (2026-07-13: the iter-10 parallel eval wedged
+REM on the CHAMPION arch -- two mega-users collided into WDDM oversubscription;
+REM the iter-5 "elevated-VRAM only" rule was too narrow. Sequential is ~45 min
+REM slower when parallel would have worked but never wedges = unattended-safe.)
+echo === EVAL PLAN (dry-run writes shard tomls + user lists) %TIME% === >> "%LOG%"
+.venv\Scripts\python.exe -u optimization/eval_sharded.py --config scratchpad/iter11_gemb/iter11_gemb_eval.toml --dry-run >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_PLANFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 6
+)
+echo === SHARD 0 SEQUENTIAL %TIME% === >> "%LOG%"
+.venv\Scripts\python.exe -u -m rwkv.get_result --config scratchpad/eval_shards/shard_0.toml >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_S0FAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 7
+)
+echo === SHARD 1 SEQUENTIAL %TIME% === >> "%LOG%"
+.venv\Scripts\python.exe -u -m rwkv.get_result --config scratchpad/eval_shards/shard_1.toml >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_S1FAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 8
+)
+echo === MERGE (eval_sharded relaunch: shards skip all users, then merge) %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe -u optimization/eval_sharded.py --config scratchpad/iter11_gemb/iter11_gemb_eval.toml >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
-  echo DONE_EXIT_EVALFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
-  exit /b 7
+  echo DONE_EXIT_MERGEFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 9
 )
 
 echo === GATE: paired vs champ5k_b1 (iter 2) %TIME% === >> "%LOG%"
