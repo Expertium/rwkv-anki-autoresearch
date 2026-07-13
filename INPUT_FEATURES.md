@@ -54,23 +54,23 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 | 9 | Missing-ID flags | Note / deck / preset ID was missing |
 | 10 | Days since any review | Days since the user's previous review of any card |
 | 11 | Pseudo-day-of-week | Position in a 7-day cycle |
-| 12 | New cards since card's last review | New cards the user introduced since this card's previous review |
-| 13 | Reviews since card's last review | Other reviews the user did in that same window |
-| 14 | New cards today | New cards introduced so far today |
+| 12 | New cards since card's last review | New cards the user reviewed for the first time since this card's previous review |
+| 13 | Reviews since card's last review | Other reviews the user did since this card's previous review |
+| 14 | New cards today | New cards done so far today |
 | 15 | Reviews today | Reviews done so far today |
 | 16 | Card state | Anki card state (new/learning/review/relearning) |
 | 17 | Query flag | Marks the synthetic "predict cold" rows used by ahead mode |
-| 18 | Card ID | Identity of this exact card |
-| 19 | Sibling (note) ID | Identity of the note — siblings share it |
-| 20 | Deck ID | Identity of the deck |
-| 21 | Preset ID | Identity of the deck-options preset |
-| 22 | 3-day cycle | Review day's position in a 3-day cycle (+ the card's first-review day) |
-| 23 | Pseudo-week cycle (7 d) | 〃 for a 7-day period |
-| 24 | Pseudo-month cycle (30 d) | 〃 for a 30-day period |
-| 25 | Pseudo-quarter cycle (100 d) | 〃 for a 100-day period |
-| 26 | Pseudo-year cycle (365 d) | 〃 for a 365-day period |
-| 27 | Pseudo-decade cycle (3650 d) | 〃 for a 3650-day period |
-| 28 | Pseudo-century cycle (36500 d) | 〃 for a 36500-day period |
+| 18 | Card ID | ID of this exact card |
+| 19 | Sibling (note) ID | ID of the note — siblings share it |
+| 20 | Deck ID | ID of the deck |
+| 21 | Preset ID | ID of the deck-options preset |
+| 22 | 3-day cycle | Review day's position in a 3-day cycle |
+| 23 | Pseudo-week cycle (7 d) | Same as above for a 7-day period |
+| 24 | Pseudo-month cycle (30 d) | Same as above for a 30-day period |
+| 25 | Pseudo-quarter cycle (100 d) | Same as above for a 100-day period |
+| 26 | Pseudo-year cycle (365 d) | Same as above for a 365-day period |
+| 27 | Pseudo-decade cycle (3650 d) | Same as above for a 3650-day period |
+| 28 | Pseudo-century cycle (36500 d) | Same as above for a 36500-day period |
 
 ## Notes
 
@@ -89,6 +89,13 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 - **Cycle features** (rows 22–28, `DAY_OFFSET_ENCODE_PERIODS` in `config.py`): the
   phase `baseline` is a random integer in `[0, P)` drawn per batch — augmentation so
   the net can't memorize absolute positions in a cycle, only relative structure.
+- **Row 11 vs row 23 (both 7-day, NOT a duplicate):** row 11 is a single sawtooth
+  (`data_processing.py::add_segment_features`) with a **fixed** phase (day_offset is
+  re-zeroed to the segment's first day), current review day only — a stable weekly
+  signal the net can rely on directly. Row 23 is the 7-day member of the sin/cos
+  cycle family: smooth (no wrap discontinuity), **randomly re-phased every batch**,
+  and it also encodes the card's first-review day. Same period, different phase
+  stability + extra cohort info.
 - **Labels** (training targets, not inputs; from the card's *next* review):
   `label_y`, `label_rating`, `label_elapsed_days`, `label_elapsed_seconds` — the
   forgetting-curve head is supervised at the actual next-interval point;
