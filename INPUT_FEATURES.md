@@ -39,6 +39,39 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 | 28 | Pseudo-century cycle (36500 d) | 4 | 〃 for a 36500-day period | 〃 |
 | | **Total** | **92** | | |
 
+## Simplified view
+
+| # | Feature | What it is |
+|---|---|---|
+| 1 | Elapsed days | Days since this card's previous review (the interval length) |
+| 2 | Elapsed days, cumulative | Running sum of the card's intervals (card "calendar age") |
+| 3 | Elapsed seconds | Seconds since this card's previous review |
+| 4 | Elapsed-seconds sub-day phase | Where the interval falls within a 24 h day (e.g. 1.0-day vs 1.5-day gap) |
+| 5 | Elapsed seconds, cumulative | Running sum of the card's elapsed seconds |
+| 6 | Cumulative-seconds sub-day phase | 24 h phase of the cumulative clock |
+| 7 | Review duration | Answer time of this review |
+| 8 | Grade | Again / Hard / Good / Easy |
+| 9 | Missing-ID flags | Note / deck / preset ID was missing |
+| 10 | Days since any review | Days since the user's previous review of any card |
+| 11 | Pseudo-day-of-week | Position in a 7-day cycle |
+| 12 | New cards since card's last review | New cards the user introduced since this card's previous review |
+| 13 | Reviews since card's last review | Other reviews the user did in that same window |
+| 14 | New cards today | New cards introduced so far today |
+| 15 | Reviews today | Reviews done so far today |
+| 16 | Card state | Anki card state (new/learning/review/relearning) |
+| 17 | Query flag | Marks the synthetic "predict cold" rows used by ahead mode |
+| 18 | Card ID | Identity of this exact card |
+| 19 | Sibling (note) ID | Identity of the note — siblings share it |
+| 20 | Deck ID | Identity of the deck |
+| 21 | Preset ID | Identity of the deck-options preset |
+| 22 | 3-day cycle | Review day's position in a 3-day cycle (+ the card's first-review day) |
+| 23 | Pseudo-week cycle (7 d) | 〃 for a 7-day period |
+| 24 | Pseudo-month cycle (30 d) | 〃 for a 30-day period |
+| 25 | Pseudo-quarter cycle (100 d) | 〃 for a 100-day period |
+| 26 | Pseudo-year cycle (365 d) | 〃 for a 365-day period |
+| 27 | Pseudo-decade cycle (3650 d) | 〃 for a 3650-day period |
+| 28 | Pseudo-century cycle (36500 d) | 〃 for a 36500-day period |
+
 ## Notes
 
 - **Query masking (ahead mode):** each real review row gets a paired row with
