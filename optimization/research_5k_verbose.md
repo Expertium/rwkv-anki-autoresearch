@@ -75,8 +75,9 @@ zeros/ramps preserved), else exact champion recipe. REJECTED — worse both mode
 led the val curve all WS (−0.010 at step 1000 → −0.0006 at 3500) but ended net negative at full
 eval — at fixed 1-ep budget on the same data, λ=0.5 inheritance neither keeps the champion basin
 nor explores freely; both λ-endpoints are champion-level so the interior is a dip → λ probe not
-worth GPU. Data-driven-init family (scheme A) closed; scheme B (permutation init) queued LOW.
-The RWKV_INIT_BLEND hook stays (eed7cb5, env-gated, plain path untouched).
+worth GPU. Scheme A rejected; family DEPRIORITIZED, not closed (conduct rule 5, Andrew
+2026-07-13: closing a family needs 3–5 in-family variants); scheme B (permutation init) queued
+LOW. The RWKV_INIT_BLEND hook stays (eed7cb5, env-gated, plain path untouched).
 
 ## iter 10 — iter10_kd (invented: Andrew's unsourced idea, rejected)
 Warmup-only KD from the d=128 teacher: first 800 WS steps on annealed mixed targets α·teacher +
@@ -85,8 +86,10 @@ guard (mismatch = exit 43); hard labels after; RWKV_KD_MIX cleared before decay 
 the epoch-0 stream, checksum can't catch a misfire there). REJECTED — worse both modes: ahead
 −0.000277 / imm −0.000329 (p=1.0 both). Trajectory = iter 9's exactly: led val early
 (−0.0026/−0.0046 at step 500, still leading at 1500), washed out by WS end, finished slightly
-negative. EARLY-TRAINING-INTERVENTION family now 0/2 → CLOSED (head starts don't survive 6554
-hard-label steps). KD machinery stays in-repo (RWKV_KD_DUMP_OUT / RWKV_KD_MIX, 78caceb).
+negative. EARLY-TRAINING-INTERVENTION family 0/2 → DEPRIORITIZED, not closed (conduct rule 5:
+closing a family needs 3–5 in-family variants); so far head starts don't survive 6554 hard-label
+steps — untried variants if revisited: longer/never-zero KD window, KD extended into decay,
+permutation init. KD machinery stays in-repo (RWKV_KD_DUMP_OUT / RWKV_KD_MIX, 78caceb).
 Ops: the parallel eval wedged on the CHAMPION arch (both shards frozen 66+ min at 11.7/12 GB,
 100% util, full-core CPU each — two mega-users collided; the iter-5 elevated-VRAM-only scoping
 was too narrow). Killed tree + sequential-resume evalfix (run_iter10_kd_evalfix.cmd). RULE:

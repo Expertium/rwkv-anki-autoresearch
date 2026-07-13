@@ -388,7 +388,9 @@ state-size ladders:** (1) try LOTS of different tweaks of both the ARCHITECTURE 
 PIPELINE, from different FAMILIES of ideas (not many variants of one); (2) if an idea BARELY misses the
 logloss threshold, don't give up early -- try a slightly different implementation of the same idea first;
 (3) MIX literature review (optimization/LIT_REVIEW.md) with self-generated ideas; (4) spend AT LEAST 50
-iterations (NOT counting HP-tuning trials) before even considering declaring "nothing left to improve".
+iterations (NOT counting HP-tuning trials) before even considering declaring "nothing left to improve";
+(5) (Andrew 2026-07-13) NEVER declare a FAMILY "closed" after one iteration -- writing off a family
+needs at least 3-5 distinct in-family variants; 1-2 rejects = "0/N so far, deprioritized", not closed.
 [[research-phase-conduct]]
 **5k-PHASE METHODOLOGY (Andrew 2026-07-01) -- full text in `optimization/research_5k_notes.md`:** the 5k
 research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-10000 as the target) keeps
@@ -541,8 +543,11 @@ Pairing needs identical db/MAX/seeds.
   (Andrew's idea; 800-step annealed target mix from a stored dump, checksum-guarded) = ahead
   0.306907 / imm 0.278222 -- WORSE both modes (-0.000277/-0.000329 vs champ5k_b1, p=1.0 both).**
   Trajectory = iter 9's exactly: led val early (-0.0026/-0.0046 @ step 500), washed out by WS
-  end, finished slightly negative. **EARLY-TRAINING-INTERVENTION family now 0/2 (shrink-perturb,
-  KD warmup) -> CLOSED** -- head starts do not survive 6554 hard-label steps at the 1-ep budget.
+  end, finished slightly negative. **EARLY-TRAINING-INTERVENTION family 0/2 (shrink-perturb,
+  KD warmup) -> DEPRIORITIZED, not closed (conduct rule 5, Andrew 2026-07-13: closing a family
+  needs 3-5 in-family variants)** -- so far head starts do not survive 6554 hard-label steps at
+  the 1-ep budget; untried variants if revisited: longer/never-zero KD window, KD into decay,
+  permutation init.
   KD machinery stays in-repo (RWKV_KD_DUMP_OUT / RWKV_KD_MIX + exit-43 checksum guard, 78caceb).
   ⚠ OPS: the 2-parallel-shard eval WEDGED ON THE CHAMPION ARCH (both shards frozen 66+ min at
   11.7/12 GB, 100% util, full-core CPU each -- two mega-users collided; the iter-5
@@ -567,8 +572,9 @@ Pairing needs identical db/MAX/seeds.
   (-0.010 @ step 1000 shrinking to -0.0006 @ 3500) yet ended net NEGATIVE at full eval -- mid-WS
   val leads from a warm start do NOT predict the final verdict. Both lam endpoints (~0 =
   from-scratch champion, ~1 = the 2-ep budget A/B) are champion-level and the midpoint sits below
-  -> **data-driven-init family (scheme A shrink-perturb) CLOSED; lam probe {0.3,0.7} not worth
-  GPU; scheme B (permutation init) queued LOW.** The RWKV_INIT_BLEND hook stays (eed7cb5,
+  -> **data-driven-init scheme A (shrink-perturb at lam=0.5) rejected; family DEPRIORITIZED,
+  not closed (conduct rule 5); lam probe {0.3,0.7} judged not worth GPU for now; scheme B
+  (permutation init) queued LOW.** The RWKV_INIT_BLEND hook stays (eed7cb5,
   env-gated, plain path untouched). Artifacts: scratchpad/iter9_sp/, result/RWKV[-P]-iter9_sp.jsonl.
   **-> NOW: iter 10 = warmup-only KD from the d=128 teacher** -- machinery committed 78caceb:
   train_rwkv RWKV_KD_DUMP_OUT teacher-dump mode + RWKV_KD_MIX annealed target-mix student mode

@@ -25,5 +25,5 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 6 | 1–5000 | 0.3063 | 0.2776 | exact | rejected | 1.3e-20 / 1.5e-29 (vs iter 2) | 193,526 | invented | Ladder user rung: user H=1 — first real signal, but imm +0.000258 missed the 0.0003 bar. |
 | 7 | 1–5000 | 0.3069 | 0.2773 | exact | rejected | 1.0 / 7.8e-143 (vs iter 2) | 203,928 | invented | User H=1 + 4th layer: mode trade — imm +0.0006 better, ahead −0.0003 worse. |
 | 8 | 1–5000 | 0.3067 | 0.2780 | exact | rejected | 0.88 / 1.0 (vs iter 2) | 193,526 | invented | Seed-pair test of iter 6 (seed 4321): NULL — iter 6 was seed luck. Ladder closed, 0/5 rungs. |
-| 9 | 1–5000 | 0.3074 | 0.2789 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | adopted | Shrink-perturb init (Ash & Adams 2020): worse both modes — early val lead washed out. Init family closed. |
-| 10 | 1–5000 | 0.3069 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | invented | Warmup KD from d=128 teacher: worse both modes, same arc as iter 9. Early-intervention family closed. |
+| 9 | 1–5000 | 0.3074 | 0.2789 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | adopted | Shrink-perturb init (Ash & Adams 2020): worse both modes — early val lead washed out. Init family 0/1, deprioritized. |
+| 10 | 1–5000 | 0.3069 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | invented | Warmup KD from d=128 teacher: worse both modes, same arc as iter 9. Early-intervention family 0/2, deprioritized. |
