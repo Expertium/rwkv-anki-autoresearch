@@ -535,6 +535,26 @@ Pairing needs identical db/MAX/seeds.
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-13)
+- **★ RESEARCH ITER 9 REJECTED (2026-07-13 12:58): shrink-perturb init (lam=0.5, fresh seed 777,
+  RWKV_INIT_BLEND hook, else exact champion recipe) = ahead 0.307373 / imm 0.278926 -- WORSE both
+  modes (-0.000744/-0.001033 vs champ5k_b1, p=1.0 both), beyond the ~0.0004 seed noise = real harm,
+  no seed-pair needed.** Trajectory lesson: the warm init LED the champion's VAL curve all WS
+  (-0.010 @ step 1000 shrinking to -0.0006 @ 3500) yet ended net NEGATIVE at full eval -- mid-WS
+  val leads from a warm start do NOT predict the final verdict. Both lam endpoints (~0 =
+  from-scratch champion, ~1 = the 2-ep budget A/B) are champion-level and the midpoint sits below
+  -> **data-driven-init family (scheme A shrink-perturb) CLOSED; lam probe {0.3,0.7} not worth
+  GPU; scheme B (permutation init) queued LOW.** The RWKV_INIT_BLEND hook stays (eed7cb5,
+  env-gated, plain path untouched). Artifacts: scratchpad/iter9_sp/, result/RWKV[-P]-iter9_sp.jsonl.
+  **-> NOW: iter 10 = warmup-only KD from the d=128 teacher** -- machinery committed 78caceb:
+  train_rwkv RWKV_KD_DUMP_OUT teacher-dump mode + RWKV_KD_MIX annealed target-mix student mode
+  (per-step labels-checksum pairing guard, mismatch = exit 43 never a silent skip; srs_model
+  get_loss(kd_mix=) mixes TARGETS exactly -- BCE/CE are linear in the target; window 800 WS steps,
+  alpha 1->0; clear RWKV_KD_MIX before decay -- decay replays the epoch-0 stream). Sequence: dump
+  smoke KDSTEPS=3 (d=128 VRAM check) -> full 800-step dump (~20 min, scratchpad/iter10_kd/dump
+  ~0.9 GB) -> run_iter10_kd.cmd (~4.7h). ⚠ the dump .cmd FILE-SWAPS rwkv/architecture.py --
+  never overlap with any other rwkv launch. Queue after 10: SRS-head resolution 64->128 (capacity
+  re-test at 5k data -- the 100u "capacity rejects" lesson was data-limitation-scoped), channel
+  mixer 1.0->1.5, prehead output gate, cross-head readout mix, loss-term reweighting.
 - **★ STATE-SIZE LADDER CLOSED (2026-07-13 08:04): 0 accepted rungs across 5 iterations (4-8).**
   Per-stream arch hooks live (d6fca68): `RWKV_STREAM_HEADS` (H=1 doubles that stream's per-entity
   WKV state ~param-free) + `RWKV_STREAM_LAYERS` (~10.4k params/layer). Verdicts (all paired vs
