@@ -535,6 +535,29 @@ Pairing needs identical db/MAX/seeds.
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-13)
+- **★ RESEARCH ITER 10 REJECTED (2026-07-13 19:48): warmup-only KD from the d=128 teacher
+  (Andrew's idea; 800-step annealed target mix from a stored dump, checksum-guarded) = ahead
+  0.306907 / imm 0.278222 -- WORSE both modes (-0.000277/-0.000329 vs champ5k_b1, p=1.0 both).**
+  Trajectory = iter 9's exactly: led val early (-0.0026/-0.0046 @ step 500), washed out by WS
+  end, finished slightly negative. **EARLY-TRAINING-INTERVENTION family now 0/2 (shrink-perturb,
+  KD warmup) -> CLOSED** -- head starts do not survive 6554 hard-label steps at the 1-ep budget.
+  KD machinery stays in-repo (RWKV_KD_DUMP_OUT / RWKV_KD_MIX + exit-43 checksum guard, 78caceb).
+  ⚠ OPS: the 2-parallel-shard eval WEDGED ON THE CHAMPION ARCH (both shards frozen 66+ min at
+  11.7/12 GB, 100% util, full-core CPU each -- two mega-users collided; the iter-5
+  elevated-VRAM-only scoping was TOO NARROW). Fix = kill tree + sequential-resume evalfix
+  (run_iter10_kd_evalfix.cmd). **RULE UPDATED: ALL evals run SEQUENTIAL shards** (~45 min slower
+  than a clean parallel run, never wedges = unattended-safe; iter11 .cmd already updated).
+  **-> NOW: iter 11 = additive GRADE EMBEDDING (Andrew's idea 2026-07-13) RUNNING** (detached
+  pid 36608, launched 19:48, verdict ~01:45): RWKV_GRADE_EMB=1 -> x = features2card(f) +
+  grade_onehot @ E, E 4x32 ZERO-INIT bypass around the shared input MLP (a literal
+  one-hot->embedding swap is a no-op -- the first Linear already embeds the 4 grade cols; the
+  bypass frees grade info from the fc->32 squeeze). Matmul form => ahead-mode query rows
+  (all-zero one-hot) contribute exactly 0. +128 params = 193,852 (in-log confirmed). Unit checks
+  ALL_PASS (zero-init no-op, query-row zeros, no state_dict change when off). If near-miss ->
+  variant = per-stream grade embeddings (inject at each of the 5 stream inputs, +640 params).
+  Queue after 11: SRS-head resolution 64->128 (capacity re-test at 5k data), channel mixer
+  1.0->1.5, prehead output gate, cross-head readout mix, loss-term reweighting, permutation
+  init (LOW).
 - **★ RESEARCH ITER 9 REJECTED (2026-07-13 12:58): shrink-perturb init (lam=0.5, fresh seed 777,
   RWKV_INIT_BLEND hook, else exact champion recipe) = ahead 0.307373 / imm 0.278926 -- WORSE both
   modes (-0.000744/-0.001033 vs champ5k_b1, p=1.0 both), beyond the ~0.0004 seed noise = real harm,
