@@ -162,6 +162,14 @@ class SrsRWKV(ModuleType):
 
         self.card_features_dim = 92
         self.use_perm_gather = _USE_PERM_GATHER
+        # Research iter 11 (2026-07-13, Andrew's idea): dedicated additive grade embedding.
+        # The grade one-hot (cols 9:13 of the 92) already gets an implicit embedding via
+        # features2card's first Linear, but there it competes with 88 other dims for the
+        # shared fc->d_model squeeze. RWKV_GRADE_EMB=1 adds a 4 x d_model zero-init bypass:
+        # x = features2card(f) + onehot @ E. Matmul (not argmax) so ahead-mode query rows
+        # (all-zero one-hot) contribute exactly zero. Default unset = module absent =
+        # byte-identical, old checkpoints load unchanged.
+        self.grade_emb_on = os.environ.get("RWKV_GRADE_EMB", "0") == "1"
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * self.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
@@ -215,6 +223,10 @@ class SrsRWKV(ModuleType):
             self.p_linear = torch.nn.Linear(self.p_head_dim, 4)
             torch.nn.init.zeros_(self.p_linear.weight)
             self.p_linear.bias.copy_(torch.tensor([-0.3512, -0.0802, 0.4297, -0.2041]))
+
+            if self.grade_emb_on:
+                self.grade_emb = torch.nn.Linear(4, self.d_model, bias=False)
+                torch.nn.init.zeros_(self.grade_emb.weight)
 
     @FunctionType
     def head_and_out(self, input):
@@ -271,6 +283,8 @@ class SrsRWKV(ModuleType):
         batch_num_data: int,
     ):
         x = self.features2card(batch_start)
+        if self.grade_emb_on:
+            x = x + self.grade_emb(batch_start[:, 9:13])
 
         assert len(batch_sub_gather) == len(self.rwkv_modules)
         for i, submodule in enumerate(self.rwkv_modules):

@@ -1,0 +1,44 @@
+# RESEARCH PHASE iter 11: iter11_gemb = dedicated additive GRADE EMBEDDING (Andrew's idea,
+# 2026-07-13). The grade one-hot already gets an implicit embedding via features2card's first
+# Linear, so a literal one-hot->embedding swap is a no-op; the real change is a 4 x d_model
+# ZERO-INIT bypass added AFTER the shared MLP (x = features2card(f) + onehot @ E) -- grade
+# information no longer competes with the other 88 dims for the fc->32 squeeze. Matmul form =>
+# ahead-mode query rows (all-zero one-hot) contribute exactly zero. +128 params (193,852).
+# Hook: RWKV_GRADE_EMB=1 in srs_model.py (default off = byte-identical). Otherwise the EXACT
+# champion recipe: champion arch (H=2/K=16, [1,4,3,3,3]), champion HPs, 1-ep WS + 0.25-ep decay,
+# q72u learnable cbs, seed 1234. Gate: >=0.0003 BOTH modes + p<0.0001 both vs champ5k_b1.
+# NOTE margin < ~0.0005 => seed-pair before acting.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter11_gemb"
+SAVE_MODEL_PREFIX = "iter11gembws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
