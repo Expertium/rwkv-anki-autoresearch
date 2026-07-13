@@ -545,6 +545,34 @@ def main_loop(config, task_queue, batch_queue):
         print(f"[lr] reset optimizer lr/initial_lr to intended {_intended_lr} after loading champion optim")
     else:
         print("No model loaded.")
+
+    # Shrink-perturb init (RWKV_INIT_BLEND=<ckpt>:<lambda>:<seed>, research iter 9): from-scratch
+    # runs only. master_model <- lam*trained + (1-lam)*fresh, fresh = a NEW seeded init draw
+    # (Ash & Adams 2020). Parameters only; buffers keep the deterministic standard init. fork_rng
+    # walls off the extra construction so downstream training randomness is untouched.
+    _blend_spec = os.environ.get("RWKV_INIT_BLEND", "")
+    if _blend_spec:
+        assert not config.LOAD_MODEL, "RWKV_INIT_BLEND is a from-scratch init hook; unset LOAD_MODEL"
+        _b_ckpt, _b_lam, _b_seed = _blend_spec.rsplit(":", 2)
+        _b_lam = float(_b_lam)
+        _trained_sd = torch.load(_b_ckpt, weights_only=True, map_location="cpu")
+        with torch.random.fork_rng():
+            torch.manual_seed(int(_b_seed))
+            _fresh_sd = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG).state_dict()
+        _param_names = {n for n, _ in master_model.named_parameters()}
+        _blended = {}
+        for _n, _t in master_model.state_dict().items():
+            if _n in _param_names:
+                _blended[_n] = (
+                    _b_lam * _trained_sd[_n].float() + (1.0 - _b_lam) * _fresh_sd[_n].float()
+                ).to(_t.dtype)
+            else:
+                _blended[_n] = _fresh_sd[_n]
+        master_model.load_state_dict(_blended)
+        del _trained_sd, _fresh_sd, _blended
+        print(f"[init-blend] shrink-perturb: {_b_ckpt} lam={_b_lam} fresh-seed={_b_seed} "
+              f"({len(_param_names)} param tensors blended; buffers = fresh init)")
+
     model.copy_downcast_(master_model, dtype=config.DTYPE)
 
     # KD teacher (RWKV_QAT_KD=<lambda>, task22): a frozen, UN-quantized copy of the run's starting
