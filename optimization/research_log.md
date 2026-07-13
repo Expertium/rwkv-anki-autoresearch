@@ -1,4 +1,10 @@
-# Research-phase experiment log (100/100, train 1-100 / eval 101-200, sc8k WS-15 + 4ep decay, aug-off)
+# Research-phase experiment log (100/100 era) — HISTORICAL
+
+> **⚠ SUPERSEDED (2026-07-13).** This is the closed 100/100-era log (train 1-100 / eval 101-200,
+> June 2026). The live phase is 5k: front table [research_5k.md](research_5k.md), verbose AI notes
+> [research_5k_verbose.md](research_5k_verbose.md), machine log `research_log.jsonl`.
+
+(original header: 100/100, train 1-100 / eval 101-200, sc8k WS-15 + 4ep decay, aug-off)
 
 Champion = WS-15 + 4ep decay, fp32 ahead **0.314807** / imm **0.280200** (192,800 params, curves/points 64),
 ckpt `scratchpad/tuner/decay15/decay15_640.pth`. Deployed (card rank2-int4 lowrank + note int2 + shifts) =

@@ -316,8 +316,10 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 > Numeric record = `optimization/log.md` (the CANONICAL regenerated table -- now has a Research-phase
 > section fed by `research_log.jsonl`; rebuild via `python optimization/logbook.py rebuild`) + the source
 > jsonls (`research_log.jsonl`, `baseline_log.jsonl`, `log.jsonl`, `quant_log.jsonl`, `qat_log.jsonl`).
-> `research_log.md` keeps the verbose per-experiment notes; `HISTORY.md` = superseded plans + the full
-> pre-2026-06-30 snapshot. **Log EVERY research experiment to `research_log.jsonl` + rebuild log.md.**
+> 5k-phase verbose per-iteration notes = `research_5k_verbose.md` (AI-only; research_5k.md's summary
+> column is capped at <=20 words, Andrew 2026-07-13; `research_log.md` = the CLOSED 100/100-era log);
+> `HISTORY.md` = superseded plans + the full pre-2026-06-30 snapshot. **Log EVERY research experiment
+> to `research_log.jsonl` + research_5k.md row + research_5k_verbose.md section + rebuild log.md.**
 > This section keeps ONLY the current champion, deploy config, acceptance gate, lesson bank, live state, ops.
 
 ### Workbench + baselines
