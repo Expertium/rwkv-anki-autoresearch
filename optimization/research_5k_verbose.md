@@ -94,3 +94,19 @@ Ops: the parallel eval wedged on the CHAMPION arch (both shards frozen 66+ min a
 100% util, full-core CPU each — two mega-users collided; the iter-5 elevated-VRAM-only scoping
 was too narrow). Killed tree + sequential-resume evalfix (run_iter10_kd_evalfix.cmd). RULE:
 ALL evals now run sequential shards (~45 min slower than clean parallel, never wedges).
+
+## iter 11 — iter11_gemb (invented: Andrew's unsourced idea, rejected)
+Additive grade embedding: x = features2card(f) + grade_onehot @ E, E 4×32 ZERO-INIT bypass
+around the shared input MLP (a literal one-hot→embedding swap is a no-op — the first Linear
+already embeds the 4 grade columns; the bypass frees grade info from the fc→32 squeeze; matmul
+form keeps ahead-mode query rows at exactly zero). RWKV_GRADE_EMB=1 hook in srs_model.py, +128
+params (193,852); else exact champion recipe. REJECTED — worse both modes: ahead −0.000851 /
+imm −0.000908 (p=1.0 both), ~2x beyond cross-seed noise = real harm, no seed-pair needed. NOT a
+near-miss (rule 2 doesn't force a variant). Val looked champion-level all run — the harm only
+showed at full eval. Interpretation: the unregularized linear bypass injects the one-hot
+straight into the trunk all 5 streams share, skipping the MLP's SiLU/LayerNorm; plausibly
+distorts the shared representation more than it helps (grade was never bottlenecked — 4 of 92
+dims through a 128-wide fc is plenty). GRADE-REPRESENTATION family 0/1, deprioritized (rule 5);
+untried variants: per-stream additive embeddings (+640 params), grade embedding into the SRS
+heads instead of the trunk, LayerNorm on the bypass. First run under the all-sequential-eval
+rule: clean, ~5.6h. Hook stays in-repo (env-gated, default off = byte-identical).
