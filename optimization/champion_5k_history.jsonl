@@ -1,0 +1,1 @@
+{"name": "champ5k_r1", "date": "2026-07-08 18:23:46", "final_ahead": 0.306572, "final_imm": 0.278323, "n_trace_steps": 13108, "ckpt": "scratchpad/champ5k_r1/champ5kd_3277.pth", "cb_wkv": "scratchpad/champ5k_r1/cb_wkv_final.txt", "cb_shift": "scratchpad/champ5k_r1/cb_shift_final.txt"}

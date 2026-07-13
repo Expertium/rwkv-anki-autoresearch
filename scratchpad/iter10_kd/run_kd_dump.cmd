@@ -15,7 +15,7 @@ REM Smoke first: edit KDSTEPS=3, run, check dump files; then KDSTEPS=800 rerun
 REM (files just overwrite). Launch detached (detach.ps1).
 REM ============================================================================
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
-set KDSTEPS=3
+set KDSTEPS=800
 set PY=.venv\Scripts\python.exe
 set LOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter10_kd\kd_dump.log
 set PYTHONUNBUFFERED=1
