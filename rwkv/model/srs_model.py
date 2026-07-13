@@ -330,6 +330,7 @@ class SrsRWKV(ModuleType):
         batch_label_review_th: torch.Tensor,
         # typed for TorchScript (an untyped kd infers as Tensor and the tuple unpack fails to script)
         kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
+        kd_mix: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits = self.forward_batch(
             batch_start,
@@ -357,6 +358,14 @@ class SrsRWKV(ModuleType):
         is_query = is_query.int()
 
         label_rating = torch.clamp(label_rating - 1, min=0)
+        # Warmup-KD target mix (iter 10): kd_mix = (teacher_curve_probs, teacher_p_probs, alpha)
+        # from the stored d=128 teacher dump. BCE/CE are linear in the target, so mixing TARGETS
+        # (alpha*teacher + (1-alpha)*hard) is exactly the annealed soft-target design. alpha
+        # anneals 1 -> 0 across the KD window in train_rwkv; masks/scales untouched. The 4-way
+        # rating CE gets its mixed prob target below (after p_loss). None => byte-identical.
+        if kd_mix is not None:
+            _km_curve, _km_p, _km_alpha = kd_mix
+            label_y = _km_alpha * _km_curve + (1.0 - _km_alpha) * label_y
         label_elapsed_seconds = label_elapsed_seconds.unsqueeze(-1)
         curve_probs_raw = self.forgetting_curve(out_w, label_elapsed_seconds)
         curve_logits_raw = torch.log(
@@ -396,6 +405,21 @@ class SrsRWKV(ModuleType):
             label_rating.long().view(-1),
             reduction="none",
         ).view(B, T)
+        # Warmup-KD (cont.): rating target = alpha*teacher_p_probs + (1-alpha)*one_hot(hard).
+        # Soft-target CE via -(p * log_softmax(q)) -- the scripted-proven pattern from the kd block.
+        if kd_mix is not None:
+            _km2_curve, _km2_p, _km2_alpha = kd_mix
+            _km2_target = _km2_alpha * _km2_p + (1.0 - _km2_alpha) * torch.nn.functional.one_hot(
+                label_rating.long(), NUM_LABELS
+            ).float()
+            p_loss = (
+                -(
+                    _km2_target.view(-1, NUM_LABELS)
+                    * torch.log_softmax(out_p_logits.float().view(-1, NUM_LABELS), dim=-1)
+                )
+                .sum(dim=-1)
+                .view(B, T)
+            )
         p_binary_loss = torch.nn.functional.binary_cross_entropy(
             out_p_binary, label_y, reduction="none"
         )
@@ -497,7 +521,8 @@ class SrsRWKV(ModuleType):
         )
 
     def get_loss(self, batch: PreparedBatch,
-                 kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None):
+                 kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
+                 kd_mix: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None):
         return self._get_loss(
             batch.start,
             batch.sub_gather,
@@ -508,6 +533,7 @@ class SrsRWKV(ModuleType):
             batch.labels,
             batch.label_review_th,
             kd=kd,
+            kd_mix=kd_mix,
         )
 
     def copy_downcast_(self, master_model, dtype):

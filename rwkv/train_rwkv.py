@@ -573,6 +573,38 @@ def main_loop(config, task_queue, batch_queue):
         print(f"[init-blend] shrink-perturb: {_b_ckpt} lam={_b_lam} fresh-seed={_b_seed} "
               f"({len(_param_names)} param tensors blended; buffers = fresh init)")
 
+    # Warmup-KD from a STORED d=128 teacher dump (research iter 10; design in
+    # research_5k_notes.md "Queued idea -- warmup-only distillation").
+    # DUMP mode (RWKV_KD_DUMP_OUT=<dir> + RWKV_KD_TEACHER=<ckpt> + RWKV_KD_STEPS=<N>): swap in
+    # the old d=128 architecture.py FIRST (module-level arch config -- teacher and student
+    # cannot share a process), then this run walks the normal deterministic batch stream,
+    # eval-mode no_grad forward only, saving per-step (p_curve, p_imm_all) fp16 + a labels
+    # checksum; exits 0 after N steps. No optimizer/scheduler/checkpoint side effects.
+    # STUDENT mode (RWKV_KD_MIX=<dir>:<N>): for steps <= N load the dump, verify the checksum
+    # (batch-stream identity REQUIRED: same db/MAX/seeds; mismatch = hard exit 43, NOT a
+    # skipped batch), pass annealed mixed targets (alpha linear 1 -> 0) via get_loss(kd_mix=).
+    # Validation always stays on hard labels. ⚠ Clear RWKV_KD_MIX before the decay phase --
+    # decay re-seeds random to 12345 and REPRODUCES the epoch-0 batch stream, so the checksum
+    # cannot catch KD misfiring there.
+    _kd_dump_dir = os.environ.get("RWKV_KD_DUMP_OUT", "")
+    _kd_dump_steps = int(os.environ.get("RWKV_KD_STEPS", "800") or 800)
+    if _kd_dump_dir:
+        assert not config.LOAD_MODEL, "KD dump mode loads the teacher itself; unset LOAD_MODEL"
+        _kd_teacher_ckpt = os.environ["RWKV_KD_TEACHER"]
+        master_model.load_state_dict(
+            torch.load(_kd_teacher_ckpt, weights_only=True, map_location="cpu"))
+        os.makedirs(_kd_dump_dir, exist_ok=True)
+        print(f"[kd-dump] teacher = {_kd_teacher_ckpt}; dumping first {_kd_dump_steps} steps "
+              f"-> {_kd_dump_dir}")
+    _kd_mix_dir = ""
+    _kd_mix_steps = 0
+    _kd_mix_spec = os.environ.get("RWKV_KD_MIX", "")
+    if _kd_mix_spec:
+        _kd_mix_dir, _kd_mix_steps_s = _kd_mix_spec.rsplit(":", 1)
+        _kd_mix_steps = int(_kd_mix_steps_s)
+        print(f"[kd-mix] warmup KD ON: dump {_kd_mix_dir}, window {_kd_mix_steps} steps "
+              f"(target = alpha*teacher + (1-alpha)*hard, alpha linear 1 -> 0)")
+
     model.copy_downcast_(master_model, dtype=config.DTYPE)
 
     # KD teacher (RWKV_QAT_KD=<lambda>, task22): a frozen, UN-quantized copy of the run's starting
@@ -975,6 +1007,33 @@ def main_loop(config, task_queue, batch_queue):
             model.copy_downcast_(master_model, dtype=config.DTYPE)
             model.train()
             try:
+                # KD DUMP mode: teacher forward only -- save soft targets, skip everything else.
+                # SystemExit/sys.exit pass through the except-Exception below (exit 0 = done).
+                if _kd_dump_dir:
+                    model.eval()
+                    with torch.no_grad():
+                        stats = model.get_loss(prepared_batch)
+                    if stats is None:
+                        print(f"[kd-dump] teacher forward returned None (NaN) at step {step} -- ABORT")
+                        sys.exit(44)
+                    torch.save(
+                        {
+                            "step": step,
+                            "shape": list(stats.p_curve.shape),
+                            "labels_sum": float(
+                                prepared_batch.labels.detach().cpu().double().sum().item()),
+                            "p_curve": stats.p_curve.to(torch.float16).cpu(),
+                            "p_imm_all": stats.p_imm_all.to(torch.float16).cpu(),
+                        },
+                        os.path.join(_kd_dump_dir, f"step_{step}.pt"),
+                    )
+                    print(f"[kd-dump] step {step}/{_kd_dump_steps} saved "
+                          f"(ahead {stats.ahead_avg.item():.4f}, imm {stats.imm_avg.item():.3f})")
+                    if step >= _kd_dump_steps:
+                        print(f"[kd-dump] DONE: {_kd_dump_steps} steps -> {_kd_dump_dir}")
+                        sys.exit(0)
+                    continue
+
                 kd_args = None
                 if _teacher is not None:
                     with torch.no_grad():
@@ -994,7 +1053,35 @@ def main_loop(config, task_queue, batch_queue):
                             torch.sigmoid(_tcl).clamp(1e-5, 1 - 1e-5).float(),
                             _kd_lam,
                         )
-                stats = model.get_loss(prepared_batch, kd=kd_args)
+                # KD STUDENT mode: load this step's stored teacher targets, verify batch-stream
+                # identity (shape + labels checksum), anneal alpha 1 -> 0 across the window.
+                # Guards use sys.exit (SystemExit passes the except below) -- a mismatch or a
+                # missing dump file must ABORT the run, not degrade into skipped batches.
+                kd_mix_args = None
+                if _kd_mix_dir and step <= _kd_mix_steps:
+                    _km_path = os.path.join(_kd_mix_dir, f"step_{step}.pt")
+                    if not os.path.exists(_km_path):
+                        print(f"[kd-mix] dump file MISSING: {_km_path} -- ABORT")
+                        sys.exit(43)
+                    _km_rec = torch.load(_km_path, weights_only=True)
+                    _km_sum = float(prepared_batch.labels.detach().cpu().double().sum().item())
+                    _km_shape_ok = (list(_km_rec["p_curve"].shape)
+                                    == list(prepared_batch.labels.shape[:2]))
+                    if (not _km_shape_ok or abs(_km_sum - _km_rec["labels_sum"])
+                            > 1e-6 * max(1.0, abs(_km_sum))):
+                        print(f"[kd-mix] dump/batch MISMATCH at step {step}: labels_sum {_km_sum} "
+                              f"vs dumped {_km_rec['labels_sum']}, shape_ok={_km_shape_ok} "
+                              f"-- batch stream diverged, ABORT")
+                        sys.exit(43)
+                    _km_alpha = (_kd_mix_steps - step + 1) / _kd_mix_steps
+                    kd_mix_args = (
+                        _km_rec["p_curve"].to(config.DEVICE).float(),
+                        _km_rec["p_imm_all"].to(config.DEVICE).float(),
+                        float(_km_alpha),
+                    )
+                    if step == 1 or step % 100 == 0 or step == _kd_mix_steps:
+                        print(f"[kd-mix] step {step}: alpha={_km_alpha:.4f} (checksum OK)")
+                stats = model.get_loss(prepared_batch, kd=kd_args, kd_mix=kd_mix_args)
                 if stats is None:
                     raise Exception("Stats is none.")
                 if not torch.isfinite(stats.average_loss):  # NaN/inf safeguard: skip, don't backprop garbage

@@ -1,0 +1,42 @@
+# RESEARCH PHASE iter 10: warmup-only KD from the d=128 teacher (Andrew's queued idea,
+# 2026-07-03; design in research_5k_notes.md "Queued idea -- warmup-only distillation").
+# First 800 WS steps train on annealed soft targets (alpha*teacher + (1-alpha)*hard,
+# alpha linear 1 -> 0) from the STORED dump (run_kd_dump.cmd); hard labels thereafter so
+# the student can surpass the teacher. Otherwise the EXACT champion recipe: champion arch
+# (H=2/K=16, [1,4,3,3,3]), champion HPs, 1-ep WS + 0.25-ep decay, q72u learnable cbs,
+# seed 1234. Tested SEPARATELY from iter 9's init change (both touch early training).
+# Gate: >=0.0003 BOTH modes + p<0.0001 both vs champ5k_b1. NOTE margin < ~0.0005 => seed-pair.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter10_kd"
+SAVE_MODEL_PREFIX = "iter10kdws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
