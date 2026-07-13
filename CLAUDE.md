@@ -534,40 +534,33 @@ Pairing needs identical db/MAX/seeds.
   over plain. BIT-EXACT verified** (32-tensor golden fwd+bwd, int-N + PQ paths, both shapes) + deploy
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
-### LIVE STATE (2026-07-12)
-- **★ STATE-SIZE LADDER (2026-07-12).** Per-stream arch hooks LANDED (d6fca68):
-  `RWKV_STREAM_HEADS="deck:1"` (per-stream n_heads at fixed d_model; WKV state/layer = d_model^2/H,
-  params ~H-independent -> H=1 DOUBLES that stream's per-entity state ~free) + `RWKV_STREAM_LAYERS`
-  (per-stream depth, ~10.4k params/layer). **Rung 1 deck H=1 REJECTED** (lad_deck1: 0.306900/0.278131,
-  -0.000271/-0.000238 vs b1, p=1.0 both = no effect; deck not state-limited; deck knob CLOSED).
-  **Rung 2 preset H=1 REJECTED** (lad_preset1, iter 5: 0.306845/0.278338, -0.000215/-0.000445 vs
-  iter 2, p=1.0 both -- the long-recurrence prior did NOT materialize).
-  **Rung 3 user H=1 = iter 6 lad_user1 REJECTED at the gate but THE FIRST REAL SIGNAL (20:44):
-  ahead 0.306285 (+0.000345 vs iter 2, CLEARS 0.0003, p=1.3e-20); imm 0.277635 (+0.000258,
-  p=1.5e-29 -- misses the 0.0003 bar by 0.000042).** Both modes better with overwhelming
-  significance (deck/preset were p=1.0): the user stream IS the state-sensitive one, per the
-  blanket-quant prior; H=1 alone just isn't quite enough. Artifacts: laduser1d_1638.pth +
-  cb_{wkv,shift}_final.txt in scratchpad/lad_user1; results result/RWKV[-P]-lad_user1.jsonl.
-  **Iter 7 lad_user2 (iter 6 + user layers 3->4, 203,928 params) REJECTED (2026-07-13 02:28) --
-  a mode TRADE:** ahead -0.000299 WORSE (p=1.0) / imm +0.000604 better (p=7.8e-143) vs iter 2;
-  vs iter 6: ahead -0.000643 / imm +0.000346. Attribution: user STATE up (H=1, params flat) ->
-  +ahead strongly +imm weakly; user DEPTH up -> +imm strongly, -ahead.
-  **-> iter 8 lad_user1b RUNNING (launched 02:32, detached pid 5532, verdict ~08:00): the
-  SEED-PAIR test of iter 6** -- exact lad_user1 recipe at RWKV_AUGMENT_SEED=4321 (lesson-bank
-  seed-pair doctrine: the 0.000042 imm miss is a thin-margin verdict, unresolvable by one run).
-  vprune ON with deltas widened to 0.006/0.008 (champion ref trace is seed-1234; seed wobble
-  must not false-kill; disaster class +0.004-0.011 still caught). Outcomes: both bars clear ->
-  1/2 seeds pass = ANDREW'S JUDGMENT CALL in the morning; same sub-bar pattern -> reject stands
-  (real but small; revisit if a later change adds imm); null -> iter 6 was partly seed luck.
-  Pipeline template = scratchpad/lad_user1b/{run_lad_user1b.cmd,lad_user1b_ws.toml} (candidate
-  runs: vprune ON vs champion_5k.json; exit-42 branch; sequential sharded eval + gate in-.cmd).
-  ⚠ EVAL-SHARD VRAM LESSON (2026-07-12 13:30): lad_preset1's 2-parallel-shard eval WEDGED (both
-  shards 50-85+ min on their mega-users, VRAM 11.5/12 GB) -- preset-K=32 chunk-state buffers
-  (~+0.8 GB/shard on 1M-token batches) pushed 2 concurrent shards into WDDM oversubscription
-  (100% GPU util while 10-50x slow = the thrash signature; iter-4's deck-K=32 eval was fine at
-  presumably ~1 GB more headroom). FIX = run the SAME shard tomls SEQUENTIALLY (get_result
-  resumes per-shard output) then eval_sharded relaunch-skip-merge: run_lad_preset1_evalfix.cmd.
-  RULE: any elevated-VRAM arch rung (K=32 streams etc.) -> sequential shards or --shards 1.
+### LIVE STATE (2026-07-13)
+- **★ STATE-SIZE LADDER CLOSED (2026-07-13 08:04): 0 accepted rungs across 5 iterations (4-8).**
+  Per-stream arch hooks live (d6fca68): `RWKV_STREAM_HEADS` (H=1 doubles that stream's per-entity
+  WKV state ~param-free) + `RWKV_STREAM_LAYERS` (~10.4k params/layer). Verdicts (all paired vs
+  iter 2 champ5k_b1, n=5000): **deck H=1** (iter 4) null p=1.0; **preset H=1** (iter 5) null p=1.0;
+  **user H=1** (iter 6) NEAR-MISS +0.000345/+0.000258 (imm short by 0.000042, in-seed p 1e-20/1e-29);
+  **user H=1 + 4L** (iter 7) mode TRADE (ahead -0.000299 / imm +0.000604); **iter 8 lad_user1b =
+  the seed-pair test of iter 6 (seed 4321) came back NULL** -- ahead 0.306674 (-0.000044, p=0.88) /
+  imm 0.278039 (-0.000146, p=1.0) = the deck/preset no-effect signature. **Iter 6's signal did not
+  replicate -> substantially SEED LUCK; reject stands per the pre-declared branches.** LESSONS:
+  (1) no stream is state-capacity-limited at d=32/H=2 -- 2x recurrent memory clears nothing;
+  (2) ⚠ in-seed Wilcoxon p (even 1e-29) measures per-user delta consistency, NOT cross-seed
+  robustness -- cross-seed spread on the SAME recipe is ~0.0004 both modes, so **any single-run
+  margin < ~0.0005 defaults to seed-pair confirmation before acting**; (3) widened vprune
+  (0.006/0.008) ran clean across a seed change. Artifacts: scratchpad/lad_user1b/ (laduser1bd_1638
+  + cbs), result/RWKV[-P]-lad_user1b.jsonl; pipeline template = scratchpad/lad_user1b/
+  {run_lad_user1b.cmd,lad_user1b_ws.toml} (vprune-ON candidate runs; exit-42 branch; sequential
+  sharded eval + gate in-.cmd).
+  ⚠ EVAL-SHARD VRAM LESSON (2026-07-12): 2-parallel-shard eval WEDGES on elevated-VRAM rungs
+  (K=32 streams: chunk-state buffers ~+0.8 GB/shard on 1M-token batches -> WDDM oversubscription,
+  100% GPU util at 10-50x slow). RULE: such rungs -> sequential shards (get_result resumes
+  per-shard) then eval_sharded relaunch-skip-merge; template in run_lad_user1b.cmd.
+- **-> NOW: the >=50-iteration RESEARCH PHASE [[research-phase-conduct]]** (many idea FAMILIES,
+  arch + training pipeline, lit review + own ideas, retry near-misses as variants). Queued seeds:
+  warmup distillation from the d=128 teacher (design in notes), data-driven init (shrink-perturb/
+  permutation-init), cross-head readout mix (PHA analog), LIT_REVIEW.md queue. Iter numbering
+  continues from 9. Champion unchanged = iter 2 champ5k_b1 (0.306629/0.277893, 193,724 params).
 - **★ HP TUNING CLOSED (2026-07-12): champ5k_t1 (the tuner winner: wd 0.01->0.2 + dropout_scale
   1.0->0.5) REJECTED at full eval** -- ahead 0.307174 / imm 0.278570 = WORSE than champ5k_b1 by
   0.000545/0.000677 (p=1.0 both) despite winning tune-eval 5001-5200 by +0.0008/+0.0010.
