@@ -562,13 +562,18 @@ Pairing needs identical db/MAX/seeds.
   run; the harm only showed at full eval. GRADE-REPRESENTATION family 0/1, deprioritized
   (rule 5); untried variants: per-stream embeddings, grade-emb into the SRS heads, LayerNorm on
   the bypass. Hook stays (env-gated, default off = byte-identical).
-  **-> NOW: iter 12 = SRS-HEAD RESOLUTION 64->128 RUNNING** (RWKV_NUM_CURVES=128 +
-  RWKV_NUM_POINTS=128; detached pid 9616, launched 01:25, verdict ~07:00): capacity re-test at
-  5k data -- the 100u reject of this exact lever (exp1) was data-limitation-scoped. Pure params
-  (210,236 <= 225k, in-log confirmed), ZERO state cost, Rust auto-derives head dims. Exact
+  **Iter 12 = SRS-HEAD RESOLUTION 64->128 REJECTED (2026-07-14 07:01): ahead 0.306899 / imm
+  0.278134 -- no effect (-0.000270/-0.000241 vs champ5k_b1, p=1.0 both, inside the ~0.0004
+  cross-seed band = the deck/preset null signature).** The 100u "capacity adds fail" lesson does
+  NOT flip at 5k for this lever: 64 curves / 64 points are enough resolution for the
+  forgetting-curve mixture. Val sat at champion parity all run (WS-end +0.0003/+0.0010),
+  consistent with the null. CAPACITY-AT-5K family 0/1 so far. Clean ~5.6h run (WS 2h32m, decay
+  38m, sequential eval 2h24m), no incidents.
+  **-> NOW: iter 13 = CHANNEL MIXER 1.0->1.5** (RWKV_CHANNEL_MIXER_FACTOR=1.5, the next
+  in-family capacity-at-5k variant; per-block FFN width, pure params, zero state cost). Exact
   champion recipe otherwise; sequential eval; vprune standard deltas.
-  Queue after 12: channel mixer 1.0->1.5 (same capacity re-test logic), prehead output gate,
-  cross-head readout mix, loss-term reweighting, permutation init (LOW).
+  Queue after 13: prehead output gate, cross-head readout mix, loss-term reweighting,
+  permutation init (LOW).
 - **★ RESEARCH ITER 9 REJECTED (2026-07-13 12:58): shrink-perturb init (lam=0.5, fresh seed 777,
   RWKV_INIT_BLEND hook, else exact champion recipe) = ahead 0.307373 / imm 0.278926 -- WORSE both
   modes (-0.000744/-0.001033 vs champ5k_b1, p=1.0 both), beyond the ~0.0004 seed noise = real harm,

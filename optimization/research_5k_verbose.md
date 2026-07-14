@@ -110,3 +110,16 @@ dims through a 128-wide fc is plenty). GRADE-REPRESENTATION family 0/1, depriori
 untried variants: per-stream additive embeddings (+640 params), grade embedding into the SRS
 heads instead of the trunk, LayerNorm on the bypass. First run under the all-sequential-eval
 rule: clean, ~5.6h. Hook stays in-repo (env-gated, default off = byte-identical).
+
+## iter 12 — iter12_hres (invented, rejected)
+SRS-head resolution 64→128 (RWKV_NUM_CURVES=128 + RWKV_NUM_POINTS=128): capacity re-test at 5k
+data of the 100u exp1 reject (that "capacity adds fail" lesson was data-limitation-scoped). Pure
+params (+16.5k → 210,236 ≤ 225k cap), ZERO state cost, Rust auto-derives head dims from weight
+shapes; else exact champ5k_b1 recipe. REJECTED — no effect: ahead −0.000270 / imm −0.000241 vs
+iter 2 (p=1.0 both), magnitude inside the ~0.0004 cross-seed band = the deck/preset no-effect
+signature. The 100u lesson does NOT flip at 5k for this lever: 64 basis curves / 64 sample
+points are enough resolution for the forgetting-curve mixture. Val trace sat at champion parity
+the whole run (WS-end +0.0003/+0.0010), fully consistent with the null. CAPACITY-AT-5K family
+0/1 so far — channel mixer 1.0→1.5 is the next in-family variant (iter 13). Wall-clock: WS
+2h32m, decay 38m, sequential eval 2h24m (~5.6h), no incidents (second clean run under the
+all-sequential-eval rule).

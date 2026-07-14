@@ -28,3 +28,4 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 9 | 1–5000 | 0.3074 | 0.2789 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | adopted | Shrink-perturb init (Ash & Adams 2020): worse both modes — early val lead washed out. Init family 0/1, deprioritized. |
 | 10 | 1–5000 | 0.3069 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | invented | Warmup KD from d=128 teacher: worse both modes, same arc as iter 9. Early-intervention family 0/2, deprioritized. |
 | 11 | 1–5000 | 0.3075 | 0.2788 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,852 | invented | Additive grade embedding (4×32 bypass around the input MLP): worse both modes (~0.0009) — the bypass distorts the shared trunk. |
+| 12 | 1–5000 | 0.3069 | 0.2781 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 210,236 | invented | SRS-head resolution 64→128 at 5k data: no effect (both ~−0.00025, noise-band) — heads not resolution-limited. |

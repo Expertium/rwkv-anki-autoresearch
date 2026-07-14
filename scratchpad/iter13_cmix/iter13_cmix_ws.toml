@@ -1,0 +1,42 @@
+# RESEARCH PHASE iter 13: iter13_cmix = channel mixer factor 1.0 -> 1.5
+# (RWKV_CHANNEL_MIXER_FACTOR=1.5, per-block FFN width mult). CAPACITY RE-TEST AT 5k DATA,
+# in-family variant after iter 12's SRS-head-resolution null (capacity-at-5k family 0/1): the
+# identical lever was rejected at 100 users but that lesson was data-limitation-scoped. Pure
+# params (208,060 <= 225k, model_stats confirmed), ZERO state cost (all per-stream states
+# unchanged). Otherwise the EXACT champion recipe (H=2/K=16, champion HPs, seed 1234, 1-ep WS +
+# 0.25-ep decay, q72u learnable cbs). Gate: >=0.0003 BOTH modes + p<0.0001 both vs champ5k_b1;
+# margin <~0.0005 => seed-pair before acting.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter13_cmix"
+SAVE_MODEL_PREFIX = "iter13cmixws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
