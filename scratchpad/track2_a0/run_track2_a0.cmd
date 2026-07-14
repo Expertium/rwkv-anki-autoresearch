@@ -14,7 +14,7 @@ set PYTHONPATH=C:\Users\Andrew\rwkv-anki-autoresearch
 set OMP_NUM_THREADS=7
 set RWKV_DETERMINISTIC=1
 set RWKV_AUGMENT_SEED=1234
-set RWKV_EMPTY_CACHE_EVERY=0
+set RWKV_EMPTY_CACHE_EVERY=1
 set RWKV_ARCH_MODULE=scratchpad/architecture_old_d128.py
 set RWKV_WEIGHT_DECAY=0.01
 set RWKV_CLIP=0.25
@@ -22,7 +22,7 @@ set RWKV_STEP_TRACE=scratchpad/track2_a0/track2_a0_ws_trace.jsonl
 
 echo ===== TRACK2_A0 START %DATE% %TIME% ===== > "%LOG%"
 del /Q scratchpad\track2_a0\track2_a0_ws_trace.jsonl scratchpad\track2_a0\track2_a0_ws_trace.jsonl.val.jsonl 2>nul
-echo === WS 1 epoch (1-5000, d=128 PLAIN, MAX=66000) %TIME% === >> "%LOG%"
+echo === WS 1 epoch (1-5000, d=128 PLAIN, MAX=32768) %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/track2_a0/track2_a0_ws.toml >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_WSFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"

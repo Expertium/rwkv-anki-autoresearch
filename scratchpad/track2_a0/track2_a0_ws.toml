@@ -2,8 +2,11 @@
 # scratchpad/architecture_old_d128.py, 2,762,884 params) retrained through the CURRENT plain
 # pipeline -- 1 ep WS + 0.25 ep decay, seed 1234, PLAIN bf16 (QAT parked), JIT on. This is the
 # fair "before" anchor for the ablation ratio gate (50k*dLL/dparams <= 0.0001 both modes): the
-# upstream 12-epoch .pth is not budget-comparable. MAX=66000 (110000 would blow 12 GB at d=128;
-# 66000 = the original's setting, fits -- the 100u-era arch-swap baseline trained at it here).
+# upstream 12-epoch .pth is not budget-comparable. MAX=32768 (66000 thrashed at 40 s/step AND
+# 49152 still thrashed at 13.3 s/step, both ~11.8/12 GB -> the d=128 training working set is
+# ~0.26 MB/token; 32768 packs the 16,384-token batches 2-per-group, ~8.5 GB projected, ~22k
+# groups/epoch. Coverage probe 2026-07-14: max single batch in train_db_5k_h1 = 16,384 tokens
+# -> ZERO data drop at any MAX >= 16,384. ALL track-2 runs must share this MAX for pairing).
 # Also A/Bs the 1-ep-budget lesson at 14x params vs the upstream 12-ep result (informational
 # paired test at the end). Eval = SINGLE process (d=128 cannot share the GPU: one eval alone
 # peaks ~9 GB; eval_sharded runs with --shards 1 --solo-threshold 0).
@@ -20,13 +23,13 @@ LABEL_FILTER_LMDB_PATH = "label_filter_db"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
 NUM_FETCH_PROCESSES = 4
-MAX_TRAIN_GLOBAL_LEN = 66000
+MAX_TRAIN_GLOBAL_LEN = 32768
 
 TRAIN_MODE = "WS"
 STEP_OFFSET = 1
 WARMUP_STEPS = 200
 EPOCHS = 1
-VALIDATE_EVERY = 500
+VALIDATE_EVERY = 1000
 PEAK_LR = 1e-3
 
 LOAD_MODEL = false

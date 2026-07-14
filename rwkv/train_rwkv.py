@@ -1163,6 +1163,9 @@ def main_loop(config, task_queue, batch_queue):
             except Exception as e:
                 print("Exception caught. Nan from RWKV-7? Skipping batch.")
                 print(e)
+                # Bare asserts have EMPTY str(e) -- this swallow hid a hollow d=128 run
+                # (2026-07-14) and the hollow-compile run before it. Always show the truth.
+                traceback.print_exc()
                 log["train_nan"] = 1
 
             # Wilcoxon early-prune over the LAST prune_window paired steps (0 = all common steps).

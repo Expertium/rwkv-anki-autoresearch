@@ -72,5 +72,11 @@ class KeyValueAverage:
         self.n += self.weights[key]
 
     def get_value(self):
-        assert self.n > 0
+        # n == 0 is a known benign state: early training groups can contain zero
+        # equalize-counted reviews (seen at MAX=49152 on the 5k data, track-2 A0
+        # 2026-07-14). The old bare assert threw AFTER backward but BEFORE
+        # optimizer.step in the train loop's blanket except -> silently skipped
+        # real weight updates. NaN in the log dict is harmless (wandb-only consumer).
+        if self.n <= 0:
+            return float("nan")
         return self.tot / self.n

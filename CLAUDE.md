@@ -608,14 +608,26 @@ Pairing needs identical db/MAX/seeds.
   resolves attrs in dead branches; hidden all QAT era by NO_JIT) -> @torch.jit.ignore
   indirection in srs_model.py, smoke-tested both hook states. train_rwkv swallowed that
   traceback with exit 0 -- the .cmd artifact gate caught it (always gate phases on artifacts).
-  **-> NOW: TRACK 2 ANCHOR A0 RUNNING (detached pid 1504, launched 15:57, ~13-14h, verdict
-  ~05:30):** the ORIGINAL d=128 arch (2,762,884 params, in-log confirmed) retrained through
-  the plain pipeline at MAX=66000 via the NEW RWKV_ARCH_MODULE env hook (architecture.py
-  bottom: exec's a standalone config file, replaces DEFAULT_ANKI_RWKV_CONFIG wholesale --
-  bypasses all default-build env hooks; scratchpad/architecture_old_d128.py verified
-  2,762,884/[3,4,2,3,4]/K=32). Eval = SINGLE process (--shards 1 --solo-threshold 0; d=128
-  can't share 12 GB). Ends with informational paired vs base5k (the 1-ep-budget check at 14x
-  params). A0's finals + val trace = the track-2 "before" anchor + its vprune ref.
+  **-> NOW: TRACK 2 ANCHOR A0 RUNNING (4th launch, detached pid 20332, 17:02, verdict ~07:15
+  tomorrow):** the ORIGINAL d=128 arch (2,762,884 params, in-log confirmed) retrained through
+  the plain pipeline via the NEW RWKV_ARCH_MODULE env hook (architecture.py bottom: exec's a
+  standalone config file, replaces DEFAULT_ANKI_RWKV_CONFIG wholesale -- bypasses all
+  default-build env hooks; scratchpad/architecture_old_d128.py verified). **MAX=32768 -- THE
+  TRACK-2 STANDARD (pairing needs it identical across all track-2 runs).** Launch saga:
+  MAX=66000 THRASHED (11.85/12 GB WDDM spill, 40 s/step -- the 100u-era "66000 fits" fact
+  doesn't transfer, 5k packs fuller groups) and 49152 still thrashed (13.3 s/step, allocator
+  bloat on 3x16384 packing); 32768 = 2x16384 clean packing -> 3.6 GB, 1.06 s/step, ~22k
+  steps/epoch. ⚠ COVERAGE FACT (probe 2026-07-14): max single batch in train_db_5k_h1 =
+  16,384 tokens -> ZERO data drop at ANY MAX >= 16,384 (the "don't go below 66000 = data
+  drops" rule was sc8k-era, NOT true of the 5k db). TWO LATENT BUGS FIXED en route:
+  (1) train_rwkv's blanket NaN-except now prints the real traceback (bare asserts have empty
+  str(e) -- it had hidden the hollow-compile run and this); (2) utils.KeyValueAverage
+  .get_value returned via bare assert n>0 -- early groups can have ZERO equalize-counted
+  reviews (first seen at small MAX), and the throw landed AFTER backward but BEFORE
+  optimizer.step = silently skipped weight updates; now returns NaN (wandb-only consumer).
+  Eval = SINGLE process (--shards 1 --solo-threshold 0; d=128 can't share 12 GB). Ends with
+  informational paired vs base5k (the 1-ep-budget check at 14x params). A0's finals + val
+  trace = the track-2 "before" anchor + its vprune ref.
   Track-1 queue (plain era, ~3h/iter): prehead output gate, cross-head readout mix, loss-term
   reweighting, permutation init (LOW). Track-2 queue after A0: layer cuts / d_model cuts /
   mixer cuts / LoRA dims / head-width cuts, ranked by expected ratio-efficiency.
