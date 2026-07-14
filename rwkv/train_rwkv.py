@@ -932,9 +932,14 @@ def main_loop(config, task_queue, batch_queue):
     # run clear less often (e.g. 50) or never (0) once it's known not to OOM -> ~1.2x for short
     # runs. Arch-agnostic. Read once here, not per-step.
     empty_cache_every = int(os.environ.get("RWKV_EMPTY_CACHE_EVERY") or "1")
-    if empty_cache_every != 1:
+    # RWKV_EMPTY_CACHE_WINDOW (default 1000 = original behavior): how many leading steps the
+    # guard covers; 0 = the WHOLE run. Needed for big-model runs (track-2 d=128, 2026-07-14):
+    # past step 1000 the caching allocator's envelope creeps across variable group shapes
+    # toward the 12 GB WDDM ceiling -> paging -> 4x step slowdown mid-epoch. Numerics-neutral.
+    empty_cache_window = int(os.environ.get("RWKV_EMPTY_CACHE_WINDOW") or "1000")
+    if empty_cache_every != 1 or empty_cache_window != 1000:
         print(f"[empty_cache] clearing device cache every {empty_cache_every} steps "
-              f"(first 1000), 0=never (default 1)")
+              f"(window {empty_cache_window or 'whole run'}), every=0 -> never")
 
     checkpoint_step_count = 0
     checkpoint_loss_n = 0
@@ -971,7 +976,7 @@ def main_loop(config, task_queue, batch_queue):
 
             if (
                 empty_cache_every > 0
-                and step < config.STEP_OFFSET + 1000
+                and (empty_cache_window == 0 or step < config.STEP_OFFSET + empty_cache_window)
                 and (step - config.STEP_OFFSET) % empty_cache_every == 0
             ):
                 _clear_device_cache(config.DEVICE)

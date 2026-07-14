@@ -14,7 +14,11 @@ set PYTHONPATH=C:\Users\Andrew\rwkv-anki-autoresearch
 set OMP_NUM_THREADS=7
 set RWKV_DETERMINISTIC=1
 set RWKV_AUGMENT_SEED=1234
-set RWKV_EMPTY_CACHE_EVERY=1
+REM every=50 over the WHOLE run (WINDOW=0): launch 4 crept 3.6->11.3 GB by step ~4100
+REM (allocator envelope over variable d=128 group shapes) -> WDDM paging, 4.3 s/step.
+REM Cost ~3 ms/step amortized; numerics-neutral.
+set RWKV_EMPTY_CACHE_EVERY=50
+set RWKV_EMPTY_CACHE_WINDOW=0
 set RWKV_ARCH_MODULE=scratchpad/architecture_old_d128.py
 set RWKV_WEIGHT_DECAY=0.01
 set RWKV_CLIP=0.25
