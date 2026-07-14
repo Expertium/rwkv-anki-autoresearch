@@ -34,7 +34,13 @@ def main():
     # step trace; embedding it makes this champion the RWKV_VPRUNE_REF (validation-based pruning --
     # the train-loss prune is sign-biased against regularization levers, see research_5k_notes).
     ap.add_argument("--val-trace", default="", help="candidate's WS val-trace jsonl (<trace>.val.jsonl)")
+    # Plain-screening era (Andrew 2026-07-14): the plain-vs-plain champion lives in its own file
+    # (champion_5k_plain.json) so the QAT deploy-truth champion_5k.json is never clobbered.
+    ap.add_argument("--out", default="", help="output json (default optimization/champion_5k.json)")
     args = ap.parse_args()
+    global OUT
+    if args.out:
+        OUT = Path(args.out)
 
     steps, aheads, imms = [], [], []
     seen = set()

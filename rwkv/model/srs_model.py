@@ -228,6 +228,13 @@ class SrsRWKV(ModuleType):
                 self.grade_emb = torch.nn.Linear(4, self.d_model, bias=False)
                 torch.nn.init.zeros_(self.grade_emb.weight)
 
+    @torch.jit.ignore
+    def _apply_grade_emb(self, x: torch.Tensor, batch_start: torch.Tensor) -> torch.Tensor:
+        # TorchScript-safe indirection: grade_emb only exists when RWKV_GRADE_EMB=1, and the
+        # scripted forward_batch must not reference a conditionally-created submodule (the
+        # compiler resolves attributes even in dead branches). Ignored body runs in Python.
+        return x + self.grade_emb(batch_start[:, 9:13])
+
     @FunctionType
     def head_and_out(self, input):
         x = self.prehead_dropout(self.prehead_norm(input))
@@ -284,7 +291,7 @@ class SrsRWKV(ModuleType):
     ):
         x = self.features2card(batch_start)
         if self.grade_emb_on:
-            x = x + self.grade_emb(batch_start[:, 9:13])
+            x = self._apply_grade_emb(x, batch_start)
 
         assert len(batch_sub_gather) == len(self.rwkv_modules)
         for i, submodule in enumerate(self.rwkv_modules):

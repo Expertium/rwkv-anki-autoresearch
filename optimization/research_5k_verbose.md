@@ -123,3 +123,39 @@ the whole run (WS-end +0.0003/+0.0010), fully consistent with the null. CAPACITY
 0/1 so far — channel mixer 1.0→1.5 is the next in-family variant (iter 13). Wall-clock: WS
 2h32m, decay 38m, sequential eval 2h24m (~5.6h), no incidents (second clean run under the
 all-sequential-eval rule).
+
+## iter 13 — iter13_cmix (invented, rejected) — LAST QAT-ERA ITERATION
+Channel mixer factor 1.0→1.5 (RWKV_CHANNEL_MIXER_FACTOR=1.5, per-block FFN width): the second
+capacity-at-5k variant. Pure params (+14.3k → 208,060), zero state cost; else exact champ5k_b1
+recipe. REJECTED — no effect: ahead −0.000159 (p=0.999) / imm −0.000271 (p=1.0), inside the
+~0.0004 cross-seed band. CAPACITY-AT-5K family 0/2 (SRS-head resolution, channel mixer): the
+d=32 trunk is not capacity-limited at 5k in the heads or the FFN width — the d=128 gap
+(+0.0102/+0.0134) lives elsewhere (plausibly stream width/recurrent capacity, which the H=1
+state ladder also failed to buy). Val led mid-WS (to −0.0026 ahead at 4500) and washed out by
+WS end — another washout instance. Clean ~5.6h, no incidents.
+
+## METHODOLOGY SWITCH (2026-07-14, after iter 13) — plain screening + two tracks
+Andrew's decisions, prompted by the "why 5.6h?" audit (upstream rwkv unchanged since vendoring —
+the time was ours): (1) **QAT PARKED until the end of research** — screening is plain-vs-plain
+bf16 (saves ~2h20m/run: quant-aware step 1.41 s vs 0.385 s plain); ONE quant-aware run of the
+final champion at close; no per-accept quant confirmations. champion_5k.json (QAT deploy truth)
+is frozen; plain screening champion → champion_5k_plain.json (promote --out flag added).
+(2) **Power-user-aware eval** (implemented, first E2E = champ5k_plain): users ≥1M work (56 =
+11.3% of eval work; top-7 ~2.1M each) run solo first, then 2 parallel LPT shards — worst
+concurrent pair halves vs the wedge scale; expected ~1.8x over sequential, ~11% off unrestricted
+parallel. eval_sharded.py rewritten (solo phase + RWKV_EVAL_SHARD_DIR override; dry-run tested);
+--solo-threshold 0 restores old behavior. (3) **Track 2: ablate d=128** — retrain the old arch
+through the current pipeline as anchor A0 (MAX=66000 fits 12 GB; the upstream 12-ep .pth is not
+budget-comparable), then cut params; gate = 50k·ΔLL/Δparams ≤ 0.0001 BOTH modes. Context: the
+whole d=128→d=32 collapse cost 0.0002/50k ahead / 0.00026/50k imm, so the bar demands cuts
+~2–2.6x more efficient than the global average. Alternate ~12h blocks (~5 track-1 iters vs 1
+track-2 iter). Track 2 needs its own vprune ref (A0's val trace; pairing needs identical MAX/db)
+and an env-based arch-module selector (to avoid the KD-dump file-swap footgun) — build at A0
+launch. (4) 1-ep-budget check at d=128 rides along free: if A0 ≈ the 12-ep upstream number, the
+budget lesson transfers to 14x params.
+
+## iter 14 — champ5k_plain (invented, pending) — the plain re-baseline
+champ5k_b1's exact recipe with all QAT env stripped (plain bf16, JIT on, no codebooks), step+val
+trace on (becomes champion_5k_plain.json / the plain vprune ref), no vprune (it IS the new
+reference). Ends with an INFORMATIONAL paired test vs champ5k_b1 = the QAT tax at n=5000.
+First E2E run of the power-user-aware eval — watch phase B VRAM.

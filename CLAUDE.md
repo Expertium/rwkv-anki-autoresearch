@@ -569,11 +569,46 @@ Pairing needs identical db/MAX/seeds.
   forgetting-curve mixture. Val sat at champion parity all run (WS-end +0.0003/+0.0010),
   consistent with the null. CAPACITY-AT-5K family 0/1 so far. Clean ~5.6h run (WS 2h32m, decay
   38m, sequential eval 2h24m), no incidents.
-  **-> NOW: iter 13 = CHANNEL MIXER 1.0->1.5** (RWKV_CHANNEL_MIXER_FACTOR=1.5, the next
-  in-family capacity-at-5k variant; per-block FFN width, pure params, zero state cost). Exact
-  champion recipe otherwise; sequential eval; vprune standard deltas.
-  Queue after 13: prehead output gate, cross-head readout mix, loss-term reweighting,
-  permutation init (LOW).
+  **Iter 13 = CHANNEL MIXER 1.0->1.5 REJECTED (2026-07-14 12:41): ahead 0.306788 / imm 0.278164
+  = -0.000159/-0.000271 (p=0.999/1.0), no-effect signature. CAPACITY-AT-5K family 0/2** (head
+  resolution, FFN width): the d=32 trunk is not capacity-limited at 5k -- the d=128 gap lives
+  elsewhere. LAST QAT-ERA ITERATION.
+  **★ METHODOLOGY SWITCH (Andrew 2026-07-14) -- supersedes methodology (a) for the research
+  phase:** (1) **QAT PARKED until research closes** -- ALL screening runs (both tracks) are
+  PLAIN bf16, JIT on, no codebooks (saves ~2h20m/run; plain step 0.385 s vs 1.41 quant-aware);
+  ONE quant-aware run of the final champion at the very end, NO per-accept confirmations.
+  champion_5k.json (QAT deploy truth, champ5k_b1) FROZEN; plain screening champion ->
+  optimization/champion_5k_plain.json (promote_champion_5k.py --out flag added; plain
+  candidates use RWKV_VPRUNE_REF=champion_5k_plain.json). Plain vs QAT-era logloss NOT
+  comparable. (2) **TWO RESEARCH TRACKS, ~12h alternating blocks, two tables in
+  research_5k.md:** Track 1 = improve the d=32 model (gate unchanged: >=0.0003 both + p<1e-4
+  both, params <=225k). Track 2 = ABLATE the old d=128 model; gate =
+  50,000*(LL_after-LL_before)/(params_before-params_after) <= 0.0001 in BOTH modes (params
+  strictly decrease; "before" = current track-2 champion; rows A0,A1,...). Track-2 anchor A0 =
+  d=128 arch retrained through OUR plain 1-ep pipeline at MAX=66000 (fits 12 GB; the 12-ep
+  upstream .pth is NOT budget-comparable; ~6.5h train + ~6h eval, unshardable VRAM-wise).
+  Context: the whole d=128->d=32 collapse = 0.0002/50k ahead, 0.00026/50k imm -- the bar
+  demands ~2-2.6x better than that average. A0 also A/Bs the 1-ep budget at 14x params. TODO
+  at A0 launch: env-based arch-module selector in architecture.py (NOT the KD-dump file-swap).
+  (3) **POWER-USER-AWARE EVAL LANDED (eval_sharded.py rewritten, dry-run tested):** users >=1M
+  work (56 = 11.3% of eval work on 5001-10000; top-7 ~2.1M) run SOLO first (one process,
+  7 threads), then 2 parallel LPT shards, then merge -- one call does all phases; worst
+  concurrent pair ~2x below the wedge scale; ~1.8x over sequential; resume-safe per phase;
+  --solo-threshold 0 = old behavior; RWKV_EVAL_SHARD_DIR overrides the shard dir. d=128 evals
+  stay UNSHARDED (one alone ~9 GB). First E2E = the champ5k_plain eval -- watch phase-B VRAM.
+  **-> NOW: iter 14 = champ5k_plain RUNNING (detached pid 34684, launched 12:45, ~2-2.5h
+  total):** champ5k_b1's exact recipe, QAT stripped, JIT on, step+val trace on (becomes the
+  plain vprune ref), no vprune, new phased eval, final INFORMATIONAL paired vs champ5k_b1 (=
+  the QAT tax at n=5000). On finish: promote --out champion_5k_plain.json, record row 14.
+  ⚠ FIXED EN ROUTE (first launch died instantly): the iter-11 RWKV_GRADE_EMB hook broke
+  TorchScript (conditionally-created submodule referenced in scripted forward_batch; all
+  QAT-era runs were NO_JIT so it never fired) -- @torch.jit.ignore indirection
+  (_apply_grade_emb, typed) in srs_model.py, construction smoke-tested hook-on AND hook-off.
+  ⚠ train_rwkv swallowed that traceback and exited 0 -- the .cmd's decay-setup gate caught it;
+  keep gating every phase on artifacts, not just exit codes.
+  Track-1 queue (plain era): prehead output gate, cross-head readout mix, loss-term
+  reweighting, permutation init (LOW). Track-2 queue: A0 anchor (overnight), then layer cuts /
+  d_model cuts / mixer cuts / LoRA dims / head-width cuts by ratio-efficiency.
 - **★ RESEARCH ITER 9 REJECTED (2026-07-13 12:58): shrink-perturb init (lam=0.5, fresh seed 777,
   RWKV_INIT_BLEND hook, else exact champion recipe) = ahead 0.307373 / imm 0.278926 -- WORSE both
   modes (-0.000744/-0.001033 vs champ5k_b1, p=1.0 both), beyond the ~0.0004 seed noise = real harm,

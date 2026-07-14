@@ -1,0 +1,42 @@
+# PLAIN RE-BASELINE (Andrew 2026-07-14: drop QAT for research screening; all further
+# iterations run plain-vs-plain): champ5k_plain = the EXACT champ5k_b1 (iter 2) recipe with
+# NO quant-aware training -- plain bf16 forward, JIT on, no codebooks. Same arch (H=2/K=16),
+# same HPs, same seed 1234, 1-ep WS + 0.25-ep decay, full eval 5001-10000. This run's finals
+# become the SCREENING champion reference; its WS step+val trace becomes the vprune ref for
+# plain candidates (champion_5k_plain.json). QAT is DISABLED until the END of the research
+# phase (Andrew 2026-07-14): no per-accept quant confirmations -- ONE quant-aware run of the
+# final champion when research closes. champ5k_b1 stays on disk as the last QAT-era champion.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/champ5k_plain"
+SAVE_MODEL_PREFIX = "champ5kplainws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
