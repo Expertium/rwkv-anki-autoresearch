@@ -229,3 +229,18 @@ DEFAULT_ANKI_RWKV_CONFIG = AnkiRWKVConfig(
     d_model=N_HEADS * HEAD_DIM, modules=_layers, dropout=DROPOUT,
     num_curves=_num_curves, num_points=_num_points,
 )  # features_fc_mult/head_fc_mult default to 4 (both REQUIRED -- iter33/34 showed cutting either fails imm)
+
+# ---- Whole-arch override (track 2 "ablate d=128", 2026-07-14): RWKV_ARCH_MODULE=<path to .py>.
+# The file is exec'd standalone and must define DEFAULT_ANKI_RWKV_CONFIG (its own dataclass is fine --
+# consumers duck-type the fields; see scratchpad/architecture_old_d128.py for the d=128 reference).
+# Replaces the KD-dump file-swap footgun: no working-tree mutation, crash-safe, per-run via env.
+# NOTE: when set, ALL the default-build env hooks above are bypassed -- the override file owns its
+# entire config. Default unset = byte-identical.
+_arch_module = os.environ.get("RWKV_ARCH_MODULE", "").strip()
+if _arch_module:
+    _ns = {}
+    with open(_arch_module, encoding="utf-8") as _fh:
+        exec(compile(_fh.read(), _arch_module, "exec"), _ns)
+    DEFAULT_ANKI_RWKV_CONFIG = _ns["DEFAULT_ANKI_RWKV_CONFIG"]
+    print(f"[ARCH-MODULE] DEFAULT_ANKI_RWKV_CONFIG <- {_arch_module} "
+          f"(d_model={DEFAULT_ANKI_RWKV_CONFIG.d_model})")

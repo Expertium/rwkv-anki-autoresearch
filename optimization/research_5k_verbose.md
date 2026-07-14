@@ -154,8 +154,18 @@ and an env-based arch-module selector (to avoid the KD-dump file-swap footgun) �
 launch. (4) 1-ep-budget check at d=128 rides along free: if A0 ≈ the 12-ep upstream number, the
 budget lesson transfers to 14x params.
 
-## iter 14 — champ5k_plain (invented, pending) — the plain re-baseline
+## iter 14 — champ5k_plain (invented, ACCEPTED — the plain screening champion)
 champ5k_b1's exact recipe with all QAT env stripped (plain bf16, JIT on, no codebooks), step+val
-trace on (becomes champion_5k_plain.json / the plain vprune ref), no vprune (it IS the new
-reference). Ends with an INFORMATIONAL paired test vs champ5k_b1 = the QAT tax at n=5000.
-First E2E run of the power-user-aware eval — watch phase B VRAM.
+trace on, no vprune (it IS the new reference). **Finals: ahead 0.303734 / imm 0.273448**;
+paired vs champ5k_b1 = **the QAT tax at n=5000: +0.002896 / +0.004445 (p=0.0 both)**. Gap to
+the d=128 upstream target shrinks from +0.0102/+0.0134 to +0.0073/+0.0085. Promoted →
+champion_5k_plain.json (ckpt champ5kplaind_1638.pth + 6554-step WS trace + val trace = the
+plain vprune ref); champion_5k.json (QAT deploy truth) frozen. Wall-clock 3h07m: WS 91 min
+(0.82 s/step wall = 1.7x faster than quant-aware), decay 22 min, eval 75 min — FIRST E2E of the
+power-user-aware phased eval, flawless: solo 56 users in 9 min (first mega-user 3.9 GB/81%
+util), phase B two shards 64 min at ~1.8 GB combined VRAM (no wedge exposure), merge exact
+(1.9x over the 145-min sequential QAT eval). En-route fix committed: the iter-11
+RWKV_GRADE_EMB hook crashed JIT-on model construction (TorchScript resolves attributes in dead
+branches; hidden all QAT era by NO_JIT) → @torch.jit.ignore indirection, smoke-tested both
+hook states. train_rwkv swallowed that traceback with exit 0 — the .cmd's decay-setup artifact
+gate caught it (keep gating phases on artifacts, not exit codes).

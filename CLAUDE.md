@@ -596,19 +596,29 @@ Pairing needs identical db/MAX/seeds.
   concurrent pair ~2x below the wedge scale; ~1.8x over sequential; resume-safe per phase;
   --solo-threshold 0 = old behavior; RWKV_EVAL_SHARD_DIR overrides the shard dir. d=128 evals
   stay UNSHARDED (one alone ~9 GB). First E2E = the champ5k_plain eval -- watch phase-B VRAM.
-  **-> NOW: iter 14 = champ5k_plain RUNNING (detached pid 34684, launched 12:45, ~2-2.5h
-  total):** champ5k_b1's exact recipe, QAT stripped, JIT on, step+val trace on (becomes the
-  plain vprune ref), no vprune, new phased eval, final INFORMATIONAL paired vs champ5k_b1 (=
-  the QAT tax at n=5000). On finish: promote --out champion_5k_plain.json, record row 14.
-  ⚠ FIXED EN ROUTE (first launch died instantly): the iter-11 RWKV_GRADE_EMB hook broke
-  TorchScript (conditionally-created submodule referenced in scripted forward_batch; all
-  QAT-era runs were NO_JIT so it never fired) -- @torch.jit.ignore indirection
-  (_apply_grade_emb, typed) in srs_model.py, construction smoke-tested hook-on AND hook-off.
-  ⚠ train_rwkv swallowed that traceback and exited 0 -- the .cmd's decay-setup gate caught it;
-  keep gating every phase on artifacts, not just exit codes.
-  Track-1 queue (plain era): prehead output gate, cross-head readout mix, loss-term
-  reweighting, permutation init (LOW). Track-2 queue: A0 anchor (overnight), then layer cuts /
-  d_model cuts / mixer cuts / LoRA dims / head-width cuts by ratio-efficiency.
+  **★ ITER 14 = champ5k_plain ACCEPTED (2026-07-14 15:53) = THE PLAIN SCREENING CHAMPION:
+  ahead 0.303734 / imm 0.273448** (n=5000; 3h07m pipeline: WS 91 min @ 0.82 s/step wall, decay
+  22 min, eval 75 min). QAT TAX measured at n=5000: +0.002896/+0.004445 (p=0.0) vs champ5k_b1.
+  Gap to the d=128 target now +0.0073/+0.0085 (was +0.0102/+0.0134 QAT). Promoted ->
+  optimization/champion_5k_plain.json (ckpt champ5kplaind_1638.pth + WS trace + val trace =
+  the PLAIN vprune ref for track-1 candidates); champion_5k.json (QAT) FROZEN. The phased eval
+  E2E'd FLAWLESSLY: solo 9 min (mega-user 3.9 GB), phase B ~1.8 GB combined (no wedge
+  exposure), 1.9x over sequential.
+  ⚠ FIXED EN ROUTE: iter-11 RWKV_GRADE_EMB hook broke JIT-on construction (TorchScript
+  resolves attrs in dead branches; hidden all QAT era by NO_JIT) -> @torch.jit.ignore
+  indirection in srs_model.py, smoke-tested both hook states. train_rwkv swallowed that
+  traceback with exit 0 -- the .cmd artifact gate caught it (always gate phases on artifacts).
+  **-> NOW: TRACK 2 ANCHOR A0 RUNNING (detached pid 1504, launched 15:57, ~13-14h, verdict
+  ~05:30):** the ORIGINAL d=128 arch (2,762,884 params, in-log confirmed) retrained through
+  the plain pipeline at MAX=66000 via the NEW RWKV_ARCH_MODULE env hook (architecture.py
+  bottom: exec's a standalone config file, replaces DEFAULT_ANKI_RWKV_CONFIG wholesale --
+  bypasses all default-build env hooks; scratchpad/architecture_old_d128.py verified
+  2,762,884/[3,4,2,3,4]/K=32). Eval = SINGLE process (--shards 1 --solo-threshold 0; d=128
+  can't share 12 GB). Ends with informational paired vs base5k (the 1-ep-budget check at 14x
+  params). A0's finals + val trace = the track-2 "before" anchor + its vprune ref.
+  Track-1 queue (plain era, ~3h/iter): prehead output gate, cross-head readout mix, loss-term
+  reweighting, permutation init (LOW). Track-2 queue after A0: layer cuts / d_model cuts /
+  mixer cuts / LoRA dims / head-width cuts, ranked by expected ratio-efficiency.
 - **★ RESEARCH ITER 9 REJECTED (2026-07-13 12:58): shrink-perturb init (lam=0.5, fresh seed 777,
   RWKV_INIT_BLEND hook, else exact champion recipe) = ahead 0.307373 / imm 0.278926 -- WORSE both
   modes (-0.000744/-0.001033 vs champ5k_b1, p=1.0 both), beyond the ~0.0004 seed noise = real harm,
