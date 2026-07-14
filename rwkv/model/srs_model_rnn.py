@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from rwkv.architecture import AnkiRWKVConfig
 from rwkv.data_processing import (
@@ -25,6 +27,21 @@ class SrsRWKVRnn(ModuleType):
     def __init__(self, anki_rwkv_config: AnkiRWKVConfig):
         super().__init__()
         self.card_features_dim = 92
+        # RWKV_ZERO_FEATURES: same input-feature mask as SrsRWKV (srs_model.py, iter 15) so
+        # the RNN/deploy path matches a model trained with dropped features. persistent=False:
+        # not in state_dict, old checkpoints load unchanged.
+        _zero_feats = [
+            int(t) for t in os.environ.get("RWKV_ZERO_FEATURES", "").split(",") if t.strip()
+        ]
+        assert all(0 <= i < 92 for i in _zero_feats), f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
+        self.input_feat_mask_on = len(_zero_feats) > 0
+        _mask = torch.ones(92)
+        for _i in _zero_feats:
+            _mask[_i] = 0.0
+        # Plain attribute (not a buffer), matching srs_model.py: keeps state_dict unchanged.
+        self.input_feat_mask = _mask
+        if self.input_feat_mask_on:
+            print(f"[feat-mask] (rnn) zeroing input feature dims {_zero_feats}")
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * anki_rwkv_config.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
@@ -113,6 +130,10 @@ class SrsRWKVRnn(ModuleType):
     ):
         assert len(card_features.shape) == 2
 
+        if self.input_feat_mask_on:
+            card_features = card_features * self.input_feat_mask.to(
+                card_features.device, card_features.dtype
+            )
         card_rwkv_input = self.features2card(card_features)
         card_encoding, next_card_state = self.rwkv_modules[0].run(
             card_rwkv_input, card_state

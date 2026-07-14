@@ -170,6 +170,30 @@ class SrsRWKV(ModuleType):
         # (all-zero one-hot) contribute exactly zero. Default unset = module absent =
         # byte-identical, old checkpoints load unchanged.
         self.grade_emb_on = os.environ.get("RWKV_GRADE_EMB", "0") == "1"
+        # Research iter 15 (2026-07-14, Andrew's directive): drop input features by zeroing
+        # their columns at the model input. RWKV_ZERO_FEATURES="22" (comma-separated dims of
+        # the 92) zeroes those columns in BOTH training and eval, so the column is constant 0
+        # = informationally removed (the input FC's bias absorbs it); LMDBs, param count and
+        # batch layout stay untouched, and deploy just feeds 0 for the dropped features.
+        # Dim 22 = scaled_state (Anki review state Filtered/Review/Learn/Relearn; see
+        # data_processing.CARD_FEATURE_COLUMNS). Default unset = all-ones mask, path gated
+        # off = byte-identical. Buffer is persistent=False: absent from state_dict, so old
+        # and new checkpoints stay interchangeable.
+        _zero_feats = [
+            int(t) for t in os.environ.get("RWKV_ZERO_FEATURES", "").split(",") if t.strip()
+        ]
+        assert all(0 <= i < 92 for i in _zero_feats), f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
+        self.input_feat_mask_on = len(_zero_feats) > 0
+        _mask = torch.ones(92)
+        for _i in _zero_feats:
+            _mask[_i] = 0.0
+        # Plain attribute, NOT a buffer: ScriptModule forbids persistent=False buffers, and a
+        # persistent one would pollute state_dict (breaking ckpt interchange + Rust export).
+        # The jit.ignore'd applier below moves it to the right device/dtype per call (92
+        # floats, negligible).
+        self.input_feat_mask = _mask
+        if self.input_feat_mask_on:
+            print(f"[feat-mask] zeroing input feature dims {_zero_feats} (train AND eval)")
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * self.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
@@ -227,6 +251,12 @@ class SrsRWKV(ModuleType):
             if self.grade_emb_on:
                 self.grade_emb = torch.nn.Linear(4, self.d_model, bias=False)
                 torch.nn.init.zeros_(self.grade_emb.weight)
+
+    @torch.jit.ignore
+    def _apply_input_feat_mask(self, batch_start: torch.Tensor) -> torch.Tensor:
+        # Eager-Python indirection (same reason as _apply_grade_emb): the mask is a plain
+        # tensor attribute, so device/dtype alignment happens here per call.
+        return batch_start * self.input_feat_mask.to(batch_start.device, batch_start.dtype)
 
     @torch.jit.ignore
     def _apply_grade_emb(self, x: torch.Tensor, batch_start: torch.Tensor) -> torch.Tensor:
@@ -289,6 +319,8 @@ class SrsRWKV(ModuleType):
         batch_skips: list[list[torch.Tensor]],
         batch_num_data: int,
     ):
+        if self.input_feat_mask_on:
+            batch_start = self._apply_input_feat_mask(batch_start)
         x = self.features2card(batch_start)
         if self.grade_emb_on:
             x = self._apply_grade_emb(x, batch_start)

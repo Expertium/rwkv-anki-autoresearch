@@ -1,0 +1,43 @@
+# RESEARCH ITER 15 (Andrew's directive 2026-07-14): remove the Anki review-state input
+# feature (scaled_state, dim 22 of the 92: Filtered/Review/Learn/Relearn) from the small
+# model. Implemented as RWKV_ZERO_FEATURES=22 (srs_model.py): the column is zeroed at the
+# model input in BOTH training and eval -> informationally removed; LMDBs, batch layout and
+# param count untouched; deploy simply feeds 0. Otherwise the EXACT champ5k_plain recipe
+# (H=2/K=16, seed 1234, 1-ep WS + 0.25-ep decay, full eval 5001-10000, plain bf16, JIT on).
+# ACCEPTANCE IS DIRECTED (Andrew): accept regardless of logloss degradation (he expects
+# little/none) -- deploy-simplification win. NO vprune (the run must complete); the final
+# paired_pvalue vs champ5k_plain is INFORMATIONAL (records the actual delta + p).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 500
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter15_nostate"
+SAVE_MODEL_PREFIX = "iter15ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

@@ -539,6 +539,32 @@ Pairing needs identical db/MAX/seeds.
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-13)
+- **★ A0 LAUNCH SAGA CONTINUED (2026-07-14 evening): launches 5-7.** Launch 4 (pid 20332) crept
+  3.6->11.3 GB by step ~4100 (caching-allocator envelope over variable d=128 group shapes; the
+  empty-cache guard stops at step 1000 BY DESIGN) -> WDDM paging, 1.06->4.3 s/step. Fix =
+  **RWKV_EMPTY_CACHE_WINDOW env** (train_rwkv; default 1000 = old behavior, 0 = whole run).
+  Launch 5 (every=50) SATURATED 11.9/12 GB by step ~250 -> killed; **launch 6 = every=1 window=0
+  (per-step clears whole run) confirmed healthy 1.07 s/step** -- then a POWER OUTAGE (~19:20)
+  rebooted the PC. **Launch 7 (pid 19660, started 23:02) = current, same config, verdict ~13:15
+  2026-07-15.** Step-50 val = 0.4119/0.3879 IDENTICAL across launches 5/6/7 (seeded shuffle
+  replays exactly; guard cadence numerics-neutral). ⚠ FALSE-ALARM LESSON: a val event at step 50
+  (standard early ckpt) was misread as step-1000 -- vals are only comparable at the SAME step.
+  Restart-from-scratch (not resume): the train loop has NO group skip on STEP_OFFSET resume; a
+  mid-epoch resume on a 1-ep run re-sees early groups, drops the tail, breaks pairing.
+- **★ ITER 15 PREPARED + QUEUED (Andrew's directive 2026-07-14): remove the Anki review-state
+  input feature (scaled_state = dim 22 of the 92: Filtered/Review/Learn/Relearn) from the small
+  model; ACCEPT REGARDLESS of logloss delta (he expects ~none) = deploy simplification.**
+  Implemented as **RWKV_ZERO_FEATURES=<comma dims>** (srs_model.py + srs_model_rnn.py): zeroes
+  the columns at the model input in train AND eval -> informationally removed (FC bias absorbs
+  the constant); LMDBs/params/layout untouched; deploy feeds 0. Plain tensor attr + jit.ignore
+  applier (ScriptModule forbids persistent=False buffers; a persistent one would pollute
+  state_dict). Smoke ALL_PASS (JIT-on construction both hook states; col-22 influence check).
+  Pipeline scratchpad/iter15_nostate/{run_iter15_nostate.cmd,iter15_nostate_ws.toml} = exact
+  champ5k_plain recipe + ZERO_FEATURES=22, NO vprune (directed accept must complete), final
+  paired_pvalue vs champ5k_plain INFORMATIONAL. **LAUNCH AT A0's DONE_EXIT (GPU handoff,
+  ~13:15 2026-07-15); on finish: promote via promote_champion_5k.py --out
+  optimization/champion_5k_plain.json --val-trace, record everywhere, provenance
+  "adopted (Andrew, directed accept)".**
 - **★ RESEARCH ITER 10 REJECTED (2026-07-13 19:48): warmup-only KD from the d=128 teacher
   (Andrew's idea; 800-step annealed target mix from a stored dump, checksum-guarded) = ahead
   0.306907 / imm 0.278222 -- WORSE both modes (-0.000277/-0.000329 vs champ5k_b1, p=1.0 both).**
