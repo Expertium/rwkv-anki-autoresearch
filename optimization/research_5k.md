@@ -60,4 +60,4 @@ intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0
 
 | iter | ahead | imm | status | params | Δparams | ratio a/i (per 50k) | provenance | summary |
 |---|---|---|---|---|---|---|---|---|
-| A0 | 0.299857 | 0.269030 | anchor | 2,762,884 | — | — (baseline) | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
+| A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
