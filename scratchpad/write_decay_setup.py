@@ -1,10 +1,13 @@
 """Set up a TRAIN_MODE=D cosine-decay phase from a WS-final checkpoint whose final step count is
 data-dependent. Finds the latest {folder}/{ws_prefix}_{step}.pth (excl *optim*), copies its optimizer
 to the resume form {ws_prefix}_{step}_optim.pth, and writes a decay toml that loads it. Usage:
-  python write_decay_setup.py <folder> <ws_prefix> <decay_prefix> <out_toml> <train_db> <ustart> <uend> <decay_epochs> [peak_lr]
+  python write_decay_setup.py <folder> <ws_prefix> <decay_prefix> <out_toml> <train_db> <ustart> <uend> <decay_epochs> [peak_lr] [max_len]
 decay_epochs may be fractional (e.g. 0.27) -> total decay steps = int(decay_epochs * num_groups).
 peak_lr (optional, default 1e-3) sets the decay's starting LR -- the cosine decays from peak_lr to 0,
-so it MUST match the WS phase's peak_lr (the HP tuner passes each trial's own peak_lr)."""
+so it MUST match the WS phase's peak_lr (the HP tuner passes each trial's own peak_lr).
+max_len (optional, default 110000 = the d=32 5k standard) sets MAX_TRAIN_GLOBAL_LEN and MUST match
+the WS phase's MAX (track-2 d=128 runs use 32768; the 110000 default THRASHED the A0 decay
+2026-07-15 -- d=128 at MAX=110000 is a ~28 GB working set on a 12 GB card)."""
 import glob
 import os
 import re
@@ -13,6 +16,7 @@ import sys
 
 folder, ws_prefix, decay_prefix, out, train_db, ustart, uend, depochs = sys.argv[1:9]
 peak_lr = sys.argv[9] if len(sys.argv) > 9 else "1e-3"
+max_len = sys.argv[10] if len(sys.argv) > 10 else "110000"
 cands = []
 for p in glob.glob(f"{folder}/{ws_prefix}_*.pth"):
     b = os.path.basename(p)
@@ -50,7 +54,7 @@ LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 # ahead of demand (~4 ms get() waits); 4 still fully hides prep. Worker count never
 # affects batch content/order (seeded shuffle), only parallelism.
 NUM_FETCH_PROCESSES = 4
-MAX_TRAIN_GLOBAL_LEN = 110000
+MAX_TRAIN_GLOBAL_LEN = {max_len}
 
 TRAIN_MODE = "D"
 STEP_OFFSET = 1
