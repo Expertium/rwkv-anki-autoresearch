@@ -554,13 +554,19 @@ Pairing needs identical db/MAX/seeds.
   WDDM paging), write_decay_setup MAX param (hardcoded 110000 thrashed the d=128 decay; **track-2
   .cmds MUST pass 32768 as arg 10**), get_result re-raise + NaN-skip-whole-user + skip-file
   resume, eval_sharded completeness gate (merged + skipped == rostered or exit 3).
-- **-> NOW (2026-07-15 10:43): ITER 15 RUNNING (Andrew's directive, pid 15080, verdict ~14:00):
-  d=32 champion recipe + RWKV_ZERO_FEATURES=22 (review-state feature dropped). ACCEPT REGARDLESS
-  of delta (deploy simplification; he expects ~none). [feat-mask] banner confirmed in-run. On
-  finish: promote via promote_champion_5k.py --out optimization/champion_5k_plain.json
-  --val-trace, record everywhere (provenance "adopted (Andrew, directed accept)"), then TRACK-2
-  A1 design (first ablation: layer cuts / d_model cuts / mixer cuts / LoRA dims by expected
-  ratio-efficiency; new arch file for RWKV_ARCH_MODULE; MAX=32768; vprune vs champion_5k_track2).**
+- **★ ITER 15 = DROP REVIEW-STATE FEATURE ACCEPTED (directed, 2026-07-15 13:52) = NEW PLAIN
+  CHAMPION: ahead 0.303663 / imm 0.273227** (n=5000, 0 NaN-skips, pipeline 3h09m). NOT worse --
+  slightly BETTER both modes (paired vs champ5k_plain: +0.000071 p=1.5e-08 / +0.000221 p=1.6e-42;
+  scaled_state was ~noise). Promoted -> champion_5k_plain.json (ckpt iter15d_1638.pth + traces =
+  track-1 vprune ref). **RWKV_ZERO_FEATURES=22 IS NOW CHAMPION RECIPE -- set it in ALL future
+  track-1 runs + the final QAT run.** Deploy: Anki need not compute review state (dim 22 fed 0).
+- **-> NOW: (a) fp32-vs-bf16 NaN probe of A0 (GPU free ~20 min, needs a bf16->fp32 batch cast
+  shim -- LMDB batches are stored bf16), then (b) track-1 block continues (~3 iters, next =
+  prehead output gate, candidates gate vs iter15 champion, RWKV_ZERO_FEATURES=22 + vprune ref
+  champion_5k_plain.json), then (c) TRACK-2 A1 design (first ablation: layer cuts / d_model cuts
+  / mixer cuts / LoRA dims by expected ratio-efficiency vs the NEW per-100k gate; arch file for
+  RWKV_ARCH_MODULE; MAX=32768 + decay arg 32768; vprune vs champion_5k_track2.json; comparisons
+  on A0's finite-user intersection -- paired_pvalue needs an --intersect mode).**
 - **★ A0 LAUNCH SAGA (2026-07-14 evening): launches 5-7.** Launch 4 (pid 20332) crept
   3.6->11.3 GB by step ~4100 (caching-allocator envelope over variable d=128 group shapes; the
   empty-cache guard stops at step 1000 BY DESIGN) -> WDDM paging, 1.06->4.3 s/step. Fix =

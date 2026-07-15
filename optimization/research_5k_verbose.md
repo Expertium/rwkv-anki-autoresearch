@@ -209,3 +209,26 @@ eval_sharded completeness gate (merged + nan-skipped must equal rostered, ahead 
 set, else exit 3). Reproducibility note: step-50 and step-1000 vals were IDENTICAL across
 launches 4/5/6/7 — the seeded shuffle + guard cadence are numerics-neutral; and vals are
 only comparable at the same step (a step-50 val misread as step-1000 caused a false alarm).
+
+## Iter 15 — drop the review-state input feature (2026-07-15): ACCEPTED (directed), new plain champion
+
+**ahead 0.303663 / imm 0.273227 (n=5000, complete, 0 NaN-skips) — NOT worse than champ5k_plain;
+in fact slightly better in both modes** (paired: ahead +0.000071 p=1.5e-08, imm +0.000221
+p=1.6e-42 — below the 0.0003 gate and inside the ~0.0004 cross-seed band, but consistently
+positive per-user: `scaled_state` was ~noise for the model). **Andrew's directive** (2026-07-14):
+remove the Anki review state (Filtered/Review/Learn/Relearn) from inputs and accept regardless
+of delta — a deploy simplification (Anki doesn't need to compute/supply review state).
+
+**Mechanism:** `RWKV_ZERO_FEATURES=22` (new generic env hook, srs_model.py + srs_model_rnn.py):
+zeroes listed input dims at the model input in train AND eval — a constant-zero column is
+informationally identical to removal (the input FC's bias absorbs it) while LMDBs, batch layout
+and params (193,724) stay untouched; deploy feeds 0 for dim 22. Plain-tensor-attr +
+`@torch.jit.ignore` applier (ScriptModule forbids non-persistent buffers; a persistent one would
+pollute state_dict). Dim map: `data_processing.CARD_FEATURE_COLUMNS`[22] = `scaled_state`
+(= state − 2), confirmed against the grade-emb 9:13 rating precedent.
+
+**Consequences:** new plain champion → `champion_5k_plain.json` (ckpt iter15d_1638.pth + WS/val
+traces = the track-1 vprune ref). **ALL future track-1 runs AND the final QAT confirmation run
+must set `RWKV_ZERO_FEATURES=22`** — it is now part of the champion recipe. Exact champ5k_plain
+recipe otherwise; WS 6554 steps, decay 1638, phased eval 75 min (solo mega-users clean — the
+d=32 model has no trace of the d=128 NaN instability); pipeline 3h09m.
