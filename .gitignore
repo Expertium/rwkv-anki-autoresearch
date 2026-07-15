@@ -56,3 +56,9 @@ reference/rust_pred_*.json
 *.out
 *.bak_pretidy
 trace_user_*.json
+
+# Mid-run learnable-codebook snapshots (one ~3.5 MB file per 500 steps per QAT run — 393 MiB
+# of dead weight before 2026-07-15). Only the *final* codebooks matter (cb_wkv_final.txt /
+# cb_shift_final.txt, referenced by champion_5k.json) and they don't match these patterns.
+*_shiftcb_*.txt
+*_wkvcb_*.txt

@@ -72,18 +72,13 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 | 27 | Pseudo-decade cycle (3650 d) | Same as above for a 3650-day period |
 | 28 | Pseudo-century cycle (36500 d) | Same as above for a 36500-day period |
 
-## Future input features (Andrew, 2026-07-13 — for when the no-new-inputs invariant is lifted)
+## Future input features (for when the no-new-inputs invariant is lifted)
 
-Not possible on the anonymized benchmark dataset (no absolute timestamps), but available in a
-deployed Anki setting or a richer future dataset:
-
-- **Time of day** of the review
-- **Real day of week / month / year** (calendar, not the pseudo-cycles above)
-- **First review date − card creation date** (how long the card sat unstudied)
-- **Number of cards created on the same day as this card** — premade-deck detector: cards
-  imported from a shared/premade deck arrive in bulk with identical creation dates, while
-  self-made cards trickle in. Lets the net separate "own cards" from "imported deck" material,
-  which plausibly differ in difficulty/retention dynamics.
+Moved to **[`optimization/FUTURE_FEATURES.md`](optimization/FUTURE_FEATURES.md)** — the
+consolidated, prioritized list of features derivable from real Anki timestamps (card/note/deck
+IDs and review IDs are epoch-ms creation/review times), cross-checked against this table so
+nothing already covered gets re-added. Not possible on the anonymized benchmark dataset (no
+absolute timestamps); needs a new dataset export.
 
 ## Notes
 

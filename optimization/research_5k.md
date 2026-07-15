@@ -4,10 +4,10 @@ Train **1–5000**, eval **5001–10000** (held-out half); budget **1 WS epoch**
 
 **Two research tracks (Andrew 2026-07-14), separate tables below:** **Track 1** = improve the
 small (d=32) model — the table it always was. **Track 2** = ablate the old d=128 model downward;
-acceptance = `50,000·(LL_after − LL_before)/(params_before − params_after) ≤ 0.0001` **in BOTH
-modes** (≤ 0.0001 logloss degradation per 50k params removed; params must strictly decrease;
-"before" = the current track-2 champion). Alternate ~12 h blocks between tracks (~5 track-1 iters
-vs 1 track-2 iter per block).
+acceptance = `100,000·(LL_after − LL_before)/(params_before − params_after) ≤ 0.0001` **in BOTH
+modes** (≤ 0.0001 logloss degradation per **100k** params removed — tightened from per-50k by
+Andrew 2026-07-15 after A0 landed; params must strictly decrease; "before" = the current track-2
+champion). Alternate ~12 h blocks between tracks (~5 track-1 iters vs 1 track-2 iter per block).
 
 **QAT PARKED (Andrew 2026-07-14, from iter 14 on):** rows ≤ 13 record QUANT-AWARE logloss (q72u);
 later rows are PLAIN bf16 — screening is plain-vs-plain in both tracks, and ONE quant-aware run of
@@ -63,6 +63,6 @@ intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0
 (the 1-ep budget tax at d=128); vs champ5k_plain (193,724 params) −0.0036/−0.0042 better
 (what 2.57M extra params buy at matched budget).
 
-| iter | ahead | imm | status | params | Δparams | ratio a/i (per 100k) | provenance | summary |
+| iter | ahead | imm | status | params | Δparams | ratio ahead/imm (per 100k) | provenance | summary |
 |---|---|---|---|---|---|---|---|---|
 | A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |

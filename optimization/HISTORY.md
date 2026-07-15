@@ -810,3 +810,380 @@ the TRAINING survives, just re-arm the watcher. Example: `scratchpad/run_qat40_d
 `revlogs` parquet = card_id, day_offset[integer DAY counter], rating, state, duration, elapsed_days,
 elapsed_seconds). It was anonymized — time-of-day is UNRECOVERABLE, so a time-of-day input feature is
 impossible with this dataset (would need real Anki collections). elapsed_seconds (time-since-last) is already in.
+
+
+---
+
+# 5k-era LIVE STATE archive (moved verbatim from CLAUDE.md, 2026-07-15 housekeeping)
+
+> Chronological live-state entries 2026-07-03 .. 2026-07-15, superseded by the compact
+> CURRENT STATE section in CLAUDE.md. Per-iteration detail also in research_5k_verbose.md.
+
+### LIVE STATE (2026-07-13)
+- **★★ TRACK-2 ANCHOR A0 LANDED (2026-07-15 10:40): ahead 0.299857 / imm 0.269030 (n=4993,
+  2,762,884 params).** Full detail: research_5k_verbose.md "Track 2 — A0 anchor". Headlines:
+  (1) **1-ep budget tax at d=128 = +0.0037/+0.0044 vs the upstream 12-ep .pth** (intersection-
+  paired p~0) -- epochs DO matter at 14x params (unlike d=32); structural to track 2, measured
+  against A0 not upstream. (2) A0 beats champ5k_plain by 0.0036/0.0042 = what 2.57M extra params
+  buy at matched budget. (3) **⚠ the 1-ep d=128 model NaNs on eval chunks >= ~500k tokens** (7
+  users skipped, recorded in result/RWKV-track2_a0.nanskip.jsonl; upstream .pth is clean; d=32
+  never NaNs) -> ALL track-2 comparisons use the finite-user intersection (paired_pvalue needs an
+  intersection mode when A1 lands). fp32-vs-bf16 probe DEFERRED (LMDB batches are bf16; needs a
+  cast shim; probe toml staged at scratchpad/track2_a0/probe_fp32.toml). Anchor json + val trace
+  (= track-2 vprune ref) = optimization/champion_5k_track2.json; ckpt t2a0d_5586.pth. Fixes
+  banked en route (committed): RWKV_EMPTY_CACHE_WINDOW whole-run clears (d=128 envelope creep ->
+  WDDM paging), write_decay_setup MAX param (hardcoded 110000 thrashed the d=128 decay; **track-2
+  .cmds MUST pass 32768 as arg 10**), get_result re-raise + NaN-skip-whole-user + skip-file
+  resume, eval_sharded completeness gate (merged + skipped == rostered or exit 3).
+- **★ ITER 15 = DROP REVIEW-STATE FEATURE ACCEPTED (directed, 2026-07-15 13:52) = NEW PLAIN
+  CHAMPION: ahead 0.303663 / imm 0.273227** (n=5000, 0 NaN-skips, pipeline 3h09m). NOT worse --
+  slightly BETTER both modes (paired vs champ5k_plain: +0.000071 p=1.5e-08 / +0.000221 p=1.6e-42;
+  scaled_state was ~noise). Promoted -> champion_5k_plain.json (ckpt iter15d_1638.pth + traces =
+  track-1 vprune ref). **RWKV_ZERO_FEATURES=22 IS NOW CHAMPION RECIPE -- set it in ALL future
+  track-1 runs + the final QAT run.** Deploy: Anki need not compute review state (dim 22 fed 0).
+- **★ fp32 PROBE DONE (2026-07-15 14:20): A0's NaN is WEIGHT-LEVEL** -- the fp32 GPU eval
+  (RWKV_EVAL_CAST_FP32=1 shim; LMDB batches are stored bf16) of user 9501's 502,886-token chunk
+  NaN'd identically. Structural to the short-budget d=128 anchor; NaN-skip + finite-intersection
+  handling stands.
+- **★ ITER 16 = PREHEAD OUTPUT GATE REJECTED (2026-07-15 17:17): ahead 0.303652 / imm 0.273409
+  = +0.000011 (p=0.97) / -0.000182 (p=1.0) vs iter15 -- no-effect signature; the shared readout
+  is not gating-limited. READOUT family 0/1.** Took 3 launches -- TWO INFRA LESSONS (committed
+  328394e, c962f95): (1) **@torch.jit.ignore methods must NOT call SUBMODULES** (through
+  scripted code the ignored body sees the raw C++ ScriptModule, 'not callable'; the NaN-except
+  made attempt 1 a HOLLOW run) -> use Parameters + F.linear (grade_emb's latent same-bug also
+  fixed); (2) **root-level direct Parameters are invisible to selective_cast** (root skip
+  protects the fp32-excluded heads) -> bf16 child kept fp32 gate params, copy_downcast_ assert
+  killed attempt 2 -> root non-excluded Parameters now cast explicitly. Smoke discipline: must
+  exercise the SCRIPTED forward + selective_cast/copy_downcast_ chain, not direct Python calls.
+- **-> NOW: ITER 17 RUNNING (launched 2026-07-15 17:25, pid 22268, verdict ~20:45): DIRECT
+  BINARY-RECALL LOSS TERM (RWKV_PBIN_SCALE=0.5)** -- the benchmark's imm metric (BCE of
+  1-P(again)) was computed as a statistic but NEVER entered the training loss ("train what you
+  measure"; 0 new params; loss-reweighting family). Hook: instance-float pbin_scale (TorchScript
+  reads instance attrs, not env/globals). After iter 17: 1 more track-1 iter (cross-head readout
+  mix variant or permutation init), then TRACK-2 A1 (first ablation: layer cuts / d_model cuts /
+  mixer cuts / LoRA dims by expected ratio-efficiency vs the per-100k gate; arch file for
+  RWKV_ARCH_MODULE; MAX=32768 + decay arg 32768; vprune vs champion_5k_track2.json; comparisons
+  on A0's finite-user intersection -- paired_pvalue needs an --intersect mode).**
+- **★ A0 LAUNCH SAGA (2026-07-14 evening): launches 5-7.** Launch 4 (pid 20332) crept
+  3.6->11.3 GB by step ~4100 (caching-allocator envelope over variable d=128 group shapes; the
+  empty-cache guard stops at step 1000 BY DESIGN) -> WDDM paging, 1.06->4.3 s/step. Fix =
+  **RWKV_EMPTY_CACHE_WINDOW env** (train_rwkv; default 1000 = old behavior, 0 = whole run).
+  Launch 5 (every=50) SATURATED 11.9/12 GB by step ~250 -> killed; **launch 6 = every=1 window=0
+  (per-step clears whole run) confirmed healthy 1.07 s/step** -- then a POWER OUTAGE (~19:20)
+  rebooted the PC. **Launch 7 (pid 19660, started 23:02) = current, same config, verdict ~13:15
+  2026-07-15.** Step-50 val = 0.4119/0.3879 IDENTICAL across launches 5/6/7 (seeded shuffle
+  replays exactly; guard cadence numerics-neutral). ⚠ FALSE-ALARM LESSON: a val event at step 50
+  (standard early ckpt) was misread as step-1000 -- vals are only comparable at the SAME step.
+  Restart-from-scratch (not resume): the train loop has NO group skip on STEP_OFFSET resume; a
+  mid-epoch resume on a 1-ep run re-sees early groups, drops the tail, breaks pairing.
+- **★ ITER 15 PREPARED + QUEUED (Andrew's directive 2026-07-14): remove the Anki review-state
+  input feature (scaled_state = dim 22 of the 92: Filtered/Review/Learn/Relearn) from the small
+  model; ACCEPT REGARDLESS of logloss delta (he expects ~none) = deploy simplification.**
+  Implemented as **RWKV_ZERO_FEATURES=<comma dims>** (srs_model.py + srs_model_rnn.py): zeroes
+  the columns at the model input in train AND eval -> informationally removed (FC bias absorbs
+  the constant); LMDBs/params/layout untouched; deploy feeds 0. Plain tensor attr + jit.ignore
+  applier (ScriptModule forbids persistent=False buffers; a persistent one would pollute
+  state_dict). Smoke ALL_PASS (JIT-on construction both hook states; col-22 influence check).
+  Pipeline scratchpad/iter15_nostate/{run_iter15_nostate.cmd,iter15_nostate_ws.toml} = exact
+  champ5k_plain recipe + ZERO_FEATURES=22, NO vprune (directed accept must complete), final
+  paired_pvalue vs champ5k_plain INFORMATIONAL. **LAUNCH AT A0's DONE_EXIT (GPU handoff,
+  ~13:15 2026-07-15); on finish: promote via promote_champion_5k.py --out
+  optimization/champion_5k_plain.json --val-trace, record everywhere, provenance
+  "adopted (Andrew, directed accept)".**
+- **★ RESEARCH ITER 10 REJECTED (2026-07-13 19:48): warmup-only KD from the d=128 teacher
+  (Andrew's idea; 800-step annealed target mix from a stored dump, checksum-guarded) = ahead
+  0.306907 / imm 0.278222 -- WORSE both modes (-0.000277/-0.000329 vs champ5k_b1, p=1.0 both).**
+  Trajectory = iter 9's exactly: led val early (-0.0026/-0.0046 @ step 500), washed out by WS
+  end, finished slightly negative. **EARLY-TRAINING-INTERVENTION family 0/2 (shrink-perturb,
+  KD warmup) -> DEPRIORITIZED, not closed (conduct rule 5, Andrew 2026-07-13: closing a family
+  needs 3-5 in-family variants)** -- so far head starts do not survive 6554 hard-label steps at
+  the 1-ep budget; untried variants if revisited: longer/never-zero KD window, KD into decay,
+  permutation init.
+  KD machinery stays in-repo (RWKV_KD_DUMP_OUT / RWKV_KD_MIX + exit-43 checksum guard, 78caceb).
+  ⚠ OPS: the 2-parallel-shard eval WEDGED ON THE CHAMPION ARCH (both shards frozen 66+ min at
+  11.7/12 GB, 100% util, full-core CPU each -- two mega-users collided; the iter-5
+  elevated-VRAM-only scoping was TOO NARROW). Fix = kill tree + sequential-resume evalfix
+  (run_iter10_kd_evalfix.cmd). **RULE UPDATED: ALL evals run SEQUENTIAL shards** (~45 min slower
+  than a clean parallel run, never wedges = unattended-safe; iter11 .cmd already updated).
+  **Iter 11 = additive GRADE EMBEDDING (Andrew's idea) REJECTED (2026-07-14 01:24): ahead
+  0.307481 / imm 0.278801 -- worse both modes (-0.000851/-0.000908, p=1.0), ~2x cross-seed
+  noise = real harm, no seed-pair needed.** The 4x32 zero-init bypass around the input MLP
+  (RWKV_GRADE_EMB=1, +128 params) distorts the shared trunk more than it helps -- grade info
+  was never bottlenecked (4 of 92 dims through the 128-wide fc). Val looked champion-level all
+  run; the harm only showed at full eval. GRADE-REPRESENTATION family 0/1, deprioritized
+  (rule 5); untried variants: per-stream embeddings, grade-emb into the SRS heads, LayerNorm on
+  the bypass. Hook stays (env-gated, default off = byte-identical).
+  **Iter 12 = SRS-HEAD RESOLUTION 64->128 REJECTED (2026-07-14 07:01): ahead 0.306899 / imm
+  0.278134 -- no effect (-0.000270/-0.000241 vs champ5k_b1, p=1.0 both, inside the ~0.0004
+  cross-seed band = the deck/preset null signature).** The 100u "capacity adds fail" lesson does
+  NOT flip at 5k for this lever: 64 curves / 64 points are enough resolution for the
+  forgetting-curve mixture. Val sat at champion parity all run (WS-end +0.0003/+0.0010),
+  consistent with the null. CAPACITY-AT-5K family 0/1 so far. Clean ~5.6h run (WS 2h32m, decay
+  38m, sequential eval 2h24m), no incidents.
+  **Iter 13 = CHANNEL MIXER 1.0->1.5 REJECTED (2026-07-14 12:41): ahead 0.306788 / imm 0.278164
+  = -0.000159/-0.000271 (p=0.999/1.0), no-effect signature. CAPACITY-AT-5K family 0/2** (head
+  resolution, FFN width): the d=32 trunk is not capacity-limited at 5k -- the d=128 gap lives
+  elsewhere. LAST QAT-ERA ITERATION.
+  **★ METHODOLOGY SWITCH (Andrew 2026-07-14) -- supersedes methodology (a) for the research
+  phase:** (1) **QAT PARKED until research closes** -- ALL screening runs (both tracks) are
+  PLAIN bf16, JIT on, no codebooks (saves ~2h20m/run; plain step 0.385 s vs 1.41 quant-aware);
+  ONE quant-aware run of the final champion at the very end, NO per-accept confirmations.
+  champion_5k.json (QAT deploy truth, champ5k_b1) FROZEN; plain screening champion ->
+  optimization/champion_5k_plain.json (promote_champion_5k.py --out flag added; plain
+  candidates use RWKV_VPRUNE_REF=champion_5k_plain.json). Plain vs QAT-era logloss NOT
+  comparable. (2) **TWO RESEARCH TRACKS, ~12h alternating blocks, two tables in
+  research_5k.md:** Track 1 = improve the d=32 model (gate unchanged: >=0.0003 both + p<1e-4
+  both, params <=225k). Track 2 = ABLATE the old d=128 model; gate **UPDATED
+  (Andrew 2026-07-15): 100,000*(LL_after-LL_before)/(params_before-params_after) <= 0.0001 in
+  BOTH modes** (tightened from per-50k after A0 landed: the plain-vs-plain collapse
+  A0->champ5k_plain costs 0.000074/0.000086 per 50k, so the old bar accepted ablations no better
+  than the collapse average; the per-100k bar demands ~1.5-1.7x better) (params strictly
+  decrease; "before" = current track-2 champion; rows A0,A1,...). Track-2 anchor A0 = d=128 arch
+  retrained through OUR plain 1-ep pipeline at MAX=32768 (the track-2 standard). A0 also A/Bs the 1-ep budget at 14x params. TODO
+  at A0 launch: env-based arch-module selector in architecture.py (NOT the KD-dump file-swap).
+  (3) **POWER-USER-AWARE EVAL LANDED (eval_sharded.py rewritten, dry-run tested):** users >=1M
+  work (56 = 11.3% of eval work on 5001-10000; top-7 ~2.1M) run SOLO first (one process,
+  7 threads), then 2 parallel LPT shards, then merge -- one call does all phases; worst
+  concurrent pair ~2x below the wedge scale; ~1.8x over sequential; resume-safe per phase;
+  --solo-threshold 0 = old behavior; RWKV_EVAL_SHARD_DIR overrides the shard dir. d=128 evals
+  stay UNSHARDED (one alone ~9 GB). First E2E = the champ5k_plain eval -- watch phase-B VRAM.
+  **★ ITER 14 = champ5k_plain ACCEPTED (2026-07-14 15:53) = THE PLAIN SCREENING CHAMPION:
+  ahead 0.303734 / imm 0.273448** (n=5000; 3h07m pipeline: WS 91 min @ 0.82 s/step wall, decay
+  22 min, eval 75 min). QAT TAX measured at n=5000: +0.002896/+0.004445 (p=0.0) vs champ5k_b1.
+  Gap to the d=128 target now +0.0073/+0.0085 (was +0.0102/+0.0134 QAT). Promoted ->
+  optimization/champion_5k_plain.json (ckpt champ5kplaind_1638.pth + WS trace + val trace =
+  the PLAIN vprune ref for track-1 candidates); champion_5k.json (QAT) FROZEN. The phased eval
+  E2E'd FLAWLESSLY: solo 9 min (mega-user 3.9 GB), phase B ~1.8 GB combined (no wedge
+  exposure), 1.9x over sequential.
+  ⚠ FIXED EN ROUTE: iter-11 RWKV_GRADE_EMB hook broke JIT-on construction (TorchScript
+  resolves attrs in dead branches; hidden all QAT era by NO_JIT) -> @torch.jit.ignore
+  indirection in srs_model.py, smoke-tested both hook states. train_rwkv swallowed that
+  traceback with exit 0 -- the .cmd artifact gate caught it (always gate phases on artifacts).
+  **-> NOW: TRACK 2 ANCHOR A0 RUNNING (4th launch, detached pid 20332, 17:02, verdict ~07:15
+  tomorrow):** the ORIGINAL d=128 arch (2,762,884 params, in-log confirmed) retrained through
+  the plain pipeline via the NEW RWKV_ARCH_MODULE env hook (architecture.py bottom: exec's a
+  standalone config file, replaces DEFAULT_ANKI_RWKV_CONFIG wholesale -- bypasses all
+  default-build env hooks; scratchpad/architecture_old_d128.py verified). **MAX=32768 -- THE
+  TRACK-2 STANDARD (pairing needs it identical across all track-2 runs).** Launch saga:
+  MAX=66000 THRASHED (11.85/12 GB WDDM spill, 40 s/step -- the 100u-era "66000 fits" fact
+  doesn't transfer, 5k packs fuller groups) and 49152 still thrashed (13.3 s/step, allocator
+  bloat on 3x16384 packing); 32768 = 2x16384 clean packing -> 3.6 GB, 1.06 s/step, ~22k
+  steps/epoch. ⚠ COVERAGE FACT (probe 2026-07-14): max single batch in train_db_5k_h1 =
+  16,384 tokens -> ZERO data drop at ANY MAX >= 16,384 (the "don't go below 66000 = data
+  drops" rule was sc8k-era, NOT true of the 5k db). TWO LATENT BUGS FIXED en route:
+  (1) train_rwkv's blanket NaN-except now prints the real traceback (bare asserts have empty
+  str(e) -- it had hidden the hollow-compile run and this); (2) utils.KeyValueAverage
+  .get_value returned via bare assert n>0 -- early groups can have ZERO equalize-counted
+  reviews (first seen at small MAX), and the throw landed AFTER backward but BEFORE
+  optimizer.step = silently skipped weight updates; now returns NaN (wandb-only consumer).
+  Eval = SINGLE process (--shards 1 --solo-threshold 0; d=128 can't share 12 GB). Ends with
+  informational paired vs base5k (the 1-ep-budget check at 14x params). A0's finals + val
+  trace = the track-2 "before" anchor + its vprune ref.
+  Track-1 queue (plain era, ~3h/iter): prehead output gate, cross-head readout mix, loss-term
+  reweighting, permutation init (LOW). Track-2 queue after A0: layer cuts / d_model cuts /
+  mixer cuts / LoRA dims / head-width cuts, ranked by expected ratio-efficiency.
+- **★ RESEARCH ITER 9 REJECTED (2026-07-13 12:58): shrink-perturb init (lam=0.5, fresh seed 777,
+  RWKV_INIT_BLEND hook, else exact champion recipe) = ahead 0.307373 / imm 0.278926 -- WORSE both
+  modes (-0.000744/-0.001033 vs champ5k_b1, p=1.0 both), beyond the ~0.0004 seed noise = real harm,
+  no seed-pair needed.** Trajectory lesson: the warm init LED the champion's VAL curve all WS
+  (-0.010 @ step 1000 shrinking to -0.0006 @ 3500) yet ended net NEGATIVE at full eval -- mid-WS
+  val leads from a warm start do NOT predict the final verdict. Both lam endpoints (~0 =
+  from-scratch champion, ~1 = the 2-ep budget A/B) are champion-level and the midpoint sits below
+  -> **data-driven-init scheme A (shrink-perturb at lam=0.5) rejected; family DEPRIORITIZED,
+  not closed (conduct rule 5); lam probe {0.3,0.7} judged not worth GPU for now; scheme B
+  (permutation init) queued LOW.** The RWKV_INIT_BLEND hook stays (eed7cb5,
+  env-gated, plain path untouched). Artifacts: scratchpad/iter9_sp/, result/RWKV[-P]-iter9_sp.jsonl.
+  **-> NOW: iter 10 = warmup-only KD from the d=128 teacher** -- machinery committed 78caceb:
+  train_rwkv RWKV_KD_DUMP_OUT teacher-dump mode + RWKV_KD_MIX annealed target-mix student mode
+  (per-step labels-checksum pairing guard, mismatch = exit 43 never a silent skip; srs_model
+  get_loss(kd_mix=) mixes TARGETS exactly -- BCE/CE are linear in the target; window 800 WS steps,
+  alpha 1->0; clear RWKV_KD_MIX before decay -- decay replays the epoch-0 stream). Sequence: dump
+  smoke KDSTEPS=3 (d=128 VRAM check) -> full 800-step dump (~20 min, scratchpad/iter10_kd/dump
+  ~0.9 GB) -> run_iter10_kd.cmd (~4.7h). ⚠ the dump .cmd FILE-SWAPS rwkv/architecture.py --
+  never overlap with any other rwkv launch. Queue after 10: SRS-head resolution 64->128 (capacity
+  re-test at 5k data -- the 100u "capacity rejects" lesson was data-limitation-scoped), channel
+  mixer 1.0->1.5, prehead output gate, cross-head readout mix, loss-term reweighting.
+- **★ STATE-SIZE LADDER CLOSED (2026-07-13 08:04): 0 accepted rungs across 5 iterations (4-8).**
+  Per-stream arch hooks live (d6fca68): `RWKV_STREAM_HEADS` (H=1 doubles that stream's per-entity
+  WKV state ~param-free) + `RWKV_STREAM_LAYERS` (~10.4k params/layer). Verdicts (all paired vs
+  iter 2 champ5k_b1, n=5000): **deck H=1** (iter 4) null p=1.0; **preset H=1** (iter 5) null p=1.0;
+  **user H=1** (iter 6) NEAR-MISS +0.000345/+0.000258 (imm short by 0.000042, in-seed p 1e-20/1e-29);
+  **user H=1 + 4L** (iter 7) mode TRADE (ahead -0.000299 / imm +0.000604); **iter 8 lad_user1b =
+  the seed-pair test of iter 6 (seed 4321) came back NULL** -- ahead 0.306674 (-0.000044, p=0.88) /
+  imm 0.278039 (-0.000146, p=1.0) = the deck/preset no-effect signature. **Iter 6's signal did not
+  replicate -> substantially SEED LUCK; reject stands per the pre-declared branches.** LESSONS:
+  (1) no stream is state-capacity-limited at d=32/H=2 -- 2x recurrent memory clears nothing;
+  (2) ⚠ in-seed Wilcoxon p (even 1e-29) measures per-user delta consistency, NOT cross-seed
+  robustness -- cross-seed spread on the SAME recipe is ~0.0004 both modes, so **any single-run
+  margin < ~0.0005 defaults to seed-pair confirmation before acting**; (3) widened vprune
+  (0.006/0.008) ran clean across a seed change. Artifacts: scratchpad/lad_user1b/ (laduser1bd_1638
+  + cbs), result/RWKV[-P]-lad_user1b.jsonl; pipeline template = scratchpad/lad_user1b/
+  {run_lad_user1b.cmd,lad_user1b_ws.toml} (vprune-ON candidate runs; exit-42 branch; sequential
+  sharded eval + gate in-.cmd).
+  ⚠ EVAL-SHARD VRAM LESSON (2026-07-12): 2-parallel-shard eval WEDGES on elevated-VRAM rungs
+  (K=32 streams: chunk-state buffers ~+0.8 GB/shard on 1M-token batches -> WDDM oversubscription,
+  100% GPU util at 10-50x slow). RULE: such rungs -> sequential shards (get_result resumes
+  per-shard) then eval_sharded relaunch-skip-merge; template in run_lad_user1b.cmd.
+- **-> NOW: the >=50-iteration RESEARCH PHASE [[research-phase-conduct]]** (many idea FAMILIES,
+  arch + training pipeline, lit review + own ideas, retry near-misses as variants). Queued seeds:
+  warmup distillation from the d=128 teacher (design in notes), data-driven init (shrink-perturb/
+  permutation-init), cross-head readout mix (PHA analog), LIT_REVIEW.md queue. Iter numbering
+  continues from 9. Champion unchanged = iter 2 champ5k_b1 (0.306629/0.277893, 193,724 params).
+- **★ HP TUNING CLOSED (2026-07-12): champ5k_t1 (the tuner winner: wd 0.01->0.2 + dropout_scale
+  1.0->0.5) REJECTED at full eval** -- ahead 0.307174 / imm 0.278570 = WORSE than champ5k_b1 by
+  0.000545/0.000677 (p=1.0 both) despite winning tune-eval 5001-5200 by +0.0008/+0.0010.
+  **champ5k_b1 REMAINS CHAMPION; its HPs are confirmed vs 19 alternatives** (peak_lr, warmup, wd,
+  clip, decay_ratio, adamw_beta2, dropout_scale, cb_lr_mult all settled at champion values on the
+  full-eval verdict). ⚠ LESSON (bank + research_log note): the 200-user tune-eval CANNOT resolve
+  sub-0.001 HP effects -- even in-subset paired p=5e-8 inverted at n=5000; any future sub-0.001
+  tuner verdict needs full-eval confirmation before adoption. Round-2 levers wired + kept
+  (RWKV_ADAMW_BETA2 / RWKV_DROPOUT_SCALE / RWKV_CB_LR_MULT, defaults byte-identical). The
+  VALIDATION prune (replaced the sign-biased train-loss rule mid-tuning) ran the whole descent
+  clean: 0 kills, no false fires, joint-AND correctly spared single-mode transients (incl.
+  cb_lr_mult=10's imm-only breach); its estimated-logloss formula is now window-mean x
+  fitted-alpha anchored on the baseline journal row (fa724c0). Trial .cmds now GATE every phase
+  on exit codes (d289d9a, after a WS crash cascaded into decaying a step-50 ckpt -- caught before
+  the journal). NEXT = state-size ladders (deck <=5x -> preset <=10x -> global <=50x, FULL-eval
+  gate each rung), then the >=50-iteration research phase [[research-phase-conduct]].
+- *(2026-07-08 era below)*
+- **★ FIRST 5k CHAMPION PROMOTED (2026-07-08 18:23): champ5k_r1 = ahead 0.306572 / imm 0.278323**
+  (quant-aware q72u + per-run learned cbs, n=5000 both modes, eval 5001-10000). Behind the d=128 fp
+  target (0.296385/0.264905) by +0.0102/+0.0134 -- THE GAP THE PHASE NOW CLOSES. champion_5k.json
+  carries ckpt champ5kd_3277.pth + cb_wkv_final/cb_shift_final + the 13108-step WS trace (= Wilcoxon
+  prune ref). Pipeline wall-clock ~7.0h clean (WS 5h @ ~1.36 s/step real, decay 72 min, eval 66 min
+  2-sharded, GPU-bound at 2 shards -> 2 stays the default). TWO LATENT BUGS hit+fixed en route:
+  (1) LEARN=1 optim resume param-group mismatch at the WS->decay seam (f71f43b -- cb groups now
+  register pre-load when the saved state has them, moments resume); (2) per-user lmdb env leak in
+  get_benchmark_info killed eval shard 0 at user 2007 with a bogus ENOENT swallowed to exit 0 --
+  the n=5000 finish gate caught it (7d095e3 -- env now opened once/process). Results recorded:
+  research_log.jsonl + research_5k.md (p-value col = 1.0/1.0 vs target, honest) + log.md rebuilt.
+- **★ LIVE LOSS PLOT (2026-07-08, Andrew asked):** `scratchpad/liveplot/liveplot.py` = matplotlib
+  window, champion-vs-candidate WS train loss (ahead+imm panels), EMA-smoothed, paired one-sided
+  Wilcoxon p + mean delta per panel, warmup-end + decay-start vlines, 15 s refresh. Auto-discovers
+  the newest `*_ws_trace.jsonl` (tuner trials AND champion runs both set RWKV_STEP_TRACE), champion
+  ref = champion_5k.json embedded trace -> works for ALL runs; switches to a new trial automatically.
+  Relaunch: `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (survives Esc; close window to
+  stop). NOTE: WMI-launching pythonw GUI directly stalls at 0 CPU -- use the .cmd wrapper.
+- **★ BUDGET A/B RESOLVED + ADOPTED (2026-07-09 01:40): champ5k_b1 = NEW CHAMPION at HALF budget.**
+  WS 1 ep (6554) + 0.25 ep decay (1638), otherwise champ5k_r1's exact recipe. Full-eval finals
+  **ahead 0.306629 / imm 0.277893** -- paired vs r1: ahead -0.000058 (p=0.31, indistinguishable),
+  imm +0.000430 BETTER (p=6.1e-62). The 2nd WS epoch (same 5000 users reshuffled) adds NOTHING
+  (data-variety lesson holds at 5k). SIZE/SPEED accept; **1-ep budget now standard for ALL 5k runs**
+  (tuner trials AND research runs; champion pipeline ~3.5h: WS 2h27m + decay 37m + eval 89m).
+  Adoption executed: promoted (champion_5k.json = ckpt champ5kb1d_1638.pth + its cbs + 6554-step
+  trace = the new prune ref), hp_tuner WS_EPOCHS=1, 2-ep journal archived
+  (tuner_5k_log_2ep_era.jsonl), new baseline recorded (5001-5200: 0.294490/0.270492), tuner loop
+  RELAUNCHED (1-ep era; 2-ep prune verdicts for peak_lr 7e-4/1.4e-3 will be re-tested at 1 ep).
+  Pre-ship note: the final champion should get ONE full-budget (2 ep) confirmation run.
+- **★ HP TUNING RUNNING (launched 2026-07-08 18:35, detached pid 4468):** hp_tuner_5k `loop` --
+  coordinate descent over peak_lr/warmup/wd/clip/decay_ratio, trials are self-recording full-recipe
+  .cmds (WS 2ep + decay + tune-eval 5001-5200, LEARN=1 cbs, Wilcoxon-pruned vs champ5k_r1's trace).
+  Baseline recorded (5001-5200 subset: 0.294204/0.270881). Journal optimization/tuner_5k_log.jsonl;
+  loop log scratchpad/tuner5k/loop.log; ~6h/full trial, prunes much cheaper. Monitor armed.
+- **FETCH WORKERS = 4 EVERYWHERE (Andrew 2026-07-08, RAM):** every training/eval launch uses
+  NUM_FETCH_PROCESSES=4 (was 7-10; each worker holds ~2.6 GB at MAX=110000, fetch is over-provisioned --
+  ~4 ms get() waits; worker count never affects batch content/order). Already set in: hp_tuner_5k
+  (NUM_FETCH), write_decay_setup, write_eval_toml, champ5k_r1_ws.toml (the copy-from template for future
+  hand-written WS tomls). Check any NEW toml against this.
+- **★ EVAL CPU PATH VECTORIZED (2026-07-08, byte-identical):** extract_p / get_stats / run() raw-gathers
+  were per-review Python loops (300k-user cost: extract_p 308->118 ms, get_stats 1151->87 ms x2/user);
+  now numpy dict(zip)+searchsorted (`_eq_gather`), exact dtypes preserved. Verified: 6-trial exact-equality
+  harness (scratchpad/eval_speed/stats_ab.py ALL_PASS) + E2E GPU A/B 3 users = result jsonls BYTE-IDENTICAL.
+  RNN/trace callers auto-fallback to the old loop (tensor dicts). champ5k_r1's eval picks it up.
+  FOLLOW-UP at eval launch (~16:40): sample per-shard VRAM/GPU-util -> maybe --shards 3-4 for future evals.
+- **★ SHIFT-PQ SEARCH KERNEL BANKED (2026-07-08, direction #3): quant-aware step 1.207 -> 0.996 s/step
+  (1.21x; stacked 1.65x over NO_JIT today).** ~45% of the q72u step was the learnable shift-PQ search
+  running eager torch.cdist().argmin() (sqrt+clamp+argmin over a never-needed ~1.8 GB N x 4096 distance
+  matrix, 16 calls/step). New `rwkv7_pq_argmin` CUDA kernel (row-tiled, SUB-templated, first-strict-min
+  ties = cdist semantics; 5.9 vs 23.9 ms/call): index-identical on 330k-row + exact-tie tests, QAT
+  goldens BITEXACT_PASS after rebuild, escape hatches RWKV_SHIFT_SEARCH_KERNEL=0 (-> matmul tier) /
+  RWKV_SHIFT_SQ_SEARCH=0 (-> cdist). CPU tensors auto-fallback (RNN/Rust paths untouched). ⚠ DISCOVERY:
+  the compiled frozen env is NOT run-to-run bit-reproducible (3-arm A/B: identical-env controls diverge
+  ~step 27; per-step trace noise <=3e-4, weight drift 1.7e-2 @ 110 steps) — bit-exact E2E gates are
+  unattainable under it; unit-level index proofs + noise-class drift comparison are the standard now
+  (Wilcoxon prune pairing unaffected: zero-mean noise). Wall-clock gap CLOSED (1184 ms GPU-busy / 1207
+  wall = GPU-bound; host-side lever dead). Plain step re-profiled 385 ms = flat tail confirmed.
+  Champion-run training now ~4.6 h. Details: research_5k_notes.md "Speedups banked" 2026-07-08.
+- **★ QUANT RESEARCH CLOSED + FULLY PORTED (2026-07-08).** The sibling (`rwkv-state-quant`) finished its
+  bit-descent 2026-07-07: final champion **q72u = 72 b/layer (9-byte card)**, 2-seed-confirmed, details in
+  the CHAMPION "DEPLOY config" block above. Its full 2026-07-07 code stack (CUDA joint-uv/norm-quant/warm
+  search + train_rwkv QAT wiring + the complete Rust engine) landed here in `1d3b5b8` (the sibling's Claude
+  verified byte-identical champion eval from OUR build); the RESULTS layer (champion artifacts ->
+  `reference/`, deploy env, methodology-(a) QAT env in `hp_tuner_5k.py`, lesson bank) ported 2026-07-08.
+  Open follow-ups from the port: (i) ~~per-run learnable-cb wiring~~ DONE 2026-07-08 (LEARN=1 in QAT_ENV;
+  resolve_run_cbs.py repoints env at WS->decay and decay->eval seams; champion_5k.json carries
+  ckpt+cb_wkv+cb_shift; a champion's evals/deploys use ITS OWN cbs), (ii) ~~JIT unverified~~ RESOLVED
+  2026-07-08 (scratchpad/jitab A/B/C): TorchScript FIXED on the grafted paths (instance-bool shift_pq_on +
+  jit.ignore fake_pq_shift + typed kd tuple) but JIT vs NO_JIT is a WASH (1.643 vs 1.658 s/step);
+  **ADOPTED + FROZEN 5k-family env = NO_JIT + the sibling's sanctioned round-4 flags (COMPILE=student +
+  ROT_CACHE + FAST_EMB + EMA_FOREACH + NO_MEMFILL) = 1.207 s/step (1.37x). Never flip flags inside the
+  family. ⚠ COMPILE runs MUST call vcvars64 first (no cl.exe -> inductor errors swallowed by the
+  NaN-except as hollow skipped batches, exit 0). q72u-era quant-aware step at MAX=110000 = 1.21 s (the
+  old ~450 ms predates joint-search/shift-PQ/learnable cbs); champion run ~= 5.6 h**, (iii) 5k-phase
+  state-size gates: card/note budgets should now be interpreted against the 72-b deploy format.
+- *(2026-07-03 era below)*
+- **★ QUANT PORT DONE (2026-07-03): the sibling's research is FINISHED and its machinery is IN-REPO.**
+  Fused QAT CUDA kernels (full-matrix int-N + rank-1 low-rank with PQ branch, 150-490x over the Python
+  loop), PQ codebook `reference/pq_cb_m2b8.txt`, shift-QAT (JIT-annotated here; sibling ran NO_JIT),
+  int3 + RWKV_QAT_SHIFT_SCOPE, and train_rwkv **LR+WD clobber fixes** (optim load silently restored saved
+  lr/initial_lr/weight_decay over config/env -- affected EVERY warm-started run) + non-finite loss/grad
+  guards. Validated here: plain path bit-exact vs golden; PQ parity 3.2e-07; int-N 7.5e-04; 25-step QAT
+  smoke green (`scratchpad/qat_parity/`). Deploy recipe + numbers: see CHAMPION section "DEPLOY config".
+- **★ QAT KERNELS OPTIMIZED 37x (2026-07-03, bit-exact):** see the SPEED section -- quant-aware 5k runs
+  are back to ~6-7 h (were headed for ~30-40 h). Profile hook added: `RWKV_PROFILE_STEP=N` +
+  `RWKV_PROFILE_COUNT` in train_rwkv -> bucketed kernel self-time summary, then exit.
+- **★ TELEGRAM BRIDGE LIVE (2026-07-03):** Andrew can steer this session from his phone + sees mirrored
+  output (see Ops). His injected messages arrive Esc-first (interrupt, then message).
+- **★ 5k LMDB BUILD RUNNING (launched 2026-07-03, detached, 6 threads):** `scratchpad/run_build_5k.cmd` ->
+  6 sequential resumable steps (find_equalize 5001-10000 -> test_db 5001-10000 (F:) -> train_db 1-5000 (C:)
+  -> find_equalize 1-5000 -> test_db 1-5000 -> train_db 5001-10000 (F:)); log `scratchpad/build_5k.log`;
+  ~2-4 days. Eval data for 5001-10000 lands FIRST so the d=128 baseline eval can start before the train_dbs
+  finish. Monitor via OS truth; the 6 configs are `rwkv/*_5k_*.toml` (PROCESSES=6).
+- **★ EVAL SHARDING READY (2026-07-03, Andrew-approved):** `optimization/eval_sharded.py --config
+  <eval toml>` = 2-process size-balanced (LPT) full eval, ~1.5-2x wall-clock, numerics-IDENTICAL
+  (additive USERS_FILE selector in get_result; merge + means printed). d=32 evals only (two d=128s
+  OOM); E2E smoke pending -- watch the first champion-era sharded eval. Details in notes.
+- **★ BASELINE-TO-BEAT LANDED (2026-07-03): d=128 on 5001-10000 = ahead 0.2964 / imm 0.2649**
+  (0.296385/0.264905, n=5000 both modes, fp unquantized; consistent with the published 10k-pooled
+  0.29743/0.26600; recorded in research_5k.md; result jsonls result/RWKV-base5k*.jsonl; arch restored).
+- **⚠ GPU HOLD (Andrew 2026-07-04): do NOT launch GPU training/evals — he is running his own quant
+  experiments. Champion run waits for his GO.**
+- **★ STEP3 DONE 2026-07-04 07:00 (train_db_5k_h1 complete, exit 0; STEP4 find_equalize 1-5000 running).
+  `count_groups_5k.py` run: GROUPS_PER_EPOCH = 6554 → groups_5k.json (hp_tuner prereq DONE). Champion-run
+  arithmetic: 2 WS ep = 13,108 steps + decay 0.2–0.8 ep → total ~14.4k–18.4k steps ≈ 1.8–2.3 h clean.
+  EVERYTHING for the champion run is staged — only the GPU hold gates it.**
+- **★ TONIGHT'S DIRECTION (Andrew 2026-07-08, supersedes the NEXT list below where they differ):**
+  (1) ADD CODEBOOK LEARNING to 5k runs (per-run learnable cbs: train with RWKV_QAT_PQ_LEARN=1 +
+  RWKV_QAT_SHIFT_PQ_LEARN=1, export each run's learned cbs, point that run's quant-aware EVAL + any
+  deploy at ITS OWN exported cbs — the promote/champion flow carries cb artifacts with the ckpt);
+  (2) TURN JIT ON (A/B TorchScript on the grafted q72u paths: parity + speed; drop RWKV_NO_JIT if clean)
+  -> compaction about here; (3) hunt any remaining speedups (profile the q72u quant-aware step — joint
+  search / shift-PQ / norm paths are new surface; check the sibling's speed-round flags for portable
+  wins); (4) FIRST REAL 5k CHAMPION RUN (champion-HP, quant-aware, RWKV_STEP_TRACE -> promote);
+  (5) HP TUNING (hp_tuner_5k); (6) STATE-SIZE KNOBS in this order, each until gain <0.0003 (the phase
+  threshold) or its ceiling: deck up to 5x -> preset up to 10x -> global up to 50x. **RULE (write-down,
+  Andrew 2026-07-08): card and note state sizes REMAIN FIXED — the only exception is an architectural
+  change that makes a card/note state-size change INEVITABLE (not a tuning knob, a structural
+  consequence).** (7) then any architectural improvements at my discretion (queued ideas: warmup
+  distillation, data-driven init, cross-head readout mix, LIT_REVIEW).
+- **NEXT (per methodology g), in order once data allows:** (1) ~~d=128 baseline eval~~ DONE (above);
+  (2) ONE champion-HP 5k run with per-step WS trace (RWKV_STEP_TRACE) + quant-aware forward -> promote via
+  `promote_champion_5k.py`; (3) HP tune -- `hp_tuner_5k.py` REPOINTED to FULL 5k 2026-07-03 (train 1-5000
+  @ MAX=110000, tune-eval 5001-5200, QAT env in every trial's WS+decay+eval, proxy-era journal archived to
+  tuner_5k_log_proxyera.jsonl; PREREQ after STEP3: `python optimization/count_groups_5k.py` -> groups_5k.json).
+  ALL live 5k tooling now trains on 1-5000 and evals on 5001-10000 ONLY (verified sweep 2026-07-03); the
+  100u/1500u dbs are no longer referenced by anything live (kept on disk, C: has 383 GB free). Any TIMING
+  numbers taken while build workers run are fetch-contaminated; take final numbers with the build idle.
+- Queued analysis (task #18, Andrew 2026-07-03): **irreducible-entropy estimate** -- cross-model
+  residual covariance of the TWO disjoint-trained d=128 .pths on users 1-100 (seen by neither) ->
+  irreducible-Brier -> Beta-translated LogLoss floor; + constant-retention baselines H(p-bar).
+  Design in notes "Queued analysis" section; needs build STEP4+5 (test data for 1-100); ~30 min GPU.
+- Queued research ideas: data-driven init (shrink-perturb / permutation-init, post-HP-tune -- notes
+  "Queued idea" section); **warmup-only distillation from the d=128 teacher** (Andrew 2026-07-03: soft
+  targets from `RWKV_trained_on_101_4999.pth` for the first ~200-800 steps only, annealed 1->0, then hard
+  labels so the student can surpass the teacher; STORED-dump design -- teacher+student can't share a
+  process (module-level arch config) -- full design + gate fit in the notes "Queued idea" section;
+  post-HP-tune; test SEPARATELY from data-driven init, both touch early training); cross-head readout
+  mix (PHA analog, LIT_REVIEW, low-med). Lit-review queue: `optimization/LIT_REVIEW.md`. Everything
+  through the quant port is COMMITTED + pushed (local == GitHub).
+
