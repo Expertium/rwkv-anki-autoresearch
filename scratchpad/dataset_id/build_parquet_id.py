@@ -193,8 +193,12 @@ def main():
     revlogs_dir = Path(sys.argv[1])
     output_root = Path(sys.argv[2]) if len(sys.argv) > 2 else OUTPUT_ROOT
     num_procs = int(sys.argv[3]) if len(sys.argv) > 3 else 6  # machine limit: <=7 CPU threads
-    files = sorted(revlogs_dir.glob("*.revlog"), key=lambda p: int(p.stem))
+    # rglob: the 7z archive nests files under a revlogs/ subdir — accept either layout
+    files = sorted(revlogs_dir.rglob("*.revlog"), key=lambda p: int(p.stem))
     print(f"{len(files)} .revlog files -> {output_root} ({num_procs} procs)", flush=True)
+    if not files:
+        print("FATAL: no .revlog files found -- wrong input dir?", flush=True)
+        sys.exit(3)
     output_root.mkdir(parents=True, exist_ok=True)
     done = 0
     with Pool(num_procs) as pool:

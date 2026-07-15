@@ -666,6 +666,20 @@ RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_E
   `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (auto-discovers the newest
   `*_ws_trace.jsonl`, champion ref from champion json).
 
+**→ ALSO LIVE: anki-revlogs-10k-id DATASET BUILD (Andrew 2026-07-15, detached pid 29176,
+`scratchpad/dataset_id/run_build_id.cmd`, log build_id.log):** rebuild the 10k dataset from the
+raw HF release (`anki-revlogs-10k-raw`, revlogs.7z 7.9 GiB) with **REAL Anki IDs kept** (no
+factorize — card/note/deck/preset ids are creation epoch-ms) **+ the review-time correction:
+`review_time = revlog id − taken_millis`** (id is stamped at ANSWER; the correction recovers the
+SHOW moment; day_offset/elapsed_days/elapsed_seconds/sort all use it — Andrew's directive; raw id
+recoverable as review_time + duration). Output `C:/Users/Andrew/anki-revlogs-10k-id`
+({revlogs,cards,decks}/user_id=N/data.parquet, user numbering == published set); staging
+`...-10k-id-raw`. Pipeline: download (resumable, size-gated 8,459,427,959) → py7zr extract
+(markered) → WAITS for iter18 DONE_EXIT → 6-proc build (resumable per user). Feeds
+FUTURE_FEATURES.md. Builder = `scratchpad/dataset_id/build_parquet_id.py` (adapted from the
+upstream anki-revlogs-dataset-builder; stats_pb2 compiled locally from its self-contained
+stats.proto — the repo's checked-in stats_pb2.py needs Anki's proto tree, don't use it).
+
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
 `optimization/FUTURE_FEATURES.md` (real-timestamp features; needs a new dataset export — Andrew
