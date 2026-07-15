@@ -170,6 +170,7 @@ class SrsRWKV(ModuleType):
         # (all-zero one-hot) contribute exactly zero. Default unset = module absent =
         # byte-identical, old checkpoints load unchanged.
         self.grade_emb_on = os.environ.get("RWKV_GRADE_EMB", "0") == "1"
+        self.prehead_gate_on = os.environ.get("RWKV_PREHEAD_GATE", "0") == "1"
         # Research iter 15 (2026-07-14, Andrew's directive): drop input features by zeroing
         # their columns at the model input. RWKV_ZERO_FEATURES="22" (comma-separated dims of
         # the 92) zeroes those columns in BOTH training and eval, so the column is constant 0
@@ -252,6 +253,16 @@ class SrsRWKV(ModuleType):
                 self.grade_emb = torch.nn.Linear(4, self.d_model, bias=False)
                 torch.nn.init.zeros_(self.grade_emb.weight)
 
+            # Research iter 16 (2026-07-15): prehead OUTPUT GATE. RWKV_PREHEAD_GATE=1 adds
+            # x = x * (2 * sigmoid(W x + b)) between prehead norm/dropout and the three heads
+            # -- the trunk modulates per-channel how much of the state reaches the readouts.
+            # Zero-init W,b -> 2*sigmoid(0) = 1.0 = EXACT identity at init (grade-emb
+            # discipline); range (0,2) so it can also amplify. +d*d+d = 1,056 params at d=32.
+            if self.prehead_gate_on:
+                self.prehead_gate = torch.nn.Linear(self.d_model, self.d_model)
+                torch.nn.init.zeros_(self.prehead_gate.weight)
+                torch.nn.init.zeros_(self.prehead_gate.bias)
+
     @torch.jit.ignore
     def _apply_input_feat_mask(self, batch_start: torch.Tensor) -> torch.Tensor:
         # Eager-Python indirection (same reason as _apply_grade_emb): the mask is a plain
@@ -265,9 +276,17 @@ class SrsRWKV(ModuleType):
         # compiler resolves attributes even in dead branches). Ignored body runs in Python.
         return x + self.grade_emb(batch_start[:, 9:13])
 
+    @torch.jit.ignore
+    def _apply_prehead_gate(self, x: torch.Tensor) -> torch.Tensor:
+        # TorchScript-safe indirection (same reason as _apply_grade_emb): prehead_gate only
+        # exists when RWKV_PREHEAD_GATE=1.
+        return x * (2.0 * torch.sigmoid(self.prehead_gate(x)))
+
     @FunctionType
     def head_and_out(self, input):
         x = self.prehead_dropout(self.prehead_norm(input))
+        if self.prehead_gate_on:
+            x = self._apply_prehead_gate(x)
 
         out_w_logits = self.w_linear(self.head_w(x).float())
         out_w = torch.nn.functional.softmax(out_w_logits, dim=-1)

@@ -4,6 +4,7 @@ This script takes a trained model and a list of users and produces a result file
 
 import json
 import multiprocessing
+import os
 from pathlib import Path
 import traceback
 import lmdb
@@ -319,6 +320,13 @@ def run(
                     # but skip the forward
                     continue
                 batch = batch.to(config.DEVICE)
+                if os.environ.get("RWKV_EVAL_CAST_FP32", "0") == "1":
+                    # LMDB batches are stored bf16; an fp32 eval (DTYPE="float") needs the
+                    # float tensors upcast or matmuls die on mixed dtypes. Diagnostic path
+                    # (A0 NaN probe 2026-07-15); default off = byte-identical.
+                    batch.start = batch.start.float()
+                    if batch.labels.dtype == torch.bfloat16:
+                        batch.labels = batch.labels.float()
 
                 with torch.inference_mode():
                     stats = model.get_loss(batch)
@@ -525,11 +533,12 @@ def main(config):
                 process.terminate()
 
             print("Killed processes.")
-            sort_jsonl(path_ahead_result)
-            sort_jsonl(path_imm_result)
-            if config.RAW:
-                sort_jsonl(path_ahead_raw)
-                sort_jsonl(path_imm_raw)
+            # exists-guard: a run whose only users were all NaN-skipped never creates the
+            # result files (hit by the fp32 probe 2026-07-15)
+            for _p in ([path_ahead_result, path_imm_result]
+                       + ([path_ahead_raw, path_imm_raw] if config.RAW else [])):
+                if _p.exists():
+                    sort_jsonl(_p)
             print("Sorted files.")
 
 

@@ -232,3 +232,12 @@ traces = the track-1 vprune ref). **ALL future track-1 runs AND the final QAT co
 must set `RWKV_ZERO_FEATURES=22`** — it is now part of the champion recipe. Exact champ5k_plain
 recipe otherwise; WS 6554 steps, decay 1638, phased eval 75 min (solo mega-users clean — the
 d=32 model has no trace of the d=128 NaN instability); pipeline 3h09m.
+
+### A0 NaN probe result (2026-07-15 14:20): weight-level, NOT a bf16 artifact
+
+fp32 GPU eval of user 9501's failing 502,886-token chunk (RWKV_EVAL_CAST_FP32=1 shim — LMDB
+batches are stored bf16) **NaN'd identically**. The 1-ep d=128 model's long-horizon instability
+is in the weights, not the precision: some channels' effective decay admits state growth that
+overflows even fp32 within ~500k steps. Structural to the short-budget anchor; the per-user
+NaN-skip + finite-intersection comparison handling stands. (En-route fix: get_result's teardown
+sort_jsonl now exists-guards — a nanskip-only run never creates the result files.)
