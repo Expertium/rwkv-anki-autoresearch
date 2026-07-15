@@ -539,7 +539,29 @@ Pairing needs identical db/MAX/seeds.
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
 ### LIVE STATE (2026-07-13)
-- **★ A0 LAUNCH SAGA CONTINUED (2026-07-14 evening): launches 5-7.** Launch 4 (pid 20332) crept
+- **★★ TRACK-2 ANCHOR A0 LANDED (2026-07-15 10:40): ahead 0.299857 / imm 0.269030 (n=4993,
+  2,762,884 params).** Full detail: research_5k_verbose.md "Track 2 — A0 anchor". Headlines:
+  (1) **1-ep budget tax at d=128 = +0.0037/+0.0044 vs the upstream 12-ep .pth** (intersection-
+  paired p~0) -- epochs DO matter at 14x params (unlike d=32); structural to track 2, measured
+  against A0 not upstream. (2) A0 beats champ5k_plain by 0.0036/0.0042 = what 2.57M extra params
+  buy at matched budget. (3) **⚠ the 1-ep d=128 model NaNs on eval chunks >= ~500k tokens** (7
+  users skipped, recorded in result/RWKV-track2_a0.nanskip.jsonl; upstream .pth is clean; d=32
+  never NaNs) -> ALL track-2 comparisons use the finite-user intersection (paired_pvalue needs an
+  intersection mode when A1 lands). fp32-vs-bf16 probe DEFERRED (LMDB batches are bf16; needs a
+  cast shim; probe toml staged at scratchpad/track2_a0/probe_fp32.toml). Anchor json + val trace
+  (= track-2 vprune ref) = optimization/champion_5k_track2.json; ckpt t2a0d_5586.pth. Fixes
+  banked en route (committed): RWKV_EMPTY_CACHE_WINDOW whole-run clears (d=128 envelope creep ->
+  WDDM paging), write_decay_setup MAX param (hardcoded 110000 thrashed the d=128 decay; **track-2
+  .cmds MUST pass 32768 as arg 10**), get_result re-raise + NaN-skip-whole-user + skip-file
+  resume, eval_sharded completeness gate (merged + skipped == rostered or exit 3).
+- **-> NOW (2026-07-15 10:43): ITER 15 RUNNING (Andrew's directive, pid 15080, verdict ~14:00):
+  d=32 champion recipe + RWKV_ZERO_FEATURES=22 (review-state feature dropped). ACCEPT REGARDLESS
+  of delta (deploy simplification; he expects ~none). [feat-mask] banner confirmed in-run. On
+  finish: promote via promote_champion_5k.py --out optimization/champion_5k_plain.json
+  --val-trace, record everywhere (provenance "adopted (Andrew, directed accept)"), then TRACK-2
+  A1 design (first ablation: layer cuts / d_model cuts / mixer cuts / LoRA dims by expected
+  ratio-efficiency; new arch file for RWKV_ARCH_MODULE; MAX=32768; vprune vs champion_5k_track2).**
+- **★ A0 LAUNCH SAGA (2026-07-14 evening): launches 5-7.** Launch 4 (pid 20332) crept
   3.6->11.3 GB by step ~4100 (caching-allocator envelope over variable d=128 group shapes; the
   empty-cache guard stops at step 1000 BY DESIGN) -> WDDM paging, 1.06->4.3 s/step. Fix =
   **RWKV_EMPTY_CACHE_WINDOW env** (train_rwkv; default 1000 = old behavior, 0 = whole run).

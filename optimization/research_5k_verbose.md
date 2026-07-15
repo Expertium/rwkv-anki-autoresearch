@@ -169,3 +169,43 @@ RWKV_GRADE_EMB hook crashed JIT-on model construction (TorchScript resolves attr
 branches; hidden all QAT era by NO_JIT) → @torch.jit.ignore indirection, smoke-tested both
 hook states. train_rwkv swallowed that traceback with exit 0 — the .cmd's decay-setup artifact
 gate caught it (keep gating phases on artifacts, not exit codes).
+
+## Track 2 — A0 anchor (2026-07-15): d=128 retrained at the 1-ep plain budget
+
+**ANCHOR — ahead 0.299857 / imm 0.269030 (n=4993, eval 5001–10000).** The original d=128
+arch (2,762,884 params, `RWKV_ARCH_MODULE=scratchpad/architecture_old_d128.py`) retrained
+through the exact plain track-1 recipe: 1 ep WS (22,346 steps @ 1.07 s/step, 6h40m) +
+0.25 ep cosine decay (5,586 steps, ~1.6h), seed 1234, **MAX=32768 = the track-2 standard**
+(66000 and 49152 both thrash 12 GB at d=128; max single batch in train_db_5k_h1 = 16,384
+tokens → zero data drop at any MAX ≥ 16,384). Anchor json (val trace = track-2 vprune ref):
+`optimization/champion_5k_track2.json`; ckpt `scratchpad/track2_a0/t2a0d_5586.pth`.
+
+**Key numbers (intersection-paired, n=4993):**
+- vs upstream 12-ep `.pth` (base5k): **+0.003714 ahead / +0.004376 imm worse, p≈0** — the
+  1-ep budget tax at d=128. Contrast d=32, where the 2nd epoch added nothing (champ5k_b1
+  A/B): the 14×-param model keeps learning from reshuffled data. Track-2 ablations are
+  measured against A0, so this tax is structural to the track, not a bug.
+- vs champ5k_plain (d=32, 193,724 params, same budget): **−0.003637 / −0.004163 better** —
+  what 2.57M extra params buy at matched budget; the descent A1, A2, … will map where that
+  0.004 actually lives.
+
+**⚠ NaN instability of the 1-ep d=128 model (7 users skipped, n=4993):** users 6701, 6810,
+7873, 8060, 8746, 9501, 9813 — the model emits NaN logits on eval chunks ≥ ~500k tokens
+(smallest failing: 502,886; content-dependent, not pure length — 6810's first 1M chunk
+passed, its second failed). The upstream 12-ep .pth evals all 5000 users clean, and d=32
+models never NaN → property of the SHORT-BUDGET d=128 training (MAX=32768 never exercises
+the >32k-token recurrence regime; decay params presumably sit near the no-decay edge for
+some channels). Skips are recorded in `result/RWKV-track2_a0.nanskip.jsonl`; ALL track-2
+comparisons use the finite-user intersection. fp32-vs-bf16 probe deferred (LMDB batches are
+stored bf16; needs a cast shim) — queued behind iter 15.
+
+**Pipeline fixes banked en route (all committed):** RWKV_EMPTY_CACHE_WINDOW (whole-run
+per-step clears; the d=128 allocator envelope creeps to WDDM paging past the old 1000-step
+guard window — launch 4 died at 4.3 s/step, launch 5 at every=50 saturated 11.9 GB by step
+250); write_decay_setup MAX param (its hardcoded 110000 thrashed the decay phase);
+get_result re-raises instead of swallowing crashes to exit 0, NaN-skips users whole (no
+partial rows — partial stats would change equalized size) with skip-file resume;
+eval_sharded completeness gate (merged + nan-skipped must equal rostered, ahead set == imm
+set, else exit 3). Reproducibility note: step-50 and step-1000 vals were IDENTICAL across
+launches 4/5/6/7 — the seeded shuffle + guard cadence are numerics-neutral; and vals are
+only comparable at the same step (a step-50 val misread as step-1000 caused a false alarm).
