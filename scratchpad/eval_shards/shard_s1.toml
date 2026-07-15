@@ -1,0 +1,16 @@
+FILE_AHEAD = "RWKV-iter17_pbin-s1"
+FILE_IMM = "RWKV-P-iter17_pbin-s1"
+MODEL_PATH = "scratchpad/iter17_pbin/iter17d_1638.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = 5001
+USER_END = 10000
+NUM_FETCH_PROCESSES = 3
+USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s1.json"

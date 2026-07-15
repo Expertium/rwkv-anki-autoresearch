@@ -1,0 +1,38 @@
+# Decay phase auto-written by write_decay_setup.py. hp5k_decay_ratio_0p1d cosine-decay from hp5k_decay_ratio_0p1ws_6554.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+# 4 fetch workers (was 7, Andrew 2026-07-08): each costs ~2.6 GB RAM and fetch runs far
+# ahead of demand (~4 ms get() waits); 4 still fully hides prep. Worker count never
+# affects batch content/order (seeded shuffle), only parallelism.
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 110000
+
+TRAIN_MODE = "D"
+STEP_OFFSET = 1
+WARMUP_STEPS = 0
+EPOCHS = 0.1
+VALIDATE_EVERY = 100000
+PEAK_LR = 0.001
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "scratchpad/tuner5k/hp5k_decay_ratio_0p1"
+LOAD_MODEL_NAME = "hp5k_decay_ratio_0p1ws_6554"
+SAVE_MODEL_FOLDER = "scratchpad/tuner5k/hp5k_decay_ratio_0p1"
+SAVE_MODEL_PREFIX = "hp5k_decay_ratio_0p1d"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

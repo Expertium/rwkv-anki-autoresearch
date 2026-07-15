@@ -260,3 +260,30 @@ child kept fp32 gate params and `copy_downcast_`'s dtype assert killed attempt 2
 root-level non-excluded Parameters now cast explicitly. Smoke v2 now exercises the SCRIPTED
 forward path AND the selective_cast + copy_downcast_ chain — v1 (direct Python calls only)
 missed both failure modes.
+
+### Iter 16 — prehead output gate (REJECTED 2026-07-15 17:17)
+
+(Recorded in the front table; TorchScript infra lessons in CLAUDE.md CURRENT STATE. Null verdict:
+ahead +0.000011 p=0.97 / imm -0.000182 p=1.0 vs iter15 — the shared readout is not gating-limited.)
+
+### Iter 17 — direct binary-recall loss term (REJECTED 2026-07-15 20:32): a real MODE TRADE
+
+**Idea ("train what you measure"):** the benchmark's imm metric is the BCE of 1−P(again) at query
+rows (`p_binary_loss` in srs_model). It was computed as a wandb statistic but NEVER entered the
+training loss (which optimizes the 4-way rating CE + curve BCE + aux terms). Iter 17 added
+`+ 0.5 * mean(p_binary_loss over query rows)` (RWKV_PBIN_SCALE=0.5, instance-float hook —
+TorchScript reads instance attrs, not env/globals; 0 new params; exact iter-15 recipe otherwise).
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.303885 / imm 0.272840** — vs iter15 champion:
+**imm +0.000387 BETTER (p=1.7e-173, clears the ≥0.0003 bar); ahead −0.000222 WORSE (p=1.0)** →
+REJECT on the both-modes gate. The first NON-null track-1 effect of the plain era: loss
+reweighting genuinely moves the imm metric, but pays for it in ahead — shared-trunk capacity
+shifts from the curve head toward the rating/binary objective. The WS val trajectory showed the
+same signature live (imm led at most checkpoints, up to −0.0016 at step 4500; ahead oscillated
+around/behind parity; decay-end val 0.3260/0.3078).
+
+**Family: LOSS-REWEIGHTING 0/1, with a real effect — variants queued (conduct rule 2):**
+RWKV_PBIN_SCALE=0.25 (halve the pressure; hope: keep ~half the imm gain at ~no ahead cost), or
+pbin + AHEAD_SCALE up-weighted to rebalance. Run after the directed iter 18 (duration ablation)
+and the track-2 A1 block. Clean pipeline: WS 91 min (never vprune-threatened), decay 22 min,
+phased eval 76 min. Hook stays env-gated, default off.

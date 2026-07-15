@@ -47,6 +47,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 14 | 1–5000 | 0.3037 | 0.2734 | exact | **accepted** | 0.0 / 0.0 (vs iter 2, info) | 193,724 | invented | **champ5k_plain = PLAIN re-baseline (QAT parked)**: new screening champion; the QAT tax = +0.0029/+0.0044. |
 | 15 | 1–5000 | 0.3037 | 0.2732 | exact | **accepted** | 1.5e-08 / 1.6e-42 (vs iter 14, better) | 193,724 | adopted | **Drop review-state feature (RWKV_ZERO_FEATURES=22, Andrew's directive)**: not worse, slightly better both modes — new champion; deploy no longer needs Anki review state. |
 | 16 | 1–5000 | 0.3037 | 0.2734 | exact | rejected | 0.97 / 1.0 (vs iter 15) | 194,780 | invented | Prehead output gate (zero-init identity): no effect both modes — the shared readout is not gating-limited. Readout family 0/1. |
+| 17 | 1–5000 | 0.3039 | 0.2728 | exact | rejected | 1.0 / 1.7e-173 (vs iter 15) | 193,724 | invented | Binary-recall loss term (pbin 0.5): MODE TRADE — imm +0.0004 better, ahead −0.0002 worse. First real plain-era effect; scale-0.25 variant queued. |
 
 ## Track 2 — ablate the old d=128 model
 

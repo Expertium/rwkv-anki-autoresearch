@@ -1,0 +1,1 @@
+{"name": "hp5k_decay_ratio_0p1", "param": "decay_ratio", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.2, "clip": 0.25, "decay_ratio": 0.1, "adamw_beta2": 0.999, "dropout_scale": 1.0, "cb_lr_mult": 1.0}, "ws_steps": 6554}

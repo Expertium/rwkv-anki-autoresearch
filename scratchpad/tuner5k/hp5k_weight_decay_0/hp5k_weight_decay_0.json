@@ -1,0 +1,1 @@
+{"name": "hp5k_weight_decay_0", "param": "weight_decay", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.0, "clip": 0.25, "decay_ratio": 0.25}, "ws_steps": 6554}

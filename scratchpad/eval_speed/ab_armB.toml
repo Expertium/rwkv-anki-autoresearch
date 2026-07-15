@@ -1,0 +1,16 @@
+FILE_AHEAD = "evabB"
+FILE_IMM = "evabB-P"
+MODEL_PATH = "scratchpad/exp_h2k16/h2k16d_904.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = 5001
+USER_END = 5001
+NUM_FETCH_PROCESSES = 2
+USERS_FILE = "scratchpad/eval_speed/ab_users.json"

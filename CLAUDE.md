@@ -243,15 +243,14 @@ deltas so dead ends aren't re-run.
   `requirements.txt` · `setup.py` (CUDA/C++ kernel build) · `config.py` + `utils.py` +
   `features/` (vendored cross-repo deps — needed for imports) · `build_dataset.py` ·
   `test_users.json` · `verify_rust.py` (Rust-parity gate) + `export_rnn_trace.py` +
-  `make_reference.py` + `diag_parity.py` (its trace/reference/debug companions) ·
-  `debug_review0.py` (step-1-era one-off).
+  `make_reference.py` (its trace/reference companions).
 - **`rwkv/`** — the vendored+evolved package: `architecture.py` (5-stream config + env hooks +
   RWKV_ARCH_MODULE), `config.py`, `train_rwkv.py`, `get_result.py` (eval), `data_processing.py` /
   `prepare_batch.py` / `data_fetcher.py` / `find_equalize_test_reviews.py` (data pipeline),
   `run_as_rnn.py` (CPU RNN mode), `parse_toml.py`, `utils.py`; `model/` = `srs_model.py`,
   `srs_model_rnn.py`, `rwkv_model.py`, `rwkv_rnn_model.py`, `rwkv_ops.py`, `csrc/` (CUDA kernel;
-  the built `RWKV_CUDA.pyd` is untracked). Plus ~120 `*_iterN*/_era` .toml run configs
-  (historical provenance of the closed 100/100 loop).
+  the built `RWKV_CUDA.pyd` is untracked). Live tomls only (the ~120 closed-era iterN run
+  configs were git-rm'd 2026-07-15; git history keeps them).
 - **`optimization/`** — tooling + the canonical record. Record: `research_5k.md` (front tables,
   4dp) · `research_5k_notes.md` (methodology) · `research_5k_verbose.md` (per-iter detail,
   AI-only) · `research_log.jsonl` (5k source of truth) · `log.md`/`log.jsonl` (regenerated
@@ -608,23 +607,32 @@ Pairing needs identical db/MAX/seeds.
   confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family flags;
   plain-era vs QAT-era logloss are NOT comparable).
 
-**→ LIVE RUN: iter 17 (pid 22268, launched 2026-07-15 17:25, verdict ~20:45) = direct
-binary-recall loss term RWKV_PBIN_SCALE=0.5** — the benchmark's imm metric (BCE of 1−P(again)) was
-computed as a statistic but never entered the training loss ("train what you measure"; 0 new
-params; loss-reweighting family; hook = instance-float pbin_scale, TorchScript reads instance
-attrs not env/globals). Pipeline `scratchpad/iter17_pbin/`. ON VERDICT: gate ≥0.0003 BOTH +
-p<1e-4 BOTH vs iter15 (margin <0.0005 → seed-pair 4321); record research_log.jsonl +
-research_5k.md row (4dp!) + research_5k_verbose.md + logbook rebuild + this file + commit/push.
-Then ONE more track-1 iter (cross-head readout mix variant or permutation init LOW), then
-**TRACK-2 A1** (first ablation: layer / d_model / mixer / LoRA-dim / head-width cuts ranked by
-expected ratio-efficiency; arch file via RWKV_ARCH_MODULE; per-100k gate vs A0).
+**Iter 17 REJECTED (2026-07-15 20:32): binary-recall loss term (RWKV_PBIN_SCALE=0.5) = MODE
+TRADE** — imm +0.000387 BETTER (p=1.7e-173, clears the bar) but ahead −0.000222 worse (p=1.0);
+the first real (non-null) plain-era effect. Loss-reweighting family 0/1 with signal; **variant
+queued: PBIN_SCALE=0.25** (after iter 18 + A1). Detail: research_5k_verbose.md.
+
+**→ LIVE RUN: iter 18 (detached pid 30384, launched 2026-07-15 ~20:45, verdict ~23:55) =
+ABLATE REVIEW DURATION (Andrew's directive): RWKV_ZERO_FEATURES=8,22** (duration dim 8 +
+review-state dim 22) on the exact iter-15 champion recipe. **DIRECTED GATE: accept iff BOTH
+modes get worse by ≤ 0.0003 vs iter15** (mirrors the add-gate; query rows already zero duration
+→ this removes only HISTORICAL durations from the encoding). Smoke ALL_PASS (both dims masked,
+scripted path). Pipeline `scratchpad/iter18_nodur/`; vprune ON (a kill = definitive reject).
+ON VERDICT: read deltas from PAIRED_P_JSON in the log; if accepted → promote
+(promote_champion_5k.py --out champion_5k_plain.json --val-trace), ZERO_FEATURES=8,22 becomes
+champion recipe (deploy drops duration too); record everywhere (4dp) + commit/push.
+Then **TRACK-2 A1** (first ablation: layer / d_model / mixer / LoRA-dim / head-width cuts ranked
+by expected ratio-efficiency; arch file via RWKV_ARCH_MODULE; per-100k gate vs A0; needs
+paired_pvalue --intersect first). Track-1 queue after: PBIN_SCALE=0.25 variant, cross-head
+readout mix variant, permutation init (LOW).
 
 **Family scoreboard (track 1, plain+QAT eras; conduct rule 5 — 1-2 rejects = deprioritized, NOT
 closed):** early-training-intervention 0/2 (shrink-perturb, warmup-KD — both led early val then
 washed out; mid-WS val leads do NOT predict verdicts); grade-representation 0/1; capacity-at-5k
 0/2 (head resolution 64→128, mixer 1.5 — the d=32 trunk is not capacity-limited at 5k);
 state-size ladder 0/5 CLOSED (no stream is state-capacity-limited at d=32/H=2; iter 6's near-miss
-died on the seed pair); readout 0/1 (prehead gate null); HP tuning CLOSED (champion HPs confirmed
+died on the seed pair); readout 0/1 (prehead gate null); loss-reweighting 0/1 (pbin 0.5 = imm/ahead
+mode trade — REAL effect, 0.25 variant queued); HP tuning CLOSED (champion HPs confirmed
 vs 19 alternatives at full eval). All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
 RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYERS,
 RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32.

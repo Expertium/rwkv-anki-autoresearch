@@ -1,0 +1,15 @@
+FILE_AHEAD = "RWKV-hp5k_decay_ratio_0p1"
+FILE_IMM = "RWKV-P-hp5k_decay_ratio_0p1"
+MODEL_PATH = "scratchpad/tuner5k/hp5k_decay_ratio_0p1/hp5k_decay_ratio_0p1d_655.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = 5001
+USER_END = 5200
+NUM_FETCH_PROCESSES = 4

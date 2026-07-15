@@ -1,0 +1,1 @@
+{"name": "hp5k_warmup_steps_400", "param": "warmup_steps", "config": {"peak_lr": 0.001, "warmup_steps": 400, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}, "ws_steps": 6554}

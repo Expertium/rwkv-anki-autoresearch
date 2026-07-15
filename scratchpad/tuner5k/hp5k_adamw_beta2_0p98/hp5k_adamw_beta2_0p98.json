@@ -1,0 +1,1 @@
+{"name": "hp5k_adamw_beta2_0p98", "param": "adamw_beta2", "config": {"peak_lr": 0.001, "warmup_steps": 200, "weight_decay": 0.2, "clip": 0.25, "decay_ratio": 0.25, "adamw_beta2": 0.98, "dropout_scale": 1.0, "cb_lr_mult": 1.0}, "ws_steps": 6554}

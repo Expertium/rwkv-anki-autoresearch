@@ -1,0 +1,12 @@
+{
+ "pruned_at_step": 1800,
+ "paired_steps": 1800,
+ "window": 1500,
+ "p_ahead": 4.342972251221109e-159,
+ "p_imm": 1.0293049541915081e-242,
+ "alpha": 0.0001,
+ "champion": "champ5k_b1",
+ "estimated_ahead": 0.30797586003128685,
+ "estimated_imm": 0.28178519174782435,
+ "estimate_formula": "champ_final + mean(cand-champ over last 300 paired steps)"
+}
