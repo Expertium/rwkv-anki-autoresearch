@@ -560,11 +560,27 @@ Pairing needs identical db/MAX/seeds.
   scaled_state was ~noise). Promoted -> champion_5k_plain.json (ckpt iter15d_1638.pth + traces =
   track-1 vprune ref). **RWKV_ZERO_FEATURES=22 IS NOW CHAMPION RECIPE -- set it in ALL future
   track-1 runs + the final QAT run.** Deploy: Anki need not compute review state (dim 22 fed 0).
-- **-> NOW: (a) fp32-vs-bf16 NaN probe of A0 (GPU free ~20 min, needs a bf16->fp32 batch cast
-  shim -- LMDB batches are stored bf16), then (b) track-1 block continues (~3 iters, next =
-  prehead output gate, candidates gate vs iter15 champion, RWKV_ZERO_FEATURES=22 + vprune ref
-  champion_5k_plain.json), then (c) TRACK-2 A1 design (first ablation: layer cuts / d_model cuts
-  / mixer cuts / LoRA dims by expected ratio-efficiency vs the NEW per-100k gate; arch file for
+- **★ fp32 PROBE DONE (2026-07-15 14:20): A0's NaN is WEIGHT-LEVEL** -- the fp32 GPU eval
+  (RWKV_EVAL_CAST_FP32=1 shim; LMDB batches are stored bf16) of user 9501's 502,886-token chunk
+  NaN'd identically. Structural to the short-budget d=128 anchor; NaN-skip + finite-intersection
+  handling stands.
+- **★ ITER 16 = PREHEAD OUTPUT GATE REJECTED (2026-07-15 17:17): ahead 0.303652 / imm 0.273409
+  = +0.000011 (p=0.97) / -0.000182 (p=1.0) vs iter15 -- no-effect signature; the shared readout
+  is not gating-limited. READOUT family 0/1.** Took 3 launches -- TWO INFRA LESSONS (committed
+  328394e, c962f95): (1) **@torch.jit.ignore methods must NOT call SUBMODULES** (through
+  scripted code the ignored body sees the raw C++ ScriptModule, 'not callable'; the NaN-except
+  made attempt 1 a HOLLOW run) -> use Parameters + F.linear (grade_emb's latent same-bug also
+  fixed); (2) **root-level direct Parameters are invisible to selective_cast** (root skip
+  protects the fp32-excluded heads) -> bf16 child kept fp32 gate params, copy_downcast_ assert
+  killed attempt 2 -> root non-excluded Parameters now cast explicitly. Smoke discipline: must
+  exercise the SCRIPTED forward + selective_cast/copy_downcast_ chain, not direct Python calls.
+- **-> NOW: ITER 17 RUNNING (launched 2026-07-15 17:25, pid 22268, verdict ~20:45): DIRECT
+  BINARY-RECALL LOSS TERM (RWKV_PBIN_SCALE=0.5)** -- the benchmark's imm metric (BCE of
+  1-P(again)) was computed as a statistic but NEVER entered the training loss ("train what you
+  measure"; 0 new params; loss-reweighting family). Hook: instance-float pbin_scale (TorchScript
+  reads instance attrs, not env/globals). After iter 17: 1 more track-1 iter (cross-head readout
+  mix variant or permutation init), then TRACK-2 A1 (first ablation: layer cuts / d_model cuts /
+  mixer cuts / LoRA dims by expected ratio-efficiency vs the per-100k gate; arch file for
   RWKV_ARCH_MODULE; MAX=32768 + decay arg 32768; vprune vs champion_5k_track2.json; comparisons
   on A0's finite-user intersection -- paired_pvalue needs an --intersect mode).**
 - **★ A0 LAUNCH SAGA (2026-07-14 evening): launches 5-7.** Launch 4 (pid 20332) crept

@@ -241,3 +241,22 @@ is in the weights, not the precision: some channels' effective decay admits stat
 overflows even fp32 within ~500k steps. Structural to the short-budget anchor; the per-user
 NaN-skip + finite-intersection comparison handling stands. (En-route fix: get_result's teardown
 sort_jsonl now exists-guards — a nanskip-only run never creates the result files.)
+
+## Iter 16 — prehead output gate (2026-07-15): REJECTED (null)
+
+**ahead 0.303652 / imm 0.273409 (n=5000)** — vs iter15: +0.000011 (p=0.97) / −0.000182 (p=1.0)
+= the no-effect signature. `x * (2·sigmoid(Wx+b))` between prehead norm/dropout and the three
+heads (zero-init = exact identity at start, +1,056 params): the shared readout is not
+gating-limited. READOUT family 0/1. Hook stays (`RWKV_PREHEAD_GATE`, default off).
+
+**Two infra lessons banked (the run took 3 attempts):** (1) a `@torch.jit.ignore` method must
+NOT call a SUBMODULE — invoked through scripted code the ignored body sees the raw C++
+ScriptModule (`'torch._C.ScriptModule' object is not callable`) and train_rwkv's NaN-except
+turned every step into a silent skip = a HOLLOW run; caught by the monitor's exception spam.
+Parameters + `F.linear` is the safe form (proven by iter15's feat-mask full run); the dormant
+grade_emb hook had the same latent bug, fixed. (2) root-level direct Parameters are invisible
+to `selective_cast`'s module walk (the root skip protects the fp32-excluded heads) → the bf16
+child kept fp32 gate params and `copy_downcast_`'s dtype assert killed attempt 2 pre-step-1;
+root-level non-excluded Parameters now cast explicitly. Smoke v2 now exercises the SCRIPTED
+forward path AND the selective_cast + copy_downcast_ chain — v1 (direct Python calls only)
+missed both failure modes.

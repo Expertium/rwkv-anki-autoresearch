@@ -171,6 +171,15 @@ class SrsRWKV(ModuleType):
         # byte-identical, old checkpoints load unchanged.
         self.grade_emb_on = os.environ.get("RWKV_GRADE_EMB", "0") == "1"
         self.prehead_gate_on = os.environ.get("RWKV_PREHEAD_GATE", "0") == "1"
+        # Research iter 17 (2026-07-15): direct binary-recall loss term. The benchmark's imm
+        # metric IS p_binary_loss (BCE of 1-P(again) vs recall), but the training loss only
+        # optimizes it implicitly through the 4-way rating CE. RWKV_PBIN_SCALE=<w> adds
+        # w * mean(p_binary_loss over query rows) to the loss ("train what you measure").
+        # Instance float: TorchScript can't read env/globals inside scripted methods, but it
+        # CAN read instance attributes. Default 0 = term skipped = byte-identical.
+        self.pbin_scale = float(os.environ.get("RWKV_PBIN_SCALE", "0"))
+        if self.pbin_scale != 0.0:
+            print(f"[pbin] direct binary-recall loss term ON, scale={self.pbin_scale}")
         # Research iter 15 (2026-07-14, Andrew's directive): drop input features by zeroing
         # their columns at the model input. RWKV_ZERO_FEATURES="22" (comma-separated dims of
         # the 92) zeroes those columns in BOTH training and eval, so the column is constant 0
@@ -539,6 +548,10 @@ class SrsRWKV(ModuleType):
             + AHEAD_LOGITS_MAG_LOSS_SCALE * ahead_logits_mag_avg
             + AHEAD_LOGITS_DIFF_LOSS_SCALE * ahead_logits_diff_avg
         )
+        if self.pbin_scale != 0.0:
+            # iter 17: the benchmark-imm objective, trained directly (see __init__ note).
+            pbin_avg = (p_binary_loss * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
+            loss_avg = loss_avg + self.pbin_scale * pbin_avg
         # KD (RWKV_QAT_KD, task22): distill from the un-quantized fp32 champion during QAT. Anchors the
         # base against drift while the net learns quant robustness. kd = (teacher_p_logits,
         # teacher_curve_probs, lambda), computed in train_rwkv under no_grad. Soft-label CE on the 4-way
