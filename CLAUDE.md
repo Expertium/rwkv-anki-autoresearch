@@ -664,19 +664,33 @@ RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_E
   `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (auto-discovers the newest
   `*_ws_trace.jsonl`, champion ref from champion json).
 
-**→ ALSO LIVE: anki-revlogs-10k-id DATASET BUILD (Andrew 2026-07-15, detached pid 29176,
-`scratchpad/dataset_id/run_build_id.cmd`, log build_id.log):** rebuild the 10k dataset from the
-raw HF release (`anki-revlogs-10k-raw`, revlogs.7z 7.9 GiB) with **REAL Anki IDs kept** (no
-factorize — card/note/deck/preset ids are creation epoch-ms) **+ the review-time correction:
-`review_time = revlog id − taken_millis`** (id is stamped at ANSWER; the correction recovers the
-SHOW moment; day_offset/elapsed_days/elapsed_seconds/sort all use it — Andrew's directive; raw id
-recoverable as review_time + duration). Output `C:/Users/Andrew/anki-revlogs-10k-id`
-({revlogs,cards,decks}/user_id=N/data.parquet, user numbering == published set); staging
-`...-10k-id-raw`. Pipeline: download (resumable, size-gated 8,459,427,959) → py7zr extract
-(markered) → WAITS for iter18 DONE_EXIT → 6-proc build (resumable per user). Feeds
-FUTURE_FEATURES.md. Builder = `scratchpad/dataset_id/build_parquet_id.py` (adapted from the
-upstream anki-revlogs-dataset-builder; stats_pb2 compiled locally from its self-contained
-stats.proto — the repo's checked-in stats_pb2.py needs Anki's proto tree, don't use it).
+**★ anki-revlogs-10k-id DATASET DONE (2026-07-16 00:07, 16.2 GB at
+`C:/Users/Andrew/anki-revlogs-10k-id`):** the 10k dataset rebuilt from the raw HF release with
+**REAL Anki epoch-ms IDs** (card/note/deck/parent/preset — no factorize) **+ corrected
+`review_time = revlog id − taken_millis`** (show time, Andrew's directive; raw answer id =
+review_time + duration; day_offset/elapsed_*/sort all use the corrected time). User numbering
+== published set (file stems). VERIFIED vs published: user 70 row set identical (720,110 rows,
+ratings 1:1 aligned by answer time), day_offset differs on exactly 1 row (show-time crossed the
+day rollover — the intended effect); 10,000/10,000 revlog+deck tables, 9,934 card tables (==
+published exactly). Builder `scratchpad/dataset_id/build_parquet_id.py` (resumable). Staging
+`...-10k-id-raw` (archive + extracted protobufs ~40 GB — deletable once the parquets are
+trusted). Follow-on work: a NEW preprocessing pipeline deriving FUTURE_FEATURES.md features
+from the real timestamps.
+
+**→ LIVE RUN: TRACK-2 A1 (detached pid 33100, launched 2026-07-16 00:08, verdict ~11:00) =
+ALL CHANNEL MIXERS → cmf 1.0** on the exact A0 recipe: **2,320,516 params (cut 442,368** of
+A0's 2,762,884; mixers were 972,800 = 35% of the model — biggest best-motivated target; d=32
+found mixer width contributes ~nothing at 5k data). **GATE: 100k·ΔLL/Δparams ≤ 0.0001 BOTH
+modes vs A0 on the finite-user intersection ⇒ allowed degradation ≤ 0.000442/mode**
+(`paired_pvalue.py --intersect` ADDED + tested — reproduces A0-vs-upstream −0.003714/−0.004376
+on n=4993). vprune vs champion_5k_track2.json (A0's 23-point val trace). Pipeline
+`scratchpad/track2_a1/` (arch `architecture_d128_cmix1.py` via RWKV_ARCH_MODULE; MAX=32768
+incl. decay arg 10; EMPTY_CACHE_EVERY=1 WINDOW=0; eval unsharded). ON VERDICT: ratio =
+100,000·Δ/442,368 from PAIRED_P_JSON deltas; record research_5k.md track-2 row (4dp) +
+research_log.jsonl + verbose + this file + commit/push; if accepted A1 = new track-2 champion
+("before" for A2; re-anchor vprune ref via promote --out champion_5k_track2.json). Track-2
+queue after: layer cuts (user/deck 4L→3L ~149k each), LoRA-dim cuts, d_model 128→96. Track-1
+queue: PBIN_SCALE=0.25 variant, cross-head readout mix, permutation init (LOW).
 
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =

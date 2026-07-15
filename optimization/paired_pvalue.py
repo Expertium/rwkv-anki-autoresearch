@@ -41,14 +41,28 @@ def load_logloss(path):
     return out
 
 
-def compare(cand_path, champ_path, mode):
+def compare(cand_path, champ_path, mode, intersect=False):
     cand = load_logloss(cand_path)
     champ = load_logloss(champ_path)
     if set(cand) != set(champ):
-        only_c = sorted(set(cand) - set(champ))[:5]
-        only_h = sorted(set(champ) - set(cand))[:5]
-        raise SystemExit(f"ERROR [{mode}]: user sets differ (n_cand={len(cand)} n_champ={len(champ)}; "
-                         f"cand-only {only_c} champ-only {only_h}) -- not a paired comparison")
+        if intersect:
+            # --intersect (track-2, 2026-07-15): the 1-ep d=128 models NaN-skip a few
+            # mega-chunk users (whole-user skips, recorded in *.nanskip.jsonl), and each
+            # model may skip a DIFFERENT set -- compare on the finite-user intersection.
+            common = set(cand) & set(champ)
+            print(f"[{mode}] intersect: n_cand={len(cand)} n_champ={len(champ)} -> "
+                  f"common={len(common)} (dropped {len(cand) - len(common)} cand-only, "
+                  f"{len(champ) - len(common)} champ-only)")
+            if len(common) < 4000:
+                raise SystemExit(f"ERROR [{mode}]: intersection suspiciously small ({len(common)})")
+            cand = {u: v for u, v in cand.items() if u in common}
+            champ = {u: v for u, v in champ.items() if u in common}
+        else:
+            only_c = sorted(set(cand) - set(champ))[:5]
+            only_h = sorted(set(champ) - set(cand))[:5]
+            raise SystemExit(f"ERROR [{mode}]: user sets differ (n_cand={len(cand)} n_champ={len(champ)}; "
+                             f"cand-only {only_c} champ-only {only_h}) -- not a paired comparison "
+                             f"(use --intersect for track-2 NaN-skip models)")
     users = sorted(cand)
     # positive diff = candidate improved (lower logloss) on that user
     diffs = [champ[u] - cand[u] for u in users]
@@ -74,10 +88,12 @@ def main():
     ap.add_argument("--cand-imm", required=True)
     ap.add_argument("--champ-ahead", required=True)
     ap.add_argument("--champ-imm", required=True)
+    ap.add_argument("--intersect", action="store_true",
+                    help="compare on the intersection of user sets (track-2: NaN-skip models)")
     args = ap.parse_args()
 
-    results = [compare(args.cand_ahead, args.champ_ahead, "ahead"),
-               compare(args.cand_imm, args.champ_imm, "imm")]
+    results = [compare(args.cand_ahead, args.champ_ahead, "ahead", args.intersect),
+               compare(args.cand_imm, args.champ_imm, "imm", args.intersect)]
     for r in results:
         print(f"[{r['mode']:5s}] n={r['n']}  champ={r['champ_mean']:.6f}  cand={r['cand_mean']:.6f}  "
               f"delta={r['delta']:+.6f}  wilcoxon_p={r['wilcoxon_p']:.3e}  "
