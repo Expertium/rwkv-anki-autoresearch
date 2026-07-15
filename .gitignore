@@ -62,3 +62,10 @@ trace_user_*.json
 # cb_shift_final.txt, referenced by champion_5k.json) and they don't match these patterns.
 *_shiftcb_*.txt
 *_wkvcb_*.txt
+
+# Per-run exported codebooks: only the CURRENT QAT deploy-truth champion's are tracked
+# (git add -f when a new QAT champion is promoted). Everything else stays untracked.
+scratchpad/*/cb_shift_*.txt
+scratchpad/*/cb_wkv_*.txt
+!scratchpad/champ5k_b1/cb_shift_*.txt
+!scratchpad/champ5k_b1/cb_wkv_*.txt
