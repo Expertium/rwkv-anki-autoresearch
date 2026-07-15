@@ -310,13 +310,28 @@ def run(
             label_elapsed_seconds = {}
             imm_ps_all = {}
             w_list = []
+            nan_batches = []
             for batch_i, batch in enumerate(batches):
                 print("batch_i, batch:", batch_i, batch)
                 batch = data_fetcher.get(f"validate-{user_id}-{batch_i}")
+                if nan_batches:
+                    # user already failed -- drain the prefetched batch (frees fetcher RAM)
+                    # but skip the forward
+                    continue
                 batch = batch.to(config.DEVICE)
 
                 with torch.inference_mode():
                     stats = model.get_loss(batch)
+                    if stats is None:
+                        # get_loss's NaN guard fired (model emitted NaN logits -- first hit
+                        # 2026-07-15: the 1-ep d=128 A0 NaNs on 1,048,576-token mega-chunks
+                        # it never saw at MAX=32768 training). Record + skip the USER
+                        # entirely (no partial rows -- partial stats would silently change
+                        # that user's equalized "size").
+                        print(f"NAN_SKIP user {user_id} batch {batch_i} {batches[batch_i]}")
+                        nan_batches.append(batch_i)
+                        torch.cuda.empty_cache()
+                        continue
                     print(
                         f"{user_id} ahead_loss: {stats.ahead_equalize_avg.item():.3f}, imm_loss: {stats.imm_binary_equalize_avg.item():.3f}, imm_n: {stats.imm_binary_equalize_n}"
                     )
@@ -346,6 +361,12 @@ def run(
             if (i + 1) % 20 == 0:
                 print("Emptying cache.")
                 torch.cuda.empty_cache()
+
+            if nan_batches:
+                with open(f"result/{config.FILE_AHEAD}.nanskip.jsonl", "a") as f:
+                    f.write(json.dumps({"user": user_id, "nan_batches": nan_batches,
+                                        "n_batches": len(batches)}) + "\n")
+                continue
 
             ahead_stats, ahead_raw = get_stats(
                 user_id, equalize_review_ths, rmse_bins_dict, ahead_ps, label_ratings
@@ -427,8 +448,19 @@ def main(config):
     ahead_users_raw = fetch(path_ahead_raw)
     imm_users_raw = fetch(path_imm_raw)
 
+    # Users recorded as NaN-skipped (get_loss NaN guard) count as processed on resume --
+    # re-running them would just re-NaN and duplicate skip lines.
+    nanskip_path = Path(f"result/{config.FILE_AHEAD}.nanskip.jsonl")
+    nanskip_users = set()
+    if nanskip_path.exists():
+        with open(nanskip_path, encoding="utf-8") as fh:
+            nanskip_users = {json.loads(line)["user"] for line in fh if line.strip()}
+        print(f"nanskip resume: {len(nanskip_users)} users already recorded as NaN-skipped")
+
     unprocessed_users = []
     for user_id in target_users:
+        if user_id in nanskip_users:
+            continue
         if (
             config.RAW
             and user_id in ahead_users_result
@@ -484,7 +516,10 @@ def main(config):
                 path_imm_raw,
             )
         except Exception:
+            # Print AND re-raise: the old swallow made a mid-run crash exit 0 (hit 2026-07-15:
+            # AttributeError at user 6701 -> shard "succeeded" with 1700/5000 users).
             traceback.print_exc()
+            raise
         finally:
             for process in prepare_processes:
                 process.terminate()

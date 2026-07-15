@@ -210,11 +210,44 @@ def main():
     wait_all([(f"s{i}", launch(t, f"s{i}", args.threads_per_shard))
               for i, t in enumerate(shard_tomls)], "shard")
 
+    merged_sets = {}
     for mode_file in (file_ahead, file_imm):
         paths = [os.path.join("result", f"{mode_file}-{t}.jsonl") for t in tags]
         records = merge_jsonl(paths, os.path.join("result", f"{mode_file}.jsonl"))
         mean_ll = statistics.mean(r["metrics"]["LogLoss"] for r in records)
+        merged_sets[mode_file] = {r["user"] for r in records}
         print(f"MERGED {mode_file}: {len(records)} users, by-user mean LogLoss {mean_ll:.6f}")
+
+    # Completeness gate (added 2026-07-15 after the A0 eval crashed at user 6701 mid-shard
+    # yet exited 0 -> a silent 1700/5000 "success"): every rostered user must be either
+    # merged or explicitly NaN-skipped (get_result's get_loss NaN guard writes
+    # <FILE_AHEAD>.nanskip.jsonl). Anything else = incomplete eval = nonzero exit.
+    nanskips = {}
+    for t in tags:
+        p = os.path.join("result", f"{file_ahead}-{t}.nanskip.jsonl")
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as fh:
+                for line in fh:
+                    if line.strip():
+                        r = json.loads(line)
+                        nanskips[r["user"]] = r
+    if nanskips:
+        out = os.path.join("result", f"{file_ahead}.nanskip.jsonl")
+        with open(out, "w", encoding="utf-8") as fh:
+            for u in sorted(nanskips):
+                fh.write(json.dumps(nanskips[u]) + "\n")
+        print(f"NANSKIP: {len(nanskips)} users skipped by the NaN guard -> {out}: {sorted(nanskips)}")
+    if merged_sets[file_ahead] != merged_sets[file_imm]:
+        print(f"MODE MISMATCH: ahead/imm merged user sets differ "
+              f"(sym-diff {sorted(merged_sets[file_ahead] ^ merged_sets[file_imm])[:20]})")
+        sys.exit(3)
+    missing = set(sizes) - merged_sets[file_ahead] - set(nanskips)
+    if missing:
+        print(f"INCOMPLETE: {len(missing)} users neither merged nor NaN-skipped: "
+              f"{sorted(missing)[:20]}{' ...' if len(missing) > 20 else ''}")
+        sys.exit(3)
+    print(f"COMPLETE: {len(merged_sets[file_ahead])} merged + {len(nanskips)} nan-skipped "
+          f"= {len(sizes)} rostered")
 
 
 if __name__ == "__main__":
