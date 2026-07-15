@@ -630,13 +630,13 @@ Pairing needs identical db/MAX/seeds.
   candidates use RWKV_VPRUNE_REF=champion_5k_plain.json). Plain vs QAT-era logloss NOT
   comparable. (2) **TWO RESEARCH TRACKS, ~12h alternating blocks, two tables in
   research_5k.md:** Track 1 = improve the d=32 model (gate unchanged: >=0.0003 both + p<1e-4
-  both, params <=225k). Track 2 = ABLATE the old d=128 model; gate =
-  50,000*(LL_after-LL_before)/(params_before-params_after) <= 0.0001 in BOTH modes (params
-  strictly decrease; "before" = current track-2 champion; rows A0,A1,...). Track-2 anchor A0 =
-  d=128 arch retrained through OUR plain 1-ep pipeline at MAX=66000 (fits 12 GB; the 12-ep
-  upstream .pth is NOT budget-comparable; ~6.5h train + ~6h eval, unshardable VRAM-wise).
-  Context: the whole d=128->d=32 collapse = 0.0002/50k ahead, 0.00026/50k imm -- the bar
-  demands ~2-2.6x better than that average. A0 also A/Bs the 1-ep budget at 14x params. TODO
+  both, params <=225k). Track 2 = ABLATE the old d=128 model; gate **UPDATED
+  (Andrew 2026-07-15): 100,000*(LL_after-LL_before)/(params_before-params_after) <= 0.0001 in
+  BOTH modes** (tightened from per-50k after A0 landed: the plain-vs-plain collapse
+  A0->champ5k_plain costs 0.000074/0.000086 per 50k, so the old bar accepted ablations no better
+  than the collapse average; the per-100k bar demands ~1.5-1.7x better) (params strictly
+  decrease; "before" = current track-2 champion; rows A0,A1,...). Track-2 anchor A0 = d=128 arch
+  retrained through OUR plain 1-ep pipeline at MAX=32768 (the track-2 standard). A0 also A/Bs the 1-ep budget at 14x params. TODO
   at A0 launch: env-based arch-module selector in architecture.py (NOT the KD-dump file-swap).
   (3) **POWER-USER-AWARE EVAL LANDED (eval_sharded.py rewritten, dry-run tested):** users >=1M
   work (56 = 11.3% of eval work on 5001-10000; top-7 ~2.1M) run SOLO first (one process,

@@ -50,14 +50,17 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 
 Start = the upstream d=128 arch retrained through the CURRENT track-1 pipeline (plain, 1 ep WS +
 0.25 ep decay, **MAX=32768** — the track-2 standard; 66000 thrashes 12 GB at d=128; the upstream
-.pth got 12 epochs and is not budget-comparable). `ratio` = `50,000·ΔLL/Δparams` per mode;
-**accept iff BOTH ≤ 0.0001**. Current track-2 champion = the highest-A accepted row.
+.pth got 12 epochs and is not budget-comparable). `ratio` = `100,000·ΔLL/Δparams` per mode;
+**accept iff BOTH ≤ 0.0001** (Andrew 2026-07-15, tightened from per-50k: the A0-vs-champ5k_plain
+collapse itself costs 0.000074/0.000086 per 50k — the old bar would accept ablations no better
+than the collapse average; the per-100k bar demands ~1.5–1.7× better). Current track-2 champion
+= the highest-A accepted row.
 ⚠ n=4993: the 1-ep d=128 anchor NaNs on 7 mega-chunk eval users (≥500k-token segments; recorded
 in `result/RWKV-track2_a0.nanskip.jsonl`) — all track-2 comparisons run on the finite-user
 intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0.0044 worse
 (the 1-ep budget tax at d=128); vs champ5k_plain (193,724 params) −0.0036/−0.0042 better
 (what 2.57M extra params buy at matched budget).
 
-| iter | ahead | imm | status | params | Δparams | ratio a/i (per 50k) | provenance | summary |
+| iter | ahead | imm | status | params | Δparams | ratio a/i (per 100k) | provenance | summary |
 |---|---|---|---|---|---|---|---|---|
 | A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
