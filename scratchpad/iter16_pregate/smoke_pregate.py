@@ -33,13 +33,22 @@ if on:
     # identity at zero-init: gate output must equal input exactly
     y = model._apply_prehead_gate(x)
     assert torch.equal(x, y), "gate is not identity at zero-init"
-    # gradient flow to the gate Parameters through the scripted path
+    # gradient flow to the gate Parameters through the scripted path (values are 0 at init
+    # because the head linears are zero-init; not-None proves graph connectivity)
     loss = out_ahead.sum() + out_p.sum() + out_w.sum()
     loss.backward()
     gw = model.prehead_gate_weight.grad
     gb = model.prehead_gate_bias.grad
     assert gw is not None and gb is not None, "no grad reached the gate parameters"
-    print(f"identity-at-init PASS; grad flow PASS (|gw| {gw.abs().sum():.4f}, |gb| {gb.abs().sum():.4f})")
+    print("identity-at-init PASS; grad connectivity PASS")
+
+# the train_rwkv model setup path (died 2026-07-15: root-level gate Parameters were
+# invisible to selective_cast's module walk -> copy_downcast_ dtype assert)
+child = SrsRWKV(DEFAULT_ANKI_RWKV_CONFIG).selective_cast(torch.bfloat16)
+child.copy_downcast_(model, dtype=torch.bfloat16)
+if on:
+    assert child.prehead_gate_weight.dtype == torch.bfloat16
+print("selective_cast + copy_downcast_ OK")
 """
 
 def run(env_extra, label):

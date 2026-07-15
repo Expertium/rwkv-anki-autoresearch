@@ -648,6 +648,15 @@ class SrsRWKV(ModuleType):
                     raise ValueError("not tested.")
                 elif dtype == torch.float32:
                     pass
+        if dtype == torch.bfloat16:
+            # ROOT-LEVEL direct Parameters (prehead_gate_weight/grade_emb_weight -- the
+            # jit.ignore-safe Parameter form, iter 16) are invisible to the module walk
+            # above (the root is skipped so the excluded fp32 heads survive), so cast them
+            # explicitly here; copy_downcast_ asserts child dtype == bf16 for non-excluded
+            # names and crashed without this (2026-07-15).
+            for pname, p in self.named_parameters(recurse=False):
+                if not is_excluded(pname):
+                    p.data = p.data.to(dtype)
         return self
 
 
