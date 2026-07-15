@@ -249,9 +249,16 @@ class SrsRWKV(ModuleType):
             torch.nn.init.zeros_(self.p_linear.weight)
             self.p_linear.bias.copy_(torch.tensor([-0.3512, -0.0802, 0.4297, -0.2041]))
 
+            # ⚠ CONDITIONAL LEARNABLES BEHIND jit.ignore MUST BE Parameters, NOT submodules
+            # (iter-16 hollow-run lesson, 2026-07-15): calling a SUBMODULE from a
+            # @torch.jit.ignore method invoked THROUGH scripted code fails at runtime with
+            # "'torch._C.ScriptModule' object is not callable" (the ignored body sees the raw
+            # C++ module). Plain tensor/Parameter attribute access works (proven by the
+            # iter-15 feat-mask full run) -- so use Parameters + F.linear. Names keep
+            # "weight"/2D so train_rwkv's optimizer groups classify them like the Linear
+            # equivalents (weight -> decayed, bias -> wd=0).
             if self.grade_emb_on:
-                self.grade_emb = torch.nn.Linear(4, self.d_model, bias=False)
-                torch.nn.init.zeros_(self.grade_emb.weight)
+                self.grade_emb_weight = torch.nn.Parameter(torch.zeros(self.d_model, 4))
 
             # Research iter 16 (2026-07-15): prehead OUTPUT GATE. RWKV_PREHEAD_GATE=1 adds
             # x = x * (2 * sigmoid(W x + b)) between prehead norm/dropout and the three heads
@@ -259,9 +266,10 @@ class SrsRWKV(ModuleType):
             # Zero-init W,b -> 2*sigmoid(0) = 1.0 = EXACT identity at init (grade-emb
             # discipline); range (0,2) so it can also amplify. +d*d+d = 1,056 params at d=32.
             if self.prehead_gate_on:
-                self.prehead_gate = torch.nn.Linear(self.d_model, self.d_model)
-                torch.nn.init.zeros_(self.prehead_gate.weight)
-                torch.nn.init.zeros_(self.prehead_gate.bias)
+                self.prehead_gate_weight = torch.nn.Parameter(
+                    torch.zeros(self.d_model, self.d_model)
+                )
+                self.prehead_gate_bias = torch.nn.Parameter(torch.zeros(self.d_model))
 
     @torch.jit.ignore
     def _apply_input_feat_mask(self, batch_start: torch.Tensor) -> torch.Tensor:
@@ -272,15 +280,18 @@ class SrsRWKV(ModuleType):
     @torch.jit.ignore
     def _apply_grade_emb(self, x: torch.Tensor, batch_start: torch.Tensor) -> torch.Tensor:
         # TorchScript-safe indirection: grade_emb only exists when RWKV_GRADE_EMB=1, and the
-        # scripted forward_batch must not reference a conditionally-created submodule (the
-        # compiler resolves attributes even in dead branches). Ignored body runs in Python.
-        return x + self.grade_emb(batch_start[:, 9:13])
+        # scripted forward_batch must not reference a conditionally-created attribute (the
+        # compiler resolves attributes even in dead branches). Ignored body runs in Python --
+        # and must use F.linear on a Parameter, NOT a submodule call (see the __init__ note).
+        return x + torch.nn.functional.linear(batch_start[:, 9:13], self.grade_emb_weight)
 
     @torch.jit.ignore
     def _apply_prehead_gate(self, x: torch.Tensor) -> torch.Tensor:
-        # TorchScript-safe indirection (same reason as _apply_grade_emb): prehead_gate only
-        # exists when RWKV_PREHEAD_GATE=1.
-        return x * (2.0 * torch.sigmoid(self.prehead_gate(x)))
+        # TorchScript-safe indirection (same reason as _apply_grade_emb): the gate params
+        # only exist when RWKV_PREHEAD_GATE=1. F.linear on Parameters, NOT a submodule call
+        # (see the __init__ note -- submodule calls from ignored methods crash under JIT).
+        return x * (2.0 * torch.sigmoid(torch.nn.functional.linear(
+            x, self.prehead_gate_weight, self.prehead_gate_bias)))
 
     @FunctionType
     def head_and_out(self, input):
