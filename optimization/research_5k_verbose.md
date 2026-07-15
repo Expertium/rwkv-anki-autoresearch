@@ -287,3 +287,19 @@ RWKV_PBIN_SCALE=0.25 (halve the pressure; hope: keep ~half the imm gain at ~no a
 pbin + AHEAD_SCALE up-weighted to rebalance. Run after the directed iter 18 (duration ablation)
 and the track-2 A1 block. Clean pipeline: WS 91 min (never vprune-threatened), decay 22 min,
 phased eval 76 min. Hook stays env-gated, default off.
+
+### Iter 18 — review-duration ablation (directed, REJECTED 2026-07-15 23:45): duration is real signal
+
+**Andrew's directive:** drop the review-duration input (dim 8, scaled_duration) alongside the
+already-dropped review-state (dim 22) — RWKV_ZERO_FEATURES=8,22 on the exact iter-15 recipe.
+**Directed gate: accept iff BOTH modes degrade ≤ 0.0003** (mirror of the add-gate threshold).
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.305465 / imm 0.275640 = +0.001802 / +0.002413 worse
+than iter15 — REJECTED at 6–8× the tolerance.** Since query rows already zero duration (it is
+answer-derived), this measured purely the HISTORICAL-duration contribution to the sequence
+encoding — and it is large. Slow answers mark weak memories; no other input feature recovers
+that signal. Deploy keeps feeding duration (trivially available in Anki). Unlike iters 9–13,
+the persistent ~+0.002 joint val deficit was an honest predictor of the final verdict — val
+gaps mean something when they are consistent across the whole run rather than oscillating.
+Champion recipe stays RWKV_ZERO_FEATURES=22. Feature-ablation family: 1 accept (state,
+~free) / 1 reject (duration, harmful to drop).

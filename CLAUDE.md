@@ -612,19 +612,17 @@ TRADE** — imm +0.000387 BETTER (p=1.7e-173, clears the bar) but ahead −0.000
 the first real (non-null) plain-era effect. Loss-reweighting family 0/1 with signal; **variant
 queued: PBIN_SCALE=0.25** (after iter 18 + A1). Detail: research_5k_verbose.md.
 
-**→ LIVE RUN: iter 18 (detached pid 30384, launched 2026-07-15 ~20:45, verdict ~23:55) =
-ABLATE REVIEW DURATION (Andrew's directive): RWKV_ZERO_FEATURES=8,22** (duration dim 8 +
-review-state dim 22) on the exact iter-15 champion recipe. **DIRECTED GATE: accept iff BOTH
-modes get worse by ≤ 0.0003 vs iter15** (mirrors the add-gate; query rows already zero duration
-→ this removes only HISTORICAL durations from the encoding). Smoke ALL_PASS (both dims masked,
-scripted path). Pipeline `scratchpad/iter18_nodur/`; vprune ON (a kill = definitive reject).
-ON VERDICT: read deltas from PAIRED_P_JSON in the log; if accepted → promote
-(promote_champion_5k.py --out champion_5k_plain.json --val-trace), ZERO_FEATURES=8,22 becomes
-champion recipe (deploy drops duration too); record everywhere (4dp) + commit/push.
-Then **TRACK-2 A1** (first ablation: layer / d_model / mixer / LoRA-dim / head-width cuts ranked
-by expected ratio-efficiency; arch file via RWKV_ARCH_MODULE; per-100k gate vs A0; needs
-paired_pvalue --intersect first). Track-1 queue after: PBIN_SCALE=0.25 variant, cross-head
-readout mix variant, permutation init (LOW).
+**Iter 18 REJECTED (directed, 2026-07-15 23:45): duration ablation (ZERO_FEATURES=8,22) =
++0.0018 ahead / +0.0024 imm worse — 6-8x the ≤0.0003 tolerance. Review duration is REAL signal
+(historical answer times predict retention; nothing else recovers it); deploy keeps feeding it.
+Champion recipe stays RWKV_ZERO_FEATURES=22 only.** The honest persistent val deficit predicted
+this one (consistent-all-run val gaps mean something; oscillating ones don't).
+
+**→ NEXT: TRACK-2 A1** (first d=128 ablation: layer / d_model / mixer / LoRA-dim / head-width
+cuts ranked by expected ratio-efficiency; arch file via RWKV_ARCH_MODULE; per-100k gate vs A0;
+**needs paired_pvalue --intersect first**; launch AFTER the 10k-id build's ALL_DONE releases the
+CPU). Track-1 queue after: PBIN_SCALE=0.25 variant, cross-head readout mix variant, permutation
+init (LOW).
 
 **Family scoreboard (track 1, plain+QAT eras; conduct rule 5 — 1-2 rejects = deprioritized, NOT
 closed):** early-training-intervention 0/2 (shrink-perturb, warmup-KD — both led early val then
