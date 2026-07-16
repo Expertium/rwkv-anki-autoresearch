@@ -20,13 +20,13 @@ exists; the `#N` references below are its row numbers.
 ## Candidate new features (consolidated after Andrew's cross-check)
 | Priority | Feature | Notes |
 |---|---|---|
-| high | Time-of-day, **user-relative** (deviation from the user's own median review hour, sin/cos) | Andrew's #1; sidesteps the unknown-timezone problem (Unix time is UTC). Andrew 👍 |
+| high | Time-of-day: raw sin/cos of the 24 h phase, plus **user-relative deviation from a running *circular mean*** (per-user state = 2 floats: S += sin θ, C += cos θ over all prior reviews; usual hour = atan2(S,C)) | Andrew's #1; sidesteps the unknown-timezone problem (a timezone = constant phase offset, cancels in the deviation). Circular mean replaces the original "median hour" idea (Andrew's efficiency concern 2026-07-16): O(1)/review, 8 B/user, and circular-correct where a median breaks for around-midnight reviewers. Plain running mean, NO decay (Andrew 2026-07-16: EMA not needed). Fallback worth A/B-ing: raw phase only — the recurrent user stream can learn "usual hour" internally. |
 | high | **Real-phase** calendar cycles (true day-of-week/month/year/decade, sin/cos) | Andrew's #2; upgrades #11/#22–28 from pseudo- to true phase → shared weekend/holiday effects across users. Weekend/weekday binary as the cheap special case (👍). |
 | high | First review − card creation | Andrew's #3; completes card age: #2/#5 count from FIRST REVIEW, this covers creation→first-review. |
 | high | Seconds-resolution "time since any review" (session position) | #10 is integer-day (built from day_offset) → sub-day session structure is invisible today. Continuous gap ≫ arbitrary session-split heuristics. |
 | med | Creation-batch size at ±1 min / ±1 h / same day (+ position in batch) | Andrew's #4 generalized; import-vs-handmade signal. Andrew 👍 |
 | med | User tenure (time since user's first-ever review) | Confirmed NOT in the table. |
-| med | note_id/deck_id ages: card − deck creation, deck age at review | Early core card vs late addition. Andrew 👍 |
+| med | note_id/deck_id/preset_id ages: card − deck creation, card - preset creation, deck age at review, preset age at review, deck − preset creation | Early core card vs late addition; preset ids are creation timestamps too (Andrew 2026-07-16: use both). ⚠ the DEFAULT deck and DEFAULT preset both have id 1 (constant, not a timestamp) — derive an is-default flag for those instead of an age. Andrew 👍 |
 | low | Card created before vs after user's first-ever review | "Probably not important, but we can try" (Andrew). |
 | skip | card_id − note_id gap | ~always zero (cards generated at note creation) — not worth a dim. |
 | skip | Session count per day | Splitting is arbitrary; the sub-day #10 upgrade carries the signal continuously. |

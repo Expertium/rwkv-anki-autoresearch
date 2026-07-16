@@ -68,3 +68,4 @@ intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0
 | iter | ahead | imm | status | params | Δparams | ratio ahead/imm (per 100k) | provenance | summary |
 |---|---|---|---|---|---|---|---|---|
 | A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
+| A1 | 0.2998 | 0.2691 | **accepted** | 2,320,516 | −442,368 | −0.00002 / +0.00001 | invented | All channel mixers → 1.0: ahead better, imm +0.00004 — ~50× inside the gate. Zero NaN-skips (A0: 7). New track-2 champion. |

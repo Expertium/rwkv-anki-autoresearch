@@ -1,2 +1,3 @@
 {"name": "champ5k_r1", "date": "2026-07-08 18:23:46", "final_ahead": 0.306572, "final_imm": 0.278323, "n_trace_steps": 13108, "ckpt": "scratchpad/champ5k_r1/champ5kd_3277.pth", "cb_wkv": "scratchpad/champ5k_r1/cb_wkv_final.txt", "cb_shift": "scratchpad/champ5k_r1/cb_shift_final.txt"}
 {"name": "champ5k_plain", "date": "2026-07-14 15:53:47", "final_ahead": 0.303734, "final_imm": 0.273448, "n_trace_steps": 6554, "ckpt": "scratchpad/champ5k_plain/champ5kplaind_1638.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "track2_a0", "date": "2026-07-15 10:44:35", "final_ahead": 0.299857, "final_imm": 0.26903, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a0/t2a0d_5586.pth", "cb_wkv": "", "cb_shift": ""}

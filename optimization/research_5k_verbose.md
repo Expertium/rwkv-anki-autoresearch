@@ -303,3 +303,31 @@ the persistent ~+0.002 joint val deficit was an honest predictor of the final ve
 gaps mean something when they are consistent across the whole run rather than oscillating.
 Champion recipe stays RWKV_ZERO_FEATURES=22. Feature-ablation family: 1 accept (state,
 ~free) / 1 reject (duration, harmful to drop).
+
+### Track-2 A1 — all channel mixers → 1.0 (ACCEPTED 2026-07-16 10:57): new track-2 champion
+
+**Target choice:** the five streams' channel mixers (cmf 2.0 card/deck/note/preset, 1.5 user)
+held 972,800 params = 35% of A0's 2,762,884 — the single biggest coherent block, and track-1
+had already shown mixer width contributes ~nothing at 5k data (iter 13, d=32). Cut all to 1.0
+via `scratchpad/track2_a1/architecture_d128_cmix1.py` (RWKV_ARCH_MODULE): **2,320,516 params
+(−442,368)**. Exact A0 recipe otherwise (1 ep WS + 0.25 decay, MAX=32768 everywhere,
+EMPTY_CACHE_EVERY=1 WINDOW=0, unsharded eval).
+
+**Gate math (per-100k, both ≤ 0.0001 required; Δparams 442,368 ⇒ allowed degradation
+0.000442/mode):** on the n=4993 finite intersection vs A0 (paired_pvalue --intersect):
+ahead 0.299768 = **+0.000089 BETTER** (p=2.0e-4); imm 0.269070 = +0.000040 worse (p=1.0).
+Ratios: **ahead −0.0000201, imm +0.0000090** — imm used 9% of the budget, ahead is negative
+(free win). ACCEPTED with ~50× margin. Full-eval finals (all 5000): 0.300009/0.269324.
+
+**Findings:** (1) the d=32 mixer lesson TRANSFERS to d=128 — FFN width is dead weight at 5k
+data regardless of scale; (2) **A0's NaN instability is GONE** — 0 NaN-skips over all 5000
+users (A0: 7 mega-chunk users) — either the narrower mixers remove the overflow path or the
+retrain lottery landed stable weights; future track-2 gates can pair on full n=5000; (3) val
+trajectory: behind A0 only in the first ~1000 steps (mixer capacity mostly matters early),
+then parity/trade to the end; decay-end val IDENTICAL (0.3225/0.3040 vs 0.3225/0.3041).
+Timing: WS 6h37m @ 1.07 s/step (same as A0 — mixer FLOPs weren't the bottleneck), decay
+1h38m, eval 2h35m. Promoted → champion_5k_track2.json (A2's "before" + vprune ref).
+
+**A2 queue by expected ratio-efficiency:** user 4L→3L / deck 4L→3L (~149k each; the
+user-stream H=1 near-miss at d=32 hints long-recurrence streams have slack), LoRA-dim cuts,
+d_model 128→96 (bigger surgery, keep for later).

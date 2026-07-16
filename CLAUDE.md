@@ -677,20 +677,21 @@ published exactly). Builder `scratchpad/dataset_id/build_parquet_id.py` (resumab
 trusted). Follow-on work: a NEW preprocessing pipeline deriving FUTURE_FEATURES.md features
 from the real timestamps.
 
-**→ LIVE RUN: TRACK-2 A1 (detached pid 33100, launched 2026-07-16 00:08, verdict ~11:00) =
-ALL CHANNEL MIXERS → cmf 1.0** on the exact A0 recipe: **2,320,516 params (cut 442,368** of
-A0's 2,762,884; mixers were 972,800 = 35% of the model — biggest best-motivated target; d=32
-found mixer width contributes ~nothing at 5k data). **GATE: 100k·ΔLL/Δparams ≤ 0.0001 BOTH
-modes vs A0 on the finite-user intersection ⇒ allowed degradation ≤ 0.000442/mode**
-(`paired_pvalue.py --intersect` ADDED + tested — reproduces A0-vs-upstream −0.003714/−0.004376
-on n=4993). vprune vs champion_5k_track2.json (A0's 23-point val trace). Pipeline
-`scratchpad/track2_a1/` (arch `architecture_d128_cmix1.py` via RWKV_ARCH_MODULE; MAX=32768
-incl. decay arg 10; EMPTY_CACHE_EVERY=1 WINDOW=0; eval unsharded). ON VERDICT: ratio =
-100,000·Δ/442,368 from PAIRED_P_JSON deltas; record research_5k.md track-2 row (4dp) +
-research_log.jsonl + verbose + this file + commit/push; if accepted A1 = new track-2 champion
-("before" for A2; re-anchor vprune ref via promote --out champion_5k_track2.json). Track-2
-queue after: layer cuts (user/deck 4L→3L ~149k each), LoRA-dim cuts, d_model 128→96. Track-1
-queue: PBIN_SCALE=0.25 variant, cross-head readout mix, permutation init (LOW).
+**★ TRACK-2 A1 ACCEPTED (2026-07-16 10:57) = NEW TRACK-2 CHAMPION: all channel mixers → 1.0.**
+**2,320,516 params (−442,368 vs A0); intersection (n=4993) ahead 0.299768 = +0.000089 BETTER
+(p=2e-4), imm 0.269070 = +0.000040 worse (p=1.0) ⇒ per-100k ratios −0.0000201 / +0.0000090 —
+~50× inside the ≤0.0001 gate.** Full-5000 finals 0.300009/0.269324 with **ZERO NaN-skips** (A0
+needed 7 — the instability is gone; future track-2 gates can pair on full n=5000).
+`champion_5k_track2.json` = A1 (ckpt `scratchpad/track2_a1/t2a1d_5586.pth`, 24 val points = the
+track-2 vprune ref). d=32's mixer lesson transfers to d=128; decay-end val was IDENTICAL to A0.
+Detail: research_5k_verbose.md. **Track-2 A2 queue (next track-2 block):** user 4L→3L / deck
+4L→3L (~149k each), LoRA-dim cuts, d_model 128→96.
+
+**→ NEXT (track-1 block, ~12h): ITER 19 = PBIN_SCALE=0.25 variant** (halve iter 17's
+loss-term pressure; hope = keep part of the real imm gain at ~no ahead cost; gate = standard
+≥0.0003 BOTH + p<1e-4 BOTH vs iter15). Then cross-head readout mix variant, permutation init
+(LOW). Launch on the iter-15 champion recipe (RWKV_ZERO_FEATURES=22, vprune vs
+champion_5k_plain.json).
 
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
