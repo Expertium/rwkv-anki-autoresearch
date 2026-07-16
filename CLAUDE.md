@@ -640,6 +640,9 @@ RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYE
 RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32.
 
 **Live rules (5k phase, both tracks):**
+- **RWKV_NO_AHEAD_RESIDUAL=1 in EVERY future run, both tracks (Andrew 2026-07-16: the
+  piecewise-linear curve correction is DISABLED)** — track-1 iters and track-2 A3+ alike;
+  A2 grandfathered (mid-flight). Iter 22 measures the cost; re-baseline is Andrew's call.
 - **Track-2 (d=128) runs: RWKV_EMPTY_CACHE_EVERY=1 + RWKV_EMPTY_CACHE_WINDOW=0** (whole-run
   per-step clears — allocator-envelope creep → WDDM paging → 4x slowdown otherwise; ~free under
   the ~1 s step). **MAX=32768 EVERYWHERE incl. `write_decay_setup.py` arg 10** (its 110000
@@ -711,12 +714,26 @@ the readout channel is information-poor + regularization-hungry, not capacity-li
 architecture_d128_cmix1_deck3.py`; expected cut ~110k params → allowed ≤ ~0.00011/mode
 vs A1, full n=5000 pairing; **first run recording RWKV_GRAD_STATS**
 (`t2a2_grad_stats_{ws,decay}.json` → `optimization/grad_stats_report.py` ranks A3+ targets).
-**Iter 22 QUEUED BEHIND A2 (detached pid 15008, waitloop on A2's DONE_EXIT → self-starts
-~08:30; Andrew's directive 2026-07-16): MONOTONE CURVES — RWKV_MONO_CURVES=1 cummin
-projection on the ahead-logit residual → curve non-increasing in t by construction
-(MONOTONICITY_PLAN.md stage 2; 193,724 params, zero-init-neutral start; smoke ALL_PASS;
-verdict ~11:45).** **Gate = ANDREW DECIDES (2026-07-16): report both modes' finals, deltas
-vs iter 15, p-values, and nan_users to him and WAIT — no auto-accept/reject, no promotion.**
+**Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
+CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
+~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if
+RWKV-Curve is using a linear piecewise correction, and if so — disable it for both tracks."
+Confirmed: `curve_logits = logit(mixture) + interp(out_ahead_logits, t)` — a learned
+64/128-point residual linearly interpolated between log-spaced time points. New flag
+**RWKV_NO_AHEAD_RESIDUAL=1** (srs_model + srs_model_rnn) zeroes the residual outside
+autograd → curve = pure mixture-of-exponentials, monotone in t BY CONSTRUCTION (supersedes
+the cummin variant, which never trained; the raw-mixture BCE term AHEAD_RAW_SCALE=0.5
+already supervises the mixture directly). NaN probe moved to out_p_logits under the flag
+(zeros can't NaN — eval nanskip + train guard key off that probe). Params unchanged 193,724
+(~12.5k now dead at d=32; ~131.7k dead at d=128 — strippable at deploy/in a track-2 bundle).
+Smoke ALL_PASS (zero-residual, grad isolation, off-path byte-identity, JIT + NO_JIT).
+**MANDATORY RECIPE both tracks from now on: RWKV_NO_AHEAD_RESIDUAL=1 in every future run
+(track-1 iters AND track-2 A3+); A2 grandfathered (mid-flight, residual-on — its gate vs A1
+is within-family valid).** **Iter 22 gate = ANDREW DECIDES: report both modes' finals,
+deltas vs iter 15, p-values, and nan_users to him and WAIT — no auto-accept/reject, no
+promotion. Likely outcome: iter 22 becomes the new track-1 REFERENCE (directed re-baseline
+à la iter 14/15) since with-residual champions aren't fair gates for no-residual candidates;
+track 2 similarly needs a no-residual re-anchor decision at the A2 verdict.**
 Track-1 queue after: xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW).
 **Track-2 sizing recommendation (Andrew 2026-07-16, soft rule): aim for ≥5% param reduction
 per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
@@ -731,9 +748,10 @@ process; ahead_linear is zero-init (like W_o) — randomize before head perturb/
 `optimization/FUTURE_FEATURES.md` (real-timestamp features; needs a new dataset export — Andrew
 2026-07-15); **scheduling-monotonicity plan = `optimization/MONOTONICITY_PLAN.md`** (Andrew
 2026-07-16: button intervals can invert, e.g. Again > Hard — constraint must live IN the model;
-staged: audit → monotone-in-t bases → counterfactual button-consistency loss at segment-end
-states via the shelved stateful kernel → isotonic projection as part of the model at deploy;
-= the "curve-shape constraints" track-1 family); `optimization/LIT_REVIEW.md` queue;
+time-axis stage RESOLVED BY REMOVAL — the piecewise residual is disabled per Andrew's directive,
+curve now monotone in t by construction; remaining: audit → counterfactual button-consistency
+loss at segment-end states via the shelved stateful kernel → isotonic projection as part of the
+model at deploy; = the "curve-shape constraints" track-1 family); `optimization/LIT_REVIEW.md` queue;
 deploy-side state-norm clamp (NaN guard, MONOTONICITY_PLAN-adjacent ship-time work).
 
 ### Ops

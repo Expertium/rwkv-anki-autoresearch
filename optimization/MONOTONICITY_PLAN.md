@@ -36,6 +36,17 @@ level (each basis pointwise decreasing in t ⇒ any softmax mixture decreasing).
 accuracy risk expected; standard gate. Also enables sorting bases by pointwise strength,
 which any later structural rating-ordering trick would build on.
 
+**RESOLVED BY REMOVAL (Andrew 2026-07-16 late):** code audit showed the fixed 0.9^(t/s_i)
+bases are ALREADY monotone (softmax mixture of decreasing exponentials); the only
+non-monotone piece was the learned free residual added via piecewise-LINEAR interp over the
+64/128 log-spaced time points. First fix attempt = cummin projection of that residual
+(RWKV_MONO_CURVES, built + smoked, never trained). Superseded the same evening by Andrew's
+directive: **disable the piecewise correction entirely, both tracks**
+(RWKV_NO_AHEAD_RESIDUAL=1 → curve = pure mixture, monotone in t by construction; the
+raw-mixture BCE term AHEAD_RAW_SCALE=0.5 already supervises the mixture directly). Iter 22
+(redefined, `scratchpad/iter22_nores`) measures the accuracy cost; verdict is Andrew's call.
+Time-axis monotonicity needs no reparametrization anymore.
+
 ### Stage 2 — counterfactual button-consistency training (the main fix, soft)
 Add a training loss term mirroring the deploy computation exactly:
 - At each training SEGMENT END, take the full chained-model state — **the stateful WKV
@@ -75,6 +86,8 @@ too much logloss.
 - Post-lapse UX: Anki may show relearning steps for Again instead of the model interval —
   scheduler-side; unaffected by this plan.
 
-**Status:** recorded 2026-07-16 (during track-2 A2). Queued as the "curve-shape
-constraints" track-1 family: Stage 0 audit when compute frees up, Stage 1 as a normal
-iter, Stage 2 after (needs stateful-kernel wiring), Stage 3 at Rust-deploy time.
+**Status:** recorded 2026-07-16 (during track-2 A2). Stage 1 (time axis) RESOLVED BY
+REMOVAL the same evening — Andrew directed the piecewise-linear correction disabled in
+both tracks (RWKV_NO_AHEAD_RESIDUAL=1); iter 22 (redefined) measures the cost. Remaining
+queue: Stage 0 audit when compute frees up, Stage 2 (rating axis, needs stateful-kernel
+wiring), Stage 3 at Rust-deploy time.

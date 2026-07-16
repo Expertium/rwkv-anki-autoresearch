@@ -45,6 +45,9 @@ class SrsRWKVRnn(ModuleType):
         # RWKV_MONO_CURVES: same ahead-residual cummin projection as SrsRWKV (srs_model.py,
         # iter 22) so the RNN/deploy path matches a model trained with monotone curves.
         self.mono_curve_on = os.environ.get("RWKV_MONO_CURVES", "0") == "1"
+        # RWKV_NO_AHEAD_RESIDUAL: same disable as SrsRWKV (srs_model.py, Andrew 2026-07-16)
+        # so the RNN/deploy path matches a model trained without the piecewise correction.
+        self.no_ahead_residual = os.environ.get("RWKV_NO_AHEAD_RESIDUAL", "0") == "1"
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * anki_rwkv_config.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
@@ -157,9 +160,14 @@ class SrsRWKVRnn(ModuleType):
         x = self.prehead_dropout(self.prehead_norm(global_encoding))
         out_w_logits = self.w_linear(self.head_w(x).float())
         out_w = torch.nn.functional.softmax(out_w_logits, dim=-1)
-        out_ahead_logits = self.ahead_linear(self.head_ahead_logits(x).float())
-        if self.mono_curve_on:
-            out_ahead_logits, _ = torch.cummin(out_ahead_logits, dim=-1)
+        if self.no_ahead_residual:
+            out_ahead_logits = torch.zeros(
+                x.shape[:-1] + (self.num_points,), dtype=torch.float32, device=x.device
+            )
+        else:
+            out_ahead_logits = self.ahead_linear(self.head_ahead_logits(x).float())
+            if self.mono_curve_on:
+                out_ahead_logits, _ = torch.cummin(out_ahead_logits, dim=-1)
 
         x_p = self.head_p(x).float()
         out_p_logits = self.p_linear(x_p)

@@ -182,6 +182,17 @@ class SrsRWKV(ModuleType):
         # parameter-free (param count unchanged). Fallback if its sparse (argmin-routed)
         # gradients stall training: shifted-softplus-cumsum. Default off = byte-identical.
         self.mono_curve_on = os.environ.get("RWKV_MONO_CURVES", "0") == "1"
+        # Directed change (Andrew 2026-07-16, both tracks): RWKV_NO_AHEAD_RESIDUAL=1 disables
+        # the piecewise-linear curve correction entirely -- out_ahead_logits becomes constant
+        # zeros, so interp() contributes only its fixed 1e-5 affine offset and the curve is
+        # EXACTLY the mixture-of-exponentials (monotone in t by construction; supersedes the
+        # cummin projection, which is vacuous on a zero residual). The ahead head modules stay
+        # constructed (script-compilable, ckpt-compatible) but receive no gradient (zeros are
+        # created outside autograd) -> they sit dead at init; ~12.5k params at d=32 / ~131.7k
+        # at d=128 are strippable at deploy. The raw-mixture BCE term (AHEAD_RAW_SCALE) already
+        # supervises the mixture directly, so training stays well-posed. Default off =
+        # byte-identical.
+        self.no_ahead_residual = os.environ.get("RWKV_NO_AHEAD_RESIDUAL", "0") == "1"
         # Research iter 17 (2026-07-15): direct binary-recall loss term. The benchmark's imm
         # metric IS p_binary_loss (BCE of 1-P(again) vs recall), but the training loss only
         # optimizes it implicitly through the 4-way rating CE. RWKV_PBIN_SCALE=<w> adds
@@ -322,11 +333,20 @@ class SrsRWKV(ModuleType):
         out_w_logits = self.w_linear(self.head_w(x).float())
         out_w = torch.nn.functional.softmax(out_w_logits, dim=-1)
         out_w_log_p = torch.nn.functional.log_softmax(out_w_logits, dim=-1)
-        out_ahead_logits = self.ahead_linear(self.head_ahead_logits(x).float())
-        if self.mono_curve_on:
-            # running lower envelope over time points -> non-increasing residual (iter 22);
-            # projected values feed interp AND the mag/diff stats uniformly
-            out_ahead_logits, _ = torch.cummin(out_ahead_logits, dim=-1)
+        if self.no_ahead_residual:
+            # piecewise-linear correction disabled (Andrew 2026-07-16): constant-zero
+            # residual; mag/diff stats and interp see exact zeros, ahead head gets no grad
+            # explicit dims: x.shape concat types differ between TorchScript (List[int])
+            # and eager (torch.Size); head_and_out input is always (B, T, C) here
+            out_ahead_logits = torch.zeros(
+                x.size(0), x.size(1), self.num_points, dtype=torch.float32, device=x.device
+            )
+        else:
+            out_ahead_logits = self.ahead_linear(self.head_ahead_logits(x).float())
+            if self.mono_curve_on:
+                # running lower envelope over time points -> non-increasing residual (iter 22);
+                # projected values feed interp AND the mag/diff stats uniformly
+                out_ahead_logits, _ = torch.cummin(out_ahead_logits, dim=-1)
 
         x_p = self.head_p(x).float()
         return out_ahead_logits, out_w, out_w_log_p, self.p_linear(x_p)
@@ -447,7 +467,11 @@ class SrsRWKV(ModuleType):
             batch_skips,
             batch_num_data,
         )
-        if torch.isnan(out_ahead_logits).any():
+        # NaN probe: with the residual disabled, out_ahead_logits is constant zeros and can
+        # never NaN -- probe the (live) rating head instead, so a trunk NaN still returns
+        # None (the eval nanskip + train-loop guard both key off this).
+        nan_probe = out_p_logits if self.no_ahead_residual else out_ahead_logits
+        if torch.isnan(nan_probe).any():
             return None
 
         global_labels = batch_labels.float()
