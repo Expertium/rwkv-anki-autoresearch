@@ -37,7 +37,7 @@ with torch.no_grad():
     model.p_linear.weight.normal_(std=0.5)
 
 x = torch.randn(4, 7, 32)
-ah, w, wlog, p = model.head_and_out(x)
+ah, w, wlog, p = model.head_and_out(x)[:4]
 with torch.no_grad():
     x_pre = model.prehead_norm(x)  # dropout is identity in eval
     raw = model.ahead_linear(model.head_ahead_logits(x_pre).float())
@@ -48,7 +48,7 @@ if on:
     assert bool((ah == 0).all()), "residual not zeroed under RWKV_NO_AHEAD_RESIDUAL=1"
     print("zero-residual PASS; non-vacuous PASS")
     xg = torch.randn(4, 7, 32, requires_grad=True)
-    ah_g, w_g, wlog_g, p_g = model.head_and_out(xg)
+    ah_g, w_g, wlog_g, p_g = model.head_and_out(xg)[:4]
     assert not ah_g.requires_grad, "zero residual should be outside autograd"
     # p_linear (zero-init) still gets grad from raw-logit sum; w_linear's softmax outputs
     # have zero grad-of-sum at uniform, so probe liveness via p head + the trunk input.

@@ -48,12 +48,22 @@ class SrsRWKVRnn(ModuleType):
         # RWKV_NO_AHEAD_RESIDUAL: same disable as SrsRWKV (srs_model.py, Andrew 2026-07-16)
         # so the RNN/deploy path matches a model trained without the piecewise correction.
         self.no_ahead_residual = os.environ.get("RWKV_NO_AHEAD_RESIDUAL", "0") == "1"
+        # RWKV_GRUP_HEAD=N: same GRU-P-faithful curve head as SrsRWKV (srs_model.py, track-2
+        # A3) so the RNN/deploy path matches. Legacy w_linear/ahead head become 1x1 dummies
+        # (state_dict must stay SYMMETRIC with the training model for copy_downcast_).
+        self.grup_n = int(os.environ.get("RWKV_GRUP_HEAD", "0"))
+        self.grup_on = self.grup_n > 0
+        if self.grup_on:
+            self.no_ahead_residual = True
+            print(f"[grup] (rnn) GRU-P curve head ON: N={self.grup_n}")
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * anki_rwkv_config.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
         self.p_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
         self.w_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
         self.num_curves = anki_rwkv_config.num_curves
+        if self.grup_on:
+            self.num_curves = self.grup_n
 
         self.features2card = torch.nn.Sequential(
             torch.nn.Linear(self.card_features_dim, self.features_fc_dim),
@@ -67,10 +77,16 @@ class SrsRWKVRnn(ModuleType):
         )
         self.prehead_norm = torch.nn.LayerNorm(self.d_model)
         self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
-        self.head_ahead_logits = torch.nn.Sequential(
-            torch.nn.Linear(self.d_model, self.ahead_head_dim),
-            torch.nn.ReLU(),
-        )
+        if self.grup_on:
+            self.head_ahead_logits = torch.nn.Sequential(
+                torch.nn.Linear(1, 1),
+                torch.nn.ReLU(),
+            )
+        else:
+            self.head_ahead_logits = torch.nn.Sequential(
+                torch.nn.Linear(self.d_model, self.ahead_head_dim),
+                torch.nn.ReLU(),
+            )
         self.head_w = torch.nn.Sequential(
             torch.nn.Linear(self.d_model, 1 * self.d_model),
             torch.nn.ReLU(),
@@ -86,9 +102,20 @@ class SrsRWKVRnn(ModuleType):
         self.max_e = 21
         self.point_spread = 18.5
         self.num_points = anki_rwkv_config.num_points
-        self.ahead_linear = torch.nn.Linear(self.ahead_head_dim, self.num_points)
+        if self.grup_on:
+            self.ahead_linear = torch.nn.Linear(1, 1)
+            self.w_linear = torch.nn.Linear(1, 1)
+            _N = self.grup_n
+            self.grup_w_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
+            self.grup_w_bias = torch.nn.Parameter(torch.zeros(_N))
+            self.grup_s_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
+            self.grup_s_bias = torch.nn.Parameter(torch.zeros(_N))
+            self.grup_d_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
+            self.grup_d_bias = torch.nn.Parameter(torch.zeros(_N))
+        else:
+            self.ahead_linear = torch.nn.Linear(self.ahead_head_dim, self.num_points)
 
-        self.w_linear = torch.nn.Linear(self.w_head_dim, self.num_curves)
+            self.w_linear = torch.nn.Linear(self.w_head_dim, self.num_curves)
 
         self.s_point_spread = 18.5
         self.s_max = 22
@@ -104,6 +131,14 @@ class SrsRWKVRnn(ModuleType):
         return 1e-5 + (1 - 2 * 1e-5) * torch.sum(
             w * 0.9 ** (label_elapsed_seconds / s_space), dim=-1
         )
+
+    def grup_forgetting_curve(self, w, s_raw, d_raw, label_elapsed_seconds):
+        # mirror of SrsRWKV.grup_forgetting_curve (srs_model.py) -- keep in sync
+        s = torch.exp(torch.clamp(s_raw, min=-25.0, max=25.0))
+        d = torch.exp(torch.clamp(d_raw, min=-25.0, max=25.0))
+        t = torch.max(torch.tensor(1.0), label_elapsed_seconds)
+        r = torch.sum(w * torch.exp(-d * torch.log1p(t / (1e-7 + s))), dim=-1)
+        return 1e-5 + (1 - 2 * 1e-5) * r
 
     def interp(self, out_ahead_logits, label_elapsed_seconds):
         label_elapsed_seconds = torch.clamp(label_elapsed_seconds.contiguous(), min=1)
@@ -158,7 +193,15 @@ class SrsRWKVRnn(ModuleType):
         )
 
         x = self.prehead_dropout(self.prehead_norm(global_encoding))
-        out_w_logits = self.w_linear(self.head_w(x).float())
+        x_w = self.head_w(x).float()
+        if self.grup_on:
+            out_w_logits = torch.nn.functional.linear(x_w, self.grup_w_weight, self.grup_w_bias)
+            out_s_raw = torch.nn.functional.linear(x_w, self.grup_s_weight, self.grup_s_bias)
+            out_d_raw = torch.nn.functional.linear(x_w, self.grup_d_weight, self.grup_d_bias)
+        else:
+            out_w_logits = self.w_linear(x_w)
+            out_s_raw = torch.zeros(1, dtype=torch.float32, device=x.device)
+            out_d_raw = torch.zeros(1, dtype=torch.float32, device=x.device)
         out_w = torch.nn.functional.softmax(out_w_logits, dim=-1)
         if self.no_ahead_residual:
             out_ahead_logits = torch.zeros(
@@ -174,6 +217,8 @@ class SrsRWKVRnn(ModuleType):
         return (
             out_ahead_logits,
             out_w,
+            out_s_raw,
+            out_d_raw,
             out_p_logits,
             next_card_state,
             next_note_state,
@@ -228,6 +273,8 @@ class SrsRWKVRnn(ModuleType):
                 (
                     out_ahead_logits,
                     out_w,
+                    out_s_raw,
+                    out_d_raw,
                     out_p_logits,
                     next_card_state,
                     next_note_state,
@@ -250,9 +297,15 @@ class SrsRWKVRnn(ModuleType):
                     preset_states[preset_id] = next_preset_state
                     global_state = next_global_state
 
-                curve_probs_raw = self.forgetting_curve(
-                    out_w, label_elapsed_seconds_all[:, i].unsqueeze(0)
-                )
+                if self.grup_on:
+                    curve_probs_raw = self.grup_forgetting_curve(
+                        out_w, out_s_raw, out_d_raw,
+                        label_elapsed_seconds_all[:, i].unsqueeze(0),
+                    )
+                else:
+                    curve_probs_raw = self.forgetting_curve(
+                        out_w, label_elapsed_seconds_all[:, i].unsqueeze(0)
+                    )
                 curve_logits_raw = torch.log(
                     curve_probs_raw / (1 - curve_probs_raw)
                 )  # inverse sigmoid

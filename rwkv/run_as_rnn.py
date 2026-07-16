@@ -158,6 +158,8 @@ class RNNProcess:
             (
                 out_ahead_logits,
                 out_w,
+                out_s_raw,
+                out_d_raw,
                 out_p_logits,
                 next_card_state,
                 next_note_state,
@@ -181,12 +183,17 @@ class RNNProcess:
 
             out_p_probs = torch.softmax(out_p_logits, dim=-1)
             out_p_again, _, _, _ = out_p_probs.unbind(dim=-1)
-            return (out_ahead_logits, out_w), 1.0 - out_p_again
+            return (out_ahead_logits, out_w, out_s_raw, out_d_raw), 1.0 - out_p_again
 
     def predict_func(self, curve, elapsed_seconds):
         elapsed_seconds = torch.tensor(elapsed_seconds, device=self.device).view(1, 1)
-        out_ahead_logits, out_w = curve
-        curve_probs_raw = self.rnn.forgetting_curve(out_w, elapsed_seconds)
+        out_ahead_logits, out_w, out_s_raw, out_d_raw = curve
+        if self.rnn.grup_on:
+            curve_probs_raw = self.rnn.grup_forgetting_curve(
+                out_w, out_s_raw, out_d_raw, elapsed_seconds
+            )
+        else:
+            curve_probs_raw = self.rnn.forgetting_curve(out_w, elapsed_seconds)
         curve_logits_raw = torch.log(
             curve_probs_raw / (1 - curve_probs_raw)
         )  # inverse sigmoid

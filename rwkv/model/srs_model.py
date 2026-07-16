@@ -146,6 +146,7 @@ DTYPE_EXCLUDE = [
     "k_linear",
     "p_linear",
     "ahead_linear",
+    "grup_",  # GRU-P head root Parameters -- fp32 like the linears they replace
 ]
 
 
@@ -193,6 +194,29 @@ class SrsRWKV(ModuleType):
         # supervises the mixture directly, so training stays well-posed. Default off =
         # byte-identical.
         self.no_ahead_residual = os.environ.get("RWKV_NO_AHEAD_RESIDUAL", "0") == "1"
+        # Track-2 A3 (Andrew 2026-07-17): GRU-P-FAITHFUL curve head (srs-benchmark
+        # models/gru.py). RWKV_GRUP_HEAD=N (N>=1) replaces the 128-basis fixed-stability
+        # mixture with N per-row predicted curves: three tiny linears off the SHARED head_w
+        # trunk predict w (softmax), S and d (exp(clamp(.,-25,25)) -> strictly positive), and
+        # R(t) = sum_i w_i * (1 + t/(1e-7+S_i))^(-d_i)  -- each curve monotone decreasing in
+        # t BY CONSTRUCTION (d_i > 0), so the no-residual monotonicity guarantee carries over
+        # (grup forces no_ahead_residual below; the residual path is structurally dead).
+        # Param accounting at d=128: drops w_linear (65,664) + the dead ahead head
+        # (head_ahead_logits 66,048 + ahead_linear 65,664), adds 3*(w_head_dim*N+N) + 6 dummy
+        # params -- ~-194.3k vs A1 at N=2. The replaced modules become 1x1 dummies (NOT
+        # absent: scripted head_and_out references them in now-dead branches, and old-style
+        # ScriptModule compiles BOTH sides of a runtime-bool if). New learnables are ROOT
+        # Parameters accessed via a @torch.jit.ignore F.linear accessor (iter-16 rule:
+        # submodule calls from ignored methods crash under JIT); names keep weight/bias + 2D
+        # so the optimizer wd-groups classify them like Linear equivalents, and the
+        # selective-cast module walk skips them -> they stay fp32 like the DTYPE_EXCLUDE'd
+        # heads they replace. Default 0/unset = byte-identical legacy head.
+        self.grup_n = int(os.environ.get("RWKV_GRUP_HEAD", "0"))
+        self.grup_on = self.grup_n > 0
+        if self.grup_on:
+            self.no_ahead_residual = True
+            print(f"[grup] GRU-P curve head ON: N={self.grup_n} predicted (w, S, d) curves; "
+                  f"legacy w_linear/ahead head replaced by 1x1 dummies")
         # Research iter 17 (2026-07-15): direct binary-recall loss term. The benchmark's imm
         # metric IS p_binary_loss (BCE of 1-P(again) vs recall), but the training loss only
         # optimizes it implicitly through the 4-way rating CE. RWKV_PBIN_SCALE=<w> adds
@@ -232,6 +256,9 @@ class SrsRWKV(ModuleType):
         self.p_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
         self.w_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
         self.num_curves = anki_rwkv_config.num_curves
+        if self.grup_on:
+            # out_w carries N curves now; the KL-to-uniform w_loss target reads num_curves
+            self.num_curves = self.grup_n
 
         with torch.no_grad():
             self.features2card = torch.nn.Sequential(
@@ -246,10 +273,18 @@ class SrsRWKV(ModuleType):
             )
             self.prehead_norm = torch.nn.LayerNorm(self.d_model)
             self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
-            self.head_ahead_logits = torch.nn.Sequential(
-                torch.nn.Linear(self.d_model, self.ahead_head_dim),
-                torch.nn.ReLU(),
-            )
+            if self.grup_on:
+                # 1x1 dummies: attributes must EXIST (scripted head_and_out compiles the
+                # dead legacy branches), but their params drop out of the model (6 total)
+                self.head_ahead_logits = torch.nn.Sequential(
+                    torch.nn.Linear(1, 1),
+                    torch.nn.ReLU(),
+                )
+            else:
+                self.head_ahead_logits = torch.nn.Sequential(
+                    torch.nn.Linear(self.d_model, self.ahead_head_dim),
+                    torch.nn.ReLU(),
+                )
             self.head_w = torch.nn.Sequential(
                 torch.nn.Linear(self.d_model, 1 * self.d_model),
                 torch.nn.ReLU(),
@@ -265,13 +300,32 @@ class SrsRWKV(ModuleType):
             self.max_e = 21
             self.point_spread = 18.5
             self.num_points = anki_rwkv_config.num_points
-            self.ahead_linear = torch.nn.Linear(self.ahead_head_dim, self.num_points)
-            torch.nn.init.zeros_(self.ahead_linear.weight)
-            torch.nn.init.zeros_(self.ahead_linear.bias)
+            if self.grup_on:
+                self.ahead_linear = torch.nn.Linear(1, 1)
+                self.w_linear = torch.nn.Linear(1, 1)
+                # GRU-P head params (root Parameters, fp32; see the __init__ note). Weights
+                # zero-init like the legacy w_linear (input-independent start; W and b get
+                # nonzero grads at step 1 so they move immediately). Biases = a sane prior:
+                # w uniform, S log-spaced 1 hour .. 1 year, d = 0.5 (moderate FSRS-like decay).
+                _N = self.grup_n
+                self.grup_w_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
+                self.grup_w_bias = torch.nn.Parameter(torch.zeros(_N))
+                self.grup_s_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
+                self.grup_s_bias = torch.nn.Parameter(
+                    torch.linspace(math.log(3600.0), math.log(31536000.0), _N)
+                )
+                self.grup_d_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
+                self.grup_d_bias = torch.nn.Parameter(
+                    torch.full((_N,), math.log(0.5))
+                )
+            else:
+                self.ahead_linear = torch.nn.Linear(self.ahead_head_dim, self.num_points)
+                torch.nn.init.zeros_(self.ahead_linear.weight)
+                torch.nn.init.zeros_(self.ahead_linear.bias)
 
-            self.w_linear = torch.nn.Linear(self.w_head_dim, self.num_curves)
-            torch.nn.init.zeros_(self.w_linear.weight)
-            torch.nn.init.zeros_(self.w_linear.bias)
+                self.w_linear = torch.nn.Linear(self.w_head_dim, self.num_curves)
+                torch.nn.init.zeros_(self.w_linear.weight)
+                torch.nn.init.zeros_(self.w_linear.bias)
 
             self.s_point_spread = 18.5
             self.s_max = 22
@@ -324,13 +378,31 @@ class SrsRWKV(ModuleType):
         return x * (2.0 * torch.sigmoid(torch.nn.functional.linear(
             x, self.prehead_gate_weight, self.prehead_gate_bias)))
 
+    @torch.jit.ignore
+    def _grup_heads(self, x_w: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        # TorchScript-safe indirection (grup params only exist under RWKV_GRUP_HEAD>0):
+        # F.linear on root Parameters, NOT submodule calls (see the __init__ note). x_w is
+        # the shared head_w trunk output, already .float()'d by the caller. Returns the RAW
+        # (pre-softmax / pre-exp) w-logits, log-S and log-d heads.
+        w = torch.nn.functional.linear(x_w, self.grup_w_weight, self.grup_w_bias)
+        s = torch.nn.functional.linear(x_w, self.grup_s_weight, self.grup_s_bias)
+        d = torch.nn.functional.linear(x_w, self.grup_d_weight, self.grup_d_bias)
+        return w, s, d
+
     @FunctionType
     def head_and_out(self, input):
         x = self.prehead_dropout(self.prehead_norm(input))
         if self.prehead_gate_on:
             x = self._apply_prehead_gate(x)
 
-        out_w_logits = self.w_linear(self.head_w(x).float())
+        x_w = self.head_w(x).float()
+        if self.grup_on:
+            out_w_logits, out_s_raw, out_d_raw = self._grup_heads(x_w)
+        else:
+            out_w_logits = self.w_linear(x_w)
+            # dummy placeholders so the return arity/type is branch-independent
+            out_s_raw = torch.zeros(1, dtype=torch.float32, device=x.device)
+            out_d_raw = torch.zeros(1, dtype=torch.float32, device=x.device)
         out_w = torch.nn.functional.softmax(out_w_logits, dim=-1)
         out_w_log_p = torch.nn.functional.log_softmax(out_w_logits, dim=-1)
         if self.no_ahead_residual:
@@ -349,7 +421,7 @@ class SrsRWKV(ModuleType):
                 out_ahead_logits, _ = torch.cummin(out_ahead_logits, dim=-1)
 
         x_p = self.head_p(x).float()
-        return out_ahead_logits, out_w, out_w_log_p, self.p_linear(x_p)
+        return out_ahead_logits, out_w, out_w_log_p, self.p_linear(x_p), out_s_raw, out_d_raw
 
     @FunctionType
     def forgetting_curve(self, w, label_elapsed_seconds):
@@ -361,6 +433,20 @@ class SrsRWKV(ModuleType):
         return 1e-5 + (1 - 2 * 1e-5) * torch.sum(
             w * 0.9 ** (label_elapsed_seconds / s_space), dim=-1
         )
+
+    @FunctionType
+    def grup_forgetting_curve(self, w, s_raw, d_raw, label_elapsed_seconds):
+        # GRU-P-faithful mixture (srs-benchmark models/gru.py):
+        #   R(t) = sum_i w_i * (1 + t/(1e-7+S_i))^(-d_i),  S,d = exp(clamp(., -25, 25))
+        # exp => d_i > 0 => every curve strictly decreasing in t (monotone by construction).
+        # Power via exp(-d * log1p(t/S)) for stability: t/S <= ~1e16 -> log1p ~ 37, and a
+        # huge d only UNDERFLOWS the exp to exact 0 (never inf/NaN). Squash to
+        # (1e-5, 1-1e-5) like forgetting_curve so the downstream logit() stays finite.
+        s = torch.exp(torch.clamp(s_raw, min=-25.0, max=25.0))
+        d = torch.exp(torch.clamp(d_raw, min=-25.0, max=25.0))
+        t = torch.max(torch.tensor(1.0), label_elapsed_seconds)
+        r = torch.sum(w * torch.exp(-d * torch.log1p(t / (1e-7 + s))), dim=-1)
+        return 1e-5 + (1 - 2 * 1e-5) * r
 
     @FunctionType
     def interp(self, out_ahead_logits, label_elapsed_seconds):
@@ -459,7 +545,7 @@ class SrsRWKV(ModuleType):
         kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
         kd_mix: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
     ):
-        out_ahead_logits, out_w, out_w_log_p, out_p_logits = self.forward_batch(
+        out_ahead_logits, out_w, out_w_log_p, out_p_logits, out_s_raw, out_d_raw = self.forward_batch(
             batch_start,
             batch_sub_gather,
             batch_sub_gather_lens,
@@ -498,7 +584,12 @@ class SrsRWKV(ModuleType):
             _km_curve, _km_p, _km_alpha = kd_mix
             label_y = _km_alpha * _km_curve + (1.0 - _km_alpha) * label_y
         label_elapsed_seconds = label_elapsed_seconds.unsqueeze(-1)
-        curve_probs_raw = self.forgetting_curve(out_w, label_elapsed_seconds)
+        if self.grup_on:
+            curve_probs_raw = self.grup_forgetting_curve(
+                out_w, out_s_raw, out_d_raw, label_elapsed_seconds
+            )
+        else:
+            curve_probs_raw = self.forgetting_curve(out_w, label_elapsed_seconds)
         curve_logits_raw = torch.log(
             curve_probs_raw / (1 - curve_probs_raw)
         )  # inverse sigmoid

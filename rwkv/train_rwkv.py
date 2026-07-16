@@ -133,6 +133,7 @@ def get_optimizer(config, model):
         "head_s",
         "head_d",
         "head_p",
+        "grup_",  # GRU-P head weights replace w_linear -> same head wd group
     ]
     for name, param in model.named_parameters():
         # Param constraint is to exclude layer/group norm weights
@@ -1051,7 +1052,7 @@ def main_loop(config, task_queue, batch_queue):
                 kd_args = None
                 if _teacher is not None:
                     with torch.no_grad():
-                        t_ahead, t_w, _t_wlp, t_p = _teacher.forward_batch(
+                        t_ahead, t_w, _t_wlp, t_p, _t_s, _t_d = _teacher.forward_batch(
                             prepared_batch.start,
                             prepared_batch.sub_gather,
                             prepared_batch.sub_gather_lens,
