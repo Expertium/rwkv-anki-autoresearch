@@ -734,7 +734,18 @@ deltas vs iter 15, p-values, and nan_users to him and WAIT — no auto-accept/re
 promotion. Likely outcome: iter 22 becomes the new track-1 REFERENCE (directed re-baseline
 à la iter 14/15) since with-residual champions aren't fair gates for no-residual candidates;
 track 2 similarly needs a no-residual re-anchor decision at the A2 verdict.**
-Track-1 queue after: xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW).
+**Track-1 queue after iter 22 (Andrew 2026-07-16 late, FIXED ORDER): iter 23 = LEARNABLE
+PAVA (power-mean isotonic rectifier, MONOTONICITY_PLAN.md stage 2 — 3 learnable pair
+powers, unweighted); iter 24 = learnable PAVA + pooling weights from the p-head's
+button-press probabilities (Instant mode).** Then: xhead-mix v3 (v1 delta excluded from
+wd), permutation init (LOW). **Duration imputation for the counterfactual probes (Andrew
+delegated): ONE shared value across all 4 buttons (causally correct — duration is spent
+before the press, independent of which button), = a GLOBAL CONSTANT (train-set median)
+frozen into the deploy contract; only duration is imputed (elapsed/etc. are real at both
+train and deploy); upgrade path if the audit shows sensitivity = per-user EMA carried
+next to the state. Build-time checklist: enumerate ALL outcome-dependent dims of the 92
+(INPUT_FEATURES.md) — rating one-hot + duration + any derived — and swap/impute them
+consistently in the probe rows.**
 **Track-2 sizing recommendation (Andrew 2026-07-16, soft rule): aim for ≥5% param reduction
 per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
 future candidates should BUNDLE cuts (e.g. deck+user layers together, LoRA-dim cuts folded

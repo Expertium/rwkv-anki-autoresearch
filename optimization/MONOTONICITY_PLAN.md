@@ -82,12 +82,30 @@ GENERALIZED POWER MEAN, with 3 pair-specific powers — p_AH (Again–Hard), p_H
   rating-swapped variants of that row, 4 one-step RNN advances, pool, train the actual
   variant against its normal ahead label. Deploy applies the identical rectifier at every
   button computation. Cost ≈ 4 one-token steps per covered position — a few % of step.
-- Deploy-contract details to pin at build time (use the Stage-0 audit): duration/elapsed
-  imputation for the 3 non-pressed synthetic partners (deploy imputes ONE shared value —
-  the pressed row keeps its real duration for the trained prediction; slight asymmetry to
-  resolve); optional per-pair margin ε if strict (no-tie) button ordering is wanted;
-  optional extension — weight the pooling mean by the p-head's predicted rating
-  probabilities (per-instance trust weighting; composes with the learnable powers).
+- **Duration imputation — DECIDED (2026-07-16, Andrew delegated):** ONE value shared by
+  all 4 probes — this is causally correct, not just a convention: the duration is the
+  time spent on the card BEFORE the press, so it cannot depend on which button gets
+  pressed. The value = a GLOBAL CONSTANT (train-set median duration), frozen into the
+  deploy contract; simplest possible, zero deploy state, and since it's shared its effect
+  on the ORDERING is second-order. Only duration is imputed — the probe row's elapsed and
+  all history features are real at both train and deploy. The probe advance for the
+  PRESSED rating also uses the imputed duration (it mirrors the deploy button probe); the
+  persistent state advance keeps the real duration (both at train and deploy) — the probe
+  is a throwaway. The λ-weighted probe BCE (pressed probe vs the row's ahead label) is
+  the training signal through the rectifier; the main losses stay untouched. Upgrade path
+  if Stage-0 audit / iter-23 shows sensitivity: per-user EMA of durations (one scalar
+  carried beside the state; fixed decay in the contract). Build-time checklist: enumerate
+  ALL outcome-dependent dims of the 92 (INPUT_FEATURES.md) — rating one-hot (9:13),
+  duration, any derived columns — and swap/impute them consistently in probe rows.
+- Optional per-pair margin ε if strict (no-tie) button ordering is wanted.
+- **Iter-24 extension (Andrew 2026-07-16): weight the pooling mean by the p-head's
+  predicted button-press probabilities** (the Instant-mode output at the same decision
+  point — available identically at train and deploy): weighted power mean
+  M_p(a,b; w) = ((w_a·aᵖ + w_b·bᵖ)/(w_a+w_b))^(1/p), block weight = sum of member
+  weights. Per-instance trust weighting — the likely button's curve barely moves, the
+  off-distribution counterfactuals absorb the correction; composes with the learned
+  powers. Queue order fixed: iter 22 (no-residual) → iter 23 (learnable PAVA, unweighted)
+  → iter 24 (+ probability weighting).
 - Fallback/regularizer: the original hinge penalty
   L_mono = λ · Σ_{r<r'} Σ_t relu(P_r(t) − P_{r'}(t) + margin) can be added on top purely
   to REDUCE tie frequency, not to enforce (the rectifier already guarantees order).
