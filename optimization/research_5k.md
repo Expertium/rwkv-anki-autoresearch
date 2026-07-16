@@ -51,6 +51,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 18 | 1–5000 | 0.3055 | 0.2756 | exact | rejected | 1.0 / 1.0 (vs iter 15) | 193,724 | 0 | adopted | Drop review-duration feature (directed, gate ≤0.0003 both): +0.0018/+0.0024 worse — duration is real signal; deploy keeps it. |
 | 19 | 1–5000 | 0.3038 | 0.2730 | exact | rejected | 1.0 / 1.6e-70 (vs iter 15) | 193,724 | 1 | invented | pbin at 0.25: same mode trade at half amplitude — dose-response linear, no scale can pass both modes. Lever exhausted. |
 | 20 | 1–5000 | 0.3035 | 0.2731 | exact | rejected | 2.0e-10 / 2.0e-25 (vs iter 15, better) | 194,620 | 0 | invented | Cross-head readout mix (per-channel scalar): BOTH modes better (+0.00018/+0.00011), p-gate passes, magnitudes miss the bar. K×K variant queued. |
+| 21 | 1–5000 | 0.3045 | 0.2732 | exact | rejected | 1.0 / 0.03 (vs iter 15) | 208,060 | 0 | invented | Cross-head mix v2 (full K×K): ahead −0.0009 worse, imm tied — 16× capacity erased v1's gain. Channel not capacity-limited; no-wd v1 variant queued. |
 
 ## Track 2 — ablate the old d=128 model
 

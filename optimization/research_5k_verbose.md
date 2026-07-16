@@ -412,3 +412,29 @@ diagonal (j=k). +1024 params/layer = 208,060 total (under the 225k cap). If the 
 channel saturates at v1's level, v2 lands in the same place and the family closes honestly;
 if the scalar mix was the bottleneck, v2 has 16× the capacity to carry it over the bar.
 Pipeline 3h16m clean (WS 97m, decay 24m, eval 75m).
+
+### Iter 21 — cross-head mix v2, full K×K (REJECTED 2026-07-16 21:12): capacity erased the signal
+
+**Design:** RWKV_XHEAD_MIX=2 — iter 20's hook with the delta widened from per-channel scalars
+(H,H,K) to full per-head-pair K×K maps (H,H,K,K): out[g,j] += Σ_hk out[h,k]·delta[h,g,k,j];
+v1 is exactly v2's diagonal. +1024 params/layer = 208,060 total. Same zero-init/wd/recipe.
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.304522 = −0.000859 WORSE (p=1.0), imm 0.273208 =
++0.000019 tied (p=0.033). REJECTED decisively.** The 16× capacity didn't carry v1's signal
+over the bar — it destroyed it: ahead regressed ~5× beyond v1's total gain. Interpretation:
+the cross-head channel is information-poor and regularization-hungry — 64 wd-pulled scalars
+extracted a real +0.00018/+0.00011, while 14k free parameters let the mix distort the
+per-head GroupNorm geometry faster than they learn anything. Readout family 0/3
+(prehead null / v1 near-miss with real p-gate-passing signal / v2 harmful).
+
+**V3 candidate (queued for the NEXT track-1 block, after the A2 block):** v1's exact 64-param
+hook with the delta EXCLUDED from weight decay — rename the param so train_rwkv's
+'"weight" in name' filter routes it to the wd=0 group. Rationale: wd=0.01 continuously pulls
+the scalars toward zero; v1's effect plateaued at ~2/3 of the bar, and the equilibrium
+magnitude scales inversely with wd. Zero new capacity, targets exactly the observed failure
+mode ("right direction, too small"). If v3 also lands under the bar, the family closes at
+0/4 with the honest conclusion "cross-head readout information is real but worth <0.0003".
+
+Val trajectory tracked the champion with slightly more scatter than v1 (no persistent
+deficit) — third confirmation that mid-run vals cannot resolve sub-0.001 finals. Pipeline
+3h14m clean (WS 95m, decay 23m, eval 76m).

@@ -1,0 +1,46 @@
+# TRACK 2 A2: deck 4->3L on the A1 arch (see run_track2_a2.cmd). Recipe identical to A1.
+# scratchpad/architecture_old_d128.py, 2,762,884 params) retrained through the CURRENT plain
+# pipeline -- 1 ep WS + 0.25 ep decay, seed 1234, PLAIN bf16 (QAT parked), JIT on. This is the
+# fair "before" anchor for the ablation ratio gate (50k*dLL/dparams <= 0.0001 both modes): the
+# upstream 12-epoch .pth is not budget-comparable. MAX=32768 (66000 thrashed at 40 s/step AND
+# 49152 still thrashed at 13.3 s/step, both ~11.8/12 GB -> the d=128 training working set is
+# ~0.26 MB/token; 32768 packs the 16,384-token batches 2-per-group, ~8.5 GB projected, ~22k
+# groups/epoch. Coverage probe 2026-07-14: max single batch in train_db_5k_h1 = 16,384 tokens
+# -> ZERO data drop at any MAX >= 16,384. ALL track-2 runs must share this MAX for pairing).
+# Also A/Bs the 1-ep-budget lesson at 14x params vs the upstream 12-ep result (informational
+# paired test at the end). Eval = SINGLE process (d=128 cannot share the GPU: one eval alone
+# peaks ~9 GB; eval_sharded runs with --shards 1 --solo-threshold 0).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/track2_a2"
+SAVE_MODEL_PREFIX = "t2a2ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

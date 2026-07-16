@@ -628,8 +628,10 @@ closed):** early-training-intervention 0/2 (shrink-perturb, warmup-KD — both l
 washed out; mid-WS val leads do NOT predict verdicts); grade-representation 0/1; capacity-at-5k
 0/2 (head resolution 64→128, mixer 1.5 — the d=32 trunk is not capacity-limited at 5k);
 state-size ladder 0/5 CLOSED (no stream is state-capacity-limited at d=32/H=2; iter 6's near-miss
-died on the seed pair); readout 0/2 WITH SIGNAL (prehead gate null, but iter 20's cross-head mix
-improved BOTH modes at p 2e-10/2e-25 — just under the 0.0003 bar; KxK variant = iter 21);
+died on the seed pair); readout 0/3 WITH SIGNAL (prehead gate null; iter 20's 64-param cross-head
+mix improved BOTH modes at p 2e-10/2e-25 but ~2/3 of the bar; iter 21's KxK 16x-capacity variant
+ERASED the gain, ahead −0.0009 — the channel is real but capacity-starved is the WRONG diagnosis;
+v3 queued = v1 with the delta EXCLUDED from wd);
 loss-reweighting 0/2 (pbin 0.5 + 0.25 = linear imm/ahead trade, the SCALE lever is closed by
 interpolation — other reweighting ideas like recency/per-rating weights would be new family
 members); HP tuning CLOSED (champion HPs confirmed
@@ -700,11 +702,18 @@ pre-GroupNorm, 194,620 params) improved BOTH modes — ahead +0.000178 (p=2.0e-1
 magnitudes miss the 0.0003 bar.** Smoke lesson: W_o is zero-init → nothing upstream of it is
 observable at fresh init (randomize W_o before perturb/grad smoke checks).
 
-**→ NOW RUNNING: ITER 21 = cross-head mix v2 (RWKV_XHEAD_MIX=2)** — same hook, full
-per-head-pair K×K maps ((H,H,K,K) delta, 208,060 params; v1 = v2's diagonal; conduct rule 2
-on iter 20's near-miss). Launched 17:54 detached, verdict ~21:10; gate = standard ≥0.0003
-BOTH + p<1e-4 BOTH vs iter15. After: permutation init (LOW), then the track-2 A2 block
-(A2 runs set RWKV_GRAD_STATS).
+**Iter 21 REJECTED (2026-07-16 21:12): cross-head mix v2 (full K×K, 208,060 params) —
+ahead −0.000859 worse (p=1.0), imm tied. The 16× capacity erased v1's both-modes gain;
+the readout channel is information-poor + regularization-hungry, not capacity-limited.**
+
+**→ NOW RUNNING: TRACK-2 A2 = deck 4L→3L on the A1 arch** (launched 21:25 detached,
+~11 h pipeline, verdict ~08:30 tomorrow; arch `scratchpad/track2_a2/
+architecture_d128_cmix1_deck3.py`; expected cut ~110k params → allowed ≤ ~0.00011/mode
+vs A1, full n=5000 pairing; **first run recording RWKV_GRAD_STATS**
+(`t2a2_grad_stats_{ws,decay}.json` → `optimization/grad_stats_report.py` ranks A3+ targets).
+Track-1 queue for the next block: xhead-mix v3 (v1 delta excluded from wd), permutation
+init (LOW). Track-2 queue after A2: user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked
+by A2's grad-stats report.
 
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
