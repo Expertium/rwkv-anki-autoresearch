@@ -133,6 +133,7 @@ RESEARCH_COLS = [
     ("exp", "exp"), ("change", "change"), ("params", "params"),
     ("ahead", "ahead LL"), ("imm", "imm LL"),
     ("d_ahead", "Δahead vs champ"), ("d_imm", "Δimm vs champ"),
+    ("nan_users", "NaN users"),  # eval users skipped by the NaN guard (Andrew 2026-07-16)
     ("status", "status"), ("note", "note"),
 ]
 

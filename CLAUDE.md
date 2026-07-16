@@ -368,6 +368,8 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 > `HISTORY.md` = superseded plans + the full pre-2026-06-30 snapshot. **Log EVERY research experiment
 > to `research_log.jsonl` + research_5k.md row + research_5k_verbose.md section + rebuild log.md.**
 > This section keeps ONLY the current champion, deploy config, acceptance gate, lesson bank, live state, ops.
+> **Every research_log.jsonl entry + research_5k.md row records `nan_users` / "NaN users"** (eval users
+> skipped by the NaN guard; Andrew 2026-07-16) — backfilled for all prior iters (all 0 except iter19=1, A0=7).
 
 ### Workbench + baselines
 - **5k phase (CURRENT):** train 1-5000, eval 5001-10000, budget 2 WS ep + tuned-ratio decay,

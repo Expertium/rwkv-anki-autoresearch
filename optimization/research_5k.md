@@ -28,28 +28,28 @@ pre-existing artifact (the upstream d=128 model). `summary` ≤ 20 words (Andrew
 full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md) (AI-only) and
 `research_log.jsonl`.
 
-| iter | trained on | ahead | imm | logloss | status | p-value | params | provenance | summary |
-|---|---|---|---|---|---|---|---|---|---|
-| 0 | 101–4999 | 0.2964 | 0.2649 | exact | — (target) | — (reference) | 2,762,884 | adopted | Old d=128 leaderboard model, unquantized — the fp target to beat on 5001–10000. |
-| 1 | 1–5000 | 0.3066 | 0.2783 | exact | **accepted** | 1.0 / 1.0 (vs iter 0) | 193,724 | invented | champ5k_r1 = first 5k champion (H=2/K=16, q72u quant-aware, 2ep budget). Superseded by iter 2. |
-| 2 | 1–5000 | 0.3066 | 0.2779 | exact | **accepted** | 0.31 / 6.1e-62 (vs iter 1) | 193,724 | invented | **champ5k_b1 = CURRENT CHAMPION**: iter 1 at half budget (1ep WS + 0.25ep decay) — 2nd epoch adds nothing. |
-| 3 | 1–5000 | 0.3072 | 0.2786 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | invented | champ5k_t1 = tuner winner (wd 0.2, dropout 0.5); its 200-user subset win inverted at n=5000. HP tuning closed. |
-| 4 | 1–5000 | 0.3069 | 0.2781 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,460 | invented | Ladder deck rung: deck H=1 (state 1.89x free) — no effect; deck not state-limited. |
-| 5 | 1–5000 | 0.3068 | 0.2783 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,526 | invented | Ladder preset rung: preset H=1 — no effect. Ops: parallel eval wedged; sequential-shard rule introduced. |
-| 6 | 1–5000 | 0.3063 | 0.2776 | exact | rejected | 1.3e-20 / 1.5e-29 (vs iter 2) | 193,526 | invented | Ladder user rung: user H=1 — first real signal, but imm +0.000258 missed the 0.0003 bar. |
-| 7 | 1–5000 | 0.3069 | 0.2773 | exact | rejected | 1.0 / 7.8e-143 (vs iter 2) | 203,928 | invented | User H=1 + 4th layer: mode trade — imm +0.0006 better, ahead −0.0003 worse. |
-| 8 | 1–5000 | 0.3067 | 0.2780 | exact | rejected | 0.88 / 1.0 (vs iter 2) | 193,526 | invented | Seed-pair test of iter 6 (seed 4321): NULL — iter 6 was seed luck. Ladder closed, 0/5 rungs. |
-| 9 | 1–5000 | 0.3074 | 0.2789 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | adopted | Shrink-perturb init (Ash & Adams 2020): worse both modes — early val lead washed out. Init family 0/1, deprioritized. |
-| 10 | 1–5000 | 0.3069 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | invented | Warmup KD from d=128 teacher: worse both modes, same arc as iter 9. Early-intervention family 0/2, deprioritized. |
-| 11 | 1–5000 | 0.3075 | 0.2788 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,852 | invented | Additive grade embedding (4×32 bypass around the input MLP): worse both modes (~0.0009) — the bypass distorts the shared trunk. |
-| 12 | 1–5000 | 0.3069 | 0.2781 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 210,236 | invented | SRS-head resolution 64→128 at 5k data: no effect (both ~−0.00025, noise-band) — heads not resolution-limited. |
-| 13 | 1–5000 | 0.3068 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 208,060 | invented | Channel mixer 1.0→1.5: no effect (both ~−0.0002) — capacity-at-5k family 0/2. Last QAT-era iteration. |
-| 14 | 1–5000 | 0.3037 | 0.2734 | exact | **accepted** | 0.0 / 0.0 (vs iter 2, info) | 193,724 | invented | **champ5k_plain = PLAIN re-baseline (QAT parked)**: new screening champion; the QAT tax = +0.0029/+0.0044. |
-| 15 | 1–5000 | 0.3037 | 0.2732 | exact | **accepted** | 1.5e-08 / 1.6e-42 (vs iter 14, better) | 193,724 | adopted | **Drop review-state feature (RWKV_ZERO_FEATURES=22, Andrew's directive)**: not worse, slightly better both modes — new champion; deploy no longer needs Anki review state. |
-| 16 | 1–5000 | 0.3037 | 0.2734 | exact | rejected | 0.97 / 1.0 (vs iter 15) | 194,780 | invented | Prehead output gate (zero-init identity): no effect both modes — the shared readout is not gating-limited. Readout family 0/1. |
-| 17 | 1–5000 | 0.3039 | 0.2728 | exact | rejected | 1.0 / 1.7e-173 (vs iter 15) | 193,724 | invented | Binary-recall loss term (pbin 0.5): MODE TRADE — imm +0.0004 better, ahead −0.0002 worse. First real plain-era effect; scale-0.25 variant queued. |
-| 18 | 1–5000 | 0.3055 | 0.2756 | exact | rejected | 1.0 / 1.0 (vs iter 15) | 193,724 | adopted | Drop review-duration feature (directed, gate ≤0.0003 both): +0.0018/+0.0024 worse — duration is real signal; deploy keeps it. |
-| 19 | 1–5000 | 0.3038 | 0.2730 | exact | rejected | 1.0 / 1.6e-70 (vs iter 15) | 193,724 | invented | pbin at 0.25: same mode trade at half amplitude — dose-response linear, no scale can pass both modes. Lever exhausted. |
+| iter | trained on | ahead | imm | logloss | status | p-value | params | NaN users | provenance | summary |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0 | 101–4999 | 0.2964 | 0.2649 | exact | — (target) | — (reference) | 2,762,884 | 0 | adopted | Old d=128 leaderboard model, unquantized — the fp target to beat on 5001–10000. |
+| 1 | 1–5000 | 0.3066 | 0.2783 | exact | **accepted** | 1.0 / 1.0 (vs iter 0) | 193,724 | 0 | invented | champ5k_r1 = first 5k champion (H=2/K=16, q72u quant-aware, 2ep budget). Superseded by iter 2. |
+| 2 | 1–5000 | 0.3066 | 0.2779 | exact | **accepted** | 0.31 / 6.1e-62 (vs iter 1) | 193,724 | 0 | invented | **champ5k_b1 = CURRENT CHAMPION**: iter 1 at half budget (1ep WS + 0.25ep decay) — 2nd epoch adds nothing. |
+| 3 | 1–5000 | 0.3072 | 0.2786 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | 0 | invented | champ5k_t1 = tuner winner (wd 0.2, dropout 0.5); its 200-user subset win inverted at n=5000. HP tuning closed. |
+| 4 | 1–5000 | 0.3069 | 0.2781 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,460 | 0 | invented | Ladder deck rung: deck H=1 (state 1.89x free) — no effect; deck not state-limited. |
+| 5 | 1–5000 | 0.3068 | 0.2783 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,526 | 0 | invented | Ladder preset rung: preset H=1 — no effect. Ops: parallel eval wedged; sequential-shard rule introduced. |
+| 6 | 1–5000 | 0.3063 | 0.2776 | exact | rejected | 1.3e-20 / 1.5e-29 (vs iter 2) | 193,526 | 0 | invented | Ladder user rung: user H=1 — first real signal, but imm +0.000258 missed the 0.0003 bar. |
+| 7 | 1–5000 | 0.3069 | 0.2773 | exact | rejected | 1.0 / 7.8e-143 (vs iter 2) | 203,928 | 0 | invented | User H=1 + 4th layer: mode trade — imm +0.0006 better, ahead −0.0003 worse. |
+| 8 | 1–5000 | 0.3067 | 0.2780 | exact | rejected | 0.88 / 1.0 (vs iter 2) | 193,526 | 0 | invented | Seed-pair test of iter 6 (seed 4321): NULL — iter 6 was seed luck. Ladder closed, 0/5 rungs. |
+| 9 | 1–5000 | 0.3074 | 0.2789 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | 0 | adopted | Shrink-perturb init (Ash & Adams 2020): worse both modes — early val lead washed out. Init family 0/1, deprioritized. |
+| 10 | 1–5000 | 0.3069 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | 0 | invented | Warmup KD from d=128 teacher: worse both modes, same arc as iter 9. Early-intervention family 0/2, deprioritized. |
+| 11 | 1–5000 | 0.3075 | 0.2788 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,852 | 0 | invented | Additive grade embedding (4×32 bypass around the input MLP): worse both modes (~0.0009) — the bypass distorts the shared trunk. |
+| 12 | 1–5000 | 0.3069 | 0.2781 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 210,236 | 0 | invented | SRS-head resolution 64→128 at 5k data: no effect (both ~−0.00025, noise-band) — heads not resolution-limited. |
+| 13 | 1–5000 | 0.3068 | 0.2782 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 208,060 | 0 | invented | Channel mixer 1.0→1.5: no effect (both ~−0.0002) — capacity-at-5k family 0/2. Last QAT-era iteration. |
+| 14 | 1–5000 | 0.3037 | 0.2734 | exact | **accepted** | 0.0 / 0.0 (vs iter 2, info) | 193,724 | 0 | invented | **champ5k_plain = PLAIN re-baseline (QAT parked)**: new screening champion; the QAT tax = +0.0029/+0.0044. |
+| 15 | 1–5000 | 0.3037 | 0.2732 | exact | **accepted** | 1.5e-08 / 1.6e-42 (vs iter 14, better) | 193,724 | 0 | adopted | **Drop review-state feature (RWKV_ZERO_FEATURES=22, Andrew's directive)**: not worse, slightly better both modes — new champion; deploy no longer needs Anki review state. |
+| 16 | 1–5000 | 0.3037 | 0.2734 | exact | rejected | 0.97 / 1.0 (vs iter 15) | 194,780 | 0 | invented | Prehead output gate (zero-init identity): no effect both modes — the shared readout is not gating-limited. Readout family 0/1. |
+| 17 | 1–5000 | 0.3039 | 0.2728 | exact | rejected | 1.0 / 1.7e-173 (vs iter 15) | 193,724 | 0 | invented | Binary-recall loss term (pbin 0.5): MODE TRADE — imm +0.0004 better, ahead −0.0002 worse. First real plain-era effect; scale-0.25 variant queued. |
+| 18 | 1–5000 | 0.3055 | 0.2756 | exact | rejected | 1.0 / 1.0 (vs iter 15) | 193,724 | 0 | adopted | Drop review-duration feature (directed, gate ≤0.0003 both): +0.0018/+0.0024 worse — duration is real signal; deploy keeps it. |
+| 19 | 1–5000 | 0.3038 | 0.2730 | exact | rejected | 1.0 / 1.6e-70 (vs iter 15) | 193,724 | 1 | invented | pbin at 0.25: same mode trade at half amplitude — dose-response linear, no scale can pass both modes. Lever exhausted. |
 
 ## Track 2 — ablate the old d=128 model
 
@@ -66,7 +66,7 @@ intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0
 (the 1-ep budget tax at d=128); vs champ5k_plain (193,724 params) −0.0036/−0.0042 better
 (what 2.57M extra params buy at matched budget).
 
-| iter | ahead | imm | status | params | Δparams | ratio ahead/imm (per 100k) | provenance | summary |
-|---|---|---|---|---|---|---|---|---|
-| A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
-| A1 | 0.2998 | 0.2691 | **accepted** | 2,320,516 | −442,368 | −0.00002 / +0.00001 | invented | All channel mixers → 1.0: ahead better, imm +0.00004 — ~50× inside the gate. Zero NaN-skips (A0: 7). New track-2 champion. |
+| iter | ahead | imm | status | params | Δparams | ratio ahead/imm (per 100k) | NaN users | provenance | summary |
+|---|---|---|---|---|---|---|---|---|---|
+| A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | 7 | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
+| A1 | 0.2998 | 0.2691 | **accepted** | 2,320,516 | −442,368 | −0.00002 / +0.00001 | 0 | invented | All channel mixers → 1.0: ahead better, imm +0.00004 — ~50× inside the gate. Zero NaN-skips (A0: 7). New track-2 champion. |
