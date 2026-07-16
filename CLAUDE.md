@@ -718,7 +718,12 @@ by A2's grad-stats report.
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
 `optimization/FUTURE_FEATURES.md` (real-timestamp features; needs a new dataset export — Andrew
-2026-07-15); `optimization/LIT_REVIEW.md` queue.
+2026-07-15); **scheduling-monotonicity plan = `optimization/MONOTONICITY_PLAN.md`** (Andrew
+2026-07-16: button intervals can invert, e.g. Again > Hard — constraint must live IN the model;
+staged: audit → monotone-in-t bases → counterfactual button-consistency loss at segment-end
+states via the shelved stateful kernel → isotonic projection as part of the model at deploy;
+= the "curve-shape constraints" track-1 family); `optimization/LIT_REVIEW.md` queue;
+deploy-side state-norm clamp (NaN guard, MONOTONICITY_PLAN-adjacent ship-time work).
 
 ### Ops
 - **Compaction (ONLY sanctioned way):** run `claude-automation/request_compact.ps1 -Focus "<carry-through>"`
