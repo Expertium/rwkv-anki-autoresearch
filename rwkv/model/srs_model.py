@@ -171,6 +171,17 @@ class SrsRWKV(ModuleType):
         # byte-identical, old checkpoints load unchanged.
         self.grade_emb_on = os.environ.get("RWKV_GRADE_EMB", "0") == "1"
         self.prehead_gate_on = os.environ.get("RWKV_PREHEAD_GATE", "0") == "1"
+        # Research iter 22 (2026-07-16, MONOTONICITY_PLAN.md stage 2): RWKV_MONO_CURVES=1
+        # projects the ahead-logit residual to its running lower envelope (cummin) along the
+        # time-point axis, making it non-increasing in t. The fixed-basis mixture is already
+        # monotone (0.9^(t/s_i) bases, softmax weights), logit() and the linear point interp
+        # preserve monotonicity, so the FINAL curve becomes non-increasing in elapsed time by
+        # construction -> "solve P(t)=DR for the interval" is single-crossing/well-defined.
+        # cummin (vs a softplus-cumsum generative form): neutral at Linear init (envelope of
+        # near-zero noise), exact identity wherever the raw residual is already decreasing,
+        # parameter-free (param count unchanged). Fallback if its sparse (argmin-routed)
+        # gradients stall training: shifted-softplus-cumsum. Default off = byte-identical.
+        self.mono_curve_on = os.environ.get("RWKV_MONO_CURVES", "0") == "1"
         # Research iter 17 (2026-07-15): direct binary-recall loss term. The benchmark's imm
         # metric IS p_binary_loss (BCE of 1-P(again) vs recall), but the training loss only
         # optimizes it implicitly through the 4-way rating CE. RWKV_PBIN_SCALE=<w> adds
@@ -312,6 +323,10 @@ class SrsRWKV(ModuleType):
         out_w = torch.nn.functional.softmax(out_w_logits, dim=-1)
         out_w_log_p = torch.nn.functional.log_softmax(out_w_logits, dim=-1)
         out_ahead_logits = self.ahead_linear(self.head_ahead_logits(x).float())
+        if self.mono_curve_on:
+            # running lower envelope over time points -> non-increasing residual (iter 22);
+            # projected values feed interp AND the mag/diff stats uniformly
+            out_ahead_logits, _ = torch.cummin(out_ahead_logits, dim=-1)
 
         x_p = self.head_p(x).float()
         return out_ahead_logits, out_w, out_w_log_p, self.p_linear(x_p)
