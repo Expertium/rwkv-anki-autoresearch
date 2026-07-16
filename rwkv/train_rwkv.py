@@ -133,7 +133,7 @@ def get_optimizer(config, model):
         "head_s",
         "head_d",
         "head_p",
-        "grup_",  # GRU-P head weights replace w_linear -> same head wd group
+        "gru_",  # GRU head weights replace w_linear -> same head wd group
     ]
     for name, param in model.named_parameters():
         # Param constraint is to exclude layer/group norm weights

@@ -188,8 +188,8 @@ class RNNProcess:
     def predict_func(self, curve, elapsed_seconds):
         elapsed_seconds = torch.tensor(elapsed_seconds, device=self.device).view(1, 1)
         out_ahead_logits, out_w, out_s_raw, out_d_raw = curve
-        if self.rnn.grup_on:
-            curve_probs_raw = self.rnn.grup_forgetting_curve(
+        if self.rnn.gru_on:
+            curve_probs_raw = self.rnn.gru_forgetting_curve(
                 out_w, out_s_raw, out_d_raw, elapsed_seconds
             )
         else:

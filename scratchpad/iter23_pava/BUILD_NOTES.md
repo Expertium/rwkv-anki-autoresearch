@@ -50,7 +50,7 @@ spec of record). Implementation follows these exactly.
 - 3 learnable powers: root Parameter `pava_theta` (3,), created when RWKV_PAVA_LAMBDA>0;
   p_j = 2*tanh(theta_j), init theta = atanh(0.5) → p = 1 (classic PAVA). Junction j=0:
   Again-Hard, 1: Hard-Good, 2: Good-Easy. Root-Parameter + jit.ignore accessor pattern
-  (grup precedent). Name lacks "weight"/2D → falls into other_params (wd=0) — correct.
+  (gru precedent). Name lacks "weight"/2D → falls into other_params (wd=0) — correct.
 - **Pooling op**: exact sequential PAVA with pooling-to-tie, non-DEcreasing target order
   (P_Again ≤ P_Hard ≤ P_Good ≤ P_Easy), pooled value = weighted power mean
   M_p(a,b;wa,wb) = ((wa*a^p + wb*b^p)/(wa+wb))^(1/p) at the JUNCTION's power (junction =

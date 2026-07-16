@@ -764,8 +764,11 @@ zero-risk, residual already disabled) ≈ −193k ≈ 8.3% of A1 before any head
 (w_linear 64→8 saves ~7.2k ≈ 3.7%). Note for the future hard-ordering option: per-basis c_i
 breaks total pointwise order of the basis (curves with different decays cross); a single
 SHARED learnable c + S-grid keeps the basis totally ordered (FOSD trick compatible) —
-measure both if cheap. **VARIANT B = GRU-P-FAITHFUL (Andrew 2026-07-17, srs-benchmark models/gru.py — his call,
-A3 ANCHOR): predict w, S, AND decay per curve.** GRU-P uses n_curves=2 and THREE tiny
+measure both if cheap. **VARIANT B = GRU-FAITHFUL (Andrew 2026-07-17, srs-benchmark models/gru.py — his call,
+A3 ANCHOR): predict w, S, AND decay per curve.** ⚠ NAMING (Andrew 2026-07-17): the
+benchmark model is called **GRU** — the old GRU-P entry was REMOVED from srs-benchmark
+(training-data remnant; never write "GRU-P"). Our env flag = RWKV_GRU_HEAD=N, params
+gru_*. GRU uses n_curves=2 and THREE tiny
 linears off the trunk feature — w_fc (N logits→softmax), s_fc (exp(clamp(·,−25,25))
 stabilities), d_fc (same-form decays) — into R(t) = Σ wᵢ·(1 + t/(1e−7+Sᵢ))^(−dᵢ). Plain
 form, no R(S)=0.9 factor pinning. exp ⇒ dᵢ>0 ⇒ EACH curve monotone in t even with

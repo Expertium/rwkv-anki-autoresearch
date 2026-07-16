@@ -1,4 +1,4 @@
-"""Off-path byte-identity goldens for the A3 GRU-P curve-head edit (2026-07-17).
+"""Off-path byte-identity goldens for the A3 GRU curve-head edit (2026-07-17).
 
 Run BEFORE editing srs_model.py / srs_model_rnn.py (mode=gen) to capture the current
 head outputs + state_dicts, then AFTER the edit (mode=check) to prove the flag-off path
@@ -88,7 +88,7 @@ def run(mode, arch_env, tag):
     env = dict(os.environ)
     env.update({"PYTHONPATH": REPO, "CUDA_VISIBLE_DEVICES": ""})
     env.pop("RWKV_NO_AHEAD_RESIDUAL", None)
-    env.pop("RWKV_GRUP_HEAD", None)
+    env.pop("RWKV_GRU_HEAD", None)
     env.update(arch_env)
     out = os.path.join(HERE, f"golden_offpath_{tag}.pt")
     r = subprocess.run([sys.executable, "-c", CHILD, mode, out], env=env, cwd=REPO,

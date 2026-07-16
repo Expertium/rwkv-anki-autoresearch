@@ -1,0 +1,7 @@
+{
+  "train_users": "1-5000",
+  "n_reviews": 357460182,
+  "median_duration_ms": 6433,
+  "scaled_duration_constant": -0.12079481388911952,
+  "distinct_values": 326372
+}

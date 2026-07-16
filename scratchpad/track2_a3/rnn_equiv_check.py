@@ -1,4 +1,4 @@
-"""RNN off-path equivalence check for the A3 GRU-P edit (2026-07-17).
+"""RNN off-path equivalence check for the A3 GRU edit (2026-07-17).
 
 SrsRWKVRnn CONSTRUCTION is nondeterministic (rkvdag_lerp comes from uninitialized
 memory -- torch.empty garbage; harmless in production because weights are always copied
