@@ -764,7 +764,15 @@ zero-risk, residual already disabled) ≈ −193k ≈ 8.3% of A1 before any head
 (w_linear 64→8 saves ~7.2k ≈ 3.7%). Note for the future hard-ordering option: per-basis c_i
 breaks total pointwise order of the basis (curves with different decays cross); a single
 SHARED learnable c + S-grid keeps the basis totally ordered (FOSD trick compatible) —
-measure both if cheap. ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
+measure both if cheap. **VARIANT B (Andrew 2026-07-16, his preference): PREDICT S like FSRS
+— head outputs N weights + N log-stabilities (mixture regression, N≈4), curves =
+(1+f·t/S_i(x))^(−c). Fix the MDN pathologies (component collapse / label switching) by
+predicting ORDERED stabilities: log S_1 free + positive softplus increments → S_1<…<S_N;
+with a shared decay the PREDICTED basis stays totally pointwise-ordered (FOSD-compatible).
+Param savings ≈ same as the grid variant (both kill the 128-wide output). Prefer B for A3
+(Andrew's instinct, ordered param defuses the risk); grid variant = fallback if it trains
+badly. NB the current head does NOT predict S at all — fixed log-spaced S grid (0.1 s→~e^22 s),
+model predicts only the 128 softmax weights (a distribution over grid stabilities).** ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
 the FIRST construction's env-flag into the compiled class — never two flag values in one
 process; ahead_linear is zero-init (like W_o) — randomize before head perturb/grad smokes.
 
