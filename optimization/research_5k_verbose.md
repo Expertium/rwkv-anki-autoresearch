@@ -331,3 +331,38 @@ Timing: WS 6h37m @ 1.07 s/step (same as A0 — mixer FLOPs weren't the bottlenec
 **A2 queue by expected ratio-efficiency:** user 4L→3L / deck 4L→3L (~149k each; the
 user-stream H=1 near-miss at d=32 hints long-recurrence streams have slack), LoRA-dim cuts,
 d_model 128→96 (bigger surgery, keep for later).
+
+### Iter 19 — pbin at scale 0.25 (REJECTED 2026-07-16 14:20): dose-response closes the pbin lever
+
+**Hypothesis (conduct rule 2, from iter 17):** halving the binary-recall loss pressure
+(RWKV_PBIN_SCALE=0.25) might keep part of iter 17's real imm gain (+0.000387) while shedding
+its ahead cost (−0.000222). Exact iter-15 recipe otherwise (RWKV_ZERO_FEATURES=22, vprune vs
+champion_5k_plain).
+
+**Finals (n=4999): ahead 0.303825 / imm 0.273024. On the intersection vs iter15
+(champ 0.303723/0.273282, paired_pvalue --intersect): imm +0.000258 BETTER (p=1.6e-70) but
+under the 0.0003 bar; ahead −0.000101 worse (p=1.0). REJECTED.**
+
+**Key finding — the trade is ~LINEAR in scale:** 0.5 → imm +0.000387 / ahead −0.000222;
+0.25 → imm +0.000258 / ahead −0.000101. Both modes interpolate smoothly through zero, so no
+scale can make BOTH improve ≥0.0003 — a pure trade can never pass a both-modes gate. **The
+pbin-scale lever is exhausted by interpolation** (not merely 2 samples); loss-reweighting
+family stands 0/2 with a real, reproducible, dose-responsive effect. Other reweighting ideas
+(recency weights, per-rating weights) would be genuinely new family members if revisited.
+
+**NEW FAILURE MODE — first-ever d=32 NaN-skip:** user 8902 (2.0M-token mega user, finite in
+every prior track-1 run; iter15 scored 0.0022/0.0002 on 1,768,035 reviews) NaN'd on its
+1.0M–2.1M-token eval chunk. Until now this instability class was d=128-only (A0's 7 skips).
+fp32 probe (DTYPE=float + RWKV_EVAL_CAST_FP32, same ckpt, user 8902 only): **NaN PERSISTS on
+the exact same chunk → weight-level, A0-class** (chunks 0 and 2 finite; scratchpad/
+iter19_pbin025/probe32.log). Could be trained-weight lottery rather than pbin causally, but
+either way the candidate would have been a worse deploy than the champion. Probe recipe note:
+DTYPE=float alone crashes on mixed dtypes (LMDB batches are bf16) — the shim env is required. Merge/completeness gate handled it
+correctly (4999 + 1 = 5000 rostered); gate ran manually with --intersect (the pipeline's
+template gate exits 1 on set mismatch — future track-1 .cmds should add --intersect only when
+a nanskip appears, since full-n pairing is stricter evidence).
+
+**Val trajectory:** imm better at 9/12 WS checkpoints, ahead a coin flip around zero — the
+mid-run vals previewed the trade honestly. Timing: WS 93m (never prune-threatened), decay 22m,
+phased eval 76m. Artifacts scratchpad/iter19_pbin025/ (iter19d_1638.pth kept),
+result/RWKV[-P]-iter19_pbin025.jsonl + .nanskip.jsonl.

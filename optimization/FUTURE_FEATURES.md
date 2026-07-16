@@ -26,7 +26,7 @@ exists; the `#N` references below are its row numbers.
 | high | Seconds-resolution "time since any review" (session position) | #10 is integer-day (built from day_offset) → sub-day session structure is invisible today. Continuous gap ≫ arbitrary session-split heuristics. |
 | med | Creation-batch size at ±1 min / ±1 h / same day (+ position in batch) | Andrew's #4 generalized; import-vs-handmade signal. Andrew 👍 |
 | med | User tenure (time since user's first-ever review) | Confirmed NOT in the table. |
-| med | note_id/deck_id/preset_id ages: card − deck creation, card - preset creation, deck age at review, preset age at review, deck − preset creation | Early core card vs late addition; preset ids are creation timestamps too (Andrew 2026-07-16: use both). ⚠ the DEFAULT deck and DEFAULT preset both have id 1 (constant, not a timestamp) — derive an is-default flag for those instead of an age. Andrew 👍 |
+| med | note_id/deck_id/preset_id ages: card − deck creation, card - preset creation, deck age at review, preset age at review | Early core card vs late addition; preset ids are creation timestamps too (Andrew 2026-07-16: use both). ⚠ the DEFAULT deck and DEFAULT preset both have id 1 (constant, not a timestamp) — derive an is-default flag for those instead of an age. Andrew 👍 |
 | low | Card created before vs after user's first-ever review | "Probably not important, but we can try" (Andrew). |
 | skip | card_id − note_id gap | ~always zero (cards generated at note creation) — not worth a dim. |
 | skip | Session count per day | Splitting is arbitrary; the sub-day #10 upgrade carries the signal continuously. |

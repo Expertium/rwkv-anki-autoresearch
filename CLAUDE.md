@@ -607,10 +607,13 @@ Pairing needs identical db/MAX/seeds.
   confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family flags;
   plain-era vs QAT-era logloss are NOT comparable).
 
-**Iter 17 REJECTED (2026-07-15 20:32): binary-recall loss term (RWKV_PBIN_SCALE=0.5) = MODE
-TRADE** — imm +0.000387 BETTER (p=1.7e-173, clears the bar) but ahead −0.000222 worse (p=1.0);
-the first real (non-null) plain-era effect. Loss-reweighting family 0/1 with signal; **variant
-queued: PBIN_SCALE=0.25** (after iter 18 + A1). Detail: research_5k_verbose.md.
+**Iters 17+19 REJECTED: the pbin lever (binary-recall loss term) is CLOSED by dose-response.**
+Scale 0.5 (iter 17): imm +0.000387 / ahead −0.000222; scale 0.25 (iter 19, n=4999): imm
++0.000258 (p=1.6e-70, under the bar) / ahead −0.000101 (p=1.0). The trade is ~linear through
+zero → NO scale can make both modes improve ≥0.0003. Real, reproducible effect; pure trade.
+⚠ Iter 19 also produced the FIRST-EVER d=32 NaN-skip (user 8902, 2.0M-token mega user, on its
+1M–2M-token chunk; finite in all prior track-1 runs) — fp32-probe verdict in
+research_5k_verbose.md; watch future track-1 evals for nanskips (gate needs --intersect then).
 
 **Iter 18 REJECTED (directed, 2026-07-15 23:45): duration ablation (ZERO_FEATURES=8,22) =
 +0.0018 ahead / +0.0024 imm worse — 6-8x the ≤0.0003 tolerance. Review duration is REAL signal
@@ -618,19 +621,14 @@ queued: PBIN_SCALE=0.25** (after iter 18 + A1). Detail: research_5k_verbose.md.
 Champion recipe stays RWKV_ZERO_FEATURES=22 only.** The honest persistent val deficit predicted
 this one (consistent-all-run val gaps mean something; oscillating ones don't).
 
-**→ NEXT: TRACK-2 A1** (first d=128 ablation: layer / d_model / mixer / LoRA-dim / head-width
-cuts ranked by expected ratio-efficiency; arch file via RWKV_ARCH_MODULE; per-100k gate vs A0;
-**needs paired_pvalue --intersect first**; launch AFTER the 10k-id build's ALL_DONE releases the
-CPU). Track-1 queue after: PBIN_SCALE=0.25 variant, cross-head readout mix variant, permutation
-init (LOW).
-
 **Family scoreboard (track 1, plain+QAT eras; conduct rule 5 — 1-2 rejects = deprioritized, NOT
 closed):** early-training-intervention 0/2 (shrink-perturb, warmup-KD — both led early val then
 washed out; mid-WS val leads do NOT predict verdicts); grade-representation 0/1; capacity-at-5k
 0/2 (head resolution 64→128, mixer 1.5 — the d=32 trunk is not capacity-limited at 5k);
 state-size ladder 0/5 CLOSED (no stream is state-capacity-limited at d=32/H=2; iter 6's near-miss
-died on the seed pair); readout 0/1 (prehead gate null); loss-reweighting 0/1 (pbin 0.5 = imm/ahead
-mode trade — REAL effect, 0.25 variant queued); HP tuning CLOSED (champion HPs confirmed
+died on the seed pair); readout 0/1 (prehead gate null); loss-reweighting 0/2 (pbin 0.5 + 0.25 =
+linear imm/ahead trade, the SCALE lever is closed by interpolation — other reweighting ideas
+like recency/per-rating weights would be new family members); HP tuning CLOSED (champion HPs confirmed
 vs 19 alternatives at full eval). All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
 RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYERS,
 RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32.
@@ -687,11 +685,11 @@ track-2 vprune ref). d=32's mixer lesson transfers to d=128; decay-end val was I
 Detail: research_5k_verbose.md. **Track-2 A2 queue (next track-2 block):** user 4L→3L / deck
 4L→3L (~149k each), LoRA-dim cuts, d_model 128→96.
 
-**→ NEXT (track-1 block, ~12h): ITER 19 = PBIN_SCALE=0.25 variant** (halve iter 17's
-loss-term pressure; hope = keep part of the real imm gain at ~no ahead cost; gate = standard
-≥0.0003 BOTH + p<1e-4 BOTH vs iter15). Then cross-head readout mix variant, permutation init
-(LOW). Launch on the iter-15 champion recipe (RWKV_ZERO_FEATURES=22, vprune vs
-champion_5k_plain.json).
+**→ NEXT (track-1 block continues): ITER 20 = cross-head readout mix** (readout-family
+variant 2: let the 2 heads exchange information before the SRS heads read out; env-gated,
+zero-init so init = champion). Then permutation init (LOW), then the track-2 A2 block. Launch
+on the iter-15 champion recipe (RWKV_ZERO_FEATURES=22, vprune vs champion_5k_plain.json; gate
+= standard ≥0.0003 BOTH + p<1e-4 BOTH vs iter15).
 
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
