@@ -804,6 +804,15 @@ def main_loop(config, task_queue, batch_queue):
     # final logloss: champ_final + cand@s - champ@s) and exit(42). RWKV_PRUNE_MIN_STEP delays the first
     # check (e.g. past a longer warmup, whose early losses are worse by construction). Default off.
     step_trace_path = os.environ.get("RWKV_STEP_TRACE") or ""
+    # RWKV_GRAD_STATS=<out.json> (Andrew 2026-07-16, track-2 ablation targeting): record
+    # per-param mean|grad| + mean|grad*w| across all steps + final near-no-op weight stats.
+    # Reads RAW master grads (before clip). Default off = zero cost. See rwkv/grad_stats.py;
+    # report via optimization/grad_stats_report.py.
+    _gs = None
+    _gs_path = os.environ.get("RWKV_GRAD_STATS") or ""
+    if _gs_path:
+        from rwkv.grad_stats import GradStats
+        _gs = GradStats(_gs_path, master_model)
     prune_ref_path = os.environ.get("RWKV_PRUNE_REF") or ""
     prune_every = int(os.environ.get("RWKV_PRUNE_EVERY") or "300")
     prune_alpha = float(os.environ.get("RWKV_PRUNE_ALPHA") or "1e-4")
@@ -1103,6 +1112,8 @@ def main_loop(config, task_queue, batch_queue):
                 transfer_child_grad_to_master(master=master_model, child=model)
                 if _wkv_cb_param is not None:
                     _rwkv_ops_mod.wkv_pq_grad_fetch()
+                if _gs is not None:  # raw grads (pre-clip); NaN steps masked internally
+                    _gs.accumulate()
 
                 if validate_iter and config.USE_WANDB:
                     log_model(log, master_model)
@@ -1221,6 +1232,8 @@ def main_loop(config, task_queue, batch_queue):
                               f"est_ahead={est_a:.6f} est_imm={est_i:.6f} -> {marker_path}")
                         if trace_file is not None:
                             trace_file.close()
+                        if _gs is not None:
+                            _gs.dump()  # partial-run stats still rank layers
                         sys.exit(42)
 
             scheduler.step()
@@ -1318,6 +1331,8 @@ def main_loop(config, task_queue, batch_queue):
                                   f"est_imm={marker['estimated_imm']:.6f} -> {marker_path}")
                             if trace_file is not None:
                                 trace_file.close()
+                            if _gs is not None:
+                                _gs.dump()  # partial-run stats still rank layers
                             sys.exit(42)
                 else:
                     log["validation_nan"] = 1
@@ -1327,6 +1342,9 @@ def main_loop(config, task_queue, batch_queue):
 
     if trace_file is not None:
         trace_file.close()
+
+    if _gs is not None:
+        _gs.dump()
 
     if bench_max_steps > 0 and bench_t0 is not None:
         torch.cuda.synchronize()

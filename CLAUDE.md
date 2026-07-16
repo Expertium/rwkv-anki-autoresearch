@@ -683,7 +683,11 @@ needed 7 — the instability is gone; future track-2 gates can pair on full n=50
 `champion_5k_track2.json` = A1 (ckpt `scratchpad/track2_a1/t2a1d_5586.pth`, 24 val points = the
 track-2 vprune ref). d=32's mixer lesson transfers to d=128; decay-end val was IDENTICAL to A0.
 Detail: research_5k_verbose.md. **Track-2 A2 queue (next track-2 block):** user 4L→3L / deck
-4L→3L (~149k each), LoRA-dim cuts, d_model 128→96.
+4L→3L (~149k each), LoRA-dim cuts, d_model 128→96. **A2+ runs must set
+RWKV_GRAD_STATS=<out.json> (Andrew's directive 2026-07-16):** records per-param mean|grad| +
+mean|grad·w| (SNIP saliency) across all steps + final near-0/near-1 no-op weight stats, to
+rank ablation targets; recorder `rwkv/grad_stats.py` (unit-tested), report
+`python optimization/grad_stats_report.py <json>` (layer ranking + type-aware no-op suspects).
 
 **→ NEXT (track-1 block continues): ITER 20 = cross-head readout mix** (readout-family
 variant 2: let the 2 heads exchange information before the SRS heads read out; env-gated,
