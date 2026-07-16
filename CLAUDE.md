@@ -764,15 +764,21 @@ zero-risk, residual already disabled) ≈ −193k ≈ 8.3% of A1 before any head
 (w_linear 64→8 saves ~7.2k ≈ 3.7%). Note for the future hard-ordering option: per-basis c_i
 breaks total pointwise order of the basis (curves with different decays cross); a single
 SHARED learnable c + S-grid keeps the basis totally ordered (FOSD trick compatible) —
-measure both if cheap. **VARIANT B (Andrew 2026-07-16, his preference): PREDICT S like FSRS
-— head outputs N weights + N log-stabilities (mixture regression, N≈4), curves =
-(1+f·t/S_i(x))^(−c). Fix the MDN pathologies (component collapse / label switching) by
-predicting ORDERED stabilities: log S_1 free + positive softplus increments → S_1<…<S_N;
-with a shared decay the PREDICTED basis stays totally pointwise-ordered (FOSD-compatible).
-Param savings ≈ same as the grid variant (both kill the 128-wide output). Prefer B for A3
-(Andrew's instinct, ordered param defuses the risk); grid variant = fallback if it trains
-badly. NB the current head does NOT predict S at all — fixed log-spaced S grid (0.1 s→~e^22 s),
-model predicts only the 128 softmax weights (a distribution over grid stabilities).** ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
+measure both if cheap. **VARIANT B = GRU-P-FAITHFUL (Andrew 2026-07-17, srs-benchmark models/gru.py — his call,
+A3 ANCHOR): predict w, S, AND decay per curve.** GRU-P uses n_curves=2 and THREE tiny
+linears off the trunk feature — w_fc (N logits→softmax), s_fc (exp(clamp(·,−25,25))
+stabilities), d_fc (same-form decays) — into R(t) = Σ wᵢ·(1 + t/(1e−7+Sᵢ))^(−dᵢ). Plain
+form, no R(S)=0.9 factor pinning. exp ⇒ dᵢ>0 ⇒ EACH curve monotone in t even with
+per-curve decays (time-axis monotonicity does NOT need a shared decay — shared d is only
+for the future FOSD hard rating-ordering, where the basis must be totally
+pointwise-ordered; keep as later variant). Plan: N=2 faithful first (proven on the
+leaderboard, label-switching moot at N=2); if it holds, sweep N with ordered-S
+(cumsum-softplus) as anti-collapse insurance. Init: zero-init the three head WEIGHTS
+(input-independent start, like the current zero-init w_linear) + set BIASES to a sane
+prior curve (spread log-S, moderate d). Reuse the head_w trunk; replaces w_linear
+(65,664 → ~3.1k at N=2, d=128). NB the current head does NOT predict S at all — fixed
+log-spaced S grid (0.1 s→~e^22 s), model predicts only the 128 softmax weights (a
+distribution over grid stabilities); grid-power-basis (variant A) = fallback.** ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
 the FIRST construction's env-flag into the compiled class — never two flag values in one
 process; ahead_linear is zero-init (like W_o) — randomize before head perturb/grad smokes.
 
