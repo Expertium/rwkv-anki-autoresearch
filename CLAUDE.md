@@ -715,8 +715,8 @@ vs A1, full n=5000 pairing; **first run recording RWKV_GRAD_STATS**
 ~08:30; Andrew's directive 2026-07-16): MONOTONE CURVES — RWKV_MONO_CURVES=1 cummin
 projection on the ahead-logit residual → curve non-increasing in t by construction
 (MONOTONICITY_PLAN.md stage 2; 193,724 params, zero-init-neutral start; smoke ALL_PASS;
-verdict ~11:45).** Assumed gate = iter-18-style directed mirror (accept if BOTH modes worse
-by ≤0.0003 — a wanted constraint at tiny cost); confirm with Andrew before promoting.
+verdict ~11:45).** **Gate = ANDREW DECIDES (2026-07-16): report both modes' finals, deltas
+vs iter 15, p-values, and nan_users to him and WAIT — no auto-accept/reject, no promotion.**
 Track-1 queue after: xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW).
 **Track-2 sizing recommendation (Andrew 2026-07-16, soft rule): aim for ≥5% param reduction
 per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
