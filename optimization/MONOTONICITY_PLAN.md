@@ -47,28 +47,58 @@ raw-mixture BCE term AHEAD_RAW_SCALE=0.5 already supervises the mixture directly
 (redefined, `scratchpad/iter22_nores`) measures the accuracy cost; verdict is Andrew's call.
 Time-axis monotonicity needs no reparametrization anymore.
 
-### Stage 2 — counterfactual button-consistency training (the main fix, soft)
-Add a training loss term mirroring the deploy computation exactly:
-- At each training SEGMENT END, take the full chained-model state — **the stateful WKV
-  kernel (built + parity-verified, shelved 2026-07; see [[stateful-bptt-shelved]]) returns
-  exactly these boundary states**, the one missing ingredient in the parallel form.
-- Append a synthetic next review with each of the 4 ratings (identical imputed
-  duration/elapsed across the four — the deploy contract), advance ONE RNN step each,
-  read the 4 curves.
-- Hinge penalty on pointwise order violations:
-  L_mono = λ · Σ_{r<r'} Σ_{128 t-points} relu(P_r(t) − P_{r'}(t) + margin).
-- Coverage: thousands of segment ends per batch; cost ≈ 4 one-token steps + 4 head reads
-  per point — a few % of step time. Soft ⇒ spends accuracy budget only where data pulls
-  against ordering; measured with the standard research gate.
-- Elapsed-feature imputation for the synthetic review: reuse the segment's last-review
-  elapsed, or sample log-uniform; decide at implementation via the Stage-0 audit's
-  violation geography.
+### Stage 2 — LEARNABLE ISOTONIC RECTIFIER in the model (Andrew 2026-07-16 late — the
+### main fix; supersedes the hinge-loss draft, which is demoted to optional regularizer)
+Put the order-enforcing operation INSIDE the model and train through it, so monotonicity
+holds by construction at deploy AND the model learns to live with the constraint at
+minimal logloss (no train≠deploy mismatch; this also absorbs the old Stage 3 — the deploy
+projection IS this same operator).
+
+**Operator (Andrew's design):** PAVA-style pooling where the pooled value is a LEARNABLE
+GENERALIZED POWER MEAN, with 3 pair-specific powers — p_AH (Again–Hard), p_HG
+(Hard–Good), p_GE (Good–Easy), each p ∈ [−2, 2]:
+- At a decision point, evaluate the 4 counterfactual curves at the queried t →
+  (P_Again, P_Hard, P_Good, P_Easy), each in (0,1).
+- Left-to-right scan; a violating adjacent pair is POOLED — both members take
+  M_p(a,b) = ((aᵖ+bᵖ)/2)^(1/p) with that junction's power. Pooling-to-tie is what
+  guarantees order (a power mean lies strictly between min and max, so adjusting one side
+  alone enforces nothing). Cascade rule for multi-block merges: size-weighted power mean
+  using the junction's power; block members all take the merged value.
+- p semantics: p→−2 biases the pooled value toward the LOWER curve, p=1 = arithmetic
+  (classic PAVA), p→+2 toward the HIGHER — the model learns, per button pair, which side
+  to trust when they conflict. 3 scalar params total.
+- Gradients: when a violation pools, the BCE gradient of the labeled (actual-rating)
+  curve flows into BOTH pooled curves and through the synthetic one-step advances into
+  the shared trunk — the model is actively taught to separate curves where data demands
+  it and to accept cheap ties where it doesn't; the p_j learn the least-damaging pooling.
+- Numerics/parametrization: p_j = 2·tanh(θ_j), init θ = atanh(0.5) → p=1 (exact PAVA at
+  start); unified stable form via exp((1/p)·log-mean-exp(p·log x)) with a geometric-mean
+  switch near |p| < 1e-3. Fresh-init behavior is benign (all 4 curves near-identical →
+  pooling ties near-equal values ≈ identity).
+- **Coverage/integration:** counterfactual curves need the PRE-review chained state → the
+  stateful WKV kernel's boundary states ([[stateful-bptt-shelved]], built +
+  parity-verified). Train-time rectification fires at segment-BOUNDARY positions (first
+  row of each segment: its pre-state = previous segment's end state); 4 synthetic
+  rating-swapped variants of that row, 4 one-step RNN advances, pool, train the actual
+  variant against its normal ahead label. Deploy applies the identical rectifier at every
+  button computation. Cost ≈ 4 one-token steps per covered position — a few % of step.
+- Deploy-contract details to pin at build time (use the Stage-0 audit): duration/elapsed
+  imputation for the 3 non-pressed synthetic partners (deploy imputes ONE shared value —
+  the pressed row keeps its real duration for the trained prediction; slight asymmetry to
+  resolve); optional per-pair margin ε if strict (no-tie) button ordering is wanted;
+  optional extension — weight the pooling mean by the p-head's predicted rating
+  probabilities (per-instance trust weighting; composes with the learnable powers).
+- Fallback/regularizer: the original hinge penalty
+  L_mono = λ · Σ_{r<r'} Σ_t relu(P_r(t) − P_{r'}(t) + margin) can be added on top purely
+  to REDUCE tie frequency, not to enforce (the rectifier already guarantees order).
 
 ### Stage 3 — exact guarantee at inference: isotonic projection AS PART OF THE MODEL
-Isotonic-project the 4 curves pointwise (or the 4 intervals) at inference — in the Rust
-engine AND our eval harness, so the projected curve IS the model's defined output (not a
-scheduler-side hack; kills the wants-vs-gets mismatch by definition). After Stage 2 the
-projection should be a rare no-op; Stage 0/2 metrics quantify how rare.
+**Absorbed into Stage 2 (2026-07-16):** the learnable rectifier IS the inference-time
+projection — same operator, same learned powers, implemented in the Rust engine AND our
+eval harness, so the rectified curve is the model's defined output (kills the
+wants-vs-gets mismatch by definition). After Stage-2 training the pooling should be a
+rare near-no-op; Stage 0 metrics quantify how rare. Only remaining stage-3 work = the
+Rust port of the operator (a dozen lines) + parity vectors.
 
 ### Rejected-for-now alternative — hard architectural ordering
 Route the rating's effect on the IMMEDIATE curve through an ordered scalar bottleneck
@@ -88,6 +118,8 @@ too much logloss.
 
 **Status:** recorded 2026-07-16 (during track-2 A2). Stage 1 (time axis) RESOLVED BY
 REMOVAL the same evening — Andrew directed the piecewise-linear correction disabled in
-both tracks (RWKV_NO_AHEAD_RESIDUAL=1); iter 22 (redefined) measures the cost. Remaining
-queue: Stage 0 audit when compute frees up, Stage 2 (rating axis, needs stateful-kernel
-wiring), Stage 3 at Rust-deploy time.
+both tracks (RWKV_NO_AHEAD_RESIDUAL=1); iter 22 (redefined) measures the cost. Stage 2
+UPGRADED the same evening to Andrew's learnable power-mean rectifier (in-model, absorbs
+stage 3's projection). Remaining queue: Stage 0 audit when compute frees up → Stage-2
+rectifier iter (main build = stateful-kernel wiring for segment-boundary states) → Rust
+port of the operator at deploy time.
