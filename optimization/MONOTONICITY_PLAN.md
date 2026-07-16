@@ -75,13 +75,29 @@ GENERALIZED POWER MEAN, with 3 pair-specific powers — p_AH (Again–Hard), p_H
   start); unified stable form via exp((1/p)·log-mean-exp(p·log x)) with a geometric-mean
   switch near |p| < 1e-3. Fresh-init behavior is benign (all 4 curves near-identical →
   pooling ties near-equal values ≈ identity).
-- **Coverage/integration:** counterfactual curves need the PRE-review chained state → the
-  stateful WKV kernel's boundary states ([[stateful-bptt-shelved]], built +
-  parity-verified). Train-time rectification fires at segment-BOUNDARY positions (first
-  row of each segment: its pre-state = previous segment's end state); 4 synthetic
-  rating-swapped variants of that row, 4 one-step RNN advances, pool, train the actual
-  variant against its normal ahead label. Deploy applies the identical rectifier at every
-  button computation. Cost ≈ 4 one-token steps per covered position — a few % of step.
+- **Coverage/integration — REDESIGNED 2026-07-16 late (major simplification): IN-SEQUENCE
+  PROBE ROWS, no stateful kernel needed.** Verified at the kernel level (rwkv_ops
+  reference + CUDA): a SKIP row's output IS its own one-step advance read off the
+  updated state — only the state COMMIT is masked (`torch.where(skip, old, next)`). So a
+  counterfactual button probe = a skip row with real review-i features, grade one-hot
+  swapped to rating r and duration set to the imputed constant, inserted immediately
+  BEFORE real row i (reads the post-(i−1) state, advances, output readable, state
+  discarded — invisible to every later row). This is EXACTLY the existing imm query-row
+  machinery (data_processing.add_queries) with different feature masking — probes carry
+  outcome features (swapped) and query-flag 0, queries carry masked outcomes and flag 1.
+  Outcome-dependent dims = add_queries' reject list: grade one-hot (4), duration (1),
+  card state (1, = col 22, already zeroed by champion recipe). Token-shift invisibility
+  via time_shift_selects (the query rows already solve this). Insertion happens at
+  PREPARE-BATCH time (on the fly from stored rows — LMDBs untouched, invariant intact).
+  Coverage is a DENSITY KNOB (seeded subset of ahead-labeled rows, e.g. 5–10%): cost =
+  +3–4 inserted rows per probed row (~+15–40% tokens at 5–10%; full coverage would be
+  ~4×, too dear for training but fine for eval/audit). Pool the 4 probe curve values at
+  the row's label-elapsed t; λ-weighted BCE on the pooled ACTUAL-rating probe vs the
+  row's existing ahead label; counterfactual probes get gradient only through pooling.
+  The 4th (pressed) probe uses the imputed duration like the others (mirrors the deploy
+  button exactly); the real row's normal ahead loss (real duration, no pooling) is
+  untouched. Benchmark eval stays on the committed (real-row) curves — the rectifier
+  shapes training and defines deploy BUTTON output; the Stage-0 audit measures ordering.
 - **Duration imputation — DECIDED (2026-07-16, Andrew delegated):** ONE value shared by
   all 4 probes — this is causally correct, not just a convention: the duration is the
   time spent on the card BEFORE the press, so it cannot depend on which button gets
