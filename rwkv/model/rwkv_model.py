@@ -551,6 +551,19 @@ class RWKV7TimeMixer(ModuleType):
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
         # TorchScript can't read module-level str globals from a scripted forward -> instance bool
         self.shift_pq_on = bool(_SHIFT_PQ_PATH)
+        # Research iter 20 (2026-07-16): CROSS-HEAD READOUT MIX. RWKV_XHEAD_MIX=1 adds a
+        # zero-init delta mix across heads to the WKV output BEFORE out_group_norm:
+        #   out[b,t,g,k] += sum_h out[b,t,h,k] * delta[h,g,k]
+        # The per-head GroupNorm + elementwise gate make this NOT absorbable by W_o (a
+        # post-norm linear could be). Zero-init = exact identity at init; the param name
+        # keeps "weight" + ndim>=2 so it lands in the decayed group, and wd pulls the delta
+        # toward 0 = toward champion behavior. +H*H*K params/layer (64 at H=2/K=16).
+        # Default unset = param absent = byte-identical, old checkpoints load unchanged.
+        self.xhead_mix_on = os.environ.get("RWKV_XHEAD_MIX", "0") == "1"
+        if self.xhead_mix_on:
+            self.xhead_mix_weight = torch.nn.Parameter(
+                torch.zeros(self.H, self.H, self.K)
+            )
 
         with torch.no_grad():
             ratio_0_to_1 = layer_id / max(config.n_layers - 1, 1)  # guard 1-layer stream (iter35 card=1)
@@ -646,6 +659,15 @@ class RWKV7TimeMixer(ModuleType):
             )
             self.dropout = torch.nn.Dropout(p=config.dropout)
 
+    @torch.jit.ignore
+    def _apply_xhead_mix(self, out_BTHK: torch.Tensor) -> torch.Tensor:
+        # Eager-Python indirection (iter-16 TorchScript rules): the param only exists when
+        # RWKV_XHEAD_MIX=1, and ignored bodies must use Parameters directly, not submodules.
+        # einsum: mixed[b,t,g,k] = sum_h out[b,t,h,k] * delta[h,g,k]; delta zero-init.
+        return out_BTHK + torch.einsum(
+            "bthk,hgk->btgk", out_BTHK, self.xhead_mix_weight
+        )
+
     @FunctionType
     def forward(self, in_BTC, v0_BTC, time_shift_select_BT, skip_BT):
         B, T, C = in_BTC.shape
@@ -711,6 +733,9 @@ class RWKV7TimeMixer(ModuleType):
             out_BTHK = reference_rwkv7(
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT
             )
+
+        if self.xhead_mix_on:
+            out_BTHK = self._apply_xhead_mix(out_BTHK)
 
         out_BTC = self.out_group_norm(out_BTHK.view(B * T, C)).view(B, T, C)
         bonus_BTC = (

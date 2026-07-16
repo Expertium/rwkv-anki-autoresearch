@@ -366,3 +366,24 @@ a nanskip appears, since full-n pairing is stricter evidence).
 mid-run vals previewed the trade honestly. Timing: WS 93m (never prune-threatened), decay 22m,
 phased eval 76m. Artifacts scratchpad/iter19_pbin025/ (iter19d_1638.pth kept),
 result/RWKV[-P]-iter19_pbin025.jsonl + .nanskip.jsonl.
+
+**NaN LAYER DIAGNOSIS (Andrew's request, 2026-07-16 14:30, `scratchpad/iter19_pbin025/
+diag_nan_layer.py` + `diag_nan.log`):** hooks on all 454 modules, fp32, NO_JIT, both chunks.
+**Creator = the WKV state recurrence in the DECK stream's LAST layer (`rwkv_modules.1.blocks.3
+.time_mixer`, deck = the 4-layer stack)** — every pre-WKV projection (W_r/W_k/W_v, LoRAs,
+norms) is finite; the first NaN tensor is the recurrence output feeding out_group_norm. NaN
+starts at token ≈541,159 of the 2.0M-token chunk and poisons ~65% of positions (everything
+after), then cascades through the channel mixer into the note stream and the whole model. NO
+Inf at any module boundary → the overflow lives inside the per-step state accumulation
+(Inf−Inf / Inf×0 within a step yields NaN directly). Mechanism: RWKV-7's state update
+(decay + a-scaled removal + write) is not guaranteed contractive; a mega-entity sequence
+(one deck ≈ the user's whole 2M-review history) runs ~10⁵–10⁶ consecutive steps through one
+state, so a learned (w,a,k) combo with per-step gain marginally >1 compounds to fp32 overflow
+— same class as A0's d=128 mega-chunk NaNs (chunk 0 of the same user survives: content-
+dependent). Deck is the natural first victim: deepest stack + longest per-entity segments.
+**Prevention menu:** (a) deploy/eval-side state-norm clamp (renorm S when ‖S‖∞ > τ~1e4;
+O(1)/step, exact when inactive, a few lines in the Rust RNN engine + kernel guard) — QUEUED
+for ship time; real Anki power users will produce exactly these sequence lengths; (b)
+training-side contractivity margin (bound `a` / penalize state norm) — heavier, only if a
+future CHAMPION exhibits the property (iter15 and all other track-1 ckpts are clean on all
+5000 users); (c) the eval NaN-guard already handles it honestly (skip + record + intersect).
