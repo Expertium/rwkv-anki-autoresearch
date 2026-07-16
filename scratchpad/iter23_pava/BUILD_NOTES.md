@@ -88,9 +88,32 @@ RWKV_PAVA_LAMBDA (weight, >0 enables params+loss), RWKV_PROBE_DENSITY (train-onl
 insertion), + champion recipe (ZERO_FEATURES=22, NO_AHEAD_RESIDUAL=1, H=2/K=16, MAX=110000).
 Iter 24 = same + RWKV_PAVA_PWEIGHT=1 (p-head probability weights in the pooling mean).
 
+## Status 2026-07-17 ~03:00 — BUILT + FULLY SMOKED
+
+- `rwkv/model/pava.py`: op + scalar reference. Property tests
+  (`test_pava_op.py`) ALL_PASS: vectorized == scalar over 3k rows x 6 configs incl.
+  adversarial ties/reversals, p=1 == classic weighted PAVA, exact identity on sorted,
+  bounded, grads finite (theta grad None/zero without pooling — powers never enter the
+  graph), p-sign semantics verified.
+- `srs_model.py`: RWKV_PAVA_LAMBDA (+3 fp32 thetas, "pava_" in DTYPE_EXCLUDE, other_params
+  wd=0), RWKV_PAVA_PWEIGHT (iter 24), probes as Optional 4-tuple through _get_loss (kd
+  pattern), _pava_probe_loss jit.ignore eager, stats fields pava_loss_avg/pava_pool_frac.
+- `prepare_batch.py`: insert_probes + repack (stored card_features = 24 BASE cols; the
+  40 id-code + 28 cycle dims are appended in prepare() — col constants 8/9:13 index the
+  stored 24); train-branch-only density; PreparedBatch probe channel + .to().
+- `smoke_probes.py` ALL_PASS (JIT + NO_JIT): 15 part-A checks (content/labels/ids/repack/
+  eligibility/meta) + **INVISIBILITY BIT-EXACT (max|d| = 0)** on real user-8 chunk through
+  the packed CUDA path + e2e loss/backward with live theta grads + assembled-92 check
+  (probe differs from target only at duration+grade).
+
 ## Open items
 
-- duration_median.json (computing 2026-07-17 ~01:15, users 1-5000 exact histogram).
+- ~~duration_median.json~~ DONE: median 6433 ms over 357,460,182 reviews -> scaled -0.12079.
+- **VRAM probe before launch**: density 0.08 inflates tokens ~+16% (4 probes on ~8% of
+  the ~half-of-rows that are real+labeled) — at MAX=110000 the 9.44 GB peak could reach
+  ~11 GB. Run a 30-step WS probe (EMPTY_CACHE_EVERY=1 as guard) before the full launch;
+  fall back to density 0.05 if tight. Keep MAX=110000 (identical grouping/steps keeps
+  vprune step-pairing valid).
 - Gate/reference: iter 23 gates vs the no-residual reference (iter 22 verdict = Andrew's
   re-baseline call, ~11:45); vprune ref likewise = iter 22's val trace if re-baselined.
 - Deploy: the rectifier IS the deploy button projection (Rust port + parity vectors when

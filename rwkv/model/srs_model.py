@@ -104,6 +104,8 @@ class SrsRWKVIterStatistics(NamedTuple):
     label_review_th: torch.Tensor
     is_query: torch.Tensor
     has_label: torch.Tensor
+    pava_loss_avg: torch.Tensor
+    pava_pool_frac: torch.Tensor
 
 
 @dataclass
@@ -116,6 +118,11 @@ class PreparedBatch:
     skips: list[list[torch.Tensor]]
     labels: torch.Tensor
     label_review_th: torch.Tensor
+    # iter 23 probe channel (None when probe insertion is off): flat b*global_T+t indices
+    probe_rows: "torch.Tensor | None" = None      # (M,4) Again..Easy probe skip rows
+    probe_target: "torch.Tensor | None" = None    # (M,) the probed real row
+    probe_pressed: "torch.Tensor | None" = None   # (M,) actual rating - 1 in 0..3
+    probe_query: "torch.Tensor | None" = None     # (M,) paired imm query row (iter 24 w)
 
     def to(self, device):
         start = self.start.to(device)
@@ -135,6 +142,10 @@ class PreparedBatch:
             skips=skips,
             labels=labels,
             label_review_th=label_review_th,
+            probe_rows=None if self.probe_rows is None else self.probe_rows.to(device),
+            probe_target=None if self.probe_target is None else self.probe_target.to(device),
+            probe_pressed=None if self.probe_pressed is None else self.probe_pressed.to(device),
+            probe_query=None if self.probe_query is None else self.probe_query.to(device),
         )
 
 
@@ -147,6 +158,7 @@ DTYPE_EXCLUDE = [
     "p_linear",
     "ahead_linear",
     "gru_",  # GRU head root Parameters -- fp32 like the linears they replace
+    "pava_",  # rectifier junction thetas -- fp32, used in the eager fp32 probe loss
 ]
 
 
@@ -226,6 +238,20 @@ class SrsRWKV(ModuleType):
         self.pbin_scale = float(os.environ.get("RWKV_PBIN_SCALE", "0"))
         if self.pbin_scale != 0.0:
             print(f"[pbin] direct binary-recall loss term ON, scale={self.pbin_scale}")
+        # Research iter 23 (2026-07-17, MONOTONICITY_PLAN.md stage 2, Andrew's design):
+        # learnable power-mean PAVA rectifier over the 4 counterfactual button curves,
+        # trained on in-sequence probe rows (skip rows inserted at prepare-batch time; see
+        # prepare_batch.py + scratchpad/iter23_pava/BUILD_NOTES.md). RWKV_PAVA_LAMBDA=<w>
+        # enables the 3 junction-theta params + adds w * BCE(rectified pressed-probe curve,
+        # ahead label) to the loss. RWKV_PAVA_PWEIGHT=1 (iter 24) weights the pooling mean
+        # by the p-head's button probabilities read at the paired query row. The op runs
+        # EAGER inside a @torch.jit.ignore method (rwkv/model/pava.py); probes arrive as an
+        # Optional tuple arg (kd precedent). Default 0 = params absent = byte-identical.
+        self.pava_lambda = float(os.environ.get("RWKV_PAVA_LAMBDA", "0"))
+        self.pava_pweight = os.environ.get("RWKV_PAVA_PWEIGHT", "0") == "1"
+        if self.pava_lambda != 0.0:
+            print(f"[pava] learnable power-mean rectifier ON, lambda={self.pava_lambda}, "
+                  f"p-head weighting={'ON' if self.pava_pweight else 'off'}")
         # Research iter 15 (2026-07-14, Andrew's directive): drop input features by zeroing
         # their columns at the model input. RWKV_ZERO_FEATURES="22" (comma-separated dims of
         # the 92) zeroes those columns in BOTH training and eval, so the column is constant 0
@@ -356,6 +382,13 @@ class SrsRWKV(ModuleType):
                 )
                 self.prehead_gate_bias = torch.nn.Parameter(torch.zeros(self.d_model))
 
+            if self.pava_lambda != 0.0:
+                # 3 junction thetas, p_j = 2*tanh(theta_j), init p = 1 = classic PAVA.
+                # 1D name without "weight" -> other_params (wd=0); "pava_" is in
+                # DTYPE_EXCLUDE so the root-param cast walk keeps it fp32.
+                from rwkv.model.pava import theta_init
+                self.pava_theta = torch.nn.Parameter(theta_init())
+
     @torch.jit.ignore
     def _apply_input_feat_mask(self, batch_start: torch.Tensor) -> torch.Tensor:
         # Eager-Python indirection (same reason as _apply_grade_emb): the mask is a plain
@@ -388,6 +421,41 @@ class SrsRWKV(ModuleType):
         s = torch.nn.functional.linear(x_w, self.gru_s_weight, self.gru_s_bias)
         d = torch.nn.functional.linear(x_w, self.gru_d_weight, self.gru_d_bias)
         return w, s, d
+
+    @torch.jit.ignore
+    def _pava_probe_loss(
+        self,
+        curve_probs: torch.Tensor,
+        label_y: torch.Tensor,
+        out_p_logits: torch.Tensor,
+        probe_rows: torch.Tensor,
+        probe_target: torch.Tensor,
+        probe_pressed: torch.Tensor,
+        probe_query: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Eager body (jit.ignore): the intricate mask-simulated PAVA lives in
+        # rwkv/model/pava.py; only Parameters + functional ops here (iter-16 rule).
+        # curve_probs/label_y are (B,T); probe_rows (M,4) holds b*T+t flat indices of the
+        # 4 probe skip rows (Again..Easy) of each probed review; probe_target/probe_query
+        # (M,) flat indices of the real row (label source) and its paired imm query row
+        # (p-head weight source, iter 24). Counterfactual probes get gradient only through
+        # pooling; the pressed probe's rectified value takes the BCE against the real
+        # row's ahead label.
+        from rwkv.model.pava import pava_rectify
+        cp = curve_probs.reshape(-1)
+        v = cp[probe_rows]  # (M,4)
+        if self.pava_pweight:
+            pq = out_p_logits.reshape(-1, 4)[probe_query]  # (M,4) decision-point logits
+            w = torch.softmax(pq.float(), dim=-1).clamp(min=1e-4)
+        else:
+            w = torch.ones_like(v)
+        powers = 2.0 * torch.tanh(self.pava_theta)
+        rect = pava_rectify(v.float(), w, powers)
+        pressed = rect.gather(1, probe_pressed.unsqueeze(1)).squeeze(1).clamp(1e-6, 1 - 1e-6)
+        target = label_y.reshape(-1)[probe_target].float()
+        loss = torch.nn.functional.binary_cross_entropy(pressed, target)
+        pool_frac = (rect != v).any(dim=1).float().mean()
+        return loss, pool_frac
 
     @FunctionType
     def head_and_out(self, input):
@@ -544,6 +612,9 @@ class SrsRWKV(ModuleType):
         # typed for TorchScript (an untyped kd infers as Tensor and the tuple unpack fails to script)
         kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
         kd_mix: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
+        # iter 23 probe channel: (probe_rows (M,4), probe_target (M,), probe_pressed (M,),
+        # probe_query (M,)) flat b*T+t indices; None = no probes in this batch
+        probes: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits, out_s_raw, out_d_raw = self.forward_batch(
             batch_start,
@@ -682,6 +753,18 @@ class SrsRWKV(ModuleType):
             # iter 17: the benchmark-imm objective, trained directly (see __init__ note).
             pbin_avg = (p_binary_loss * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
             loss_avg = loss_avg + self.pbin_scale * pbin_avg
+        # iter 23: learnable power-mean PAVA on the 4 counterfactual probe curves
+        pava_loss_avg = ahead_avg.detach() * 0.0
+        pava_pool_frac = ahead_avg.detach() * 0.0
+        if probes is not None and self.pava_lambda != 0.0:
+            probe_rows, probe_target, probe_pressed, probe_query = probes
+            pava_loss, pava_frac = self._pava_probe_loss(
+                curve_probs, label_y, out_p_logits, probe_rows, probe_target,
+                probe_pressed, probe_query,
+            )
+            loss_avg = loss_avg + self.pava_lambda * pava_loss
+            pava_loss_avg = pava_loss.detach()
+            pava_pool_frac = pava_frac.detach()
         # KD (RWKV_QAT_KD, task22): distill from the un-quantized fp32 champion during QAT. Anchors the
         # base against drift while the net learns quant robustness. kd = (teacher_p_logits,
         # teacher_curve_probs, lambda), computed in train_rwkv under no_grad. Soft-label CE on the 4-way
@@ -744,11 +827,17 @@ class SrsRWKV(ModuleType):
             label_rating=label_rating.detach(),
             is_query=is_query.detach(),
             has_label=has_label.detach(),
+            pava_loss_avg=pava_loss_avg,
+            pava_pool_frac=pava_pool_frac,
         )
 
     def get_loss(self, batch: PreparedBatch,
                  kd: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None,
                  kd_mix: Optional[Tuple[torch.Tensor, torch.Tensor, float]] = None):
+        probes = None
+        if batch.probe_rows is not None and batch.probe_rows.numel() > 0:
+            probes = (batch.probe_rows, batch.probe_target,
+                      batch.probe_pressed, batch.probe_query)
         return self._get_loss(
             batch.start,
             batch.sub_gather,
@@ -760,6 +849,7 @@ class SrsRWKV(ModuleType):
             batch.label_review_th,
             kd=kd,
             kd_mix=kd_mix,
+            probes=probes,
         )
 
     def copy_downcast_(self, master_model, dtype):
