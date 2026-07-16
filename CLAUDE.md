@@ -711,9 +711,17 @@ the readout channel is information-poor + regularization-hungry, not capacity-li
 architecture_d128_cmix1_deck3.py`; expected cut ~110k params → allowed ≤ ~0.00011/mode
 vs A1, full n=5000 pairing; **first run recording RWKV_GRAD_STATS**
 (`t2a2_grad_stats_{ws,decay}.json` → `optimization/grad_stats_report.py` ranks A3+ targets).
-Track-1 queue for the next block: xhead-mix v3 (v1 delta excluded from wd), permutation
-init (LOW). Track-2 queue after A2: user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked
-by A2's grad-stats report.
+**Iter 22 QUEUED BEHIND A2 (detached pid 15008, waitloop on A2's DONE_EXIT → self-starts
+~08:30; Andrew's directive 2026-07-16): MONOTONE CURVES — RWKV_MONO_CURVES=1 cummin
+projection on the ahead-logit residual → curve non-increasing in t by construction
+(MONOTONICITY_PLAN.md stage 2; 193,724 params, zero-init-neutral start; smoke ALL_PASS;
+verdict ~11:45).** Assumed gate = iter-18-style directed mirror (accept if BOTH modes worse
+by ≤0.0003 — a wanted constraint at tiny cost); confirm with Andrew before promoting.
+Track-1 queue after: xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW).
+Track-2 queue after A2: user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked by A2's
+grad-stats report. ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
+the FIRST construction's env-flag into the compiled class — never two flag values in one
+process; ahead_linear is zero-init (like W_o) — randomize before head perturb/grad smokes.
 
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
