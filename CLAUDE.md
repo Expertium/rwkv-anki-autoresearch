@@ -750,7 +750,21 @@ consistently in the probe rows.**
 per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
 future candidates should BUNDLE cuts (e.g. deck+user layers together, LoRA-dim cuts folded
 into a bigger ablation) or go structural (d_model 128→96 ≈ 40%+). Track-2 queue after A2:
-user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked + bundled per A2's grad-stats report. ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
+user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked + bundled per A2's grad-stats report.
+**+ POWER-CURVE BASIS (Andrew 2026-07-16 late, for A3 bundling): replace the 128 exponential
+bases with a handful (N≈8–16) of FSRS-7-style power curves** `R_i(t) = (1 + f_i·t/S_i)^(−c_i)`,
+`f_i = 0.9^(−1/c_i) − 1` (pins R_i(S_i)=0.9; form = srs-benchmark `models/fsrs_v7.py`
+forgetting_curve), S_i = fixed log-spaced grid, c_i = N learnable decays sigmoid-clamped to
+[0.01, 0.95] (init ~0.5). Why few can replace 128: a power curve IS an infinite Gamma-mixture
+of exponentials — one basis covers the heavy-tail region that needed dozens of exponentials.
+Monotone in t by construction (keeps the no-residual guarantee). **Params at d=128:
+w_linear 512→N cuts 65,664 → ~4.1k (−61.5k); + stripping the DEAD ahead head (−131.7k,
+zero-risk, residual already disabled) ≈ −193k ≈ 8.3% of A1 before any head_w shrink**
+(head_w 82.8k is a further optional squeeze once N is tiny). d=32 port later if it works
+(w_linear 64→8 saves ~7.2k ≈ 3.7%). Note for the future hard-ordering option: per-basis c_i
+breaks total pointwise order of the basis (curves with different decays cross); a single
+SHARED learnable c + S-grid keeps the basis totally ordered (FOSD trick compatible) —
+measure both if cheap. ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
 the FIRST construction's env-flag into the compiled class — never two flag values in one
 process; ahead_linear is zero-init (like W_o) — randomize before head perturb/grad smokes.
 
