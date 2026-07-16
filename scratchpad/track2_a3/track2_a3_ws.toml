@@ -1,0 +1,44 @@
+# TRACK 2 A3: GRU-faithful curve head (RWKV_GRU_HEAD=2; srs-benchmark models/gru.py class
+# GRU) -- three tiny linears off the head_w trunk predict per-row w/S/decay for N=2 power
+# curves R(t) = sum w_i (1+t/S_i)^(-d_i), replacing the 128-basis fixed-stability mixture
+# AND stripping the dead ahead head (1x1 dummies). Params: 2,126,224 on the A1 arch
+# (-194,292 = -8.37%) or 2,010,120 on the A2 deck3 arch (-8.8%) -- arch chosen at launch
+# per A2's verdict (RWKV_ARCH_MODULE in run_track2_a3.cmd). Recipe otherwise identical to
+# A1/A2: 1 ep WS + 0.25 ep decay, seed 1234, PLAIN bf16, JIT on, MAX=32768 (ALL track-2
+# runs share this MAX for pairing). RWKV_NO_AHEAD_RESIDUAL=1 mandatory recipe (the GRU
+# head forces it structurally anyway). Gate: ratio 100k*dLL/dparams <= 0.0001 BOTH modes
+# vs the current track-2 champion (subject to Andrew's no-residual re-anchor decision).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/track2_a3"
+SAVE_MODEL_PREFIX = "t2a3ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
