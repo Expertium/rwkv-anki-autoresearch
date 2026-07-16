@@ -628,9 +628,11 @@ closed):** early-training-intervention 0/2 (shrink-perturb, warmup-KD — both l
 washed out; mid-WS val leads do NOT predict verdicts); grade-representation 0/1; capacity-at-5k
 0/2 (head resolution 64→128, mixer 1.5 — the d=32 trunk is not capacity-limited at 5k);
 state-size ladder 0/5 CLOSED (no stream is state-capacity-limited at d=32/H=2; iter 6's near-miss
-died on the seed pair); readout 0/1 (prehead gate null); loss-reweighting 0/2 (pbin 0.5 + 0.25 =
-linear imm/ahead trade, the SCALE lever is closed by interpolation — other reweighting ideas
-like recency/per-rating weights would be new family members); HP tuning CLOSED (champion HPs confirmed
+died on the seed pair); readout 0/2 WITH SIGNAL (prehead gate null, but iter 20's cross-head mix
+improved BOTH modes at p 2e-10/2e-25 — just under the 0.0003 bar; KxK variant = iter 21);
+loss-reweighting 0/2 (pbin 0.5 + 0.25 = linear imm/ahead trade, the SCALE lever is closed by
+interpolation — other reweighting ideas like recency/per-rating weights would be new family
+members); HP tuning CLOSED (champion HPs confirmed
 vs 19 alternatives at full eval). All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
 RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYERS,
 RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32.
@@ -691,11 +693,18 @@ mean|grad·w| (SNIP saliency) across all steps + final near-0/near-1 no-op weigh
 rank ablation targets; recorder `rwkv/grad_stats.py` (unit-tested), report
 `python optimization/grad_stats_report.py <json>` (layer ranking + type-aware no-op suspects).
 
-**→ NEXT (track-1 block continues): ITER 20 = cross-head readout mix** (readout-family
-variant 2: let the 2 heads exchange information before the SRS heads read out; env-gated,
-zero-init so init = champion). Then permutation init (LOW), then the track-2 A2 block. Launch
-on the iter-15 champion recipe (RWKV_ZERO_FEATURES=22, vprune vs champion_5k_plain.json; gate
-= standard ≥0.0003 BOTH + p<1e-4 BOTH vs iter15).
+**Iter 20 REJECTED (2026-07-16 17:55) but = the plain era's strongest positive signal:
+cross-head readout mix v1 (RWKV_XHEAD_MIX=1, zero-init (H,H,K) delta on the WKV output
+pre-GroupNorm, 194,620 params) improved BOTH modes — ahead +0.000178 (p=2.0e-10), imm
++0.000107 (p=2.0e-25), n=5000, 0 nanskips — first p-gate PASS since iter 15, but both
+magnitudes miss the 0.0003 bar.** Smoke lesson: W_o is zero-init → nothing upstream of it is
+observable at fresh init (randomize W_o before perturb/grad smoke checks).
+
+**→ NOW RUNNING: ITER 21 = cross-head mix v2 (RWKV_XHEAD_MIX=2)** — same hook, full
+per-head-pair K×K maps ((H,H,K,K) delta, 208,060 params; v1 = v2's diagonal; conduct rule 2
+on iter 20's near-miss). Launched 17:54 detached, verdict ~21:10; gate = standard ≥0.0003
+BOTH + p<1e-4 BOTH vs iter15. After: permutation init (LOW), then the track-2 A2 block
+(A2 runs set RWKV_GRAD_STATS).
 
 **Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
 .pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =

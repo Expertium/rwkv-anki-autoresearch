@@ -14,13 +14,15 @@ import os, torch
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 from rwkv.model.srs_model import SrsRWKV
 
-on = os.environ.get("RWKV_XHEAD_MIX", "0") == "1"
+mode = int(os.environ.get("RWKV_XHEAD_MIX", "0") or 0)
+on = mode > 0
 model = SrsRWKV(DEFAULT_ANKI_RWKV_CONFIG)
 model.eval()  # dropout off so identity comparisons are exact
 n = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"constructed OK, base={type(model).__mro__[1].__name__}, mix_on={on}, params={n}")
-# champion 193,724 + 14 layers * H*H*K(=64) = 194,620
-assert n == (194620 if on else 193724), f"unexpected param count {n}"
+print(f"constructed OK, base={type(model).__mro__[1].__name__}, mix_mode={mode}, params={n}")
+# champion 193,724 + 14 layers * (v1: H*H*K=64 | v2: H*H*K*K=1024)
+expect = {0: 193724, 1: 194620, 2: 208060}[mode]
+assert n == expect, f"unexpected param count {n} (expected {expect})"
 
 # THE SCRIPTED PATH: call a mixer THROUGH the (possibly scripted) module -- this is where
 # the iter-16 class of bug fires ('ScriptModule' object is not callable in ignored bodies).
@@ -45,7 +47,7 @@ if on:
     out, _ = mixer(in_BTC=x, v0_BTC=torch.zeros_like(x), time_shift_select_BT=sel, skip_BT=skip)
     # a nonzero delta must change the output (proves the branch is live in the scripted fwd)
     with torch.no_grad():
-        mixer.xhead_mix_weight[0, 1, :] = 0.5
+        mixer.xhead_mix_weight[0, 1] = 0.5  # v1: row of K; v2: KxK block
     out2, _ = mixer(in_BTC=x, v0_BTC=torch.zeros_like(x), time_shift_select_BT=sel, skip_BT=skip)
     assert not torch.equal(out, out2), "perturbed mix did not change scripted output"
     with torch.no_grad():
@@ -79,7 +81,9 @@ def run(env_extra, label):
         print(r.stderr[-2500:])
         sys.exit(1)
 
-run({"RWKV_XHEAD_MIX": "1", "RWKV_ZERO_FEATURES": "22"}, "mix ON + featmask, JIT on")
+run({"RWKV_XHEAD_MIX": "1", "RWKV_ZERO_FEATURES": "22"}, "mix v1 + featmask, JIT on")
 run({"RWKV_ZERO_FEATURES": "22"}, "mix OFF + featmask, JIT on")
-run({"RWKV_XHEAD_MIX": "1", "RWKV_ZERO_FEATURES": "22", "RWKV_NO_JIT": "1"}, "mix ON, NO_JIT")
+run({"RWKV_XHEAD_MIX": "1", "RWKV_ZERO_FEATURES": "22", "RWKV_NO_JIT": "1"}, "mix v1, NO_JIT")
+run({"RWKV_XHEAD_MIX": "2", "RWKV_ZERO_FEATURES": "22"}, "mix v2 (KxK) + featmask, JIT on")
+run({"RWKV_XHEAD_MIX": "2", "RWKV_ZERO_FEATURES": "22", "RWKV_NO_JIT": "1"}, "mix v2, NO_JIT")
 print("ALL_PASS")

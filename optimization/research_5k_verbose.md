@@ -387,3 +387,28 @@ for ship time; real Anki power users will produce exactly these sequence lengths
 training-side contractivity margin (bound `a` / penalize state norm) — heavier, only if a
 future CHAMPION exhibits the property (iter15 and all other track-1 ckpts are clean on all
 5000 users); (c) the eval NaN-guard already handles it honestly (skip + record + intersect).
+
+### Iter 20 — cross-head readout mix v1 (REJECTED 2026-07-16 17:55): first p-gate pass, magnitudes short
+
+**Design:** RWKV_XHEAD_MIX=1 in rwkv_model.py — a zero-init per-channel delta mix across the
+2 heads applied to the WKV recurrence output BEFORE out_group_norm: out[g,k] += Σ_h
+out[h,k]·delta[h,g,k]. The per-head GroupNorm + elementwise gate make this NOT absorbable
+by W_o (a post-norm linear would be). +H·H·K = 64 params/layer × 14 layers = 194,620 total.
+wd pulls the delta toward 0 = toward champion behavior. Smoke lesson: **W_o is zero-init, so
+at fresh init nothing upstream of W_o is observable and no grad flows to the mix** — the
+smoke had to randomize W_o before its perturb/grad checks (smoke_xmix.py).
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.303485 / imm 0.273120 = +0.000178 / +0.000107 BETTER
+than iter 15, p = 2.0e-10 / 2.0e-25 — the p-gate PASSES (first candidate since iter 15), but
+both magnitudes miss the ≥0.0003 bar → REJECTED.** The strongest positive signal of the
+plain era: consistent per-user improvement in both modes, just too small. Readout family
+0/2 now WITH signal (prehead gate was null — gating the shared trunk does nothing, but
+letting heads exchange information does something real). Val was parity all run — a ~0.0002
+effect is below the 10-user val set's resolution, so mid-run vals could not have seen it.
+
+**→ ITER 21 (conduct rule 2): same hook, richer parameterization — full per-head-pair K×K
+matrices,** delta (H,H,K,K), out[g,j] += Σ_h Σ_k out[h,k]·delta[h,g,k,j]; v1 is exactly v2's
+diagonal (j=k). +1024 params/layer = 208,060 total (under the 225k cap). If the information
+channel saturates at v1's level, v2 lands in the same place and the family closes honestly;
+if the scalar mix was the bottleneck, v2 has 16× the capacity to carry it over the bar.
+Pipeline 3h16m clean (WS 97m, decay 24m, eval 75m).

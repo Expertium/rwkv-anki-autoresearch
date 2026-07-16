@@ -551,18 +551,27 @@ class RWKV7TimeMixer(ModuleType):
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
         # TorchScript can't read module-level str globals from a scripted forward -> instance bool
         self.shift_pq_on = bool(_SHIFT_PQ_PATH)
-        # Research iter 20 (2026-07-16): CROSS-HEAD READOUT MIX. RWKV_XHEAD_MIX=1 adds a
-        # zero-init delta mix across heads to the WKV output BEFORE out_group_norm:
-        #   out[b,t,g,k] += sum_h out[b,t,h,k] * delta[h,g,k]
-        # The per-head GroupNorm + elementwise gate make this NOT absorbable by W_o (a
-        # post-norm linear could be). Zero-init = exact identity at init; the param name
-        # keeps "weight" + ndim>=2 so it lands in the decayed group, and wd pulls the delta
-        # toward 0 = toward champion behavior. +H*H*K params/layer (64 at H=2/K=16).
+        # Research iters 20/21 (2026-07-16): CROSS-HEAD READOUT MIX. A zero-init delta mix
+        # across heads on the WKV output BEFORE out_group_norm (the per-head GroupNorm +
+        # elementwise gate make this NOT absorbable by W_o; a post-norm linear could be).
+        # RWKV_XHEAD_MIX=1 (iter 20): per-channel scalar, delta (H,H,K):
+        #   out[b,t,g,k] += sum_h out[b,t,h,k] * delta[h,g,k]        (+64/layer at H=2/K=16)
+        # RWKV_XHEAD_MIX=2 (iter 21): full per-head-pair KxK maps, delta (H,H,K,K):
+        #   out[b,t,g,j] += sum_hk out[b,t,h,k] * delta[h,g,k,j]     (+1024/layer)
+        # v1 == v2's diagonal (j=k). Iter 20 verdict: both modes better (p 2e-10/2e-25) but
+        # +0.00018/+0.00011 missed the 0.0003 bar -> v2 widens the channel (conduct rule 2).
+        # Zero-init = exact identity at init; the name keeps "weight" + ndim>=2 so it joins
+        # the decayed group, and wd pulls the delta toward 0 = toward champion behavior.
         # Default unset = param absent = byte-identical, old checkpoints load unchanged.
-        self.xhead_mix_on = os.environ.get("RWKV_XHEAD_MIX", "0") == "1"
-        if self.xhead_mix_on:
+        self.xhead_mix_mode = int(os.environ.get("RWKV_XHEAD_MIX", "0") or 0)
+        self.xhead_mix_on = self.xhead_mix_mode > 0
+        if self.xhead_mix_mode == 1:
             self.xhead_mix_weight = torch.nn.Parameter(
                 torch.zeros(self.H, self.H, self.K)
+            )
+        elif self.xhead_mix_mode == 2:
+            self.xhead_mix_weight = torch.nn.Parameter(
+                torch.zeros(self.H, self.H, self.K, self.K)
             )
 
         with torch.no_grad():
@@ -662,10 +671,15 @@ class RWKV7TimeMixer(ModuleType):
     @torch.jit.ignore
     def _apply_xhead_mix(self, out_BTHK: torch.Tensor) -> torch.Tensor:
         # Eager-Python indirection (iter-16 TorchScript rules): the param only exists when
-        # RWKV_XHEAD_MIX=1, and ignored bodies must use Parameters directly, not submodules.
-        # einsum: mixed[b,t,g,k] = sum_h out[b,t,h,k] * delta[h,g,k]; delta zero-init.
+        # RWKV_XHEAD_MIX is set, and ignored bodies must use Parameters directly, not
+        # submodules. delta is zero-init in both modes (identity at init).
+        if self.xhead_mix_mode == 1:  # per-channel scalar (H,H,K)
+            return out_BTHK + torch.einsum(
+                "bthk,hgk->btgk", out_BTHK, self.xhead_mix_weight
+            )
+        # mode 2: full per-head-pair KxK (H,H,K,K)
         return out_BTHK + torch.einsum(
-            "bthk,hgk->btgk", out_BTHK, self.xhead_mix_weight
+            "bthk,hgkj->btgj", out_BTHK, self.xhead_mix_weight
         )
 
     @FunctionType

@@ -50,6 +50,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 17 | 1–5000 | 0.3039 | 0.2728 | exact | rejected | 1.0 / 1.7e-173 (vs iter 15) | 193,724 | 0 | invented | Binary-recall loss term (pbin 0.5): MODE TRADE — imm +0.0004 better, ahead −0.0002 worse. First real plain-era effect; scale-0.25 variant queued. |
 | 18 | 1–5000 | 0.3055 | 0.2756 | exact | rejected | 1.0 / 1.0 (vs iter 15) | 193,724 | 0 | adopted | Drop review-duration feature (directed, gate ≤0.0003 both): +0.0018/+0.0024 worse — duration is real signal; deploy keeps it. |
 | 19 | 1–5000 | 0.3038 | 0.2730 | exact | rejected | 1.0 / 1.6e-70 (vs iter 15) | 193,724 | 1 | invented | pbin at 0.25: same mode trade at half amplitude — dose-response linear, no scale can pass both modes. Lever exhausted. |
+| 20 | 1–5000 | 0.3035 | 0.2731 | exact | rejected | 2.0e-10 / 2.0e-25 (vs iter 15, better) | 194,620 | 0 | invented | Cross-head readout mix (per-channel scalar): BOTH modes better (+0.00018/+0.00011), p-gate passes, magnitudes miss the bar. K×K variant queued. |
 
 ## Track 2 — ablate the old d=128 model
 
