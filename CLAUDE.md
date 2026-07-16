@@ -718,8 +718,11 @@ projection on the ahead-logit residual → curve non-increasing in t by construc
 verdict ~11:45).** Assumed gate = iter-18-style directed mirror (accept if BOTH modes worse
 by ≤0.0003 — a wanted constraint at tiny cost); confirm with Andrew before promoting.
 Track-1 queue after: xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW).
-Track-2 queue after A2: user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked by A2's
-grad-stats report. ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
+**Track-2 sizing recommendation (Andrew 2026-07-16, soft rule): aim for ≥5% param reduction
+per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
+future candidates should BUNDLE cuts (e.g. deck+user layers together, LoRA-dim cuts folded
+into a bigger ablation) or go structural (d_model 128→96 ≈ 40%+). Track-2 queue after A2:
+user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked + bundled per A2's grad-stats report. ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
 the FIRST construction's env-flag into the compiled class — never two flag values in one
 process; ahead_linear is zero-init (like W_o) — randomize before head perturb/grad smokes.
 

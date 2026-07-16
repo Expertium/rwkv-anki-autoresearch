@@ -8,6 +8,8 @@ acceptance = `100,000·(LL_after − LL_before)/(params_before − params_after)
 modes** (≤ 0.0001 logloss degradation per **100k** params removed — tightened from per-50k by
 Andrew 2026-07-15 after A0 landed; params must strictly decrease; "before" = the current track-2
 champion). Alternate ~12 h blocks between tracks (~5 track-1 iters vs 1 track-2 iter per block).
+Sizing recommendation (Andrew 2026-07-16, soft): **aim for ≥5% param reduction per iteration,
+ideally more** — bundle small cuts rather than spending a ~12 h run on <5%.
 
 **QAT PARKED (Andrew 2026-07-14, from iter 14 on):** rows ≤ 13 record QUANT-AWARE logloss (q72u);
 later rows are PLAIN bf16 — screening is plain-vs-plain in both tracks, and ONE quant-aware run of
