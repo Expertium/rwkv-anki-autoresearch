@@ -55,6 +55,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 20 | 1–5000 | 0.3035 | 0.2731 | exact | rejected | 2.0e-10 / 2.0e-25 (vs iter 15, better) | 194,620 | 0 | invented | Cross-head readout mix (per-channel scalar): BOTH modes better (+0.00018/+0.00011), p-gate passes, magnitudes miss the bar. K×K variant queued. |
 | 21 | 1–5000 | 0.3045 | 0.2732 | exact | rejected | 1.0 / 0.03 (vs iter 15) | 208,060 | 0 | invented | Cross-head mix v2 (full K×K): ahead −0.0009 worse, imm tied — 16× capacity erased v1's gain. Channel not capacity-limited; no-wd v1 variant queued. |
 | 22 | 1–5000 | 0.3045 | 0.2735 | exact | **accepted** (re-baseline) | 1.0 / 1.0 (vs iter 15, worse) | 193,724 | 0 | directed | No-residual cost accepted (Andrew): ahead +0.0008/imm +0.0003 = price of monotone-in-t. NEW track-1 reference. |
+| 23 | 1–5000 | 0.3042 | 0.2734 | exact | rejected | 1.3e-33 / 8.1e-15 (vs iter 22, better) | 193,727 | 0 | Andrew | Learnable-PAVA rectifier (λ=0.1, probes 0.08): BOTH modes better (+0.00028/+0.00012), ahead misses bar by 0.00002. Closest miss yet; pweight variant = iter 24. |
 
 ## Track 2 — ablate the old d=128 model
 

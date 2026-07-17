@@ -1,6 +1,6 @@
-FILE_AHEAD = "RWKV-iter23_pava-s0"
-FILE_IMM = "RWKV-P-iter23_pava-s0"
-MODEL_PATH = "scratchpad/iter23_pava/iter23d_1638.pth"
+FILE_AHEAD = "RWKV-track2_a3"
+FILE_IMM = "RWKV-P-track2_a3"
+MODEL_PATH = "scratchpad/track2_a3/t2a3d_5586.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
 DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
@@ -12,5 +12,4 @@ RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 10000
-NUM_FETCH_PROCESSES = 3
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s0.json"
+NUM_FETCH_PROCESSES = 4

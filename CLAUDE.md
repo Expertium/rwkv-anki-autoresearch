@@ -724,10 +724,7 @@ correctly on the same A1 trunk). Detail: research_5k_verbose.md.
 **ITER 22 ACCEPTED (Andrew 2026-07-17 ~10:50, directed re-baseline): no-residual cost
 ahead +0.000834 / imm +0.000312 vs iter 15 = the price of monotone-in-t. NEW track-1
 champion/reference = 0.304497/0.273539; champion_5k_plain.json re-pointed (promote
---val-trace done). Iter 23 (learnable PAVA, BUILT+SMOKED) gates vs iter 22, ≥0.0003 both
-modes; launches after A3 frees the GPU (~21:50) — BEFORE launch: 30-step VRAM probe at
-RWKV_PROBE_DENSITY=0.08/MAX=110000 (probes inflate tokens ~+16%; fall back 0.05), λ=0.1
-density=0.08 defaults per BUILD_NOTES.**
+--val-trace done).**
 **A3 (GRU curve head) COMPLETE 2026-07-17 21:12 — REJECTED on the drafted vs-A1 gate,
 VERDICT DEFERRED to the no-residual re-anchor.** n=4871 intersection: **imm 0.268403 =
 +0.000105 BETTER (p=1.6e-21, FIRST significant track-2 accuracy win)**; ahead 0.299964 =
@@ -737,11 +734,20 @@ priced residual removal alone at +0.000834 ahead at d=32; A3's deficit is ~half 
 state-norm clamp now load-bearing for d=128). Grad-stats (fixed recorder): 10,886
 never-grad params (layer-0 v_lora ×5 = free strip); saliency bottom = ALL non-L0 channel
 mixers + user.L3.time_mixer = A4 bundle shortlist. Detail research_5k_verbose.md.
-**→ GPU plan: iter 23 (learnable PAVA, ~3.5h, launching now after VRAM probe) → overnight
-TRACK-2 NO-RESIDUAL RE-ANCHOR (A1 arch + RWKV_NO_AHEAD_RESIDUAL=1, ~11h, queued behind
-iter 23 via waitloop) — required by the mandatory recipe regardless of A3 (track-2's
-reference must go no-residual like track 1 did); A3 then re-gates vs it (Andrew can veto
-overnight run by killing pid, see scratchpad/track2_reanchor/).
+**ITER 23 REJECTED (2026-07-18 01:15) — the CLOSEST MISS of the research phase: learnable
+power-mean PAVA rectifier (λ=0.1, probe density 0.08, 3 learnable junction powers).
+BOTH modes improved: ahead 0.304220 = +0.000278 (p=1.3e-33, misses the bar by 0.000022);
+imm 0.273423 = +0.000116 (p=8.1e-15). n=5000, 0 nanskips, 193,727 params. The
+monotonicity loss is ~free-to-mildly-positive for accuracy — a regularizer, not a tax.
+Learned powers moved OFF classic PAVA (p=1 init): Again–Hard ≈ 0.00 (geometric),
+Hard–Good ≈ −1.44 (harmonic side), Good–Easy ≈ +0.53 — soft pessimistic pooling.
+Curve-shape-constraints family 0/1 WITH STRONG SIGNAL; per conduct rule 2 the queued
+variant runs next. Detail research_5k_verbose.md.**
+**→ GPU plan: TRACK-2 NO-RESIDUAL RE-ANCHOR RUNNING (A1 arch + RWKV_NO_AHEAD_RESIDUAL=1,
+~11h, started 01:17 → verdict ~12:30; its cmd tail prints reanchor-vs-A1 = the d=128
+residual cost AND A3-vs-reanchor = A3's deferred verdict, ratio gate Δparams=194,292;
+then promote reanchor → champion_5k_track2.json + grad_stats_report) → iter 24 (pweight
+PAVA, drafted, waitloop on re-anchor DONE_EXIT, ~3.5h → verdict ~16:30).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if
@@ -762,11 +768,10 @@ deltas vs iter 15, p-values, and nan_users to him and WAIT — no auto-accept/re
 promotion. Likely outcome: iter 22 becomes the new track-1 REFERENCE (directed re-baseline
 à la iter 14/15) since with-residual champions aren't fair gates for no-residual candidates;
 track 2 similarly needs a no-residual re-anchor decision at the A2 verdict.**
-**Track-1 queue after iter 22 (Andrew 2026-07-16 late, FIXED ORDER): iter 23 = LEARNABLE
-PAVA (power-mean isotonic rectifier, MONOTONICITY_PLAN.md stage 2 — 3 learnable pair
-powers, unweighted); iter 24 = learnable PAVA + pooling weights from the p-head's
-button-press probabilities (Instant mode).** Then: xhead-mix v3 (v1 delta excluded from
-wd), permutation init (LOW). **Duration imputation for the counterfactual probes (Andrew
+**Track-1 queue (Andrew 2026-07-16 late, FIXED ORDER — iter 23 DONE/rejected-near-miss):
+iter 24 = learnable PAVA + pooling weights from the p-head's button-press probabilities
+(Instant mode, RWKV_PAVA_PWEIGHT=1; λ/density unchanged — validated by iter 23).** Then:
+xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW). **Duration imputation for the counterfactual probes (Andrew
 delegated): ONE shared value across all 4 buttons (causally correct — duration is spent
 before the press, independent of which button), = a GLOBAL CONSTANT (train-set median)
 frozen into the deploy contract; only duration is imputed (elapsed/etc. are real at both

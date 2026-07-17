@@ -545,3 +545,49 @@ Pipeline: WS 6h35m @ ~1.06 s/step, decay 1h38m, single-process eval 2h23m, clean
 Launch bookkeeping: two dead launches (~5 min lost) — LF-only .cmd (Write tool) killed
 cmd.exe silently + relative detach path; then a step-50-val misread killed a healthy
 launch. Artifacts scratchpad/track2_a3/ (t2a3d_5586.pth kept), result/RWKV[-P]-track2_a3.jsonl.
+
+### Iter 23 — learnable power-mean PAVA rectifier (REJECTED 2026-07-18 01:15): the closest miss yet
+
+MONOTONICITY_PLAN.md stage 2, Andrew's fixed queue (23 = unweighted, 24 = p-head-weighted).
+The champion iter-22 recipe + `RWKV_PAVA_LAMBDA=0.1` + `RWKV_PROBE_DENSITY=0.08`: 8% of
+eligible labeled rows get 4 counterfactual button-probe rows (grade one-hot swapped
+Again..Easy, duration imputed to the frozen train-median constant, has_label=0) inserted
+before them; the 4 curve-head retention estimates at the probe rows pass through a
+sequential PAVA whose 3 junction pair-merges are weighted generalized power means with
+learnable powers p_j = 2·tanh(θ_j), init θ=atanh(0.5) → p=1 = classic PAVA; loss =
+λ·BCE(rectified pressed-button probability, ahead label), train-branch only (val/eval
+probe-free by construction → comparable to iter 22). Params 193,727 (+3 thetas).
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.304220 / imm 0.273423** vs iter 22
+0.304497/0.273539 → **BOTH modes improved: ahead +0.000278 (p=1.3e-33), imm +0.000116
+(p=8.1e-15)**. P-gate passes both modes with enormous margin; magnitude gate fails —
+ahead misses the 0.0003 bar by **0.000022**, imm reaches ~1/3 of it. REJECTED, but this
+is the strongest positive result of the plain era (iter 20 was +0.000178/+0.000107) and
+the second-ever both-modes-positive candidate. The monotonicity loss is ~free-to-mildly-
+positive for accuracy at this dose — the constraint acts as a regularizer on the curve
+head rather than a tax.
+
+**Learned junction powers (decay ckpt): Again–Hard p≈−0.0008 (geometric mean), Hard–Good
+p≈−1.44 (harmonic side), Good–Easy p≈+0.53.** All three moved decisively off classic-PAVA
+p=1. p<1 pulls a violating pair toward the LOWER retention estimate — the model wants
+soft, pessimistic pooling, strongest at the middle junction (where iter-17/19 showed the
+Hard/Good boundary carries the pbin mode-trade too). This is real learned structure, and
+it transfers directly to iter 24's interpretation.
+
+Val trajectory: parity with the champion the whole run (oscillating ±0.001 by checkpoint,
+imm mildly favoring the candidate mid-WS; WS-end 0.3288/0.3106 vs 0.3287/0.3110; decay-end
+0.3270/0.3086 vs 0.3271/0.3087 — indistinguishable at n=10 users, the +0.0003 effect only
+resolvable at full eval). Probe-loss trajectory NOT recoverable — the step-trace writer
+records ahead/imm only; `pava_loss_avg`/`pava_pool_frac` never reached the jsonl (wire them
+into the trace writer if a future PAVA iter needs the trajectory). Pipeline: WS 105m
+(never vprune-threatened), decay 26m, phased sharded eval 76m, total 3h27m clean.
+
+**Next = iter 24 (pweight variant, conduct rule 2: near-miss → variant implementation):**
+identical config + `RWKV_PAVA_PWEIGHT=1` — pooling weights = the p-head's button-press
+softmax at the paired query row (Instant mode) instead of uniform. Rationale: PAVA-merging
+with press-probability weights makes the rectified estimate a proper posterior blend —
+violations between a likely and an unlikely button should mostly defer to the likely one;
+uniform weighting overcorrects the likely button's estimate. λ/density unchanged
+(validated by iter 23's neutral-to-positive accuracy). Launches behind the track-2
+re-anchor (waitloop). Artifacts scratchpad/iter23_pava/ (iter23d_1638.pth kept),
+result/RWKV[-P]-iter23_pava.jsonl.
