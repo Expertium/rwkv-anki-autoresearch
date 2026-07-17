@@ -498,3 +498,9 @@ as too expensive and revisit the constraint. If (a): promote via `promote_champi
 Ops lesson from the same hour (cost one dead launch): Write-tool-authored `.cmd` files are
 LF-only and cmd.exe silently dies on them — convert to CRLF before `detach.ps1`, and always
 pass detach.ps1 an ABSOLUTE script path (the WMI-spawned cmd.exe starts in system32).
+
+**Iter 22 VERDICT (Andrew 2026-07-17 ~10:50): ACCEPTED as directed re-baseline.** New track-1
+plain champion/reference = iter22_nores (0.304497/0.273539); `champion_5k_plain.json`
+re-pointed (6,554-step WS trace + val trace = the new vprune ref). Iter 15 stays in the
+record as the last with-residual champion; the +0.0008/+0.0003 is the accepted price of the
+monotone-in-t guarantee. Iter 23 (learnable PAVA) gates vs iter 22, >=0.0003 both modes.

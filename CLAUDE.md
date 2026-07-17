@@ -590,12 +590,15 @@ Pairing needs identical db/MAX/seeds.
 ### CURRENT STATE (updated 2026-07-15 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology moves to optimization/HISTORY.md "5k-era LIVE STATE archive"; per-iter detail lives in research_5k_verbose.md)
 
 **Champions / anchors:**
-- **Track 1 (d=32 plain) CHAMPION = iter 15 `iter15_nostate`: ahead 0.303663 / imm 0.273227**
-  (n=5000, 193,724 params; `champion_5k_plain.json` = ckpt `scratchpad/iter15_nostate/iter15d_1638.pth`
-  + WS/val traces = the track-1 vprune ref). **RWKV_ZERO_FEATURES=22 (review-state feature dropped,
-  Andrew's directed accept — actually slightly better both modes) IS CHAMPION RECIPE — set it in ALL
-  track-1 runs + the final QAT run**; deploy need not compute Anki review state. Iter 14
-  (champ5k_plain, same minus the feature drop) measured the QAT tax: +0.0029/+0.0044 vs champ5k_b1.
+- **Track 1 (d=32 plain) CHAMPION = iter 22 `iter22_nores`: ahead 0.304497 / imm 0.273539**
+  (n=5000, 0 nanskips, 193,724 params ~12.5k dead/strippable; `champion_5k_plain.json` = ckpt
+  `scratchpad/iter22_nores/iter22nd_1638.pth` + WS/val traces = the track-1 vprune ref).
+  **DIRECTED RE-BASELINE (Andrew accepted 2026-07-17): RWKV_NO_AHEAD_RESIDUAL=1 champion —
+  the +0.000834/+0.000312 vs iter 15 is the accepted price of monotone-in-t; with-residual
+  results are no longer fair gates.** Champion recipe = iter-15 recipe + NO_AHEAD_RESIDUAL
+  (incl. RWKV_ZERO_FEATURES=22 — set BOTH in ALL track-1 runs + the final QAT run; deploy
+  need not compute Anki review state). Iter 15 (0.303663/0.273227, residual-on) kept as the
+  last with-residual reference; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
 - **Track 2 anchor A0 = the d=128 arch retrained on OUR plain 1-ep pipeline: ahead 0.299857 / imm
   0.269030** (n=4993, 2,762,884 params; `champion_5k_track2.json` = vprune ref; ckpt
   `scratchpad/track2_a0/t2a0d_5586.pth`). 1-ep budget tax at d=128 = +0.0037/+0.0044 vs the upstream
@@ -718,14 +721,13 @@ cut was exactly 5.0% and still failed the price check). ⚠ A2's grad-stats json
 FIXED `dcf11f5` — per-param subset accumulation, report refuses dead jsons + lists
 never-grad tensors as FREE prune candidates (5×1,024 params at d=128); A3 records
 correctly on the same A1 trunk). Detail: research_5k_verbose.md.
-**ITER 22 COMPLETE (2026-07-17 10:30) — AWAITING ANDREW'S VERDICT (no auto-verdict):
-no-residual cost = ahead 0.304497 (+0.000834 worse, p=1.0) / imm 0.273539 (+0.000312
-worse, p=1.0) vs iter 15, n=5000, 0 nanskips.** Val tracked champion within noise all
-run — the cost only materialized at eval. Recorded as status=pending_andrew (update
-research_log.jsonl status + this block on his ruling). RECOMMENDED: directed re-baseline
-(iter 22 = new track-1 reference via `promote_champion_5k.py --val-trace`; the flag is
-mandatory in all future runs, so with-residual gates are unfair); then iter 23 gates vs
-iter 22.
+**ITER 22 ACCEPTED (Andrew 2026-07-17 ~10:50, directed re-baseline): no-residual cost
+ahead +0.000834 / imm +0.000312 vs iter 15 = the price of monotone-in-t. NEW track-1
+champion/reference = 0.304497/0.273539; champion_5k_plain.json re-pointed (promote
+--val-trace done). Iter 23 (learnable PAVA, BUILT+SMOKED) gates vs iter 22, ≥0.0003 both
+modes; launches after A3 frees the GPU (~21:50) — BEFORE launch: 30-step VRAM probe at
+RWKV_PROBE_DENSITY=0.08/MAX=110000 (probes inflate tokens ~+16%; fall back 0.05), λ=0.1
+density=0.08 defaults per BUILD_NOTES.**
 **→ NOW RUNNING: A3 GRU curve head** (launch 3, detached pid 34052, training since
 10:36:50; A1 arch + A1 champ refs — A2 rejected so the drafted defaults stood; 2,126,224
 params = −8.37% vs A1; **RWKV_VPRUNE_MIN_STEP=6000** — the zero-init curve head starts at

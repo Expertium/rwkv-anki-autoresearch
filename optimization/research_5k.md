@@ -75,4 +75,4 @@ intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0
 | A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | 7 | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
 | A1 | 0.2998 | 0.2691 | **accepted** | 2,320,516 | −442,368 | −0.00002 / +0.00001 | 0 | invented | All channel mixers → 1.0: ahead better, imm +0.00004 — ~50× inside the gate. Zero NaN-skips (A0: 7). New track-2 champion. |
 | A2 | 0.3002 | 0.2693 | rejected | 2,204,412 | -116,104 | +0.000155 / +0.000017 | 0 | invented | Deck 4L->3L: ahead +0.00018 worse = 1.55x the per-100k bar (imm passes). Deck depth is load-bearing for ahead. |
-| 22 | 0.3045 | 0.2735 | pending (Andrew) | 193,724 | 0 | Andrew decides | 0 | directed | No-residual cost: ahead +0.0008, imm +0.0003 (both p=1.0). Curve now monotone in t by construction. |
+| 22 | 0.3045 | 0.2735 | **accepted** (re-baseline) | 193,724 | 0 | Andrew decides | 0 | directed | No-residual cost accepted (Andrew): ahead +0.0008/imm +0.0003 = price of monotone-in-t. NEW track-1 reference. |
