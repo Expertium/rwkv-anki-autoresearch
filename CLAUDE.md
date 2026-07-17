@@ -728,15 +728,20 @@ champion/reference = 0.304497/0.273539; champion_5k_plain.json re-pointed (promo
 modes; launches after A3 frees the GPU (~21:50) — BEFORE launch: 30-step VRAM probe at
 RWKV_PROBE_DENSITY=0.08/MAX=110000 (probes inflate tokens ~+16%; fall back 0.05), λ=0.1
 density=0.08 defaults per BUILD_NOTES.**
-**→ NOW RUNNING: A3 GRU curve head** (launch 3, detached pid 34052, training since
-10:36:50; A1 arch + A1 champ refs — A2 rejected so the drafted defaults stood; 2,126,224
-params = −8.37% vs A1; **RWKV_VPRUNE_MIN_STEP=6000** — the zero-init curve head starts at
-a fixed prior (step-50 val 0.478/0.389) and would plausibly false-trip the default
-step-1000/2000 window before converging; verdict ~21:50; monitor b8ddtj5o5). ⚠ detach.ps1
-lessons (cost launch 1): Write-tool .cmd files are LF-only — cmd.exe dies silently;
-convert to CRLF first; always pass an ABSOLUTE script path (WMI cmd.exe starts in
-system32). Launch 2 was killed by MY misread (took the step-50 early val for step 1000 —
-"a val fires at step 50" is in the live rules); ~3 min lost, MIN_STEP patch kept.
+**A3 (GRU curve head) COMPLETE 2026-07-17 21:12 — REJECTED on the drafted vs-A1 gate,
+VERDICT DEFERRED to the no-residual re-anchor.** n=4871 intersection: **imm 0.268403 =
++0.000105 BETTER (p=1.6e-21, FIRST significant track-2 accuracy win)**; ahead 0.299964 =
++0.000443 worse → ratio +0.000228 (2.28× bar) — but CONFOUNDED (A1 is residual-ON; iter 22
+priced residual removal alone at +0.000834 ahead at d=32; A3's deficit is ~half that).
+**⚠ 129/5000 eval NaN-skips** (instability oscillates through training; deploy-side
+state-norm clamp now load-bearing for d=128). Grad-stats (fixed recorder): 10,886
+never-grad params (layer-0 v_lora ×5 = free strip); saliency bottom = ALL non-L0 channel
+mixers + user.L3.time_mixer = A4 bundle shortlist. Detail research_5k_verbose.md.
+**→ GPU plan: iter 23 (learnable PAVA, ~3.5h, launching now after VRAM probe) → overnight
+TRACK-2 NO-RESIDUAL RE-ANCHOR (A1 arch + RWKV_NO_AHEAD_RESIDUAL=1, ~11h, queued behind
+iter 23 via waitloop) — required by the mandatory recipe regardless of A3 (track-2's
+reference must go no-residual like track 1 did); A3 then re-gates vs it (Andrew can veto
+overnight run by killing pid, see scratchpad/track2_reanchor/).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if

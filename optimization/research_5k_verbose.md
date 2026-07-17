@@ -504,3 +504,44 @@ plain champion/reference = iter22_nores (0.304497/0.273539); `champion_5k_plain.
 re-pointed (6,554-step WS trace + val trace = the new vprune ref). Iter 15 stays in the
 record as the last with-residual champion; the +0.0008/+0.0003 is the accepted price of the
 monotone-in-t guarantee. Iter 23 (learnable PAVA) gates vs iter 22, >=0.0003 both modes.
+
+### Track-2 A3 — GRU-faithful curve head (REJECTED-pending-re-anchor 2026-07-17 21:20)
+
+RWKV_GRU_HEAD=2 on the A1 arch: three tiny fp32 linears off the shared `head_w` trunk
+predict per-row (w, S, d) for N=2 power curves R(t)=Σ wᵢ(1+t/Sᵢ)^(−dᵢ) (srs-benchmark GRU
+class, exp-clamped ⇒ monotone in t by construction); legacy w_linear + the dead ahead head
+→ 1×1 dummies. **2,320,516 → 2,126,224 params (−194,292 = 8.37%).** First no-residual
+track-2 run (the head forces it structurally). vprune MIN_STEP=6000 (zero-init prior curve
+= mismatched-at-init; in hindsight unneeded — step-1000 val was ahead −0.011 BETTER than A1
+same-step; the head converges off its prior in <1000 steps).
+
+**Three findings:**
+
+1. **Accuracy (n=4,871 intersection vs A1): imm 0.268403 = +0.000105 BETTER (p=1.6e-21) —
+the FIRST statistically significant track-2 accuracy improvement.** Ahead 0.299964 =
++0.000443 worse (p=1.0) → ratios +0.000228 (2.28× the ≤0.0001 bar, FAIL) / −0.000054
+(pass). **Confounded:** A1 carries the piecewise residual; A3 cannot; iter 22 priced
+residual-removal ALONE at +0.000834 ahead (d=32). A3's ahead deficit is ~half that → the
+GRU head itself plausibly IMPROVES ahead against a fair no-residual anchor. **Final verdict
+deferred to the re-anchor**: A1 arch + RWKV_NO_AHEAD_RESIDUAL=1 (queued overnight; needed
+anyway — every future track-2 run is no-residual by the mandatory recipe, so the track-2
+reference must be re-anchored exactly as track 1 was with iter 22).
+
+2. **Instability: 129/5,000 eval users NaN-skipped** (A0: 7; A1/A2: 0). The ≥500k-token
+bf16 overflow returned under the GRU head's training trajectory and OSCILLATES: vals NaN'd
+steps 3000–16000, recovered 17000+ (0.3246/0.3059 WS-end, healthy), NaN'd again in decay;
+decay-end weights skip 2.6% of full histories. Not deployable as-is — the queued
+deploy-side state-norm clamp (or a train-time fix) is now load-bearing for ANY d=128
+no-residual config, not just A3. Ops note: mid-eval nanskip polls must read the SHARD file
+(`RWKV-track2_a3-s0.nanskip.jsonl`) — the merged name only appears at the end.
+
+3. **Grad-stats (fixed recorder, first valid d=128 recording): 10,886 params NEVER receive
+grads** — layer-0 `v_lora_simple` A+B+bias across all 5 streams (v0-mix only applies above
+layer 0) = a free strip in any future arch. Saliency bottom tier = ALL non-L0 channel
+mixers (preset.L1, user.L1/L2/L3, note.L1, card.L1, deck.L1/L2/L3) + `user.L3.time_mixer`
+→ the A4 bundle shortlist (mixer-mass thinning + user 4L→3L, bundled to clear ≥5%).
+
+Pipeline: WS 6h35m @ ~1.06 s/step, decay 1h38m, single-process eval 2h23m, clean exits.
+Launch bookkeeping: two dead launches (~5 min lost) — LF-only .cmd (Write tool) killed
+cmd.exe silently + relative detach path; then a step-50-val misread killed a healthy
+launch. Artifacts scratchpad/track2_a3/ (t2a3d_5586.pth kept), result/RWKV[-P]-track2_a3.jsonl.
