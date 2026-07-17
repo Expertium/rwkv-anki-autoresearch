@@ -718,11 +718,19 @@ cut was exactly 5.0% and still failed the price check). ⚠ A2's grad-stats json
 FIXED `dcf11f5` — per-param subset accumulation, report refuses dead jsons + lists
 never-grad tensors as FREE prune candidates (5×1,024 params at d=128); A3 records
 correctly on the same A1 trunk). Detail: research_5k_verbose.md.
-**→ NOW RUNNING: iter 22 (RWKV_NO_AHEAD_RESIDUAL, self-started 07:21 behind A2; verdict
-~10:45 — GATE = ANDREW DECIDES, report + WAIT). → NEXT GPU SLOT: A3 GRU curve head
-(built + smoked, RWKV_GRU_HEAD=2, 2,126,224 params = −8.37% vs A1, monotone in t by
-construction; `scratchpad/track2_a3/run_track2_a3.cmd` runs UNPATCHED — A2's rejection
-means the A1-arch/A1-champ defaults stand; ~11 h, verdict ~23:30).
+**ITER 22 COMPLETE (2026-07-17 10:30) — AWAITING ANDREW'S VERDICT (no auto-verdict):
+no-residual cost = ahead 0.304497 (+0.000834 worse, p=1.0) / imm 0.273539 (+0.000312
+worse, p=1.0) vs iter 15, n=5000, 0 nanskips.** Val tracked champion within noise all
+run — the cost only materialized at eval. Recorded as status=pending_andrew (update
+research_log.jsonl status + this block on his ruling). RECOMMENDED: directed re-baseline
+(iter 22 = new track-1 reference via `promote_champion_5k.py --val-trace`; the flag is
+mandatory in all future runs, so with-residual gates are unfair); then iter 23 gates vs
+iter 22.
+**→ NOW RUNNING: A3 GRU curve head** (launched 10:38 detached pid 32532, A1 arch + A1
+champ refs — A2 rejected so the drafted defaults stood; 2,126,224 params = −8.37% vs A1;
+verdict ~21:45; monitor b8ddtj5o5). ⚠ detach.ps1 lessons (cost one dead launch):
+Write-tool .cmd files are LF-only — cmd.exe dies silently; convert to CRLF first. Always
+pass detach.ps1 an ABSOLUTE script path (WMI cmd.exe starts in system32).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if

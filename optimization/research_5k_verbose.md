@@ -473,3 +473,28 @@ for N=2 power curves, replaces w_linear + strips the dead ahead head; 2,126,224 
 A1; built + fully smoked overnight incl. bit-exact off-path). A2's rejection means the drafted
 launch cmd runs unpatched (A1 arch + A1 champion refs were the defaults). Launches after
 iter 22 frees the GPU (~11:45).
+
+### Iter 22 — no-residual cost measurement (COMPLETE 2026-07-17 10:30, verdict = ANDREW)
+
+RWKV_NO_AHEAD_RESIDUAL=1 on the exact iter-15 recipe: the learned piecewise-linear ahead
+correction zeroed → curve = pure mixture-of-exponentials, **monotone in elapsed time by
+construction** (MONOTONICITY_PLAN.md stage-1-by-removal, Andrew's directive). 193,724 params
+(~12.5k now dead, strippable at deploy).
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.304497 / imm 0.273539** vs iter 15's
+0.303663/0.273227 → **ahead +0.000834 worse (p=1.0), imm +0.000312 worse (p=1.0)** — the
+measured price of the monotonicity guarantee. Val trajectory tracked the champion within
+noise the entire run (a +0.005 ahead spike at step 1500 was transient; WS-end 0.3287/0.3110 ≈
+parity; decay-tail 0.3271/0.3087): the 10-user val set cannot resolve the curve-shape
+flexibility the residual was buying — the cost only appeared at full eval. Pipeline 3h09m
+clean (WS 91 min, never vprune-threatened; decay 23 min; sharded eval 75 min).
+
+**No auto-verdict — reported to Andrew.** Options as framed at redefinition: (a) directed
+re-baseline (iter 22 = new track-1 reference; recommended — the flag is already mandatory in
+every future run in both tracks, so a with-residual champion is not a fair gate), (b) treat
+as too expensive and revisit the constraint. If (a): promote via `promote_champion_5k.py
+--val-trace` and iter 23 (learnable PAVA, built + smoked) gates vs iter 22.
+
+Ops lesson from the same hour (cost one dead launch): Write-tool-authored `.cmd` files are
+LF-only and cmd.exe silently dies on them — convert to CRLF before `detach.ps1`, and always
+pass detach.ps1 an ABSOLUTE script path (the WMI-spawned cmd.exe starts in system32).
