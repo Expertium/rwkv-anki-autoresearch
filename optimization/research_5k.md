@@ -54,6 +54,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 19 | 1–5000 | 0.3038 | 0.2730 | exact | rejected | 1.0 / 1.6e-70 (vs iter 15) | 193,724 | 1 | invented | pbin at 0.25: same mode trade at half amplitude — dose-response linear, no scale can pass both modes. Lever exhausted. |
 | 20 | 1–5000 | 0.3035 | 0.2731 | exact | rejected | 2.0e-10 / 2.0e-25 (vs iter 15, better) | 194,620 | 0 | invented | Cross-head readout mix (per-channel scalar): BOTH modes better (+0.00018/+0.00011), p-gate passes, magnitudes miss the bar. K×K variant queued. |
 | 21 | 1–5000 | 0.3045 | 0.2732 | exact | rejected | 1.0 / 0.03 (vs iter 15) | 208,060 | 0 | invented | Cross-head mix v2 (full K×K): ahead −0.0009 worse, imm tied — 16× capacity erased v1's gain. Channel not capacity-limited; no-wd v1 variant queued. |
+| 22 | 1–5000 | 0.3045 | 0.2735 | exact | **accepted** (re-baseline) | 1.0 / 1.0 (vs iter 15, worse) | 193,724 | 0 | directed | No-residual cost accepted (Andrew): ahead +0.0008/imm +0.0003 = price of monotone-in-t. NEW track-1 reference. |
 
 ## Track 2 — ablate the old d=128 model
 
@@ -75,4 +76,3 @@ intersection. Anchor context (intersection-paired): vs upstream 12-ep +0.0037/+0
 | A0 | 0.2999 | 0.2690 | anchor | 2,762,884 | — | — (baseline) | 7 | adopted | d=128 arch retrained with our 1-ep plain recipe — the track-2 "before" anchor (n=4993, 7 NaN-skips). |
 | A1 | 0.2998 | 0.2691 | **accepted** | 2,320,516 | −442,368 | −0.00002 / +0.00001 | 0 | invented | All channel mixers → 1.0: ahead better, imm +0.00004 — ~50× inside the gate. Zero NaN-skips (A0: 7). New track-2 champion. |
 | A2 | 0.3002 | 0.2693 | rejected | 2,204,412 | -116,104 | +0.000155 / +0.000017 | 0 | invented | Deck 4L->3L: ahead +0.00018 worse = 1.55x the per-100k bar (imm passes). Deck depth is load-bearing for ahead. |
-| 22 | 0.3045 | 0.2735 | **accepted** (re-baseline) | 193,724 | 0 | Andrew decides | 0 | directed | No-residual cost accepted (Andrew): ahead +0.0008/imm +0.0003 = price of monotone-in-t. NEW track-1 reference. |
