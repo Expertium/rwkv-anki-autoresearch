@@ -1,0 +1,41 @@
+# TRACK-2 NO-RESIDUAL RE-ANCHOR: the A1 champion arch (all mixers 1.0, 2,320,516 params)
+# with RWKV_NO_AHEAD_RESIDUAL=1 -- the piecewise curve correction disabled, exactly as the
+# mandatory recipe requires of every future run. This re-anchors the track-2 reference the
+# same way iter 22 re-anchored track 1 (with-residual champions are not fair gates for
+# no-residual candidates). A3 (GRU head) re-gates vs THIS anchor; d128 residual-removal
+# cost = this run vs A1 (informational). Recipe otherwise identical to A0/A1/A2/A3:
+# 1 ep WS + 0.25 ep decay, seed 1234, MAX=32768, per-step cache clears.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/track2_reanchor"
+SAVE_MODEL_PREFIX = "t2rews"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
