@@ -55,8 +55,28 @@ def main():
     with open(args.path) as f:
         stats = json.load(f)
 
+    # steps_counted == 0 = the recorder NEVER saw a grad for the tensor. Two cases:
+    # (a) the whole file is dead (pre-2026-07-17 whole-step-skip bug -- refuse to rank);
+    # (b) individual structurally-unused params (e.g. layer-0 v_lora_simple.A) -- list
+    #     them as FREE prune candidates and exclude them from the saliency ranking.
+    total = len(stats)
+    dead = {n: s for n, s in stats.items() if s.get("steps_counted", 0) == 0}
+    if total and len(dead) == total:
+        print(f"!! ALL {total} tensors have steps_counted=0 -- this json was recorded "
+              f"with the broken whole-step-skip accumulate (fixed 2026-07-17); the grad "
+              f"ranking is MEANINGLESS. Re-record before using.")
+        return
+    if dead:
+        print(f"== NEVER-GRAD (structurally unused; free prune candidates; excluded "
+              f"from ranking) == {sum(s['numel'] for s in dead.values()):,} params")
+        for n, s in sorted(dead.items(), key=lambda kv: -kv[1]["numel"]):
+            print(f"  {n}  (numel {s['numel']:,})")
+        print()
+
     groups = defaultdict(lambda: {"numel": 0, "g": 0.0, "gw": 0.0, "tensors": 0})
     for name, s in stats.items():
+        if name in dead:
+            continue
         g = groups[unit_of(name)]
         g["numel"] += s["numel"]
         g["g"] += s["mean_abs_grad"] * s["numel"]

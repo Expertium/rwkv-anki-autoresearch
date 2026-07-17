@@ -43,22 +43,41 @@ class GradStats:
         self.acc_g = torch.zeros(n, dtype=torch.float64, device=dev)
         self.acc_gw = torch.zeros(n, dtype=torch.float64, device=dev)
         self.count = torch.zeros(n, dtype=torch.float64, device=dev)
+        self._missing_reported = False
         print(f"[grad-stats] recording {n} param tensors -> {path}")
 
     @torch.no_grad()
     def accumulate(self):
-        grads = [p.grad for p in self.params]
-        if any(g is None for g in grads):  # first steps of exotic setups; skip whole step
-            return
+        # Per-param None handling (fix 2026-07-17): structurally-unused params (e.g. the
+        # layer-0 v_lora_simple.A -- v0-mix only applies above layer 0) NEVER receive a
+        # grad on the master model. The old whole-step skip ("any(g is None) -> return")
+        # therefore skipped EVERY step and A2's WS recording came out all-zero
+        # (steps_counted 0). Now: accumulate over the present-grad subset; never-grad
+        # params honestly keep steps_counted == 0 (itself a finding -- free prune
+        # candidates; the report annotates them).
+        idx = [i for i, p in enumerate(self.params) if p.grad is not None]
+        if not idx:
+            return  # pre-backward call
+        if self._missing_reported is False:
+            miss = [self.names[i] for i in range(len(self.params)) if i not in set(idx)]
+            if miss:
+                print(f"[grad-stats] {len(miss)} params never received a grad yet "
+                      f"(recorded as steps_counted=0): {miss[:6]}{'...' if len(miss) > 6 else ''}")
+            self._missing_reported = True
+        grads = [self.params[i].grad for i in idx]
+        weights = [self.params[i].data for i in idx]
+        idx_t = torch.tensor(idx, dtype=torch.long, device=self.acc_g.device)
+        numel_sub = self.numel[idx_t]
         g_l1 = torch.stack(torch._foreach_norm(grads, 1)).double()
-        gw = torch._foreach_mul(grads, [p.data for p in self.params])
+        gw = torch._foreach_mul(grads, weights)
         gw_l1 = torch.stack(torch._foreach_norm(gw, 1)).double()
-        g_mean = g_l1 / self.numel
-        gw_mean = gw_l1 / self.numel
+        g_mean = g_l1 / numel_sub
+        gw_mean = gw_l1 / numel_sub
         ok = torch.isfinite(g_mean) & torch.isfinite(gw_mean)
-        self.acc_g += torch.where(ok, g_mean, torch.zeros(()).double().to(g_mean.device))
-        self.acc_gw += torch.where(ok, gw_mean, torch.zeros(()).double().to(g_mean.device))
-        self.count += ok.double()
+        zero = torch.zeros((), dtype=torch.float64, device=g_mean.device)
+        self.acc_g.index_add_(0, idx_t, torch.where(ok, g_mean, zero))
+        self.acc_gw.index_add_(0, idx_t, torch.where(ok, gw_mean, zero))
+        self.count.index_add_(0, idx_t, ok.double())
 
     @torch.no_grad()
     def dump(self):
