@@ -438,3 +438,38 @@ mode ("right direction, too small"). If v3 also lands under the bar, the family 
 Val trajectory tracked the champion with slightly more scatter than v1 (no persistent
 deficit) — third confirmation that mid-run vals cannot resolve sub-0.001 finals. Pipeline
 3h14m clean (WS 95m, decay 23m, eval 76m).
+
+### Track-2 A2 — deck 4L→3L (REJECTED 2026-07-17 07:25): deck depth is load-bearing for ahead
+
+Deck stream 4→3 layers on the A1 arch (`scratchpad/track2_a2/architecture_d128_cmix1_deck3.py`),
+2,320,516 → **2,204,412 params (−116,104 = exactly 5.0%)**, exact A1 recipe (1 ep WS + 0.25 ep
+decay, seed 1234, MAX=32768, per-step cache clears). Full n=5000 pairing, **0 NaN-skips**
+(second consecutive clean d=128 run — A0's ≥500k-token overflow stays gone with mixers at 1.0).
+
+**Finals: ahead 0.300189 / imm 0.269344** vs A1 0.300009/0.269324 → ahead **+0.000180 worse**
+(p=1.0), imm +0.000020 worse (p=0.96). Ratio gate (≤0.0001/100k both modes): ahead
+**+0.000155 = 1.55× the bar → FAIL**; imm +0.0000172 (pass with 6× margin). The allowed
+degradation at Δparams=116,104 was 0.000116/mode; ahead spent 0.000180. Verdict: the deck
+stream's 4th layer earns its 82.9k params on the curve pathway — mirrors d=32, where deck
+kept 4L as the largest stream after every rebalance. d128-single-layer-cut family 0/1,
+deprioritized in favor of BUNDLES (Andrew's ≥5% sizing rule: this was exactly 5.0% and still
+failed the price check — future cuts must buy more per point of logloss).
+
+Decay-end val 0.3229/0.3043 vs A1's 0.3225/0.3040 — the small consistent val deficit again
+predicted the eval sign (iter-18 lesson: persistent gaps mean something; oscillating ones
+don't). Pipeline: WS 5h54m @ ~1.06 s/step (never vprune-threatened), decay 1h30m, unsharded
+eval 2h27m (8,821 s), total 9h54m clean.
+
+**Grad-stats recording DEAD** (the run's other deliverable): first live use of
+`RWKV_GRAD_STATS` exposed a whole-step-skip bug — the 5 layer-0 `v_lora_simple.A` tensors
+never receive grads (v0-mix applies only above layer 0), so `any(g is None)` skipped EVERY
+step; both A2 jsons have steps_counted=0 for all 474 tensors. Fixed in `dcf11f5` (per-param
+subset accumulation; report refuses dead jsons and lists never-grad tensors as free prune
+candidates — those 5×1,024 params are themselves strippable). A2's ranking forfeited; A3
+records correctly on the same A1 trunk.
+
+**Next = A3 GRU-faithful curve head** (RWKV_GRU_HEAD=2: three tiny linears predict w/S/decay
+for N=2 power curves, replaces w_linear + strips the dead ahead head; 2,126,224 = −8.37% vs
+A1; built + fully smoked overnight incl. bit-exact off-path). A2's rejection means the drafted
+launch cmd runs unpatched (A1 arch + A1 champion refs were the defaults). Launches after
+iter 22 frees the GPU (~11:45).

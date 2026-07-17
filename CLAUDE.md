@@ -709,11 +709,20 @@ observable at fresh init (randomize W_o before perturb/grad smoke checks).
 ahead −0.000859 worse (p=1.0), imm tied. The 16× capacity erased v1's both-modes gain;
 the readout channel is information-poor + regularization-hungry, not capacity-limited.**
 
-**→ NOW RUNNING: TRACK-2 A2 = deck 4L→3L on the A1 arch** (launched 21:25 detached,
-~11 h pipeline, verdict ~08:30 tomorrow; arch `scratchpad/track2_a2/
-architecture_d128_cmix1_deck3.py`; expected cut ~110k params → allowed ≤ ~0.00011/mode
-vs A1, full n=5000 pairing; **first run recording RWKV_GRAD_STATS**
-(`t2a2_grad_stats_{ws,decay}.json` → `optimization/grad_stats_report.py` ranks A3+ targets).
+**TRACK-2 A2 REJECTED (2026-07-17 07:25): deck 4L→3L = ahead +0.000180 worse (p=1.0) =
+per-100k ratio +0.000155 = 1.55× the ≤0.0001 bar (imm +0.000020 = +0.0000172, passes).**
+Full n=5000, 0 nanskips (2nd consecutive clean d=128 run). Deck DEPTH is load-bearing for
+the ahead/curve pathway; d128-single-layer-cut family 0/1, deprioritized for BUNDLES (the
+cut was exactly 5.0% and still failed the price check). ⚠ A2's grad-stats jsons are DEAD
+(whole-step-skip bug: layer-0 v_lora_simple.A never receives grads → every step skipped;
+FIXED `dcf11f5` — per-param subset accumulation, report refuses dead jsons + lists
+never-grad tensors as FREE prune candidates (5×1,024 params at d=128); A3 records
+correctly on the same A1 trunk). Detail: research_5k_verbose.md.
+**→ NOW RUNNING: iter 22 (RWKV_NO_AHEAD_RESIDUAL, self-started 07:21 behind A2; verdict
+~10:45 — GATE = ANDREW DECIDES, report + WAIT). → NEXT GPU SLOT: A3 GRU curve head
+(built + smoked, RWKV_GRU_HEAD=2, 2,126,224 params = −8.37% vs A1, monotone in t by
+construction; `scratchpad/track2_a3/run_track2_a3.cmd` runs UNPATCHED — A2's rejection
+means the A1-arch/A1-champ defaults stand; ~11 h, verdict ~23:30).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if
@@ -749,8 +758,10 @@ consistently in the probe rows.**
 **Track-2 sizing recommendation (Andrew 2026-07-16, soft rule): aim for ≥5% param reduction
 per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
 future candidates should BUNDLE cuts (e.g. deck+user layers together, LoRA-dim cuts folded
-into a bigger ablation) or go structural (d_model 128→96 ≈ 40%+). Track-2 queue after A2:
-user 4L→3L, LoRA-dim cuts, d_model 128→96 — re-ranked + bundled per A2's grad-stats report.
+into a bigger ablation) or go structural (d_model 128→96 ≈ 40%+). Track-2 queue after A3:
+grad-stats-ranked BUNDLES (single ~116k layer cuts are now proven under-priced — A2's deck
+cut failed at exactly 5.0%): user-layer + LoRA-dim bundles, d_model 128→96, head_w squeeze
+(~83k, once the GRU head proves N=2 suffices) — re-ranked per A3's (fixed-recorder) report.
 **+ POWER-CURVE BASIS (Andrew 2026-07-16 late, for A3 bundling): replace the 128 exponential
 bases with a handful (N≈8–16) of FSRS-7-style power curves** `R_i(t) = (1 + f_i·t/S_i)^(−c_i)`,
 `f_i = 0.9^(−1/c_i) − 1` (pins R_i(S_i)=0.9; form = srs-benchmark `models/fsrs_v7.py`
