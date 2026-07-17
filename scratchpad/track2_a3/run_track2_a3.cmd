@@ -28,6 +28,12 @@ set RWKV_NO_AHEAD_RESIDUAL=1
 set RWKV_VPRUNE_REF=optimization/champion_5k_track2.json
 set RWKV_VPRUNE_DELTA_AHEAD=0.004
 set RWKV_VPRUNE_DELTA_IMM=0.006
+REM MIN_STEP 1000->6000 (2026-07-17, launch 2): the GRU head starts at a zero-init
+REM FIXED prior curve (input-independent) -- step-1000 val was 0.478/0.389, miles
+REM over champ+delta BY DESIGN, and the default window would false-kill at step
+REM 2000 (the documented mismatched-at-init prune bias; cf. the decay_ratio_0p1
+REM false-kill audit). By ~6000 the head has converged or the run deserves death.
+set RWKV_VPRUNE_MIN_STEP=6000
 set RWKV_WEIGHT_DECAY=0.01
 set RWKV_CLIP=0.25
 set RWKV_STEP_TRACE=scratchpad/track2_a3/track2_a3_ws_trace.jsonl

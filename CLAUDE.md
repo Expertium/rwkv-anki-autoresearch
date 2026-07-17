@@ -726,11 +726,15 @@ research_log.jsonl status + this block on his ruling). RECOMMENDED: directed re-
 (iter 22 = new track-1 reference via `promote_champion_5k.py --val-trace`; the flag is
 mandatory in all future runs, so with-residual gates are unfair); then iter 23 gates vs
 iter 22.
-**→ NOW RUNNING: A3 GRU curve head** (launched 10:38 detached pid 32532, A1 arch + A1
-champ refs — A2 rejected so the drafted defaults stood; 2,126,224 params = −8.37% vs A1;
-verdict ~21:45; monitor b8ddtj5o5). ⚠ detach.ps1 lessons (cost one dead launch):
-Write-tool .cmd files are LF-only — cmd.exe dies silently; convert to CRLF first. Always
-pass detach.ps1 an ABSOLUTE script path (WMI cmd.exe starts in system32).
+**→ NOW RUNNING: A3 GRU curve head** (launch 3, detached pid 34052, training since
+10:36:50; A1 arch + A1 champ refs — A2 rejected so the drafted defaults stood; 2,126,224
+params = −8.37% vs A1; **RWKV_VPRUNE_MIN_STEP=6000** — the zero-init curve head starts at
+a fixed prior (step-50 val 0.478/0.389) and would plausibly false-trip the default
+step-1000/2000 window before converging; verdict ~21:50; monitor b8ddtj5o5). ⚠ detach.ps1
+lessons (cost launch 1): Write-tool .cmd files are LF-only — cmd.exe dies silently;
+convert to CRLF first; always pass an ABSOLUTE script path (WMI cmd.exe starts in
+system32). Launch 2 was killed by MY misread (took the step-50 early val for step 1000 —
+"a val fires at step 50" is in the live rules); ~3 min lost, MIN_STEP patch kept.
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if
