@@ -774,6 +774,15 @@ NEVER fire on healthy users = byte-identity off-path) → validate on A3's 129 N
 users → TONIGHT: A5 bundle (~11h) = free strip 142,592 + GRU head (−194,292,
 validated) + clamp in recipe; channel-mixer thinning deferred to A6 (keep A5's only
 unvalidated piece the clamp). Track-1 queue after: xhead-mix v3, permutation init (LOW).
+**ITER 25 QUEUED (Andrew 2026-07-18 ~23:30: "Let's try power curves first, to see if they
+improve log loss of the small model"): GRU-faithful power-curve head at d=32
+(RWKV_GRU_HEAD=2 + RWKV_STRIP_L0_VLORA=1 + state clamp τ=300 as insurance; full iter-23
+champion recipe incl. PAVA; 171,066 params = −11.7%; MIN_STEP=6000). Parked pid 36720,
+waitloop on A5's DONE_EXIT (~03:00) → verdict ~06:30. Gate: ≥0.0003 both modes vs iter 23
++ p<0.0001. If it misses: variant A (fixed log-spaced S-grid, weights-only, N≈8–16) is
+the family sibling. By-construction button-ordering ideas (FOSD/CDF-power head,
+shared-shape ordered-S) discussed with Andrew 2026-07-18 — candidate follow-ups in the
+curve-shape-constraints family after the power-curve verdicts.**
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if

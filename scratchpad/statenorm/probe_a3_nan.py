@@ -39,8 +39,10 @@ def main():
     from rwkv.parse_toml import parse_toml
     from rwkv.prepare_batch import prepare_data
 
-    # parse_toml reads --config from argv (parse_known_args)
-    sys.argv = [sys.argv[0], "--config", "scratchpad/track2_a3/track2_a3_eval.toml"]
+    # parse_toml reads --config from argv (parse_known_args); PROBE_TOML overrides the
+    # default A3 eval config (e.g. a d=32 toml for track-1 smokes)
+    toml_path = os.environ.get("PROBE_TOML", "scratchpad/track2_a3/track2_a3_eval.toml")
+    sys.argv = [sys.argv[0], "--config", toml_path]
     config = parse_toml()
     dtype = torch.bfloat16 if mode == "bf16" else torch.float32
 
