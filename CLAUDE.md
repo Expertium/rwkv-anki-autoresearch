@@ -599,14 +599,15 @@ Pairing needs identical db/MAX/seeds.
   (incl. RWKV_ZERO_FEATURES=22 — set BOTH in ALL track-1 runs + the final QAT run; deploy
   need not compute Anki review state). Iter 15 (0.303663/0.273227, residual-on) kept as the
   last with-residual reference; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
-- **Track 2 anchor A0 = the d=128 arch retrained on OUR plain 1-ep pipeline: ahead 0.299857 / imm
-  0.269030** (n=4993, 2,762,884 params; `champion_5k_track2.json` = vprune ref; ckpt
-  `scratchpad/track2_a0/t2a0d_5586.pth`). 1-ep budget tax at d=128 = +0.0037/+0.0044 vs the upstream
-  12-ep .pth (epochs DO matter at 14x params, unlike d=32); A0 beats champ5k_plain by 0.0036/0.0042
-  (what 2.57M extra params buy at matched budget). **⚠ A0 NaNs (weight-level, fp32-confirmed via the
-  RWKV_EVAL_CAST_FP32 shim) on eval chunks ≥ ~500k tokens: 7 users skipped
-  (`result/RWKV-track2_a0.nanskip.jsonl`) → ALL track-2 comparisons use the finite-user
-  intersection; `paired_pvalue.py` needs an --intersect mode before A1's gate.**
+- **Track 2 REFERENCE = A4 `track2_reanchor` (no-residual re-anchor of A1, promoted 2026-07-18):
+  ahead 0.300504 / imm 0.269262** (n=5000, 0 nanskips, 2,320,516 params — 142,592 dead/strippable:
+  the 131.7k ahead head + 5× L0 v_lora; `champion_5k_track2.json` = ckpt
+  `scratchpad/track2_reanchor/t2red_5586.pth` + WS/val traces = the track-2 vprune ref).
+  **All future track-2 candidates gate vs A4 on FULL n=5000.** Lineage: A0 (d=128 1-ep retrain,
+  0.299857/0.269030, n=4993, 7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep
+  .pth; beats champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
+  A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead +0.000495 (p=1.0) but imm
+  0.000062 BETTER (p=1.1e-07) — cheaper + more asymmetric than d=32's +0.000834/+0.000312.
 - **QAT deploy truth (FROZEN until research closes) = champ5k_b1** (0.306629/0.277893 quant-aware;
   `champion_5k.json` + its own cbs). At research close the final champion gets ONE 2-ep
   confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family flags;
@@ -743,11 +744,22 @@ Learned powers moved OFF classic PAVA (p=1 init): Again–Hard ≈ 0.00 (geometr
 Hard–Good ≈ −1.44 (harmonic side), Good–Easy ≈ +0.53 — soft pessimistic pooling.
 Curve-shape-constraints family 0/1 WITH STRONG SIGNAL; per conduct rule 2 the queued
 variant runs next. Detail research_5k_verbose.md.**
-**→ GPU plan: TRACK-2 NO-RESIDUAL RE-ANCHOR RUNNING (A1 arch + RWKV_NO_AHEAD_RESIDUAL=1,
-~11h, started 01:17 → verdict ~12:30; its cmd tail prints reanchor-vs-A1 = the d=128
-residual cost AND A3-vs-reanchor = A3's deferred verdict, ratio gate Δparams=194,292;
-then promote reanchor → champion_5k_track2.json + grad_stats_report) → iter 24 (pweight
-PAVA, drafted, waitloop on re-anchor DONE_EXIT, ~3.5h → verdict ~16:30).
+**TRACK-2 A4 RE-ANCHOR DONE + PROMOTED (2026-07-18 12:02): 0.300504/0.269262, n=5000,
+0 nanskips, ZERO NaN val windows (the GRU head, not d=128/no-residual, was A3's
+destabilizer). A3 DEFERRED VERDICT = ratio gate PASS both modes (−0.0000288/−0.0000221
+vs ≤0.0001; A3 BETTER than the fair anchor: ahead +0.000056 p=0.107, imm +0.000043
+p=7.6e-05) — but promotion stays BLOCKED by A3's 129-NaN instability (recorded
+gate-PASS-unstable); the GRU head (−194,292 params) is VALIDATED as an A5-bundle
+component once the state-norm clamp / train-time fix lands. Re-anchor grad-stats:
+never-grad 142,592 (dead ahead head 131,712 + 5×L0 v_lora 10,880 = free strip);
+saliency bottom = 8 non-L0 channel mixers (~265k = 11.4% of A1) then card.L1/user
+time-mixers — consistent with A3's report = robust A5 menu. ⚠ NAMING: "A4 bundle" in
+older notes = A5 now (A4 = the re-anchor). Detail research_5k_verbose.md.**
+**→ GPU plan: iter 24 (pweight PAVA) RUNNING (auto-started 12:03, ~3.5h → verdict
+~15:45; gates vs iter 22 ≥0.0003 both modes + p<0.0001 + params ≤225k) → next track-2
+block = A5 grad-stats-ranked bundle (free strip + bottom channel-mixer mass ±user
+4L→3L ± the GRU head once stabilized); track-1 queue after 24: xhead-mix v3,
+permutation init (LOW).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if
@@ -785,7 +797,8 @@ future candidates should BUNDLE cuts (e.g. deck+user layers together, LoRA-dim c
 into a bigger ablation) or go structural (d_model 128→96 ≈ 40%+). Track-2 queue after A3:
 grad-stats-ranked BUNDLES (single ~116k layer cuts are now proven under-priced — A2's deck
 cut failed at exactly 5.0%): user-layer + LoRA-dim bundles, d_model 128→96, head_w squeeze
-(~83k, once the GRU head proves N=2 suffices) — re-ranked per A3's (fixed-recorder) report.
+(~83k, once the GRU head proves N=2 suffices) — re-ranked per A3's (fixed-recorder) report;
+now confirmed by A4's report (same bottom tier) — this bundle = **A5** (A4 = the re-anchor).
 **+ POWER-CURVE BASIS (Andrew 2026-07-16 late, for A3 bundling): replace the 128 exponential
 bases with a handful (N≈8–16) of FSRS-7-style power curves** `R_i(t) = (1 + f_i·t/S_i)^(−c_i)`,
 `f_i = 0.9^(−1/c_i) − 1` (pins R_i(S_i)=0.9; form = srs-benchmark `models/fsrs_v7.py`

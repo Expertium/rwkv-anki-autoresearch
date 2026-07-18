@@ -591,3 +591,53 @@ uniform weighting overcorrects the likely button's estimate. λ/density unchange
 (validated by iter 23's neutral-to-positive accuracy). Launches behind the track-2
 re-anchor (waitloop). Artifacts scratchpad/iter23_pava/ (iter23d_1638.pth kept),
 result/RWKV[-P]-iter23_pava.jsonl.
+
+### Track-2 A4 — the no-residual re-anchor (ACCEPTED + PROMOTED 2026-07-18 12:02)
+
+A1 arch + `RWKV_NO_AHEAD_RESIDUAL=1`, exact A1 recipe otherwise — the directed re-baseline
+planned at A3's verdict: every future track-2 run is no-residual by the mandatory recipe, so
+the track-2 reference had to be re-anchored exactly as track 1 was with iter 22. Params
+2,320,516 unchanged (142,592 now dead/strippable — see grad-stats below). Promoted via
+`promote_champion_5k` → `champion_5k_track2.json` (22,346-step WS trace + val trace = the
+track-2 vprune ref; ckpt `t2red_5586.pth`). **All future track-2 candidates gate vs
+0.300504/0.269262 on FULL n=5000** — the A0 intersection era ends.
+
+**Finals (n=5000, 0 NaN-skips): ahead 0.300504 / imm 0.269262.** The d=128 residual price
+(paired vs A1, informational): **ahead +0.000495 worse (p=1.0), imm 0.000062 BETTER
+(p=1.1e-07)** — a sharper asymmetry than d=32's +0.000834/+0.000312 (iter 22): at d=128 the
+piecewise residual bought only ahead curve-shape and was mildly *hurting* imm. (The tail's
+"P-GATE FAIL" banners are the tool's accept-gate formatting, not a verdict — the re-baseline
+is directed.)
+
+**A3's deferred verdict (paired vs THIS anchor, n=4871 intersect): ratio gate PASS both
+modes.** A3 is BETTER than the fair anchor in both: ahead +0.000056 (p=0.107, n.s.), imm
++0.000043 (p=7.6e-05). Ratios at Δparams=194,292: **−0.0000288 / −0.0000221** vs the ≤0.0001
+bar — the GRU curve head strips 8.37% of params at zero-to-negative accuracy cost. **Promotion
+stays BLOCKED by A3's instability** (129/5000 eval NaN users; recorded as gate-PASS-unstable):
+the head is validated as an **A5-bundle component** once the state-norm clamp (deploy/eval) or
+a train-time stability fix lands. (Naming: "A4 bundle" in pre-re-anchor notes = this A5 —
+A4 is the re-anchor itself.)
+
+**Stability: zero NaN val windows + 0 eval nanskips** (3rd clean d=128 run of the last 4) —
+the GRU head's training trajectory, not d=128/no-residual, was A3's destabilizer. Val
+trajectory was a clean descent all run: WS-end 0.3250/0.3064, decay-end 0.3228/0.3040 ≈ A1
+parity (0.3225/0.3040) — the ahead cost was invisible at n=10 val resolution, same lesson
+as iter 22.
+
+**Grad-stats (`t2re_grad_stats_ws.json`, fixed recorder, 2nd valid d=128 recording):
+never-grad = 142,592 params** — the dead ahead head 131,712 (head_ahead_logits 65,536+512 +
+ahead_linear 65,536+128) + the 5× layer-0 `v_lora_simple` 10,880 — a free strip in any
+bundle. Saliency bottom tier = **8 non-L0 channel mixers** (ascending: preset.L1, user.L2,
+user.L3, user.L1, note.L1, deck.L1, preset.L2, deck.L2 — ~33.2k each, ~265k total = 11.4% of
+A1), then card.L1/user.L2/user.L3 time-mixers. Consistent with A3's report on a different
+head config → the ranking is robust, head-independent signal. **A5 bundle menu:** free strip
+142,592 + bottom-mixer mass (pick ~4–8) + optionally user 4L→3L and/or the GRU head (with
+stability fix) — easily clears the ≥5% sizing rule with headroom to spare.
+
+Pipeline: WS 6h38m @ ~1.07 s/step (22,346 steps, never vprune-threatened), decay 1h39m
+(5,586 steps), single-process eval 2h27m (8,804 s), DONE_EXIT_0 12:01:55, total ~10h47m
+clean. Iter 24's waitloop detected the release and started 12:03:16. Ops note: the whole
+verdict was executed by a DIFFERENT session than the one that launched the run (the original
+died at 01:32 taking its monitor with it; recovery = the compact focus preserved in
+controller.log + these docs — the on-disk record carried everything). Artifacts
+scratchpad/track2_reanchor/ (t2red_5586.pth kept), result/RWKV[-P]-track2_reanchor.jsonl.
