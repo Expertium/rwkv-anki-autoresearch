@@ -779,8 +779,10 @@ improve log loss of the small model"): GRU-faithful power-curve head at d=32
 (RWKV_GRU_HEAD=2 + RWKV_STRIP_L0_VLORA=1 + state clamp τ=300 as insurance; full iter-23
 champion recipe incl. PAVA; 171,066 params = −11.7%; MIN_STEP=6000). Parked pid 36720,
 waitloop on A5's DONE_EXIT (~03:00) → verdict ~06:30. Gate: ≥0.0003 both modes vs iter 23
-+ p<0.0001. If it misses: variant A (fixed log-spaced S-grid, weights-only, N≈8–16) is
-the family sibling. By-construction button-ordering ideas (FOSD/CDF-power head,
++ p<0.0001. **If iter 25 PASSES: iter 26 = RWKV_GRU_HEAD=3 (Andrew 2026-07-18 ~23:55 —
+"If iter 25 succeeds, try 3"); sweep upward while it keeps winning (ordered-S
+cumsum-softplus anti-collapse insurance available if higher N label-switches).** If it
+misses: variant A (fixed log-spaced S-grid, weights-only, N≈8–16) is the family sibling. By-construction button-ordering ideas (FOSD/CDF-power head,
 shared-shape ordered-S) discussed with Andrew 2026-07-18 — candidate follow-ups in the
 curve-shape-constraints family after the power-curve verdicts.**
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
