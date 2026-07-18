@@ -774,6 +774,20 @@ NEVER fire on healthy users = byte-identity off-path) → validate on A3's 129 N
 users → TONIGHT: A5 bundle (~11h) = free strip 142,592 + GRU head (−194,292,
 validated) + clamp in recipe; channel-mixer thinning deferred to A6 (keep A5's only
 unvalidated piece the clamp). Track-1 queue after: xhead-mix v3, permutation init (LOW).
+**MEME RUN "BLIND RWKV" QUEUED (Andrew 2026-07-19 ~02:30, recorded SEPARATELY — new
+`optimization/side_experiments.md` at verdict, NOT research_log.jsonl): train d=32
+WITHOUT interval features and WITHOUT grades (RWKV_ZERO_FEATURES=0-7,9-12,22; duration
+kept) — can blind RWKV still beat FSRS-7? TARGET = FSRS-7-sched_penalties-short-secs-
+recency on users 5001-10000: by-user mean LogLoss 0.317933 (vs AHEAD mode; our champion
+0.304220 → 0.0137 of margin). Parked pid 4460 on iter 25's DONE_EXIT (scratchpad/
+meme_blind/, ~3.5h). Recipe deviations (forced): vprune OFF (champion val ref would
+false-kill), PAVA OFF (grade probes meaningless), clamp ON (full-n insurance), standard
+64-basis head. Cmd tail prints paired-vs-iter23 (the cost of blindness). Interpretation
+caveat: day-resolution intervals remain PARTIALLY reconstructible from the cycle
+features (rows 22-28 share a per-batch phase → day gaps recoverable) + rows 12/13
+(activity since card's last review) — grades are truly gone (duration correlates only).
+Andrew's queue order: meme BEFORE further experiments → if iter 25 passes, iter 26
+(GRU N=3) parks on the MEME's DONE_EXIT, not iter 25's.**
 **ITER 25 QUEUED (Andrew 2026-07-18 ~23:30: "Let's try power curves first, to see if they
 improve log loss of the small model"): GRU-faithful power-curve head at d=32
 (RWKV_GRU_HEAD=2 + RWKV_STRIP_L0_VLORA=1 + state clamp τ=300 as insurance; full iter-23
