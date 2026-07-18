@@ -590,15 +590,21 @@ Pairing needs identical db/MAX/seeds.
 ### CURRENT STATE (updated 2026-07-15 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology moves to optimization/HISTORY.md "5k-era LIVE STATE archive"; per-iter detail lives in research_5k_verbose.md)
 
 **Champions / anchors:**
-- **Track 1 (d=32 plain) CHAMPION = iter 22 `iter22_nores`: ahead 0.304497 / imm 0.273539**
-  (n=5000, 0 nanskips, 193,724 params ~12.5k dead/strippable; `champion_5k_plain.json` = ckpt
-  `scratchpad/iter22_nores/iter22nd_1638.pth` + WS/val traces = the track-1 vprune ref).
-  **DIRECTED RE-BASELINE (Andrew accepted 2026-07-17): RWKV_NO_AHEAD_RESIDUAL=1 champion —
-  the +0.000834/+0.000312 vs iter 15 is the accepted price of monotone-in-t; with-residual
-  results are no longer fair gates.** Champion recipe = iter-15 recipe + NO_AHEAD_RESIDUAL
-  (incl. RWKV_ZERO_FEATURES=22 — set BOTH in ALL track-1 runs + the final QAT run; deploy
-  need not compute Anki review state). Iter 15 (0.303663/0.273227, residual-on) kept as the
-  last with-residual reference; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
+- **Track 1 (d=32 plain) CHAMPION = iter 23 `iter23_pava`: ahead 0.304220 / imm 0.273423**
+  (n=5000, 0 nanskips, 193,727 params ~12.5k dead/strippable; `champion_5k_plain.json` = ckpt
+  `scratchpad/iter23_pava/iter23d_1638.pth` + WS/val traces = the track-1 vprune ref).
+  **DIRECTED ACCEPT (Andrew 2026-07-18 ~12:55): the learnable power-mean PAVA rectifier is
+  adopted FOR THE CONSTRAINT ITSELF (clearly ordered answer-button intervals in Anki), not
+  for logloss — though it was ~free-to-mildly-positive (+0.000278/+0.000116 vs iter 22 at
+  p=1e-33/8e-15).** Champion recipe = iter-22 recipe + RWKV_PAVA_LAMBDA=0.1 +
+  RWKV_PROBE_DENSITY=0.08 (with NO_AHEAD_RESIDUAL=1 + ZERO_FEATURES=22 — set ALL FOUR in
+  every future track-1 run + the final QAT run). Learned junction powers (decay ckpt):
+  Again–Hard ≈0.00 / Hard–Good ≈−1.44 / Good–Easy ≈+0.53. **Deploy contract grows:** the
+  learned-power rectifier runs on the 4 counterfactual button predictions at inference
+  (duration imputed to the frozen train-median constant, `scratchpad/iter23_pava/
+  duration_median.json`) — Rust-side port queued alongside the state-norm clamp. Lineage
+  kept: iter 22 (0.304497/0.273539) = no-residual pre-PAVA ref; iter 15 (0.303663/0.273227)
+  = last with-residual ref; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
 - **Track 2 REFERENCE = A4 `track2_reanchor` (no-residual re-anchor of A1, promoted 2026-07-18):
   ahead 0.300504 / imm 0.269262** (n=5000, 0 nanskips, 2,320,516 params — 142,592 dead/strippable:
   the 131.7k ahead head + 5× L0 v_lora; `champion_5k_track2.json` = ckpt
@@ -735,15 +741,13 @@ priced residual removal alone at +0.000834 ahead at d=32; A3's deficit is ~half 
 state-norm clamp now load-bearing for d=128). Grad-stats (fixed recorder): 10,886
 never-grad params (layer-0 v_lora ×5 = free strip); saliency bottom = ALL non-L0 channel
 mixers + user.L3.time_mixer = A4 bundle shortlist. Detail research_5k_verbose.md.
-**ITER 23 REJECTED (2026-07-18 01:15) — the CLOSEST MISS of the research phase: learnable
-power-mean PAVA rectifier (λ=0.1, probe density 0.08, 3 learnable junction powers).
-BOTH modes improved: ahead 0.304220 = +0.000278 (p=1.3e-33, misses the bar by 0.000022);
-imm 0.273423 = +0.000116 (p=8.1e-15). n=5000, 0 nanskips, 193,727 params. The
-monotonicity loss is ~free-to-mildly-positive for accuracy — a regularizer, not a tax.
-Learned powers moved OFF classic PAVA (p=1 init): Again–Hard ≈ 0.00 (geometric),
-Hard–Good ≈ −1.44 (harmonic side), Good–Easy ≈ +0.53 — soft pessimistic pooling.
-Curve-shape-constraints family 0/1 WITH STRONG SIGNAL; per conduct rule 2 the queued
-variant runs next. Detail research_5k_verbose.md.**
+**ITER 23 ACCEPTED (VERDICT CHANGED by Andrew 2026-07-18 ~12:55; auto-verdict 01:15 had
+been reject-on-magnitude): learnable power-mean PAVA rectifier = NEW TRACK-1 CHAMPION —
+adopted for the monotonicity constraint itself (ordered button intervals = product UX),
+with accuracy ~free-to-mildly-positive: BOTH modes improved (+0.000278 p=1.3e-33 /
++0.000116 p=8.1e-15 vs iter 22), n=5000, 0 nanskips, 193,727 params. Curve-shape-
+constraints family 1/1. Detail research_5k_verbose.md (incl. the changed-verdict
+addendum).**
 **TRACK-2 A4 RE-ANCHOR DONE + PROMOTED (2026-07-18 12:02): 0.300504/0.269262, n=5000,
 0 nanskips, ZERO NaN val windows (the GRU head, not d=128/no-residual, was A3's
 destabilizer). A3 DEFERRED VERDICT = ratio gate PASS both modes (−0.0000288/−0.0000221
@@ -756,10 +760,13 @@ saliency bottom = 8 non-L0 channel mixers (~265k = 11.4% of A1) then card.L1/use
 time-mixers — consistent with A3's report = robust A5 menu. ⚠ NAMING: "A4 bundle" in
 older notes = A5 now (A4 = the re-anchor). Detail research_5k_verbose.md.**
 **→ GPU plan: iter 24 (pweight PAVA) RUNNING (auto-started 12:03, ~3.5h → verdict
-~15:45; gates vs iter 22 ≥0.0003 both modes + p<0.0001 + params ≤225k) → next track-2
-block = A5 grad-stats-ranked bundle (free strip + bottom channel-mixer mass ±user
-4L→3L ± the GRU head once stabilized); track-1 queue after 24: xhead-mix v3,
-permutation init (LOW).
+~15:45; **GATES vs ITER 23 (0.304220/0.273423), NOT iter 22 — Andrew 2026-07-18:
+normal criteria ≥0.0003 both modes + p<0.0001 + params ≤225k, i.e. the weighted
+variant must beat the simple accepted one. Its cmd tail prints paired-vs-iter22
+(drafted earlier — STALE); at verdict run `paired_pvalue.py --intersect` vs
+result/RWKV[-P]-iter23_pava.jsonl instead**) → next track-2 block = A5
+grad-stats-ranked bundle (free strip + bottom channel-mixer mass ±user 4L→3L ± the
+GRU head once stabilized); track-1 queue after 24: xhead-mix v3, permutation init (LOW).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if

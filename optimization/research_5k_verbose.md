@@ -582,6 +582,19 @@ records ahead/imm only; `pava_loss_avg`/`pava_pool_frac` never reached the jsonl
 into the trace writer if a future PAVA iter needs the trajectory). Pipeline: WS 105m
 (never vprune-threatened), decay 26m, phased sharded eval 76m, total 3h27m clean.
 
+**VERDICT CHANGED — ACCEPTED (Andrew, 2026-07-18 ~12:55, directed):** "let's accept it. Not
+because of log loss improvements, but just to make Anki user's experience nicer so that answer
+buttons have clearly ordered intervals... we're accepting the simple monotonicity constraint
+just for the sake of the constraint itself." Iter 23 = the NEW track-1 champion/reference
+(0.304220/0.273423; champion_5k_plain.json re-pointed, promote --val-trace done). The
+learnable-PAVA loss (λ=0.1, density=0.08) joins the mandatory track-1 recipe; at deploy the
+learned-power rectifier becomes a model component applied to the 4 counterfactual button
+predictions (duration imputed to the frozen train-median constant) — Rust-side port queued
+alongside the state-norm clamp. Iter 24 keeps the NORMAL acceptance criteria, now vs iter 23:
+the sophisticated (p-head-weighted) variant replaces the simple one only if it provides real
+benefit (≥0.0003 both modes + p<0.0001; its cmd tail prints vs-iter22 — stale, re-gate vs
+iter 23 at record time).
+
 **Next = iter 24 (pweight variant, conduct rule 2: near-miss → variant implementation):**
 identical config + `RWKV_PAVA_PWEIGHT=1` — pooling weights = the p-head's button-press
 softmax at the paired query row (Instant mode) instead of uniform. Rationale: PAVA-merging
