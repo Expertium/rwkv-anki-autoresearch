@@ -3,7 +3,7 @@ import math
 import os
 import torch
 
-from rwkv.model.rwkv_ops import RWKV7_WKV, reference_rwkv7, quant_aware_rwkv7
+from rwkv.model.rwkv_ops import RWKV7_WKV, RWKV7_WKV_Stateful, reference_rwkv7, quant_aware_rwkv7
 
 """
 IMPORTANT: the CUDA WKV kernel supports any head dim K = d_model // n_heads that DIVIDES 32 (K-aware
@@ -291,6 +291,63 @@ def shift_pq_export(path):
 
 
 @torch.jit.ignore
+def windowed_clamped_wkv(
+    r_BTHK: torch.Tensor,
+    k_BTHK: torch.Tensor,
+    v_BTHK: torch.Tensor,
+    w_BTHK: torch.Tensor,
+    a_BTHK: torch.Tensor,
+    k_deformed_BTHK: torch.Tensor,
+    skip_BT: torch.Tensor,
+    window: int,
+    tau: float,
+    log_norms: bool,
+    layer_id: int,
+) -> torch.Tensor:
+    """State-norm-clamped WKV (2026-07-18, the A3-instability fix): run the recurrence via the
+    stateful kernel in T-windows, soft-shrinking each head's carried state between windows:
+        S *= tau / max(tau, ||S||_F)          (exactly 1.0 while ||S|| <= tau -> bit-inert)
+    Divergent weight configs (A0/A3 class: state grows without bound over long recurrences,
+    NaN even in fp32) get bounded instead of NaN-ing; healthy states are untouched. tau is
+    huge in the measurement mode (RWKV_STATE_CLAMP_LOG=1 prints per-window norm maxima).
+    @torch.jit.ignore: eager-only loop (autograd.Function tuple returns are not scriptable);
+    calls no submodules (iter-16 rule). CUDA-only, like the stateful kernel."""
+    B, T, H, K = r_BTHK.shape
+    state_BHKK = torch.zeros(B, H, K, K, dtype=torch.float32, device=r_BTHK.device)
+    outs = []
+    t0 = 0
+    while t0 < T:
+        t1 = min(t0 + window, T)
+        o_BTHK, state_BHKK = RWKV7_WKV_Stateful.apply(
+            r_BTHK[:, t0:t1].contiguous(),
+            k_BTHK[:, t0:t1].contiguous(),
+            v_BTHK[:, t0:t1].contiguous(),
+            w_BTHK[:, t0:t1].contiguous(),
+            a_BTHK[:, t0:t1].contiguous(),
+            k_deformed_BTHK[:, t0:t1].contiguous(),
+            skip_BT[:, t0:t1].contiguous(),
+            state_BHKK,
+        )
+        norms_BH = state_BHKK.flatten(2).norm(p=2.0, dim=-1)
+        # non-finite states can't be rescued by scaling -- zero them (a fresh-state restart,
+        # infinitely better than poisoning every later step; fires only past fp32 range)
+        bad_BH = ~torch.isfinite(norms_BH)
+        if bool(bad_BH.any()):
+            state_BHKK = torch.where(bad_BH[..., None, None], torch.zeros_like(state_BHKK), state_BHKK)
+            norms_BH = torch.where(bad_BH, torch.zeros_like(norms_BH), norms_BH)
+            print(f"[state-clamp] layer {layer_id} t {t1}: RESET {int(bad_BH.sum())} non-finite head-states")
+        if log_norms:
+            print(f"[state-clamp] layer {layer_id} t {t1} max||S||_F {norms_BH.max().item():.4e}")
+        elif float(norms_BH.max()) > tau:
+            print(f"[state-clamp] layer {layer_id} t {t1}: SHRINK max||S||_F {norms_BH.max().item():.3e} -> tau")
+        scale_BH = tau / norms_BH.clamp_min(tau)
+        state_BHKK = state_BHKK * scale_BH.unsqueeze(-1).unsqueeze(-1)
+        outs.append(o_BTHK)
+        t0 = t1
+    return torch.cat(outs, dim=1)
+
+
+@torch.jit.ignore
 def fake_pq_shift(x_BTC: torch.Tensor, role: int) -> torch.Tensor:
     """Shift-PQ round-trip of (B,T,C), role 0 = t_xshift / 1 = c_xshift. Compute in f32 like deploy.
     Backward: straight-through to x; embedding-style gradients to the codebook when it is a Parameter
@@ -549,6 +606,12 @@ class RWKV7TimeMixer(ModuleType):
         self.state_lowrank_rank = config.state_lowrank_rank      # low-rank QAT: 0 = off
         self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
+        # State-norm clamp (2026-07-18, A3-instability fix; see windowed_clamped_wkv).
+        # tau=0 -> branch never taken = byte-identical. Engages per-stream when the padded
+        # per-entity T exceeds one window (long recurrences only; training chunks stay under).
+        self.state_clamp_tau = float(os.environ.get("RWKV_STATE_CLAMP_TAU", "0") or 0)
+        self.state_clamp_window = int(os.environ.get("RWKV_STATE_CLAMP_WINDOW", "32768") or 32768)
+        self.state_clamp_log = os.environ.get("RWKV_STATE_CLAMP_LOG", "0") == "1"
         # TorchScript can't read module-level str globals from a scripted forward -> instance bool
         self.shift_pq_on = bool(_SHIFT_PQ_PATH)
         # Research iters 20/21 (2026-07-16): CROSS-HEAD READOUT MIX. A zero-init delta mix
@@ -634,10 +697,19 @@ class RWKV7TimeMixer(ModuleType):
             torch.nn.init.zeros_(self.v_scale_linear.weight)
             torch.nn.init.zeros_(self.v_scale_linear.bias)
 
+            # RWKV_STRIP_L0_VLORA=1 (2026-07-18, A5 free strip): layer 0 never calls
+            # v_lora_simple (the layer_id==0 forward branch skips the v0 lerp), so its
+            # params are provably dead there -- grad-stats confirmed never-grad on both
+            # A3 and A4 (5x 2,176 = 10,880 params at d=128). A 1-d_lora dummy keeps the
+            # attribute for TorchScript (both forward branches compile) at ~3 params.
+            # Default off = byte-identical, old checkpoints load unchanged.
+            strip_l0_vlora = (
+                layer_id == 0 and os.environ.get("RWKV_STRIP_L0_VLORA", "0") == "1"
+            )
             self.v_lora_simple = LoraSimple(
                 name="v",
-                d_model=config.d_model,
-                d_lora=config.v0_mix_amt_lora,
+                d_model=config.d_model if not strip_l0_vlora else 1,
+                d_lora=config.v0_mix_amt_lora if not strip_l0_vlora else 1,
                 layer_id=layer_id,
             )
             self.a_lora_simple = LoraSimple(
@@ -738,6 +810,14 @@ class RWKV7TimeMixer(ModuleType):
             out_BTHK = quant_aware_rwkv7(
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
                 self.state_qmax, self.state_lowrank_rank, self.state_lowrank_fqmax,
+            )
+        elif r_BTHK.is_cuda and self.state_clamp_tau > 0.0 and T > self.state_clamp_window:
+            # long-recurrence stream + clamp enabled: windowed stateful WKV with inter-window
+            # soft state shrink (A3-instability fix; tau huge = measurement/record mode)
+            out_BTHK = windowed_clamped_wkv(
+                r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
+                self.state_clamp_window, self.state_clamp_tau, self.state_clamp_log,
+                self.layer_id,
             )
         elif r_BTHK.is_cuda:
             out_BTHK = RWKV7_WKV.apply(

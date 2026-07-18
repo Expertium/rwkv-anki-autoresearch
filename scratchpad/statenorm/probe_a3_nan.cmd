@@ -10,5 +10,5 @@ set RWKV_DETERMINISTIC=1
 set RWKV_ARCH_MODULE=scratchpad/track2_a1/architecture_d128_cmix1.py
 set RWKV_GRU_HEAD=2
 set RWKV_NO_AHEAD_RESIDUAL=1
-set RWKV_NO_JIT=1
-.venv\Scripts\python.exe -u scratchpad/statenorm/probe_a3_nan.py %1 %2
+REM NO_JIT is set inside the script unless arg 3 == jit (the scripted-forward smoke mode)
+.venv\Scripts\python.exe -u scratchpad/statenorm/probe_a3_nan.py %1 %2 %3 %4

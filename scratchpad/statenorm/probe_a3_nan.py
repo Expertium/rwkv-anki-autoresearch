@@ -25,6 +25,12 @@ def main():
     user_id = int(sys.argv[1])
     mode = sys.argv[2]
     assert mode in ("bf16", "fp32")
+    # 3rd arg "jit": run the SCRIPTED forward, no hooks (hooks don't fire on ScriptModules).
+    # Used by the state-clamp smoke: loss-only output, byte-comparable across env configs.
+    jit_mode = len(sys.argv) > 3 and sys.argv[3] == "jit"
+    noload = "noload" in sys.argv[3:]  # capture BEFORE the sys.argv rewrite below
+    if not jit_mode:
+        os.environ["RWKV_NO_JIT"] = "1"
 
     from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
     from rwkv.data_fetcher import DataFetcher
@@ -33,7 +39,9 @@ def main():
     from rwkv.parse_toml import parse_toml
     from rwkv.prepare_batch import prepare_data
 
-    config = parse_toml("scratchpad/track2_a3/track2_a3_eval.toml")
+    # parse_toml reads --config from argv (parse_known_args)
+    sys.argv = [sys.argv[0], "--config", "scratchpad/track2_a3/track2_a3_eval.toml"]
+    config = parse_toml()
     dtype = torch.bfloat16 if mode == "bf16" else torch.float32
 
     master_model = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG).to(config.DEVICE)
@@ -42,8 +50,12 @@ def main():
         .selective_cast(dtype)
         .to(config.DEVICE)
     )
-    print("Loading:", config.MODEL_PATH)
-    master_model.load_state_dict(torch.load(config.MODEL_PATH, weights_only=True))
+    if noload:
+        # arch smoke: random weights, exercises the scripted forward + downcast chain
+        print("NOLOAD: random init;", sum(p.numel() for p in master_model.parameters()), "params")
+    else:
+        print("Loading:", config.MODEL_PATH)
+        master_model.load_state_dict(torch.load(config.MODEL_PATH, weights_only=True))
     model.copy_downcast_(master_model, dtype=dtype)
     model.eval()
     del master_model
@@ -76,12 +88,13 @@ def main():
                     first_bad.append((seq, name, kind))
         return hook
 
-    n_hooked = 0
-    for name, mod in model.named_modules():
-        if name and len(list(mod.children())) == 0:  # leaf modules only
-            mod.register_forward_hook(make_hook(name))
-            n_hooked += 1
-    print(f"hooked {n_hooked} leaf modules")
+    if not jit_mode:
+        n_hooked = 0
+        for name, mod in model.named_modules():
+            if name and len(list(mod.children())) == 0:  # leaf modules only
+                mod.register_forward_hook(make_hook(name))
+                n_hooked += 1
+        print(f"hooked {n_hooked} leaf modules")
 
     # ---- fetch the user's batch through the real pipeline --------------------------
     all_keys = get_test_keys_batch(config, [user_id])
@@ -114,7 +127,7 @@ def main():
                 with torch.inference_mode():
                     stats = model.get_loss(b)
                 print("get_loss ->", "None (NaN guard fired)" if stats is None else
-                      f"ahead {stats.ahead_equalize_avg.item():.4f} imm {stats.imm_binary_equalize_avg.item():.4f}")
+                      f"ahead {stats.ahead_equalize_avg.item():.12f} imm {stats.imm_binary_equalize_avg.item():.12f}")
 
                 if first_bad:
                     seq0, name0, kind0 = first_bad[0]
