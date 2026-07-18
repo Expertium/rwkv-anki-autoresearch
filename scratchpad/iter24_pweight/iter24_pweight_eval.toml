@@ -1,5 +1,5 @@
-FILE_AHEAD = "RWKV-iter24_pweight-s0"
-FILE_IMM = "RWKV-P-iter24_pweight-s0"
+FILE_AHEAD = "RWKV-iter24_pweight"
+FILE_IMM = "RWKV-P-iter24_pweight"
 MODEL_PATH = "scratchpad/iter24_pweight/iter24d_1638.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -12,5 +12,4 @@ RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 10000
-NUM_FETCH_PROCESSES = 3
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s0.json"
+NUM_FETCH_PROCESSES = 4

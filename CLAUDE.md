@@ -759,14 +759,21 @@ never-grad 142,592 (dead ahead head 131,712 + 5×L0 v_lora 10,880 = free strip);
 saliency bottom = 8 non-L0 channel mixers (~265k = 11.4% of A1) then card.L1/user
 time-mixers — consistent with A3's report = robust A5 menu. ⚠ NAMING: "A4 bundle" in
 older notes = A5 now (A4 = the re-anchor). Detail research_5k_verbose.md.**
-**→ GPU plan: iter 24 (pweight PAVA) RUNNING (auto-started 12:03, ~3.5h → verdict
-~15:45; **GATES vs ITER 23 (0.304220/0.273423), NOT iter 22 — Andrew 2026-07-18:
-normal criteria ≥0.0003 both modes + p<0.0001 + params ≤225k, i.e. the weighted
-variant must beat the simple accepted one. Its cmd tail prints paired-vs-iter22
-(drafted earlier — STALE); at verdict run `paired_pvalue.py --intersect` vs
-result/RWKV[-P]-iter23_pava.jsonl instead**) → next track-2 block = A5
-grad-stats-ranked bundle (free strip + bottom channel-mixer mass ±user 4L→3L ± the
-GRU head once stabilized); track-1 queue after 24: xhead-mix v3, permutation init (LOW).
+**ITER 24 REJECTED (2026-07-18 15:32): p-head-weighted PAVA pooling = NULL vs iter 23
+(ahead +0.000035 p=0.54, imm +0.000002 p=0.03; n=5000, 0 nanskips) — uniform pooling
+suffices, iter 23 stays champion, deploy keeps the simpler rectifier. CONFIRMATION
+BONUS: vs iter 22 it scored +0.000312 (p=6e-35) / +0.000118 (p=7e-21) — the PAVA gain
+reproduced across two independent trainings (~+0.0003 ahead / +0.0001 imm real).
+Weighting sub-lever closed. Detail research_5k_verbose.md.**
+**→ GPU plan (Andrew approved the direction 2026-07-18 ~14:30): state-norm work →
+track-2 A5. NOW: A3-instability probe (scratchpad/statenorm/probe_a3_nan.{py,cmd},
+user 5002 bf16 + fp32 — localizes the first non-finite module; fp32 answers
+weight-level vs bf16-artifact) → design the state shrinkage/clamp (soft
+τ/(τ+‖state‖) lean; eval-side via stateful-kernel windowing, Rust per-step; must
+NEVER fire on healthy users = byte-identity off-path) → validate on A3's 129 NaN
+users → TONIGHT: A5 bundle (~11h) = free strip 142,592 + GRU head (−194,292,
+validated) + clamp in recipe; channel-mixer thinning deferred to A6 (keep A5's only
+unvalidated piece the clamp). Track-1 queue after: xhead-mix v3, permutation init (LOW).
 **Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
 CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
 ~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if

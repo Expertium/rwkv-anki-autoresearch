@@ -605,6 +605,30 @@ uniform weighting overcorrects the likely button's estimate. λ/density unchange
 re-anchor (waitloop). Artifacts scratchpad/iter23_pava/ (iter23d_1638.pth kept),
 result/RWKV[-P]-iter23_pava.jsonl.
 
+### Iter 24 — p-head-weighted PAVA pooling (REJECTED 2026-07-18 15:32): uniform suffices
+
+`RWKV_PAVA_PWEIGHT=1` on the exact iter-23 config: the three junction merges weight their
+power means by the p-head's Instant-mode button-press softmax at the paired query row
+instead of uniformly. **Finals 0.304185/0.273421 (n=5000, 0 NaN-skips) — vs iter 23:
+ahead +0.000035 (p=0.54), imm +0.000002 (p=0.03) = the null-effect signature.** The
+sophisticated variant provides no benefit over the simple accepted one, so per Andrew's
+directive iter 23 stays champion and the mandatory recipe keeps unweighted pooling
+(deploy stays simpler too: no p-head softmax needed inside the rectifier).
+
+The run's real value is CONFIRMATION: vs iter 22 it scored **+0.000312 (p=6.0e-35) /
++0.000118 (p=7.1e-21)** — two independent trainings (23 and 24 differ only in pooling
+weights) reproduced the PAVA gain almost exactly (+0.000278/+0.000116 vs
++0.000312/+0.000118), with ahead this time OVER the 0.0003 bar. The rectifier's accuracy
+effect is real, reproducible, and worth ~+0.0003 ahead / ~+0.0001 imm on top of being
+the product constraint. Learned powers [−0.49, −1.27, +0.74] vs iter 23's
+[0.00, −1.44, +0.53]: same qualitative shape (soft pooling, harmonic-side middle
+junction) — the weighting shifted where the powers settle but not the outcome.
+Weighting sub-lever CLOSED; unexplored family members if revisited: per-junction λ,
+probe-density sweep. The cmd tail printed the drafted-era stale gate vs iter 22; the
+recorded verdict is the rerun vs iter 23 (`paired_pvalue --intersect`). Pipeline: WS
+105m, decay 26m, sharded eval 78m, clean. Artifacts scratchpad/iter24_pweight/
+(iter24d_1638.pth kept), result/RWKV[-P]-iter24_pweight.jsonl.
+
 ### Track-2 A4 — the no-residual re-anchor (ACCEPTED + PROMOTED 2026-07-18 12:02)
 
 A1 arch + `RWKV_NO_AHEAD_RESIDUAL=1`, exact A1 recipe otherwise — the directed re-baseline
