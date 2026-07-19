@@ -794,12 +794,19 @@ bar. n=5000, 0 nanskips, 171,453 params (+387). Both modes improved → the stri
 monotonic gate fails on imm magnitude ALONE — Andrew's call (both prior flags became
 accepts). PAVA middle junction −1.59 (3rd straight strongly-negative). Detail
 research_5k_verbose.md.**
-**→ GPU plan (2026-07-19 20:40): iter 27 = GRU N=4 RUNNING (sweep continues per the
-standing directive; gate tail prints paired vs BOTH iter 25 and iter 26; verdict
-~00:30) → overnight: track-2 A6 = channel-mixer thinning bundle (build tonight, park
-on iter 27's DONE_EXIT; grad-stats bottom tier stable across 3 recordings: user.L1,
-preset.L1, deck.L1, user.L2, preset.L2 — bundle ≥5%); track-1 queue after: xhead-mix
-v3, permutation init (LOW).
+**→ GPU plan (2026-07-19 20:45): iter 27 = GRU N=4 RUNNING (sweep continues; gate tail
+prints paired vs BOTH iter 25 and iter 26; verdict ~00:30) → overnight: track-2 A6
+BUILT+SMOKED+PARKED (pid 32708, waitloop on iter 27's DONE_EXIT; ~11h → verdict
+~12:00): RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,deck_id:1 on the
+A5 recipe = 1,949,624 params (−7.83%); ratio gate vs A5. Smokes: params exact, correct
+5 mixers stripped by name, scripted-forward branch (stripped ≡ time-mixer out), off-path
+= A5 byte-identical. Track-1 queue after: xhead-mix v3, permutation init (LOW).
+⚠ ERRATUM (2026-07-19): module index 1 = the DECK stream (arch order card,deck,note,
+preset,user — NOT the RWKV_SUBMODULES order); the A3/A5 "note.L2 diverges" narrative
+should read **deck.L2** (CLAMP_NOTES.md corrected; grad reports were always right).
+New env for the strip: RWKV_STRIP_CMIX (rwkv_model.py, name:layer list, dummy-mixer
+pattern, default off = byte-identical; RWKV7Config gains stream_name, stamped in
+SrsRWKV.__init__).
 ⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
 tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
 crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream

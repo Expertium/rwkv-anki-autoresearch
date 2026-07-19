@@ -294,6 +294,10 @@ class SrsRWKV(ModuleType):
                 torch.nn.Linear(self.features_fc_dim, self.d_model),
                 torch.nn.SiLU(),
             )
+            # stamp each stream's name onto its config (works for every RWKV_ARCH_MODULE
+            # without editing the arch files) -- consumed by RWKV_STRIP_CMIX (A6)
+            for _name, _cfg in anki_rwkv_config.modules:
+                _cfg.stream_name = _name
             self.rwkv_modules = torch.nn.ModuleList(
                 [RWKV7(config=config) for _, config in anki_rwkv_config.modules]
             )

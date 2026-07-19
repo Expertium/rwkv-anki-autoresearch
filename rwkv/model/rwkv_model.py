@@ -66,6 +66,9 @@ class RWKV7Config:
     # review for a compressed stream (the layernorm'd previous-token input). (The sibling ran this with
     # RWKV_NO_JIT; here it is TorchScript-annotated so the JIT-on path compiles it too.)
     state_shift_qmax: float = float("inf")
+    # Which stream this config belongs to ("card_id".."user_id"); stamped by SrsRWKV.__init__ from
+    # the (name, config) pairs. Consumed by RWKV_STRIP_CMIX (A6, 2026-07-19). "" = old behavior.
+    stream_name: str = ""
 
 
 def fake_quant_shift(x_BTC: torch.Tensor, qmax: float) -> torch.Tensor:
@@ -450,7 +453,23 @@ class RWKV7Layer(ModuleType):
     def __init__(self, config: RWKV7Config, layer_id):
         super().__init__()
         self.time_mixer = RWKV7TimeMixer(config, layer_id)
-        self.channel_mixer = RWKV7ChannelMixer(config, layer_id)
+        # RWKV_STRIP_CMIX (A6, 2026-07-19): remove selected channel mixers entirely.
+        # Comma list of "<stream_name>:<layer_id>" (e.g. "user_id:1,user_id:2,preset_id:1,
+        # preset_id:2,deck_id:1" -- grad-stats bottom-saliency tier, stable across 3
+        # recordings). A stripped layer keeps a ~8-param dummy mixer (the scripted forward
+        # compiles both branches -- same pattern as the GRU/v_lora dummies) and its forward
+        # returns the time-mixer output unchanged (the mixer's residual add is skipped).
+        # Default unset = byte-identical; old checkpoints load unchanged.
+        _strip_list = [
+            t.strip() for t in os.environ.get("RWKV_STRIP_CMIX", "").split(",") if t.strip()
+        ]
+        self.cmix_stripped = f"{config.stream_name}:{layer_id}" in _strip_list
+        if self.cmix_stripped:
+            import dataclasses
+            _dummy_cfg = dataclasses.replace(config, d_model=1, n_heads=1)
+            self.channel_mixer = RWKV7ChannelMixer(_dummy_cfg, layer_id)
+        else:
+            self.channel_mixer = RWKV7ChannelMixer(config, layer_id)
         self.dropout = torch.nn.Dropout(p=config.dropout_layer)
 
     @FunctionType
@@ -461,6 +480,8 @@ class RWKV7Layer(ModuleType):
             time_shift_select_BT=time_shift_select_BT,
             skip_BT=skip_BT,
         )
+        if self.cmix_stripped:
+            return x_BTC, v0_BTC
         return (
             self.dropout(
                 self.channel_mixer(x_BTC, time_shift_select_BT=time_shift_select_BT)

@@ -1,5 +1,12 @@
 # State-norm clamp (A3-instability fix) — design + validation record (2026-07-18)
 
+> **ERRATUM (2026-07-19, caught during the A6 build):** everywhere this doc (and the
+> A3/A5 narrative records) says the diverging stream is the **note** stream: module
+> index 1 is actually the **DECK** stream — the arch modules order is card, deck,
+> note, preset, user (architecture.py), NOT the RWKV_SUBMODULES list order. The
+> diverging head lives in **deck.L2**. No functional impact (the clamp is
+> name-agnostic; grad_stats_report already used the correct arch order).
+
 ## Diagnosis (probe_a3_nan.py, user 5002, A3 ckpt t2a3d_5586)
 
 - A3's 129 eval NaN-skips are all **large single-segment users** (5002 = 565k rows,
