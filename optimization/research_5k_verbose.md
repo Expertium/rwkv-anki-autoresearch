@@ -718,3 +718,39 @@ line satisfied the meme run's waitloop grep and cascaded the failure — after f
 relaunch order (iter 25 first, whose cmd truncates its own log, THEN the parked meme run)
 restored clean chaining. Artifacts scratchpad/track2_a5/ (t2a5d_5586.pth kept),
 result/RWKV[-P]-track2_a5.jsonl.
+
+### Iter 25 — GRU power-curve head at d=32 (REJECTED 2026-07-19 07:24): the d=128 win doesn't transfer
+
+Andrew's directive ("Let's try power curves first, to see if they improve log loss of the
+small model"): `RWKV_GRU_HEAD=2` + `RWKV_STRIP_L0_VLORA=1` on the full iter-23 champion
+recipe (PAVA included — the probe loss is head-agnostic), state clamp as insurance.
+**193,727 → 171,066 params (−11.7%).**
+
+**Finals: ahead 0.304427 / imm 0.273441 (n=5000, 0 nanskips) — vs iter 23: ahead
+−0.000207 WORSE (p=1.0), imm −0.000018 tie (p=0.38). REJECTED**; power curves do not
+improve the small model. The GRU head's d=128 imm advantage (A3 +0.000105, A5 +0.000136,
+both p≪1e-20) did not transfer to d=32 — consistent with the d=32 trunk, not the
+curve-head family, being the binding constraint (echoes the capacity-at-5k family: the
+64-basis mixture is simply sufficient at this scale). Iter 26 (N=3, conditional on a
+pass) does not run. Variant A (fixed log-spaced S-grid, weights-only) remains the family
+sibling but the family is deprioritized at d=32.
+
+**Val-lead lesson, strongest instance yet:** iter 25 led iter 23's val trace at most
+checkpoints — WS-end −0.0014/−0.0007 better, decay-end −0.0005/−0.0004 better, the best
+pre-eval position any track-1 candidate has held — and still lost eval by 0.0002.
+n=10-user val leads predict nothing at the 0.0003 scale.
+
+**Size-exception option (Andrew's call, deliberately not auto-invoked):** under the
+SIZE/SPEED efficiency budget (both modes within +0.0015; params −11.7%) iter 25 could be
+accepted as a size win. Not invoked because the directive was logloss, ahead −0.000207
+at p=1.0 is a real regression that burns champion budget, and d=32 *weight* savings are
+not deploy-relevant (deploy cost = per-card state, unchanged here).
+
+**PAVA powers are a stable data property:** iter 25 learned [−0.30, **−1.44**, +0.34] vs
+iter 23's [0.00, **−1.44**, +0.53] — the Hard–Good junction converged to −1.44
+identically under a completely different curve head.
+
+Pipeline: WS 119m (the clamp's windowed sequential path slows the long-user vals), decay
+26m, sharded eval 93m, clean; the first launch died on the toml BOM (see the A5 section).
+Artifacts scratchpad/iter25_gru/ (iter25d_1638.pth kept), result/RWKV[-P]-iter25_gru.jsonl.
+The meme_blind run's waitloop fired on the DONE_EXIT and started 07:26.

@@ -57,6 +57,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 22 | 1–5000 | 0.3045 | 0.2735 | exact | **accepted** (re-baseline) | 1.0 / 1.0 (vs iter 15, worse) | 193,724 | 0 | directed | No-residual cost accepted (Andrew): ahead +0.0008/imm +0.0003 = price of monotone-in-t. NEW track-1 reference. |
 | 23 | 1–5000 | 0.3042 | 0.2734 | exact | **accepted** (directed) | 1.3e-33 / 8.1e-15 (vs iter 22, better) | 193,727 | 0 | Andrew | Learnable-PAVA rectifier: both modes better (+0.00028/+0.00012); Andrew-accepted for the ordered-buttons constraint itself, not logloss. NEW champion. |
 | 24 | 1–5000 | 0.3042 | 0.2734 | exact | rejected | 0.54 / 0.03 (vs iter 23) | 193,727 | 0 | Andrew | p-head pooling weights: null vs iter 23 (+0.00004/+0.000002) — uniform suffices. Bonus: PAVA effect reproduced vs iter 22 (+0.00031/+0.00012). |
+| 25 | 1–5000 | 0.3044 | 0.2734 | exact | rejected | 1.0 / 0.38 (vs iter 23) | 171,066 | 0 | Andrew | GRU power-curve head at d=32: ahead −0.0002 worse, imm tied at −11.7% params — the d=128 imm win didn't transfer. Size-exception = Andrew's call. |
 
 ## Track 2 — ablate the old d=128 model
 

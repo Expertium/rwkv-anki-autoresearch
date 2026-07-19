@@ -770,12 +770,20 @@ suffices, iter 23 stays champion, deploy keeps the simpler rectifier. CONFIRMATI
 BONUS: vs iter 22 it scored +0.000312 (p=6e-35) / +0.000118 (p=7e-21) — the PAVA gain
 reproduced across two independent trainings (~+0.0003 ahead / +0.0001 imm real).
 Weighting sub-lever closed. Detail research_5k_verbose.md.**
-**→ GPU plan (2026-07-19 03:45): A5 DONE/ACCEPTED (above) → iter 25 RUNNING (d=32 GRU
-power curves, started 03:26 after a BOM-crash relaunch, verdict ~07:00) → meme_blind
-parked on its DONE_EXIT (~3.5h, verdict ~10:45) → then: iter 26 (GRU N=3) IF iter 25
-passed; track-2 A6 = channel-mixer thinning bundle (grad-stats bottom tier stable across
-3 recordings: user.L1, preset.L1, deck.L1, user.L2, preset.L2 lead — bundle ≥5%);
-track-1 queue: xhead-mix v3, permutation init (LOW).
+**ITER 25 REJECTED (2026-07-19 07:24): GRU power-curve head at d=32 = ahead −0.000207
+worse (p=1.0), imm −0.000018 tie; n=5000, 0 nanskips; 171,066 params (−11.7%). The d=128
+imm win did NOT transfer — the d=32 trunk, not the curve head, is the binding constraint.
+Iter 26 (N=3) NOT run (was conditional). SIZE-EXCEPTION = ANDREW'S CALL (parity-ish at
+−11.7% params; not auto-invoked: directive was logloss, ahead regression burns budget,
+d=32 weight savings aren't deploy-relevant — state unchanged). Val-lead lesson strongest
+instance: led vals nearly all run (WS-end −0.0014/−0.0007), lost eval. PAVA Hard–Good
+power converged to −1.44 IDENTICALLY to iter 23 under a different head — stable data
+property. Detail research_5k_verbose.md.**
+**→ GPU plan (2026-07-19 07:30): meme_blind RUNNING (started 07:26, verdict ~11:00 —
+FSRS-7 target 0.317933; record → optimization/side_experiments.md) → next: track-2 A6 =
+channel-mixer thinning bundle (grad-stats bottom tier stable across 3 recordings:
+user.L1, preset.L1, deck.L1, user.L2, preset.L2 lead — bundle ≥5%); track-1 queue:
+xhead-mix v3, permutation init (LOW).
 ⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
 tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
 crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream
