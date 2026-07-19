@@ -782,12 +782,16 @@ NOT transfer (the d=32 trunk is the binding constraint) but both tracks now shar
 GRU head. Val-lead lesson strongest instance: led vals nearly all run, lost eval. PAVA
 Hard–Good power −1.44 IDENTICAL to iter 23 under a different head. Detail
 research_5k_verbose.md (incl. changed-verdict addendum).**
-**→ GPU plan (2026-07-19 10:40): meme_blind RUNNING (started 07:26, verdict ~11:00 —
-FSRS-7 target 0.317933; record → optimization/side_experiments.md) → track-1 iter 26 =
-GRU N=3 (Andrew's standing "if 25 succeeds, try 3" — now champion; gate ≥0.0003 both
-modes vs iter 25 + p<0.0001) → track-2 A6 = channel-mixer thinning bundle (grad-stats
-bottom tier stable across 3 recordings: user.L1, preset.L1, deck.L1, user.L2, preset.L2
-lead — bundle ≥5%); track-1 queue after: xhead-mix v3, permutation init (LOW).
+**MEME RUN DONE (2026-07-19 10:53, recorded in optimization/side_experiments.md SE-1):
+BLIND RWKV LOSES to FSRS-7 decisively — ahead 0.351922 (+0.034, wins only 7.5% of
+users), imm 0.341322 (+0.023, wins 25%); n=5000, 0 nanskips. Intervals+grades are worth
+~0.048 ahead LogLoss (~3.5× the full model's margin over FSRS-7). NOT in
+research_log.jsonl by design.**
+**→ GPU plan (2026-07-19 11:00): track-1 iter 26 = GRU N=3 RUNNING (auto-started ~10:55
+behind the meme run; gate ≥0.0003 both modes vs iter 25 + p<0.0001; verdict ~14:45) →
+track-2 A6 = channel-mixer thinning bundle (grad-stats bottom tier stable across 3
+recordings: user.L1, preset.L1, deck.L1, user.L2, preset.L2 lead — bundle ≥5%);
+track-1 queue after: xhead-mix v3, permutation init (LOW).
 ⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
 tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
 crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream
