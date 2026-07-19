@@ -787,18 +787,19 @@ BLIND RWKV LOSES to FSRS-7 decisively — ahead 0.351922 (+0.034, wins only 7.5%
 users), imm 0.341322 (+0.023, wins 25%); n=5000, 0 nanskips. Intervals+grades are worth
 ~0.048 ahead LogLoss (~3.5× the full model's margin over FSRS-7). NOT in
 research_log.jsonl by design.**
-**⏸ PAUSED (Andrew 2026-07-19 ~11:20: PC going off for a while). Iter 26 (GRU N=3) was
-~25 min into WS — TREE-KILLED cleanly (no mid-epoch resume on 1-ep runs; partial ckpts/
-traces in scratchpad/iter26_gru3 are dead weight, the cmd self-cleans on relaunch).
-ON RESUME: relaunch iter 26 FRESH via `& scratchpad\detach.ps1 -Script
-"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter26_gru3\run_iter26_gru3.cmd"`
-(its STEP-0 waitloop greps meme_blind.log whose DONE_EXIT exists → starts instantly),
-re-arm the monitor, verdict ~3h40m later (gate ≥0.0003 both modes vs iter 25 +
-p<0.0001). Then: track-2 A6 = channel-mixer thinning bundle (grad-stats bottom tier
-stable across 3 recordings: user.L1, preset.L1, deck.L1, user.L2, preset.L2 — bundle
-≥5%); track-1 queue after: xhead-mix v3, permutation init (LOW). Everything through the
-meme run is recorded + pushed (511af21); champions current (track 1 = iter 25, track 2
-= A5); no other GPU work in flight.
+**ITER 26 (GRU N=3) auto-REJECTED on imm magnitude, FLAGGED FOR ANDREW (2026-07-19
+20:18): ahead 0.303942 = +0.000485 BETTER (p=4.4e-42) — THE LARGEST ahead gain of the
+5k phase, over the bar; imm 0.273353 = +0.000088 better (p=4.8e-09) but ~1/3 of the
+bar. n=5000, 0 nanskips, 171,453 params (+387). Both modes improved → the strict
+monotonic gate fails on imm magnitude ALONE — Andrew's call (both prior flags became
+accepts). PAVA middle junction −1.59 (3rd straight strongly-negative). Detail
+research_5k_verbose.md.**
+**→ GPU plan (2026-07-19 20:40): iter 27 = GRU N=4 RUNNING (sweep continues per the
+standing directive; gate tail prints paired vs BOTH iter 25 and iter 26; verdict
+~00:30) → overnight: track-2 A6 = channel-mixer thinning bundle (build tonight, park
+on iter 27's DONE_EXIT; grad-stats bottom tier stable across 3 recordings: user.L1,
+preset.L1, deck.L1, user.L2, preset.L2 — bundle ≥5%); track-1 queue after: xhead-mix
+v3, permutation init (LOW).
 ⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
 tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
 crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream

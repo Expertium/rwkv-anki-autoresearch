@@ -1,5 +1,5 @@
-FILE_AHEAD = "RWKV-iter26_gru3-s1"
-FILE_IMM = "RWKV-P-iter26_gru3-s1"
+FILE_AHEAD = "RWKV-iter26_gru3"
+FILE_IMM = "RWKV-P-iter26_gru3"
 MODEL_PATH = "scratchpad/iter26_gru3/iter26d_1638.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -12,5 +12,4 @@ RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 10000
-NUM_FETCH_PROCESSES = 3
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s1.json"
+NUM_FETCH_PROCESSES = 4

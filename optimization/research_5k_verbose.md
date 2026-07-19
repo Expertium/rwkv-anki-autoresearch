@@ -766,3 +766,20 @@ has a head schism, and the Rust deploy port gets *simpler* (three tiny linears +
 form power curves R(t)=Σwᵢ(1+t/Sᵢ)^(−dᵢ) instead of the 64-basis softmax mixture; the
 learned-power PAVA rectifier applies to its counterfactual predictions unchanged). Iter 26
 (GRU N=3) becomes the natural next accuracy iter, gated normally vs iter 25.
+
+### Iter 26 — GRU head N=3 (auto-REJECTED 2026-07-19 20:18, FLAGGED for Andrew): largest ahead gain of the phase
+
+`RWKV_GRU_HEAD=3` on the iter-25 champion recipe; 171,453 params (+387). Restarted from
+scratch after the PC-shutdown pause (deterministic relaunch confirmed: step-50 val
+identical to the killed launch). **Finals 0.303942/0.273353 (n=5000, 0 nanskips) —
+vs iter 25: ahead +0.000485 (p=4.4e-42), THE LARGEST single-iteration ahead improvement
+of the 5k phase and comfortably over the 0.0003 bar; imm +0.000088 (p=4.8e-09),
+highly significant but ~1/3 of the bar.** The strict monotonic gate fails on imm
+magnitude alone → auto-verdict rejected, flagged (both prior flags flipped to accepts).
+Reading: the third curve buys real curve-shape resolution — ahead IS the curve task —
+while imm sits near its trunk-limited ceiling. PAVA powers [−0.84, −1.59, −0.26]: the
+middle junction lands strongly negative for the third straight iteration. Sweep
+directive ("sweep upward while it keeps winning") reads as alive — both modes improved —
+so **iter 27 = N=4 launched immediately** (gate tail prints paired vs BOTH iter 25 and
+iter 26). Pipeline: WS ~112m, decay 26m, eval 90m, clean. Artifacts
+scratchpad/iter26_gru3/ (iter26d_1638.pth kept), result/RWKV[-P]-iter26_gru3.jsonl.

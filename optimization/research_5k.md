@@ -58,6 +58,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 23 | 1–5000 | 0.3042 | 0.2734 | exact | **accepted** (directed) | 1.3e-33 / 8.1e-15 (vs iter 22, better) | 193,727 | 0 | Andrew | Learnable-PAVA rectifier: both modes better (+0.00028/+0.00012); Andrew-accepted for the ordered-buttons constraint itself, not logloss. NEW champion. |
 | 24 | 1–5000 | 0.3042 | 0.2734 | exact | rejected | 0.54 / 0.03 (vs iter 23) | 193,727 | 0 | Andrew | p-head pooling weights: null vs iter 23 (+0.00004/+0.000002) — uniform suffices. Bonus: PAVA effect reproduced vs iter 22 (+0.00031/+0.00012). |
 | 25 | 1–5000 | 0.3044 | 0.2734 | exact | **accepted** (size exception) | 1.0 / 0.38 (vs iter 23) | 171,066 | 0 | Andrew | GRU power-curve head at d=32: parity inside the budget at −11.7% params — Andrew-accepted as a size win. NEW champion; both tracks now share the GRU head. |
+| 26 | 1–5000 | 0.3039 | 0.2734 | exact | rejected (Andrew's call) | 4.4e-42 / 4.8e-09 (vs iter 25, better) | 171,453 | 0 | Andrew | GRU N=3: ahead +0.00049 = LARGEST ahead gain of the phase, over the bar; imm +0.00009 significant but under. Sweep continues (N=4 running). |
 
 ## Track 2 — ablate the old d=128 model
 
