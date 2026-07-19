@@ -419,12 +419,15 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 ### ACCEPTANCE GATE (research phase) -- accept iff ALL hold (record binary accepted/rejected per iter):
 1. "size" (equalized review count, 101-200) IDENTICAL to champion (data-integrity; any change = pipeline bug).
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
-4. ahead improves by >= **0.0003** vs the CURRENT champion.   5. imm improves by >= **0.0003**.
+4./5. **(Andrew 2026-07-19 ~21:00, LOOSENED from >=0.0003): each mode's improvement vs the
+   CURRENT champion, ROUNDED TO 4 DECIMALS, must be >= 0.0001 — i.e. raw delta >= 0.00005 —
+   in BOTH modes** (so +0.000088 rounds to 0.0001 = PASS). First applied to iter 26.
 6. **p-gate (Andrew 2026-07-08):** paired per-user one-sided Wilcoxon (candidate vs champion, same 5000
    eval users) gives **p < 0.0001 in BOTH modes** -- `python optimization/paired_pvalue.py` (zero GPU cost,
    reads the result jsonls; exit 0 = pass). Record both p-values in research_5k.md's `p-value` column.
    Applies to accuracy accepts only (SIZE/SPEED-exception accepts claim parity, not improvement -> exempt).
-=> accept ONLY changes that improve BOTH modes by >=0.0003 AND pass the p-gate (a monotonic champion).
+=> accept ONLY changes that improve BOTH modes (>=0.0001 after 4-dp rounding, 2026-07-19; was
+>=0.0003) AND pass the p-gate (a monotonic champion).
 [[research-acceptance-gate]]
 **EXCEPTION -- SIZE/SPEED changes** (e.g. H=2/K=16): judged on the **efficiency budget** instead -- accept if
 both modes stay within **+0.0015** of the champion AND the change shrinks state and/or speeds training (it
@@ -590,25 +593,23 @@ Pairing needs identical db/MAX/seeds.
 ### CURRENT STATE (updated 2026-07-15 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology moves to optimization/HISTORY.md "5k-era LIVE STATE archive"; per-iter detail lives in research_5k_verbose.md)
 
 **Champions / anchors:**
-- **Track 1 (d=32 plain) CHAMPION = iter 25 `iter25_gru`: ahead 0.304427 / imm 0.273441,
-  171,066 params (−11.7%)** (n=5000, 0 nanskips; `champion_5k_plain.json` = ckpt
-  `scratchpad/iter25_gru/iter25d_1638.pth` + WS/val traces = the track-1 vprune ref).
-  **DIRECTED SIZE-EXCEPTION ACCEPT (Andrew 2026-07-19 ~10:35): the GRU power-curve head
-  (N=2) at accuracy parity inside the +0.0015 budget (ahead −0.000207/imm −0.000018 vs
-  iter 23) is taken as a size win — and BOTH tracks now share the GRU head (no head
-  schism at the merge; Rust port simpler: 3 tiny linears + closed-form power curves
-  instead of the 64-basis mixture).** Champion recipe env (set ALL in every future
-  track-1 run + the final QAT run): RWKV_NO_AHEAD_RESIDUAL=1, RWKV_ZERO_FEATURES=22,
-  RWKV_PAVA_LAMBDA=0.1, RWKV_PROBE_DENSITY=0.08, **RWKV_GRU_HEAD=2,
-  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768** +
+- **Track 1 (d=32 plain) CHAMPION = iter 26 `iter26_gru3`: ahead 0.303942 / imm 0.273353,
+  171,453 params** (n=5000, 0 nanskips; `champion_5k_plain.json` = ckpt
+  `scratchpad/iter26_gru3/iter26d_1638.pth` + WS/val traces = the track-1 vprune ref).
+  **FIRST ACCEPT UNDER THE NEW GATE (Andrew 2026-07-19 ~21:00): GRU head N=3 — ahead
+  +0.000485 (p=4.4e-42, the largest ahead gain of the phase) / imm +0.000088→0.0001
+  (p=4.8e-09) vs iter 25.** Champion recipe env (set ALL in every future track-1 run +
+  the final QAT run): RWKV_NO_AHEAD_RESIDUAL=1, RWKV_ZERO_FEATURES=22,
+  RWKV_PAVA_LAMBDA=0.1, RWKV_PROBE_DENSITY=0.08, **RWKV_GRU_HEAD=3**,
+  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768 +
   H=2/K=16 + HP {peak_lr 1e-3, warmup 200, wd 0.01, clip 0.25} + MAX=110000.
-  PAVA junction powers are a stable data property (Hard–Good ≈ −1.44 in BOTH iters 23+25).
+  PAVA middle-junction power strongly negative in ALL GRU/PAVA iters (−1.44/−1.44/−1.59).
   **Deploy contract:** learned-power PAVA rectifier on the 4 counterfactual button
   predictions (duration imputed to the frozen train median `scratchpad/iter23_pava/
-  duration_median.json`) + per-step state clamp — Rust ports queued. Lineage kept: iter 23
-  (0.304220/0.273423, PAVA champion, 64-basis head) = pre-GRU ref; iter 22
-  (0.304497/0.273539) = no-residual pre-PAVA ref; iter 15 (0.303663/0.273227) = last
-  with-residual ref; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
+  duration_median.json`) + per-step state clamp — Rust ports queued. Lineage kept:
+  iter 25 (0.304427/0.273441, N=2, size-exception accept) → iter 23 (0.304220/0.273423,
+  PAVA champion, 64-basis head) → iter 22 (0.304497/0.273539, no-residual re-baseline) →
+  iter 15 (0.303663/0.273227, last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
 - **Track 2 CHAMPION = A5 `track2_a5` (accepted 2026-07-19 03:21): ahead 0.300532 /
   imm 0.269127** (n=5000, 0 nanskips, **2,115,359 params** = A4 −8.84%;
   `champion_5k_track2.json` = ckpt `scratchpad/track2_a5/t2a5d_5586.pth` + WS/val traces
@@ -787,12 +788,13 @@ BLIND RWKV LOSES to FSRS-7 decisively — ahead 0.351922 (+0.034, wins only 7.5%
 users), imm 0.341322 (+0.023, wins 25%); n=5000, 0 nanskips. Intervals+grades are worth
 ~0.048 ahead LogLoss (~3.5× the full model's margin over FSRS-7). NOT in
 research_log.jsonl by design.**
-**ITER 26 (GRU N=3) auto-REJECTED on imm magnitude, FLAGGED FOR ANDREW (2026-07-19
-20:18): ahead 0.303942 = +0.000485 BETTER (p=4.4e-42) — THE LARGEST ahead gain of the
-5k phase, over the bar; imm 0.273353 = +0.000088 better (p=4.8e-09) but ~1/3 of the
-bar. n=5000, 0 nanskips, 171,453 params (+387). Both modes improved → the strict
-monotonic gate fails on imm magnitude ALONE — Andrew's call (both prior flags became
-accepts). PAVA middle junction −1.59 (3rd straight strongly-negative). Detail
+**ITER 26 (GRU N=3) ACCEPTED (VERDICT CHANGED 2026-07-19 ~21:00 — Andrew LOOSENED the
+gate to rounded-4dp ≥0.0001 both modes; auto-verdict 20:18 had been reject on the old
+0.0003 imm bar): ahead +0.000485 (p=4.4e-42, largest ahead gain of the phase), imm
++0.000088→0.0001 (p=4.8e-09); n=5000, 0 nanskips, 171,453 params = NEW TRACK-1
+CHAMPION (recipe now GRU_HEAD=3). Under the new bar iter 20 (xhead v1,
++0.000178/+0.000107, both p≪1e-9) would also have passed → xhead-mix v3 gains queue
+priority. PAVA middle junction −1.59 (3rd straight strongly-negative). Detail
 research_5k_verbose.md.**
 **→ GPU plan (2026-07-19 20:45): iter 27 = GRU N=4 RUNNING (sweep continues; gate tail
 prints paired vs BOTH iter 25 and iter 26; verdict ~00:30) → overnight: track-2 A6

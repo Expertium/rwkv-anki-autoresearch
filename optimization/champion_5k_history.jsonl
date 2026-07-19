@@ -6,3 +6,4 @@
 {"name": "iter22_nores", "date": "2026-07-17 10:39:45", "final_ahead": 0.304497, "final_imm": 0.273539, "n_trace_steps": 6554, "ckpt": "scratchpad/iter22_nores/iter22nd_1638.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_reanchor", "date": "2026-07-18 12:05:04", "final_ahead": 0.300504, "final_imm": 0.269262, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_reanchor/t2red_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "iter23_pava", "date": "2026-07-18 12:51:21", "final_ahead": 0.30422, "final_imm": 0.273423, "n_trace_steps": 6554, "ckpt": "scratchpad/iter23_pava/iter23d_1638.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "iter25_gru", "date": "2026-07-19 10:33:39", "final_ahead": 0.304427, "final_imm": 0.273441, "n_trace_steps": 6554, "ckpt": "scratchpad/iter25_gru/iter25d_1638.pth", "cb_wkv": "", "cb_shift": ""}

@@ -22,7 +22,9 @@ candidates).
 the **current champion = the highest-iter accepted row**. `p-value` = paired per-user one-sided
 Wilcoxon (candidate vs the iter named in parentheses, same 5000 eval users;
 `optimization/paired_pvalue.py`), shown `ahead / imm`. **Accept gate (Andrew 2026-07-08): BOTH
-modes need p < 0.0001** in addition to the ≥0.0003-both-modes improvement, and **params ≤ 225,000**
+modes need p < 0.0001** in addition to the magnitude bar, and **params ≤ 225,000**.
+**Magnitude bar LOOSENED (Andrew 2026-07-19, first applied to iter 26): each mode's improvement
+ROUNDED TO 4 DECIMALS must be ≥ 0.0001 (raw ≥ 0.00005) in both modes — was ≥ 0.0003 (iters ≤ 25)**
 (the phase's hard cap; current champion sits at 193,724). `provenance` is binary (Andrew
 2026-07-13): **invented** = self-generated (by Claude or Andrew, no external source); **adopted** =
 backed by an external source — a paper / GitHub link (e.g. shrink-perturb = Ash & Adams 2020) or a
@@ -58,7 +60,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 23 | 1–5000 | 0.3042 | 0.2734 | exact | **accepted** (directed) | 1.3e-33 / 8.1e-15 (vs iter 22, better) | 193,727 | 0 | Andrew | Learnable-PAVA rectifier: both modes better (+0.00028/+0.00012); Andrew-accepted for the ordered-buttons constraint itself, not logloss. NEW champion. |
 | 24 | 1–5000 | 0.3042 | 0.2734 | exact | rejected | 0.54 / 0.03 (vs iter 23) | 193,727 | 0 | Andrew | p-head pooling weights: null vs iter 23 (+0.00004/+0.000002) — uniform suffices. Bonus: PAVA effect reproduced vs iter 22 (+0.00031/+0.00012). |
 | 25 | 1–5000 | 0.3044 | 0.2734 | exact | **accepted** (size exception) | 1.0 / 0.38 (vs iter 23) | 171,066 | 0 | Andrew | GRU power-curve head at d=32: parity inside the budget at −11.7% params — Andrew-accepted as a size win. NEW champion; both tracks now share the GRU head. |
-| 26 | 1–5000 | 0.3039 | 0.2734 | exact | rejected (Andrew's call) | 4.4e-42 / 4.8e-09 (vs iter 25, better) | 171,453 | 0 | Andrew | GRU N=3: ahead +0.00049 = LARGEST ahead gain of the phase, over the bar; imm +0.00009 significant but under. Sweep continues (N=4 running). |
+| 26 | 1–5000 | 0.3039 | 0.2734 | exact | **accepted** (new gate) | 4.4e-42 / 4.8e-09 (vs iter 25, better) | 171,453 | 0 | Andrew | GRU N=3: ahead +0.00049 = LARGEST ahead gain of the phase; imm +0.00009 → 0.0001 under the NEW rounded-4dp ≥0.0001 gate. NEW champion. |
 
 ## Track 2 — ablate the old d=128 model
 

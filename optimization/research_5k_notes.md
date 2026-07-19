@@ -16,7 +16,9 @@ hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim
 
 1. **Split + accept gate.** Train on one 5k half, eval on the other (train 1–5000 → eval 5001–10000;
    the old d=128 model already has weights → just eval it on 5001–10000, same eval set = fair). A change
-   is **accepted only if it beats the current champion by ≥ 0.0003 in BOTH modes** — immediate (imm) AND
+   is **accepted only if it beats the current champion in BOTH modes by ≥ 0.0001 AFTER ROUNDING
+   TO 4 DECIMALS (raw delta ≥ 0.00005; Andrew 2026-07-19, loosened from ≥ 0.0003 which applied
+   through iter 25)** — immediate (imm) AND
    forgetting-curve (ahead). Monotonic-both-modes champion.
    **+ p-gate (Andrew 2026-07-08):** additionally, the paired per-user one-sided Wilcoxon signed-rank
    (candidate vs current champion, same 5000 eval users — the data is already in the result jsonls, zero

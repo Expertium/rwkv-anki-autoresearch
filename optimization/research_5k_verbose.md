@@ -783,3 +783,14 @@ directive ("sweep upward while it keeps winning") reads as alive — both modes 
 so **iter 27 = N=4 launched immediately** (gate tail prints paired vs BOTH iter 25 and
 iter 26). Pipeline: WS ~112m, decay 26m, eval 90m, clean. Artifacts
 scratchpad/iter26_gru3/ (iter26d_1638.pth kept), result/RWKV[-P]-iter26_gru3.jsonl.
+
+**VERDICT CHANGED — ACCEPTED under the NEW GATE (Andrew, 2026-07-19 ~21:00):** "let's
+change the acceptance criteria: at least 0.0001 on both gates after rounding to 4
+decimal points, so 0.000088→0.0001 passes." New magnitude bar (all future iters): each
+mode's improvement rounded to 4 decimals ≥ 0.0001 (raw ≥ 0.00005), p<0.0001 both modes
+unchanged; was ≥0.0003 through iter 25. Iter 26: ahead 0.0005 ✓, imm 0.0001 ✓ → **NEW
+TRACK-1 CHAMPION (0.303942/0.273353, 171,453 params)**; champion_5k_plain.json
+re-pointed; recipe now RWKV_GRU_HEAD=3. Iter 27 (N=4, mid-WS) gates vs iter 26 via its
+GATE-B tail. Historical note: under this bar iter 20 (xhead-mix v1, +0.000178/+0.000107,
+both p≪1e-9 vs iter 15) would also have passed — the xhead-mix v3 queue entry gains
+priority accordingly; no retroactive flips (the champion lineage moved on).
