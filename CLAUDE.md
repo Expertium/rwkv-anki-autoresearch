@@ -796,10 +796,11 @@ CHAMPION (recipe now GRU_HEAD=3). Under the new bar iter 20 (xhead v1,
 +0.000178/+0.000107, both p≪1e-9) would also have passed → xhead-mix v3 gains queue
 priority. PAVA middle junction −1.59 (3rd straight strongly-negative). Detail
 research_5k_verbose.md.**
-**→ GPU plan (2026-07-19 20:45): iter 27 = GRU N=4 RUNNING (sweep continues; gate tail
-prints paired vs BOTH iter 25 and iter 26; verdict ~00:30) → overnight: track-2 A6
-BUILT+SMOKED+PARKED (pid 32708, waitloop on iter 27's DONE_EXIT; ~11h → verdict
-~12:00): RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,deck_id:1 on the
+**ITER 27 REJECTED (2026-07-20 00:01): GRU N=4 = ahead −0.000411 / imm −0.000172 worse
+than N=3 (p=1.0 both); n=5000, 0 nanskips. THE N-SWEEP PEAKS AT 3 — closed, no N=5;
+iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
+**→ GPU plan (2026-07-20 00:15): track-2 A6 RUNNING (auto-started 00:02, ~11h →
+verdict ~13:00): RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,deck_id:1 on the
 A5 recipe = 1,949,624 params (−7.83%); ratio gate vs A5. Smokes: params exact, correct
 5 mixers stripped by name, scripted-forward branch (stripped ≡ time-mixer out), off-path
 = A5 byte-identical. **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):

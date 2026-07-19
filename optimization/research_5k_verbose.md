@@ -784,6 +784,17 @@ so **iter 27 = N=4 launched immediately** (gate tail prints paired vs BOTH iter 
 iter 26). Pipeline: WS ~112m, decay 26m, eval 90m, clean. Artifacts
 scratchpad/iter26_gru3/ (iter26d_1638.pth kept), result/RWKV[-P]-iter26_gru3.jsonl.
 
+### Iter 27 — GRU head N=4 (REJECTED 2026-07-20 00:01): the N-sweep peaks at 3
+
+`RWKV_GRU_HEAD=4`, 171,840 params. **Finals 0.304353/0.273526 (n=5000, 0 nanskips) —
+vs iter 26 (N=3): ahead −0.000411 WORSE (p=1.0), imm −0.000172 worse (p=1.0)**; vs
+iter 25 (N=2) a null/mixed. Clean capacity peak: N=2 = parity at −11.7% params, N=3 =
+real both-modes gain, N=4 = regression (the 4th curve overfits/dilutes the weight
+softmax). **Sweep CLOSED, no N=5; iter 26 stands as champion.** Val trajectory tracked
+N=3 at parity the whole run and lost eval by 0.0004 — the val-lead lesson holds again.
+Pipeline: WS 112m, decay 26m, eval 89m, clean; A6 took the GPU on the DONE_EXIT.
+Artifacts scratchpad/iter27_gru4/ (iter27d_1638.pth kept), result/RWKV[-P]-iter27_gru4.jsonl.
+
 **VERDICT CHANGED — ACCEPTED under the NEW GATE (Andrew, 2026-07-19 ~21:00):** "let's
 change the acceptance criteria: at least 0.0001 on both gates after rounding to 4
 decimal points, so 0.000088→0.0001 passes." New magnitude bar (all future iters): each

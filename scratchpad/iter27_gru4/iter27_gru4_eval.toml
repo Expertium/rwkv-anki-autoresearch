@@ -1,5 +1,5 @@
-FILE_AHEAD = "RWKV-iter27_gru4-solo"
-FILE_IMM = "RWKV-P-iter27_gru4-solo"
+FILE_AHEAD = "RWKV-iter27_gru4"
+FILE_IMM = "RWKV-P-iter27_gru4"
 MODEL_PATH = "scratchpad/iter27_gru4/iter27d_1638.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -13,4 +13,3 @@ RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 10000
 NUM_FETCH_PROCESSES = 4
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_solo.json"

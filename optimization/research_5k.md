@@ -61,6 +61,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 24 | 1–5000 | 0.3042 | 0.2734 | exact | rejected | 0.54 / 0.03 (vs iter 23) | 193,727 | 0 | Andrew | p-head pooling weights: null vs iter 23 (+0.00004/+0.000002) — uniform suffices. Bonus: PAVA effect reproduced vs iter 22 (+0.00031/+0.00012). |
 | 25 | 1–5000 | 0.3044 | 0.2734 | exact | **accepted** (size exception) | 1.0 / 0.38 (vs iter 23) | 171,066 | 0 | Andrew | GRU power-curve head at d=32: parity inside the budget at −11.7% params — Andrew-accepted as a size win. NEW champion; both tracks now share the GRU head. |
 | 26 | 1–5000 | 0.3039 | 0.2734 | exact | **accepted** (new gate) | 4.4e-42 / 4.8e-09 (vs iter 25, better) | 171,453 | 0 | Andrew | GRU N=3: ahead +0.00049 = LARGEST ahead gain of the phase; imm +0.00009 → 0.0001 under the NEW rounded-4dp ≥0.0001 gate. NEW champion. |
+| 27 | 1–5000 | 0.3044 | 0.2735 | exact | rejected | 1.0 / 1.0 (vs iter 26) | 171,840 | 0 | Andrew | GRU N=4: ahead −0.0004 / imm −0.0002 worse than N=3 — the N-sweep peaks at 3, closed. Val-parity again lost eval. |
 
 ## Track 2 — ablate the old d=128 model
 
