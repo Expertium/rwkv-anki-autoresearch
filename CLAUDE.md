@@ -802,7 +802,14 @@ BUILT+SMOKED+PARKED (pid 32708, waitloop on iter 27's DONE_EXIT; ~11h → verdic
 ~12:00): RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,deck_id:1 on the
 A5 recipe = 1,949,624 params (−7.83%); ratio gate vs A5. Smokes: params exact, correct
 5 mixers stripped by name, scripted-forward branch (stripped ≡ time-mixer out), off-path
-= A5 byte-identical. Track-1 queue after: xhead-mix v3, permutation init (LOW).
+= A5 byte-identical. **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
+the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
+the stale iter-15 recipe and must be re-earned (transfer failures are precedented).
+Parked pid 21048 on A6's DONE_EXIT (~12:00 tomorrow → verdict ~15:30); tail prints
+paired vs BOTH iter 26 and iter 27. If it passes → v3 (wd exclusion) as a follow-up
+lever; if it fails → v3 is the in-family retry.** Track-1 queue after: permutation
+init (LOW).
 ⚠ ERRATUM (2026-07-19): module index 1 = the DECK stream (arch order card,deck,note,
 preset,user — NOT the RWKV_SUBMODULES order); the A3/A5 "note.L2 diverges" narrative
 should read **deck.L2** (CLAMP_NOTES.md corrected; grad reports were always right).
