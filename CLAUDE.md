@@ -605,11 +605,16 @@ Pairing needs identical db/MAX/seeds.
   duration_median.json`) — Rust-side port queued alongside the state-norm clamp. Lineage
   kept: iter 22 (0.304497/0.273539) = no-residual pre-PAVA ref; iter 15 (0.303663/0.273227)
   = last with-residual ref; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
-- **Track 2 REFERENCE = A4 `track2_reanchor` (no-residual re-anchor of A1, promoted 2026-07-18):
-  ahead 0.300504 / imm 0.269262** (n=5000, 0 nanskips, 2,320,516 params — 142,592 dead/strippable:
-  the 131.7k ahead head + 5× L0 v_lora; `champion_5k_track2.json` = ckpt
-  `scratchpad/track2_reanchor/t2red_5586.pth` + WS/val traces = the track-2 vprune ref).
-  **All future track-2 candidates gate vs A4 on FULL n=5000.** Lineage: A0 (d=128 1-ep retrain,
+- **Track 2 CHAMPION = A5 `track2_a5` (accepted 2026-07-19 03:21): ahead 0.300532 /
+  imm 0.269127** (n=5000, 0 nanskips, **2,115,359 params** = A4 −8.84%;
+  `champion_5k_track2.json` = ckpt `scratchpad/track2_a5/t2a5d_5586.pth` + WS/val traces
+  = the track-2 vprune ref). **= A4 + GRU curve head (RWKV_GRU_HEAD=2) + L0-v_lora strip
+  (RWKV_STRIP_L0_VLORA=1) + state-norm clamp (RWKV_STATE_CLAMP_TAU=300 WINDOW=32768) —
+  set ALL of these in every future track-2 run.** vs A4: imm +0.000136 BETTER (p=4e-38,
+  reproduces A3), ahead −0.000028 noise; ratio gate 7×-inside. The clamp contained the
+  GRU instability completely (0 nanskips vs A3's 129; CLAMP_NOTES.md) and the dummy strip
+  made WS ~1.67× faster (3h58m vs A4's 6h37m — A4 still computed the dead ahead head).
+  **All future track-2 candidates gate vs A5 on FULL n=5000.** Lineage: A0 (d=128 1-ep retrain,
   0.299857/0.269030, n=4993, 7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep
   .pth; beats champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
   A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead +0.000495 (p=1.0) but imm
@@ -765,15 +770,16 @@ suffices, iter 23 stays champion, deploy keeps the simpler rectifier. CONFIRMATI
 BONUS: vs iter 22 it scored +0.000312 (p=6e-35) / +0.000118 (p=7e-21) — the PAVA gain
 reproduced across two independent trainings (~+0.0003 ahead / +0.0001 imm real).
 Weighting sub-lever closed. Detail research_5k_verbose.md.**
-**→ GPU plan (Andrew approved the direction 2026-07-18 ~14:30): state-norm work →
-track-2 A5. NOW: A3-instability probe (scratchpad/statenorm/probe_a3_nan.{py,cmd},
-user 5002 bf16 + fp32 — localizes the first non-finite module; fp32 answers
-weight-level vs bf16-artifact) → design the state shrinkage/clamp (soft
-τ/(τ+‖state‖) lean; eval-side via stateful-kernel windowing, Rust per-step; must
-NEVER fire on healthy users = byte-identity off-path) → validate on A3's 129 NaN
-users → TONIGHT: A5 bundle (~11h) = free strip 142,592 + GRU head (−194,292,
-validated) + clamp in recipe; channel-mixer thinning deferred to A6 (keep A5's only
-unvalidated piece the clamp). Track-1 queue after: xhead-mix v3, permutation init (LOW).
+**→ GPU plan (2026-07-19 03:45): A5 DONE/ACCEPTED (above) → iter 25 RUNNING (d=32 GRU
+power curves, started 03:26 after a BOM-crash relaunch, verdict ~07:00) → meme_blind
+parked on its DONE_EXIT (~3.5h, verdict ~10:45) → then: iter 26 (GRU N=3) IF iter 25
+passed; track-2 A6 = channel-mixer thinning bundle (grad-stats bottom tier stable across
+3 recordings: user.L1, preset.L1, deck.L1, user.L2, preset.L2 lead — bundle ≥5%);
+track-1 queue: xhead-mix v3, permutation init (LOW).
+⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
+tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
+crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream
+first (its cmd truncates its own log), THEN re-park dependents.**
 **MEME RUN "BLIND RWKV" QUEUED (Andrew 2026-07-19 ~02:30, recorded SEPARATELY — new
 `optimization/side_experiments.md` at verdict, NOT research_log.jsonl): train d=32
 WITHOUT interval features and WITHOUT grades (RWKV_ZERO_FEATURES=0-7,9-12,22; duration

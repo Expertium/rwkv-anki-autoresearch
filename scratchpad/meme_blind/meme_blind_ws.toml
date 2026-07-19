@@ -1,4 +1,4 @@
-﻿# Iter 23: learnable power-mean PAVA rectifier on in-sequence counterfactual button probes
+# Iter 23: learnable power-mean PAVA rectifier on in-sequence counterfactual button probes
 # (MONOTONICITY_PLAN.md stage 2, Andrew's design; build = meme_blind/BUILD_NOTES.md).
 # Champion (iter 22) recipe + RWKV_PAVA_LAMBDA=0.1 + RWKV_PROBE_DENSITY=0.08 (train-only
 # probe rows; validation and eval stay probe-free -> val/eval comparable to iter 22).

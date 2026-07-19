@@ -678,3 +678,43 @@ verdict was executed by a DIFFERENT session than the one that launched the run (
 died at 01:32 taking its monitor with it; recovery = the compact focus preserved in
 controller.log + these docs — the on-disk record carried everything). Artifacts
 scratchpad/track2_reanchor/ (t2red_5586.pth kept), result/RWKV[-P]-track2_reanchor.jsonl.
+
+### Track-2 A5 — GRU head + free strip + state clamp (ACCEPTED 2026-07-19 03:21): new champion
+
+The grad-stats-ranked bundle on the A4 anchor: (1) the GRU curve head (`RWKV_GRU_HEAD=2`,
+validated by A3's deferred gate pass), (2) the layer-0 v_lora strip (`RWKV_STRIP_L0_VLORA=1`,
+never-grad on A3+A4 recordings — 1×1 dummies keep TorchScript happy), (3) the state-norm
+clamp (`RWKV_STATE_CLAMP_TAU=300`, window 32768 — built same-day from the A3-instability
+probe; design + validation in `scratchpad/statenorm/CLAMP_NOTES.md`). **2,320,516 →
+2,115,359 params (−205,157 = −8.84%).** Channel-mixer thinning deliberately deferred to A6
+so the bundle's only unvalidated piece was the clamp.
+
+**Finals: ahead 0.300532 / imm 0.269127 — full n=5000, ZERO NaN-skips** (A3 with the same
+head lost 129 users). Paired vs A4: ahead −0.000028 (p=0.99, noise); **imm +0.000136 BETTER
+(p=4.2e-38)** — the GRU head's imm advantage reproduced across two independent trainings.
+Ratio gate (≤0.0001/100k both modes): ahead **+0.0000136** (7× inside), imm **−0.0000663**
+(negative = better) → **ACCEPTED, new track-2 champion** (`champion_5k_track2.json`
+promoted, = the track-2 vprune ref).
+
+**The clamp earned its place.** Training transients (the instability oscillates through WS
+exactly as in A3): 1 NaN-skipped train batch (~step 3855), val-time SHRINK/RESET activity
+peaking mid-WS (at worst the divergent head overflowed the norm within nearly every 32k
+window) — yet every val checkpoint stayed full-n. Mechanism note: the Frobenius norm (sum
+of squares) overflows at entry-scale ~1e19, so the RESET is a conservative early trigger
+~19 orders before outputs poison — which is why no user was ever lost. Eval with FINAL
+weights: 3 self-healed resets on one 1.1M-token mega-user, 0 skips.
+
+**Bonus: WS trained ~1.67× faster than A4 (3h58m vs 6h37m, same 22,345 steps).** A4 still
+computed the dead ahead head's full per-row forward+backward (only the residual ADD was
+zeroed); A5's dummy strip removes it, plus w_linear 65.7k → ~3.1k. Decay 1h41m, clamped
+eval 3h04m. Grad-stats: never-grad = only the 21 dummy placeholders; saliency bottom =
+non-L0 channel mixers for the third consistent recording (user.L1, preset.L1, deck.L1,
+user.L2, preset.L2 lead) = the A6 thinning shortlist.
+
+Ops lesson (cost two instant launch failures at 03:22): PowerShell `Set-Content -Encoding
+utf8` writes a BOM → `tomli` dies at line 1 col 1. Write tomls via the Write tool or
+`UTF8Encoding($false)`. Second-order trap: the BOM-crashed iter 25's `DONE_EXIT_WSFAIL`
+line satisfied the meme run's waitloop grep and cascaded the failure — after fixing, the
+relaunch order (iter 25 first, whose cmd truncates its own log, THEN the parked meme run)
+restored clean chaining. Artifacts scratchpad/track2_a5/ (t2a5d_5586.pth kept),
+result/RWKV[-P]-track2_a5.jsonl.
