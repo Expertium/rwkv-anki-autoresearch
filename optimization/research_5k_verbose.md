@@ -754,3 +754,15 @@ Pipeline: WS 119m (the clamp's windowed sequential path slows the long-user vals
 26m, sharded eval 93m, clean; the first launch died on the toml BOM (see the A5 section).
 Artifacts scratchpad/iter25_gru/ (iter25d_1638.pth kept), result/RWKV[-P]-iter25_gru.jsonl.
 The meme_blind run's waitloop fired on the DONE_EXIT and started 07:26.
+
+**VERDICT CHANGED — ACCEPTED (Andrew, 2026-07-19 ~10:35, directed size-exception accept):**
+"Alright, let's accept iter 25 then." Accuracy parity inside the +0.0015 efficiency budget
+at −11.7% params ⇒ **iter 25 = NEW track-1 champion (171,066 params, 0.304427/0.273441)**;
+`champion_5k_plain.json` re-pointed (promote --val-trace done). The mandatory track-1
+recipe now adds `RWKV_GRU_HEAD=2` + `RWKV_STRIP_L0_VLORA=1` + the state clamp
+(`RWKV_STATE_CLAMP_TAU=300 WINDOW=32768`) to NO_AHEAD_RESIDUAL + ZERO_FEATURES=22 + PAVA.
+Strategic upside: BOTH tracks now run the GRU head — the eventual track merge no longer
+has a head schism, and the Rust deploy port gets *simpler* (three tiny linears + closed-
+form power curves R(t)=Σwᵢ(1+t/Sᵢ)^(−dᵢ) instead of the 64-basis softmax mixture; the
+learned-power PAVA rectifier applies to its counterfactual predictions unchanged). Iter 26
+(GRU N=3) becomes the natural next accuracy iter, gated normally vs iter 25.

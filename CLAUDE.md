@@ -590,21 +590,25 @@ Pairing needs identical db/MAX/seeds.
 ### CURRENT STATE (updated 2026-07-15 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology moves to optimization/HISTORY.md "5k-era LIVE STATE archive"; per-iter detail lives in research_5k_verbose.md)
 
 **Champions / anchors:**
-- **Track 1 (d=32 plain) CHAMPION = iter 23 `iter23_pava`: ahead 0.304220 / imm 0.273423**
-  (n=5000, 0 nanskips, 193,727 params ~12.5k dead/strippable; `champion_5k_plain.json` = ckpt
-  `scratchpad/iter23_pava/iter23d_1638.pth` + WS/val traces = the track-1 vprune ref).
-  **DIRECTED ACCEPT (Andrew 2026-07-18 ~12:55): the learnable power-mean PAVA rectifier is
-  adopted FOR THE CONSTRAINT ITSELF (clearly ordered answer-button intervals in Anki), not
-  for logloss — though it was ~free-to-mildly-positive (+0.000278/+0.000116 vs iter 22 at
-  p=1e-33/8e-15).** Champion recipe = iter-22 recipe + RWKV_PAVA_LAMBDA=0.1 +
-  RWKV_PROBE_DENSITY=0.08 (with NO_AHEAD_RESIDUAL=1 + ZERO_FEATURES=22 — set ALL FOUR in
-  every future track-1 run + the final QAT run). Learned junction powers (decay ckpt):
-  Again–Hard ≈0.00 / Hard–Good ≈−1.44 / Good–Easy ≈+0.53. **Deploy contract grows:** the
-  learned-power rectifier runs on the 4 counterfactual button predictions at inference
-  (duration imputed to the frozen train-median constant, `scratchpad/iter23_pava/
-  duration_median.json`) — Rust-side port queued alongside the state-norm clamp. Lineage
-  kept: iter 22 (0.304497/0.273539) = no-residual pre-PAVA ref; iter 15 (0.303663/0.273227)
-  = last with-residual ref; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
+- **Track 1 (d=32 plain) CHAMPION = iter 25 `iter25_gru`: ahead 0.304427 / imm 0.273441,
+  171,066 params (−11.7%)** (n=5000, 0 nanskips; `champion_5k_plain.json` = ckpt
+  `scratchpad/iter25_gru/iter25d_1638.pth` + WS/val traces = the track-1 vprune ref).
+  **DIRECTED SIZE-EXCEPTION ACCEPT (Andrew 2026-07-19 ~10:35): the GRU power-curve head
+  (N=2) at accuracy parity inside the +0.0015 budget (ahead −0.000207/imm −0.000018 vs
+  iter 23) is taken as a size win — and BOTH tracks now share the GRU head (no head
+  schism at the merge; Rust port simpler: 3 tiny linears + closed-form power curves
+  instead of the 64-basis mixture).** Champion recipe env (set ALL in every future
+  track-1 run + the final QAT run): RWKV_NO_AHEAD_RESIDUAL=1, RWKV_ZERO_FEATURES=22,
+  RWKV_PAVA_LAMBDA=0.1, RWKV_PROBE_DENSITY=0.08, **RWKV_GRU_HEAD=2,
+  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768** +
+  H=2/K=16 + HP {peak_lr 1e-3, warmup 200, wd 0.01, clip 0.25} + MAX=110000.
+  PAVA junction powers are a stable data property (Hard–Good ≈ −1.44 in BOTH iters 23+25).
+  **Deploy contract:** learned-power PAVA rectifier on the 4 counterfactual button
+  predictions (duration imputed to the frozen train median `scratchpad/iter23_pava/
+  duration_median.json`) + per-step state clamp — Rust ports queued. Lineage kept: iter 23
+  (0.304220/0.273423, PAVA champion, 64-basis head) = pre-GRU ref; iter 22
+  (0.304497/0.273539) = no-residual pre-PAVA ref; iter 15 (0.303663/0.273227) = last
+  with-residual ref; iter 14 measured the QAT tax vs champ5k_b1 (+0.0029/+0.0044).
 - **Track 2 CHAMPION = A5 `track2_a5` (accepted 2026-07-19 03:21): ahead 0.300532 /
   imm 0.269127** (n=5000, 0 nanskips, **2,115,359 params** = A4 −8.84%;
   `champion_5k_track2.json` = ckpt `scratchpad/track2_a5/t2a5d_5586.pth` + WS/val traces
@@ -770,20 +774,20 @@ suffices, iter 23 stays champion, deploy keeps the simpler rectifier. CONFIRMATI
 BONUS: vs iter 22 it scored +0.000312 (p=6e-35) / +0.000118 (p=7e-21) — the PAVA gain
 reproduced across two independent trainings (~+0.0003 ahead / +0.0001 imm real).
 Weighting sub-lever closed. Detail research_5k_verbose.md.**
-**ITER 25 REJECTED (2026-07-19 07:24): GRU power-curve head at d=32 = ahead −0.000207
-worse (p=1.0), imm −0.000018 tie; n=5000, 0 nanskips; 171,066 params (−11.7%). The d=128
-imm win did NOT transfer — the d=32 trunk, not the curve head, is the binding constraint.
-Iter 26 (N=3) NOT run (was conditional). SIZE-EXCEPTION = ANDREW'S CALL (parity-ish at
-−11.7% params; not auto-invoked: directive was logloss, ahead regression burns budget,
-d=32 weight savings aren't deploy-relevant — state unchanged). Val-lead lesson strongest
-instance: led vals nearly all run (WS-end −0.0014/−0.0007), lost eval. PAVA Hard–Good
-power converged to −1.44 IDENTICALLY to iter 23 under a different head — stable data
-property. Detail research_5k_verbose.md.**
-**→ GPU plan (2026-07-19 07:30): meme_blind RUNNING (started 07:26, verdict ~11:00 —
-FSRS-7 target 0.317933; record → optimization/side_experiments.md) → next: track-2 A6 =
-channel-mixer thinning bundle (grad-stats bottom tier stable across 3 recordings:
-user.L1, preset.L1, deck.L1, user.L2, preset.L2 lead — bundle ≥5%); track-1 queue:
-xhead-mix v3, permutation init (LOW).
+**ITER 25 ACCEPTED (VERDICT CHANGED by Andrew 2026-07-19 ~10:35; auto-verdict 07:24 had
+been reject-on-logloss): GRU power-curve head at d=32 = NEW TRACK-1 CHAMPION on the
+SIZE/SPEED exception — parity inside the budget (ahead −0.000207 p=1.0, imm −0.000018
+p=0.38 vs iter 23) at 171,066 params (−11.7%); n=5000, 0 nanskips. The d=128 imm win did
+NOT transfer (the d=32 trunk is the binding constraint) but both tracks now share the
+GRU head. Val-lead lesson strongest instance: led vals nearly all run, lost eval. PAVA
+Hard–Good power −1.44 IDENTICAL to iter 23 under a different head. Detail
+research_5k_verbose.md (incl. changed-verdict addendum).**
+**→ GPU plan (2026-07-19 10:40): meme_blind RUNNING (started 07:26, verdict ~11:00 —
+FSRS-7 target 0.317933; record → optimization/side_experiments.md) → track-1 iter 26 =
+GRU N=3 (Andrew's standing "if 25 succeeds, try 3" — now champion; gate ≥0.0003 both
+modes vs iter 25 + p<0.0001) → track-2 A6 = channel-mixer thinning bundle (grad-stats
+bottom tier stable across 3 recordings: user.L1, preset.L1, deck.L1, user.L2, preset.L2
+lead — bundle ≥5%); track-1 queue after: xhead-mix v3, permutation init (LOW).
 ⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
 tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
 crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream
