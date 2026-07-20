@@ -158,29 +158,46 @@ def get_optimizer(config, model):
         else:
             other_params.append(param)
 
-    return torch.optim.AdamW(
-        [
-            {
-                "params": decay_params,
-                "weight_decay": WEIGHT_DECAY,
-                "lr": config.PEAK_LR,
-            },
-            {
-                "params": channel_mixer_params,
-                "weight_decay": WEIGHT_DECAY_CHANNEL_MIXER,
-                "lr": config.PEAK_LR,
-            },
-            {
-                "params": decay_head_params,
-                "weight_decay": WEIGHT_DECAY_HEAD,
-                "lr": config.PEAK_LR,
-            },
-            {"params": encode_params, "weight_decay": 1e-2, "lr": config.PEAK_LR},
-            {"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR},
-        ],
-        eps=ADAMW_EPS,
-        betas=ADAMW_BETAS,
-    )
+    groups = [
+        {
+            "params": decay_params,
+            "weight_decay": WEIGHT_DECAY,
+            "lr": config.PEAK_LR,
+        },
+        {
+            "params": channel_mixer_params,
+            "weight_decay": WEIGHT_DECAY_CHANNEL_MIXER,
+            "lr": config.PEAK_LR,
+        },
+        {
+            "params": decay_head_params,
+            "weight_decay": WEIGHT_DECAY_HEAD,
+            "lr": config.PEAK_LR,
+        },
+        {"params": encode_params, "weight_decay": 1e-2, "lr": config.PEAK_LR},
+        {"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR},
+    ]
+    # Research iter 29 (2026-07-21): RWKV_MUON=1 -> hybrid Muon+AdamW (rwkv/muon.py).
+    # The four MATRIX groups (decay/channel_mixer/head/encode -- exactly the current wd
+    # groups) switch to Muon at RWKV_MUON_LR (their own base lr; the LR schedulers scale
+    # per-group bases, so warmup/decay shapes carry over); other_params stay AdamW.
+    # wd_lr_scale keeps matrix weight decay at the AdamW-equivalent absolute rate.
+    # Default unset = plain torch.optim.AdamW, byte-identical.
+    if os.environ.get("RWKV_MUON", "0") == "1":
+        from rwkv.muon import MuonAdamW
+        muon_lr = float(os.environ.get("RWKV_MUON_LR", "0.02"))
+        muon_momentum = float(os.environ.get("RWKV_MUON_MOMENTUM", "0.95"))
+        for g in groups[:4]:
+            g["use_muon"] = True
+            g["wd_lr_scale"] = config.PEAK_LR / muon_lr
+            g["lr"] = muon_lr
+        n_muon = sum(p.numel() for g in groups[:4] for p in g["params"])
+        n_adam = sum(p.numel() for p in groups[4]["params"])
+        print(f"[muon] hybrid Muon+AdamW ON: muon_lr={muon_lr} momentum={muon_momentum} "
+              f"({n_muon:,} matrix params on Muon, {n_adam:,} on AdamW)")
+        return MuonAdamW(groups, betas=ADAMW_BETAS, eps=ADAMW_EPS,
+                         muon_momentum=muon_momentum)
+    return torch.optim.AdamW(groups, eps=ADAMW_EPS, betas=ADAMW_BETAS)
 
 
 def log_model(log, model: SrsRWKV):
