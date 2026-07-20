@@ -132,7 +132,42 @@ small learned mixing matrix stable/mass-preserving. If an inter-STREAM mixing fa
 the mixer. Rank: mechanism NOT APPLICABLE; SK-projection noted as a stability primitive for future
 learned-mixing designs.
 
-## Sources
+## modded-nanogpt speedrun FULL SWEEP (Andrew 2026-07-21: "maybe you should just sweep the whole repo")
+All 84 world-record entries (05/24 llm.c baseline 45 min → 05/26 1.32 min) triaged against our
+constraints. Buckets:
+
+**ALREADY HAVE (the speedrun converged on things RWKV-7/our repo already do):** ReLU² (our channel
+mixer is `square(relu(Wk·x))`), QK-norm analog (RWKV-7 L2-normalizes k and v per head), zero-init
+projections (our W_o/heads/deltas), smeared tokens (token-shift IS adjacent-token smearing),
+per-layer skip/residual scaling analogs. Validates the shared recipe space; nothing to copy.
+
+**NOT APPLICABLE (transformer/LLM-token-specific):** value embeddings (all variants), untied/re-tied
+embed↔head, U-net skips, FlexAttention/sliding windows/YaRN/window warmup, RoPE tweaks, FP8 head,
+logit softcap (our outputs are already clamped probabilities), bigram hash embeddings, paired-head
+attention (reviewed separately), MUDD/hyper-connections/partitioned HC (reviewed — xHC entry above),
+cross-stream attention XSA, EOS-aligned batching, multi-token prediction (our labels = next review
+only; next-next labels would need an LMDB rebuild = inputs-invariant violation), all the
+distributed/Triton/comm-overlap engineering (their bottleneck, not ours — our GPU speed work banked
+its own equivalents).
+
+**★ TRANSFERABLE — the one big one: the Muon-family optimizer line** (records #3/4 = the largest
+single wins in speedrun history; refined by NorMuon #41/42, Polar Express #38, accelerated variants
+#48, phase-scheduled SV transforms PR#291, cautious weight decay #43/50, interleaved Adam/Muon #57).
+Muon = orthogonalized-momentum updates for 2D weight matrices (Newton-Schulz/Polar-Express on the
+momentum), Adam for everything else. For us: **training-only (deploy untouched), params unchanged,
+Rust-irrelevant, and a genuinely FRESH track-1 family (optimizer family: 0 attempts)** — distinct
+from the closed HP-tuning family (structural optimizer change, not an HP re-tune). Unknowns: Muon's
+wins are documented at 124M–28B; our 171k model with d=32 matrices (32×32 to 512×128) is far below
+any tested scale, and our regime is data-limited (though Muon is a conditioning/step-quality story,
+not capacity). Cheap to test: hybrid Muon(2D matrices)+AdamW(rest), env-gated in train_rwkv.
+**Rank: HIGH — the next fresh track-1 family (iter 29 candidate). Cautious weight decay (apply wd
+only where update agrees with weight sign) = the cheap standalone sibling (AdamW mod, a few lines);
+NorMuon/Polar-Express = refinements to fold in only if base Muon shows signal.**
+
+**Minor/HP-adjacent (LOW):** batch-size schedule + min-lr floor (breaks our step-pairing infra —
+costly), Adam-beta fine-scheduling, decay-bias init tuning (#45/64 analogs — init family currently
+0/1), output/attention gating variants (#28/55 — our prehead gate was null; output-gating idea 1
+above remains the untested variant).
 - RWKV-7 "Goose" (arXiv 2503.14456) — current core; baseline for "what's already there".
 - Gated Attention, NeurIPS 2025 — output gating (idea 1).
 - Tied-LoRA (arXiv 2311.09578) — weight tying (idea 2).
