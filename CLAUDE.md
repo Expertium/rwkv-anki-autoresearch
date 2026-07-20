@@ -813,8 +813,14 @@ lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-mea
 architecture_d128_cmix1_user3_card2.py) + card.L1 mixer strip = **1,617,975 params
 (−8.45% vs A7, −41% vs the original 2.76M)**, STRIP_CMIX now 8 entries, ratio gate vs
 A7 (allowed 0.000149/mode); card-state shrink = deploy bonus. Smoked (params exact,
-8 strips placed, branch test). Track-1 queue: permutation init (LOW) — thin; next
-track-1 block likely needs fresh family ideas (LIT_REVIEW / FUTURE_FEATURES planning). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+8 strips placed, branch test). **→ ITER 29 PARKED on A8's DONE_EXIT (pid 16108,
+launched 02:00, ~4h → verdict ~16:30): hybrid Muon+AdamW (RWKV_MUON=1, rwkv/muon.py —
+matrices on Muon @0.02/NS5/aspect-scaled, rest bit-exact functional AdamW; matrix wd
+at the AdamW-equivalent absolute rate; from the modded-nanogpt sweep = the ONE big
+transferable, a FRESH optimizer family). 40-step E2E sanity phase before WS;
+MIN_STEP=6000; gate vs iter 26 (new bar). Smokes: Adam delegation BIT-EXACT,
+state_dict round-trip exact, NS5 sane.** Track-1 queue after: cautious-wd (in-family
+sibling if Muon shows signal), permutation init (LOW). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).
