@@ -610,19 +610,20 @@ Pairing needs identical db/MAX/seeds.
   iter 25 (0.304427/0.273441, N=2, size-exception accept) → iter 23 (0.304220/0.273423,
   PAVA champion, 64-basis head) → iter 22 (0.304497/0.273539, no-residual re-baseline) →
   iter 15 (0.303663/0.273227, last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **Track 2 CHAMPION = A6 `track2_a6` (accepted 2026-07-20 10:50): ahead 0.300429 /
-  imm 0.269236** (n=5000, 0 nanskips, **1,949,624 params** = A5 −7.83%, A4 −16.0%;
-  `champion_5k_track2.json` = ckpt `scratchpad/track2_a6/t2a6d_5586.pth` + WS/val traces
-  = the track-2 vprune ref). **= A5 + RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,
-  preset_id:2,deck_id:1 (5 bottom-saliency channel mixers stripped) — set the FULL env
-  in every future track-2 run: RWKV_GRU_HEAD=2, RWKV_STRIP_L0_VLORA=1,
-  RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768, RWKV_NO_AHEAD_RESIDUAL=1 +
-  the strip list.** vs A5: ahead +0.000103 BETTER (p=1.1e-4), imm −0.000109 (ratio
-  +0.0000658/100k, 1.5× inside the bar). A5 lineage (GRU head 2×-validated, clamp =
-  0 nanskips, WS 1.67× faster) + A6's near-free mixer mass. **All future track-2
-  candidates gate vs A6 on FULL n=5000.** A7 menu: next mixer tier (user.L3, note.L1,
-  deck.L2, card.L1, deck.L3 — saliencies 2-3× higher, diminishing freeness) or
-  structural (user 4L→3L, d_model 128→96). Lineage: A0 (d=128 1-ep retrain,
+- **Track 2 CHAMPION = A7 `track2_a7` (accepted 2026-07-21 01:07): ahead 0.300365 /
+  imm 0.268966** (n=5000, 0 nanskips, **1,767,226 params** = A6 −9.36%, A4 −26.4%;
+  `champion_5k_track2.json` = ckpt `scratchpad/track2_a7/t2a7d_5586.pth` + WS/val traces
+  = the track-2 vprune ref). **= A6 + user 4L→3L (arch scratchpad/track2_a7/
+  architecture_d128_cmix1_user3.py) + mixer strips note_id:1, deck_id:2 — full track-2
+  env now: RWKV_ARCH_MODULE=<the current champion arch>, RWKV_GRU_HEAD=2,
+  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
+  RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,
+  deck_id:1,note_id:1,deck_id:2.** vs A6: **BETTER BOTH MODES — ahead +0.000064
+  (p=1.3e-07), imm +0.000270 (p=9.1e-118, strongest p of the phase)** — user's 4th layer
+  was pure fat (4 grad recordings called it). Best full-n track-2 imm. Saliency-guided
+  pruning is 3/3 since A6; contrast A2 (deck depth = load-bearing). **All future track-2
+  candidates gate vs A7 on FULL n=5000** (A8 running: card 3L→2L + card.L1 mixer,
+  1,617,975 params, also shrinks per-card deploy state). Lineage: A0 (d=128 1-ep retrain,
   0.299857/0.269030, n=4993, 7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep
   .pth; beats champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
   A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead +0.000495 (p=1.0) but imm
@@ -807,13 +808,12 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (2026-07-20 15:05): track-2 A7 RUNNING (launched 15:00, ~11h → verdict
-~02:30): BUNDLE = user 4L→3L (new arch scratchpad/track2_a7/architecture_d128_cmix1_
-user3.py, −116,104) + next-tier mixer strips note_id:1 + deck_id:2 (−66,304) =
-**1,767,226 params (−9.36% vs A6, −26% vs A4)**; STRIP_CMIX list now 7 entries; ratio
-gate vs A6 (allowed 0.000182/mode). Smoked (params exact, 7 strips placed, branch
-test). Rationale: user = lowest-saliency stream 4-recordings-running; mixer-only tier-2
-projected to fail the imm price. Track-1 queue: permutation init (LOW) — thin; next
+**→ GPU plan (2026-07-21 01:30): A7 DONE/ACCEPTED (champion block above) → A8 RUNNING
+(launched 01:25, ~10.5h → verdict ~12:00): card 3L→2L (arch scratchpad/track2_a8/
+architecture_d128_cmix1_user3_card2.py) + card.L1 mixer strip = **1,617,975 params
+(−8.45% vs A7, −41% vs the original 2.76M)**, STRIP_CMIX now 8 entries, ratio gate vs
+A7 (allowed 0.000149/mode); card-state shrink = deploy bonus. Smoked (params exact,
+8 strips placed, branch test). Track-1 queue: permutation init (LOW) — thin; next
 track-1 block likely needs fresh family ideas (LIT_REVIEW / FUTURE_FEATURES planning). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs

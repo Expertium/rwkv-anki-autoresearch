@@ -784,6 +784,28 @@ so **iter 27 = N=4 launched immediately** (gate tail prints paired vs BOTH iter 
 iter 26). Pipeline: WS ~112m, decay 26m, eval 90m, clean. Artifacts
 scratchpad/iter26_gru3/ (iter26d_1638.pth kept), result/RWKV[-P]-iter26_gru3.jsonl.
 
+### Track-2 A7 — user 4L→3L + mixer strips (ACCEPTED 2026-07-21 01:07): better in BOTH modes at −9.4%
+
+The bundle: user stream 4L→3L (`scratchpad/track2_a7/architecture_d128_cmix1_user3.py`,
+−116,104 — removes user.L3's time AND channel mixer) + next-tier mixer strips note_id:1
++ deck_id:2 (−66,304). **1,949,624 → 1,767,226 params (−9.36% vs A6, −26.4% vs A4).**
+
+**Finals 0.300365/0.268966 (n=5000, 0 nanskips, 0 clamp resets) — vs A6: ahead +0.000064
+BETTER (p=1.3e-07); imm +0.000270 BETTER (p=9.1e-118, the strongest p-value of the
+entire 5k phase).** Ratio gate moot — both deltas are improvements. The user stream's
+4th layer was actively hurting imm (over-capacity drag), exactly what four consecutive
+grad recordings flagging user as the lowest-saliency stream predicted. Sharp contrast
+with A2 (deck 4L→3L cost ahead +0.000180 — deck depth loads the curve path): saliency
+ranking, not stream symmetry, is the guide. imm 0.268966 = the best full-n track-2 imm
+(below even the A0 anchor's intersection value). WS 5h47m (each strip keeps training
+faster), decay 1h28m, eval 2h49m.
+
+**A8 (launched 01:25, from A7's own grad recording):** card.L1.channel_mixer is back at
+tier-1-freeness saliency (1.2e-7) and BOTH card.L2 units rank bottom-tier → card 3L→2L
++ card.L1 mixer strip = 1,617,975 params (−8.45% vs A7, −41% vs the original 2.76M),
+with the deploy bonus of a smaller per-card state. Gate vs A7. Artifacts
+scratchpad/track2_a7/ (t2a7d_5586.pth kept), result/RWKV[-P]-track2_a7.jsonl.
+
 ### Iter 28 — xhead-mix v1 re-benchmark (REJECTED 2026-07-20 14:38): the iter-20 effect did not transfer
 
 `RWKV_XHEAD_MIX=1` (the zero-init per-channel (H,H,K) cross-head delta, +896 params →

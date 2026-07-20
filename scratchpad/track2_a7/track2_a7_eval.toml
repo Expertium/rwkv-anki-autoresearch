@@ -1,5 +1,5 @@
-FILE_AHEAD = "RWKV-track2_a7-s0"
-FILE_IMM = "RWKV-P-track2_a7-s0"
+FILE_AHEAD = "RWKV-track2_a7"
+FILE_IMM = "RWKV-P-track2_a7"
 MODEL_PATH = "scratchpad/track2_a7/t2a7d_5586.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -13,4 +13,3 @@ RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 10000
 NUM_FETCH_PROCESSES = 4
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s0.json"

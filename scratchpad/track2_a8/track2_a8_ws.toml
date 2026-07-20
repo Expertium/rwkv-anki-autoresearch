@@ -1,0 +1,42 @@
+# TRACK-2 A5: the grad-stats-ranked bundle on the A4 no-residual anchor --
+#   (1) GRU curve head (RWKV_GRU_HEAD=2, validated by A3's deferred-verdict gate PASS),
+#   (2) layer-0 v_lora free strip (RWKV_STRIP_L0_VLORA=1, never-grad on A3+A4 recordings),
+#   (3) state-norm clamp (RWKV_STATE_CLAMP_TAU=300 / WINDOW=32768) -- the A3-instability fix,
+#       validated on users 5002/5064 (finite, zero resets; healthy norms ~5-30 vs tau=300).
+# 2,115,359 params = A4 - 205,157 (-8.84%). Gate vs A4 (0.300504/0.269262): ratio
+# 100k*dLL/dparams <= 0.0001 BOTH modes on full n=5000 (clamp should make nanskips = 0).
+# Recipe = track-2 standard: 1 ep WS + 0.25 ep decay, seed 1234, MAX=32768, per-step clears.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/track2_a8"
+SAVE_MODEL_PREFIX = "t2a8ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
