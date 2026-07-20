@@ -784,6 +784,33 @@ so **iter 27 = N=4 launched immediately** (gate tail prints paired vs BOTH iter 
 iter 26). Pipeline: WS ~112m, decay 26m, eval 90m, clean. Artifacts
 scratchpad/iter26_gru3/ (iter26d_1638.pth kept), result/RWKV[-P]-iter26_gru3.jsonl.
 
+### Track-2 A6 — channel-mixer thinning (ACCEPTED 2026-07-20 10:50): new champion, −16% vs A4
+
+The grad-stats shortlist cashed in: `RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,
+preset_id:2,deck_id:1` (the bottom-saliency tier, stable across 3 independent
+recordings) on the A5 champion recipe. **2,115,359 → 1,949,624 params (−165,735 =
+−7.83% vs A5; −16.0% vs A4).** New machinery: `RWKV_STRIP_CMIX` env in rwkv_model.py —
+stream:layer list, dummy-mixer + residual-skip pattern (TorchScript-safe), and
+`RWKV7Config.stream_name` stamped centrally in SrsRWKV so any arch module works.
+Smokes: params exact, correct mixers by true stream name (which exposed the deck/note
+ordering erratum), scripted-branch test (dodging the W_v zero-init trap), off-path
+byte-identity.
+
+**Finals 0.300429/0.269236 (n=5000, 0 nanskips, 0 clamp resets in eval) — vs A5:
+ahead +0.000103 BETTER (p=1.1e-04); imm −0.000109 worse (p=1.0).** Ratio gate:
+ahead negative (better), imm +0.0000658 per 100k = 1.5× inside the ≤0.0001 bar →
+**ACCEPTED, new track-2 champion.** 165,735 params bought at an imm price of ~0.0001
+with an ahead *improvement* — consistent with the stripped mixers competing for
+regularization budget rather than contributing signal. Vals tracked A5 at parity the
+entire run (WS-end 0.3254/0.3056 vs 0.3256/0.3056; decay-end 0.3229/0.3041 vs
+0.3227/0.3038).
+
+**A7 shortlist (from A6's own grad recording — note the diminishing freeness: this
+tier's saliencies are ~2-3× the tier just stripped):** next mixers = user.L3, note.L1,
+deck.L2, card.L1, deck.L3 (another 165,760), OR pivot structural: user 4L→3L,
+d_model 128→96. Pipeline: WS 6h18m, decay 1h33m, eval 2h55m, clean. Artifacts
+scratchpad/track2_a6/ (t2a6d_5586.pth kept), result/RWKV[-P]-track2_a6.jsonl.
+
 ### Iter 27 — GRU head N=4 (REJECTED 2026-07-20 00:01): the N-sweep peaks at 3
 
 `RWKV_GRU_HEAD=4`, 171,840 params. **Finals 0.304353/0.273526 (n=5000, 0 nanskips) —

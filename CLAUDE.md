@@ -610,16 +610,19 @@ Pairing needs identical db/MAX/seeds.
   iter 25 (0.304427/0.273441, N=2, size-exception accept) → iter 23 (0.304220/0.273423,
   PAVA champion, 64-basis head) → iter 22 (0.304497/0.273539, no-residual re-baseline) →
   iter 15 (0.303663/0.273227, last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **Track 2 CHAMPION = A5 `track2_a5` (accepted 2026-07-19 03:21): ahead 0.300532 /
-  imm 0.269127** (n=5000, 0 nanskips, **2,115,359 params** = A4 −8.84%;
-  `champion_5k_track2.json` = ckpt `scratchpad/track2_a5/t2a5d_5586.pth` + WS/val traces
-  = the track-2 vprune ref). **= A4 + GRU curve head (RWKV_GRU_HEAD=2) + L0-v_lora strip
-  (RWKV_STRIP_L0_VLORA=1) + state-norm clamp (RWKV_STATE_CLAMP_TAU=300 WINDOW=32768) —
-  set ALL of these in every future track-2 run.** vs A4: imm +0.000136 BETTER (p=4e-38,
-  reproduces A3), ahead −0.000028 noise; ratio gate 7×-inside. The clamp contained the
-  GRU instability completely (0 nanskips vs A3's 129; CLAMP_NOTES.md) and the dummy strip
-  made WS ~1.67× faster (3h58m vs A4's 6h37m — A4 still computed the dead ahead head).
-  **All future track-2 candidates gate vs A5 on FULL n=5000.** Lineage: A0 (d=128 1-ep retrain,
+- **Track 2 CHAMPION = A6 `track2_a6` (accepted 2026-07-20 10:50): ahead 0.300429 /
+  imm 0.269236** (n=5000, 0 nanskips, **1,949,624 params** = A5 −7.83%, A4 −16.0%;
+  `champion_5k_track2.json` = ckpt `scratchpad/track2_a6/t2a6d_5586.pth` + WS/val traces
+  = the track-2 vprune ref). **= A5 + RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,
+  preset_id:2,deck_id:1 (5 bottom-saliency channel mixers stripped) — set the FULL env
+  in every future track-2 run: RWKV_GRU_HEAD=2, RWKV_STRIP_L0_VLORA=1,
+  RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768, RWKV_NO_AHEAD_RESIDUAL=1 +
+  the strip list.** vs A5: ahead +0.000103 BETTER (p=1.1e-4), imm −0.000109 (ratio
+  +0.0000658/100k, 1.5× inside the bar). A5 lineage (GRU head 2×-validated, clamp =
+  0 nanskips, WS 1.67× faster) + A6's near-free mixer mass. **All future track-2
+  candidates gate vs A6 on FULL n=5000.** A7 menu: next mixer tier (user.L3, note.L1,
+  deck.L2, card.L1, deck.L3 — saliencies 2-3× higher, diminishing freeness) or
+  structural (user 4L→3L, d_model 128→96). Lineage: A0 (d=128 1-ep retrain,
   0.299857/0.269030, n=4993, 7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep
   .pth; beats champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
   A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead +0.000495 (p=1.0) but imm
@@ -799,11 +802,9 @@ research_5k_verbose.md.**
 **ITER 27 REJECTED (2026-07-20 00:01): GRU N=4 = ahead −0.000411 / imm −0.000172 worse
 than N=3 (p=1.0 both); n=5000, 0 nanskips. THE N-SWEEP PEAKS AT 3 — closed, no N=5;
 iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
-**→ GPU plan (2026-07-20 00:15): track-2 A6 RUNNING (auto-started 00:02, ~11h →
-verdict ~13:00): RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,deck_id:1 on the
-A5 recipe = 1,949,624 params (−7.83%); ratio gate vs A5. Smokes: params exact, correct
-5 mixers stripped by name, scripted-forward branch (stripped ≡ time-mixer out), off-path
-= A5 byte-identical. **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+**→ GPU plan (2026-07-20 11:05): A6 DONE/ACCEPTED (champion block above) → iter 28
+RUNNING (xhead v1 re-benchmark, auto-started 10:52, verdict ~14:30, gates vs iter 26
+under the new rounded-4dp bar). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).
