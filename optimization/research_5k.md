@@ -68,8 +68,9 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 
 Start = the upstream d=128 arch retrained through the CURRENT track-1 pipeline (plain, 1 ep WS +
 0.25 ep decay, **MAX=32768** — the track-2 standard; 66000 thrashes 12 GB at d=128; the upstream
-.pth got 12 epochs and is not budget-comparable). `ratio` = `100,000·ΔLL/Δparams` per mode;
-**accept iff BOTH ≤ 0.0001** (Andrew 2026-07-15, tightened from per-50k: the A0-vs-champ5k_plain
+.pth got 12 epochs and is not budget-comparable). `ratio` = `100,000·ΔLL/Δparams` per mode,
+ΔLL = candidate − champion, so **NEGATIVE ratio = candidate BETTER** (summaries quote raw
+deltas in the opposite, improvement-positive convention); **accept iff BOTH ≤ 0.0001** (Andrew 2026-07-15, tightened from per-50k: the A0-vs-champ5k_plain
 collapse itself costs 0.000074/0.000086 per 50k — the old bar would accept ablations no better
 than the collapse average; the per-100k bar demands ~1.5–1.7× better). Current track-2 champion
 = the highest-A accepted row.
