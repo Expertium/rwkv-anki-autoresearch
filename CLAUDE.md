@@ -802,9 +802,19 @@ research_5k_verbose.md.**
 **ITER 27 REJECTED (2026-07-20 00:01): GRU N=4 = ahead −0.000411 / imm −0.000172 worse
 than N=3 (p=1.0 both); n=5000, 0 nanskips. THE N-SWEEP PEAKS AT 3 — closed, no N=5;
 iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
-**→ GPU plan (2026-07-20 11:05): A6 DONE/ACCEPTED (champion block above) → iter 28
-RUNNING (xhead v1 re-benchmark, auto-started 10:52, verdict ~14:30, gates vs iter 26
-under the new rounded-4dp bar). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+**ITER 28 REJECTED (2026-07-20 14:38): xhead v1 on the iter-26 recipe = ahead −0.000114
+/ imm −0.000160 worse (p=1.0 both); n=5000, 0 nanskips. Iter 20's old-recipe gain did
+NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
+exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
+lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
+**→ GPU plan (2026-07-20 15:05): track-2 A7 RUNNING (launched 15:00, ~11h → verdict
+~02:30): BUNDLE = user 4L→3L (new arch scratchpad/track2_a7/architecture_d128_cmix1_
+user3.py, −116,104) + next-tier mixer strips note_id:1 + deck_id:2 (−66,304) =
+**1,767,226 params (−9.36% vs A6, −26% vs A4)**; STRIP_CMIX list now 7 entries; ratio
+gate vs A6 (allowed 0.000182/mode). Smoked (params exact, 7 strips placed, branch
+test). Rationale: user = lowest-saliency stream 4-recordings-running; mixer-only tier-2
+projected to fail the imm price. Track-1 queue: permutation init (LOW) — thin; next
+track-1 block likely needs fresh family ideas (LIT_REVIEW / FUTURE_FEATURES planning). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).

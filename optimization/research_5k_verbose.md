@@ -784,6 +784,24 @@ so **iter 27 = N=4 launched immediately** (gate tail prints paired vs BOTH iter 
 iter 26). Pipeline: WS ~112m, decay 26m, eval 90m, clean. Artifacts
 scratchpad/iter26_gru3/ (iter26d_1638.pth kept), result/RWKV[-P]-iter26_gru3.jsonl.
 
+### Iter 28 — xhead-mix v1 re-benchmark (REJECTED 2026-07-20 14:38): the iter-20 effect did not transfer
+
+`RWKV_XHEAD_MIX=1` (the zero-init per-channel (H,H,K) cross-head delta, +896 params →
+172,349) on the full iter-26 champion recipe. **Finals 0.304056/0.273513 (n=5000,
+0 nanskips) — vs iter 26: ahead −0.000114 (p=1.0), imm −0.000160 (p=1.0), BOTH worse.**
+The identical mechanism vs the iter-15 recipe was +0.000178/+0.000107 at p 2e-10/2e-25;
+on the GRU-N=3/PAVA/no-residual recipe the channel measures *negative*. Plausible
+mechanism: the GRU head restructures what the trunk must deliver, and the readout-mix
+channel that helped the 64-basis softmax head is redundant-to-harmful for three tiny
+(w,S,d) linears. **The transfer-failure ledger grows** (GRU imm win d=128→d=32; xhead
+old→new recipe): old-recipe wins are never grafted, only re-measured. **V3 (wd
+exclusion) deprioritized with INVERTED rationale** — it would let a negative-measuring
+delta grow. Readout/xhead family: 0/3 on current lineages, effectively closed pending
+genuinely new readout ideas. Vals: parity with iter 26 the whole run (decay-end
+0.3261/0.3085 vs 0.3260/0.3082) — eval decided, as usual. Pipeline: WS 111m, decay 27m,
+eval 87m, clean. Artifacts scratchpad/iter28_xhead/ (iter28d_1638.pth kept),
+result/RWKV[-P]-iter28_xhead.jsonl. GPU → track-2 A7.
+
 ### Track-2 A6 — channel-mixer thinning (ACCEPTED 2026-07-20 10:50): new champion, −16% vs A4
 
 The grad-stats shortlist cashed in: `RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,
