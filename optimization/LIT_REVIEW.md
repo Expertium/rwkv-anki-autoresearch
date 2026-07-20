@@ -111,9 +111,31 @@ richer readout); it's an expressivity add in a DATA-limited regime (~0.0006 sits
 **Rank LOW-MEDIUM** (above AttnRes, below output-gating/EMA). It's essentially talking-heads mixing (cf. the
 MHLA reference below). Worth ONE cheap test at 5k scale, not now.
 
+## Hyper-Connections / xHC — residual-stream expansion (arXiv 2607.14530, Andrew 2026-07-21)
+xHC (SJTU/Xiaohongshu) scales Hyper-Connections to N=16 residual streams: HC replaces the single
+residual stream with N parallel streams + three learned per-layer mappings (aggregate N→1, distribute
+1→N, and an N×N inter-stream mixer); **mHC** (the predecessor, inherited here) stabilizes the mixer by
+projecting it onto the **Birkhoff polytope via Sinkhorn–Knopp** — doubly-stochastic (rows+cols sum to 1)
+= mass-preserving mixing, so ∏H_res across depth cannot amplify/attenuate signal (normalization-free
+depth stability). xHC adds write-back enrichment (multi-scale causal depthwise convs + Gram–Schmidt)
+and sparse k-of-N stream routing; +4.0 avg downstream on an 18B MoE, 1.19–1.50× compute efficiency.
+**Fit to us = NONE (Andrew's prior confirmed, stronger than the AttnRes case):** (1) the whole mechanism
+manages information flow across DEPTH — our stacks are 1–4 layers (and shrinking: A7 removed a user
+layer and IMPROVED both modes); at depth ≤4 the ∏H_res instability the Sinkhorn constraint solves does
+not arise; (2) their gains are capacity gains at 2.5B–28B — our capacity-adds are 0-for-everything at
+both d=32 and d=128 (data/regularization-bound, the opposite regime); (3) N residual streams multiply
+per-entity hidden state ~N× in the Rust engine = a deploy-contract violation on the axis the entire
+quant endgame compressed (9 B/card). **Salvageable primitive (the part worth remembering): the
+Sinkhorn-Knopp doubly-stochastic projection itself** — a cheap, normalization-free way to make ANY
+small learned mixing matrix stable/mass-preserving. If an inter-STREAM mixing family ever opens
+(learned connections between the 5 streams at matched layers — hierarchy order preserved), SK-constrain
+the mixer. Rank: mechanism NOT APPLICABLE; SK-projection noted as a stability primitive for future
+learned-mixing designs.
+
 ## Sources
 - RWKV-7 "Goose" (arXiv 2503.14456) — current core; baseline for "what's already there".
 - Gated Attention, NeurIPS 2025 — output gating (idea 1).
 - Tied-LoRA (arXiv 2311.09578) — weight tying (idea 2).
 - Enhancing Linear Attention with Residual Learning (arXiv 2509.25223) — idea 3.
 - MoE RWKV-7 meta-learner (arXiv 2504.08247), MHLA (arXiv 2601.07832) — multi-head expressivity; reference.
+- xHC: Expanded Hyper-Connections (arXiv 2607.14530) — residual-stream expansion; not applicable, SK-projection primitive noted.
