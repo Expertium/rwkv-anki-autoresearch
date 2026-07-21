@@ -46,14 +46,17 @@ def compare(cand_path, champ_path, mode, intersect=False):
     champ = load_logloss(champ_path)
     if set(cand) != set(champ):
         if intersect:
-            # --intersect (track-2, 2026-07-15): the 1-ep d=128 models NaN-skip a few
-            # mega-chunk users (whole-user skips, recorded in *.nanskip.jsonl), and each
-            # model may skip a DIFFERENT set -- compare on the finite-user intersection.
+            # --intersect serves two protocols:
+            # (1) track-2 NaN-skip models (2026-07-15): each model may skip a different
+            #     few mega-chunk users -- compare on the finite-user intersection;
+            # (2) the VAL/TEST split (Andrew 2026-07-21): candidates eval ONLY the val
+            #     half (users 5001-7500, n=2500) and pair against the champion's
+            #     full-range jsonl -- the intersection IS the val set by design.
             common = set(cand) & set(champ)
             print(f"[{mode}] intersect: n_cand={len(cand)} n_champ={len(champ)} -> "
                   f"common={len(common)} (dropped {len(cand) - len(common)} cand-only, "
                   f"{len(champ) - len(common)} champ-only)")
-            if len(common) < 4000:
+            if len(common) < 2000:
                 raise SystemExit(f"ERROR [{mode}]: intersection suspiciously small ({len(common)})")
             cand = {u: v for u, v in cand.items() if u in common}
             champ = {u: v for u, v in champ.items() if u in common}

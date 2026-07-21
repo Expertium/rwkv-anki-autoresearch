@@ -593,23 +593,31 @@ Pairing needs identical db/MAX/seeds.
 ### CURRENT STATE (updated 2026-07-15 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology moves to optimization/HISTORY.md "5k-era LIVE STATE archive"; per-iter detail lives in research_5k_verbose.md)
 
 **Champions / anchors:**
-- **Track 1 (d=32 plain) CHAMPION = iter 26 `iter26_gru3`: ahead 0.303942 / imm 0.273353,
-  171,453 params** (n=5000, 0 nanskips; `champion_5k_plain.json` = ckpt
-  `scratchpad/iter26_gru3/iter26d_1638.pth` + WS/val traces = the track-1 vprune ref).
-  **FIRST ACCEPT UNDER THE NEW GATE (Andrew 2026-07-19 ~21:00): GRU head N=3 — ahead
-  +0.000485 (p=4.4e-42, the largest ahead gain of the phase) / imm +0.000088→0.0001
-  (p=4.8e-09) vs iter 25.** Champion recipe env (set ALL in every future track-1 run +
-  the final QAT run): RWKV_NO_AHEAD_RESIDUAL=1, RWKV_ZERO_FEATURES=22,
+- **Track 1 (d=32 plain) CHAMPION = iter 29 `iter29_muon` (accepted 2026-07-21 16:05):
+  ahead 0.302033 / imm 0.271440 ON THE VAL HALF (5001–7500, n=2500, 0 nanskips — the
+  FIRST val-split verdict; val-half absolutes are NOT comparable to full-range iters
+  ≤28), 171,453 params** (`champion_5k_plain.json` = ckpt
+  `scratchpad/iter29_muon/iter29d_1638.pth` + WS/val traces = the track-1 vprune ref).
+  **= iter 26 + hybrid Muon+AdamW (rwkv/muon.py) — the first OPTIMIZER-family win:
+  matrix wd-groups on Muon (lr 0.02, momentum 0.95 nesterov, NS5, aspect-scaled,
+  decoupled wd at the AdamW-equivalent rate), rest bit-exact functional AdamW. vs
+  iter 26 same-users: ahead +0.000143 (p=2.5e-06), imm +0.000485 (p=6.5e-71, the
+  phase's largest imm gain).** Champion recipe env (set ALL in every future track-1 run
+  + the final QAT run): RWKV_NO_AHEAD_RESIDUAL=1, RWKV_ZERO_FEATURES=22,
   RWKV_PAVA_LAMBDA=0.1, RWKV_PROBE_DENSITY=0.08, **RWKV_GRU_HEAD=3**,
-  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768 +
+  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
+  **RWKV_MUON=1, RWKV_MUON_LR=0.02, RWKV_MUON_MOMENTUM=0.95** +
   H=2/K=16 + HP {peak_lr 1e-3, warmup 200, wd 0.01, clip 0.25} + MAX=110000.
+  Optimizer is train-time only — nothing ships to Rust. Val-lag lesson now
+  BIDIRECTIONAL (Muon trailed the 10-user val all WS tail, won eval decisively).
   PAVA middle-junction power strongly negative in ALL GRU/PAVA iters (−1.44/−1.44/−1.59).
   **Deploy contract:** learned-power PAVA rectifier on the 4 counterfactual button
   predictions (duration imputed to the frozen train median `scratchpad/iter23_pava/
   duration_median.json`) + per-step state clamp — Rust ports queued. Lineage kept:
-  iter 25 (0.304427/0.273441, N=2, size-exception accept) → iter 23 (0.304220/0.273423,
-  PAVA champion, 64-basis head) → iter 22 (0.304497/0.273539, no-residual re-baseline) →
-  iter 15 (0.303663/0.273227, last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
+  iter 26 (0.303942/0.273353 full-range, GRU N=3) → iter 25 (0.304427/0.273441, N=2,
+  size-exception accept) → iter 23 (0.304220/0.273423, PAVA champion, 64-basis head) →
+  iter 22 (0.304497/0.273539, no-residual re-baseline) → iter 15 (0.303663/0.273227,
+  last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
 - **Track 2 CHAMPION = A8 `track2_a8` (accepted 2026-07-21 12:45, ratio gate): ahead
   0.300380 / imm 0.269006** (full n=5000, 0 nanskips, **1,617,975 params** = A7 −8.45%,
   −41.4% vs the original 2.76M; `champion_5k_track2.json` = ckpt
@@ -664,9 +672,13 @@ v3 queued = v1 with the delta EXCLUDED from wd);
 loss-reweighting 0/2 (pbin 0.5 + 0.25 = linear imm/ahead trade, the SCALE lever is closed by
 interpolation — other reweighting ideas like recency/per-rating weights would be new family
 members); HP tuning CLOSED (champion HPs confirmed
-vs 19 alternatives at full eval). All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
+vs 19 alternatives at full eval); **optimizer 1/1 — Muon ACCEPTED iter 29 (the strongest
+family start of the phase: imm +0.000485 p=6.5e-71); cautious weight decay = next in
+family (iter 30), then Muon-lr/momentum micro-tuning only if cautious-wd also signals.**
+All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
 RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYERS,
-RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32.
+RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32,
+RWKV_MUON (now ON in the champion recipe).
 
 **Live rules (5k phase, both tracks):**
 - **⚠ VAL/TEST SPLIT (Andrew 2026-07-21, effective from iter 29 / post-A8): candidates eval
@@ -821,23 +833,19 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (updated 2026-07-21 13:00): A8 DONE/ACCEPTED (champion block above; the
-01:09 launch died in the ~02:35 black-screen hang — machine-wide, zero telemetry
-precursor, on driver 610.62; crash combo REMAPPED to hold RIGHT Ctrl + tap SPACE ×2,
-registry armed + rebooted; from-scratch relaunch replayed bit-exact). → ITER 29
-RUNNING (auto-fired 12:39, 40-step Muon sanity passed → full WS; verdict ~17:30,
-**FIRST VAL-SPLIT ITER: eval 5001–7500 only**): hybrid Muon+AdamW (RWKV_MUON=1,
-rwkv/muon.py — matrices on Muon @0.02/NS5/aspect-scaled, rest bit-exact functional
-AdamW; matrix wd at the AdamW-equivalent absolute rate; from the modded-nanogpt sweep
-= the ONE big transferable, a FRESH optimizer family). MIN_STEP=6000; gate vs iter 26
-(new bar, val-half pairing via --intersect). Smokes: Adam delegation BIT-EXACT,
-state_dict round-trip exact, NS5 sane.** Track-1 queue after: cautious-wd (in-family
-sibling if Muon shows signal), permutation init (LOW). Track-2 next: **A9 shortlist
-(from A8's WS grad report): note 2L→1L (note.L1.time_mixer #2-lowest saliency,
-−82,952, also HALVES per-note d=128 deploy state — note state dominates deploy
-memory) + user.L0.channel_mixer strip (#1 lowest, −33,152) + preset.L0.channel_mixer
-strip (−33,152) ≈ −149k = −9.2% vs A8; user.L2.time_mixer (user's new top layer)
-low AGAIN = the follow-up. Keep A9 conservative given A8's stability watch item.** **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+**→ GPU plan (updated 2026-07-21 16:15): A8 DONE/ACCEPTED + ITER 29 (Muon)
+DONE/ACCEPTED (both champion blocks above; A8's 01:09 launch died in the ~02:35
+black-screen hang — machine-wide, zero telemetry precursor, on driver 610.62; crash
+combo REMAPPED to hold RIGHT Ctrl + tap SPACE ×2, registry armed + rebooted;
+from-scratch relaunch replayed bit-exact). GPU FREE at 15:52. Next: **iter 30 =
+cautious weight decay (the in-family Muon sibling — Muon showed strong signal), build
++ launch now (~3.2 h with the halved val-half eval)**, then **A9 overnight: note
+2L→1L (note.L1.time_mixer #2-lowest saliency, −82,952, also HALVES per-note d=128
+deploy state — note state dominates deploy memory) + user.L0.channel_mixer strip
+(#1 lowest, −33,152) + preset.L0.channel_mixer strip (−33,152) ≈ −149k = −9.2% vs A8;
+user.L2.time_mixer (user's new top layer) low AGAIN = the follow-up. Keep A9
+conservative given A8's stability watch item.** Track-1 queue after iter 30:
+permutation init (LOW), fresh-family planning. **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).

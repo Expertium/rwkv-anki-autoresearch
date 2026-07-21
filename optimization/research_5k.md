@@ -73,6 +73,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 26 | 1–5000 | 0.3039 | 0.2734 | exact | **accepted** (new gate) | 4.4e-42 / 4.8e-09 (vs iter 25, better) | 171,453 | 0 | Andrew | GRU N=3: ahead +0.00049 = LARGEST ahead gain of the phase; imm +0.00009 → 0.0001 under the NEW rounded-4dp ≥0.0001 gate. NEW champion. |
 | 27 | 1–5000 | 0.3044 | 0.2735 | exact | rejected | 1.0 / 1.0 (vs iter 26) | 171,840 | 0 | Andrew | GRU N=4: ahead −0.0004 / imm −0.0002 worse than N=3 — the N-sweep peaks at 3, closed. Val-parity again lost eval. |
 | 28 | 1–5000 | 0.3041 | 0.2735 | exact | rejected | 1.0 / 1.0 (vs iter 26) | 172,349 | 0 | Andrew | xhead v1 re-bench: iter 20's gain did NOT transfer to the GRU-N=3 recipe (both modes worse). v3 rationale inverted → family closed. |
+| 29 | 1–5000 | 0.3020ᵛ | 0.2714ᵛ | exact | **accepted** | 2.5e-06 / 6.5e-71 (vs iter 26, better) | 171,453 | 0 | lit review | Hybrid Muon+AdamW: ahead +0.00014, imm +0.00049 (largest imm gain of the phase) — first optimizer-family win. ᵛ = VAL half 5001–7500 (first val-split row; absolute values not comparable to rows ≤28). NEW champion. |
 
 ## Track 2 — ablate the old d=128 model
 

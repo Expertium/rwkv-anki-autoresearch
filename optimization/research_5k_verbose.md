@@ -841,6 +841,44 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Iter 29 — hybrid Muon+AdamW (ACCEPTED 2026-07-21 16:05): first optimizer-family win, first val-split verdict
+
+The modded-nanogpt sweep's one big transferable: the four matrix wd-groups
+(decay/channel_mixer/head/encode) move to **Muon** (lr 0.02, momentum 0.95 nesterov,
+quintic Newton-Schulz orthogonalization in bf16, aspect-ratio step scale, decoupled wd
+at the AdamW-equivalent absolute rate via wd_lr_scale = peak_lr/muon_lr); every other
+param stays on AdamW delegated to torch's functional kernel (bit-exact vs
+torch.optim.AdamW — smoke-verified over 50 steps). `rwkv/muon.py`; RWKV_MUON unset =
+byte-identical plain AdamW. Params unchanged 171,453. A 40-step E2E sanity phase ran
+before the real WS (wiring clean).
+
+**FIRST VAL-SPLIT VERDICT (Andrew 2026-07-21): eval = val half 5001–7500 only, n=2500,
+paired vs iter 26's full-range jsonl via --intersect (champ val-half means
+0.302176/0.271924). Muon: 0.302033/0.271440, 0 nanskips — ahead +0.000143 (rounds to
+0.0001, p=2.5e-06), imm +0.000485 (p=6.5e-71, the phase's largest imm gain since the
+1500u-era data jumps). Gate PASS on all counts → NEW TRACK-1 CHAMPION.** Val-half
+absolute logloss is NOT comparable to full-range rows ≤28 (different user sample —
+the val half runs ~0.0018/~0.0014 easier for this lineage).
+
+**Val-lag lesson, now bidirectional:** Muon led the 10-user review-weighted val hugely
+at step 500 (−0.008/−0.009), converged to parity by step 1000, then trailed the
+champion by +0.001–0.003 through the entire WS tail and decay — and won the real eval
+decisively. The 10-user val predicts nothing, in either direction (10 users +
+review-weighting ≠ by-user mean over 2500).
+
+Seed-pair caveat recorded: ahead's +0.000143 sits under the ~0.0005 doctrine bar (imm
+is far above); consistent with recent-accept precedent (the p-gate is the operative
+consistency check). Ops: WS 1h57m (Muon's NS5 adds no visible step cost), decay 25m,
+val-half eval 37m — **the split halves eval wall-clock as designed**; paired_pvalue's
+intersection floor lowered 4000→2000 (the val-split shape is intended, tool fix
+committed). Recipe consequence: **RWKV_MUON=1 RWKV_MUON_LR=0.02
+RWKV_MUON_MOMENTUM=0.95 join the mandatory track-1 champion env**; the final QAT close
+run must train with Muon too (optimizer is train-time only — nothing ships to Rust).
+Next: cautious weight decay = the in-family sibling (iter 30). Artifacts
+scratchpad/iter29_muon/ (iter29d_1638.pth kept), result/RWKV[-P]-iter29_muon.jsonl
+(val half); champion_5k_plain.json = iter29_muon (15 val points, the track-1 vprune
+ref — val traces pair fine across optimizers, same schedule/steps).
+
 ### Iter 28 — xhead-mix v1 re-benchmark (REJECTED 2026-07-20 14:38): the iter-20 effect did not transfer
 
 `RWKV_XHEAD_MIX=1` (the zero-init per-channel (H,H,K) cross-head delta, +896 params →

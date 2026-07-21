@@ -44,10 +44,11 @@ def zeropower_via_newtonschulz5(G, steps: int = 5):
 
 class MuonAdamW(torch.optim.Optimizer):
     def __init__(self, param_groups, betas=(0.9, 0.999), eps=1e-8,
-                 muon_momentum=0.95, ns_steps=5):
+                 muon_momentum=0.95, ns_steps=5, cautious_wd=False):
         defaults = dict(lr=1e-3, weight_decay=0.0, betas=betas, eps=eps,
                         use_muon=False, wd_lr_scale=1.0,
-                        muon_momentum=muon_momentum, ns_steps=ns_steps)
+                        muon_momentum=muon_momentum, ns_steps=ns_steps,
+                        cautious_wd=cautious_wd)
         super().__init__(param_groups, defaults)
 
     @torch.no_grad()
@@ -77,10 +78,18 @@ class MuonAdamW(torch.optim.Optimizer):
                     buf.mul_(momentum).add_(g2d)
                     upd = g2d.add(buf, alpha=momentum)  # nesterov
                     O = zeropower_via_newtonschulz5(upd, steps=ns_steps)
+                    O_full = O.reshape(p.shape)
                     if wd_eff != 0.0:
-                        p.mul_(1.0 - wd_eff)
+                        if group["cautious_wd"]:
+                            # cautious wd (research iter 30; modded-nanogpt #43/50):
+                            # decay ONLY coords whose applied step (-lr*scale*O) agrees
+                            # with the weight's sign, i.e. w*O < 0 -- never fight a
+                            # component the update is already shrinking toward zero.
+                            p.mul_(1.0 - wd_eff * (p * O_full < 0).to(p.dtype))
+                        else:
+                            p.mul_(1.0 - wd_eff)
                     scale = max(1.0, p.size(0) / p.reshape(p.size(0), -1).size(1)) ** 0.5
-                    p.add_(O.reshape(p.shape), alpha=-lr * scale)
+                    p.add_(O_full, alpha=-lr * scale)
             else:
                 params, grads = [], []
                 exp_avgs, exp_avg_sqs, state_steps = [], [], []

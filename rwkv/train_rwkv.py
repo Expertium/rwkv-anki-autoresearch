@@ -187,13 +187,18 @@ def get_optimizer(config, model):
         from rwkv.muon import MuonAdamW
         muon_lr = float(os.environ.get("RWKV_MUON_LR", "0.02"))
         muon_momentum = float(os.environ.get("RWKV_MUON_MOMENTUM", "0.95"))
+        # Research iter 30: RWKV_MUON_CAUTIOUS_WD=1 -> masked (cautious) weight decay
+        # on the Muon groups (which hold ALL the wd mass; other_params run wd=0).
+        cautious_wd = os.environ.get("RWKV_MUON_CAUTIOUS_WD", "0") == "1"
         for g in groups[:4]:
             g["use_muon"] = True
             g["wd_lr_scale"] = config.PEAK_LR / muon_lr
             g["lr"] = muon_lr
+            g["cautious_wd"] = cautious_wd
         n_muon = sum(p.numel() for g in groups[:4] for p in g["params"])
         n_adam = sum(p.numel() for p in groups[4]["params"])
         print(f"[muon] hybrid Muon+AdamW ON: muon_lr={muon_lr} momentum={muon_momentum} "
+              f"cautious_wd={cautious_wd} "
               f"({n_muon:,} matrix params on Muon, {n_adam:,} on AdamW)")
         return MuonAdamW(groups, betas=ADAMW_BETAS, eps=ADAMW_EPS,
                          muon_momentum=muon_momentum)
