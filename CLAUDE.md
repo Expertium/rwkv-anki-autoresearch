@@ -672,9 +672,10 @@ v3 queued = v1 with the delta EXCLUDED from wd);
 loss-reweighting 0/2 (pbin 0.5 + 0.25 = linear imm/ahead trade, the SCALE lever is closed by
 interpolation — other reweighting ideas like recency/per-rating weights would be new family
 members); HP tuning CLOSED (champion HPs confirmed
-vs 19 alternatives at full eval); **optimizer 1/1 — Muon ACCEPTED iter 29 (the strongest
-family start of the phase: imm +0.000485 p=6.5e-71); cautious weight decay = next in
-family (iter 30), then Muon-lr/momentum micro-tuning only if cautious-wd also signals.**
+vs 19 alternatives at full eval); **optimizer 1/2 — Muon ACCEPTED iter 29 (the strongest
+family start of the phase: imm +0.000485 p=6.5e-71); cautious wd REJECTED iter 30 (pure
+trade: imm +0.00014 / ahead −0.00038 — the pbin shape again); micro-tuning NOT auto-queued;
+NorMuon/Polar-Express = deprioritized in-family variants.**
 All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
 RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYERS,
 RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32,
@@ -833,19 +834,18 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (updated 2026-07-21 16:15): A8 DONE/ACCEPTED + ITER 29 (Muon)
-DONE/ACCEPTED (both champion blocks above; A8's 01:09 launch died in the ~02:35
-black-screen hang — machine-wide, zero telemetry precursor, on driver 610.62; crash
-combo REMAPPED to hold RIGHT Ctrl + tap SPACE ×2, registry armed + rebooted;
-from-scratch relaunch replayed bit-exact). GPU FREE at 15:52. Next: **iter 30 =
-cautious weight decay (the in-family Muon sibling — Muon showed strong signal), build
-+ launch now (~3.2 h with the halved val-half eval)**, then **A9 overnight: note
-2L→1L (note.L1.time_mixer #2-lowest saliency, −82,952, also HALVES per-note d=128
-deploy state — note state dominates deploy memory) + user.L0.channel_mixer strip
-(#1 lowest, −33,152) + preset.L0.channel_mixer strip (−33,152) ≈ −149k = −9.2% vs A8;
-user.L2.time_mixer (user's new top layer) low AGAIN = the follow-up. Keep A9
-conservative given A8's stability watch item.** Track-1 queue after iter 30:
-permutation init (LOW), fresh-family planning. **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+**→ GPU plan (updated 2026-07-21 19:30): iter 30 (cautious wd) DONE/REJECTED (pure
+trade — scoreboard above). **A9 OVERNIGHT (launching): note 2L→1L (new arch module;
+note.L1.time_mixer #2-lowest saliency, −82,952, also HALVES per-note d=128 deploy
+state — note state dominates deploy memory) + user.L0.channel_mixer strip (#1
+lowest, −33,152) + preset.L0.channel_mixer strip (−33,152) ≈ −149k = −9.2% vs A8
+(1,617,975 → ~1,468,700); STRIP_CMIX grows to 10 entries; ratio gate vs A8 on the
+VAL half (allowed ~0.000149/mode); watch A8's stability item (2L card + now-1L note).**
+Verdict ~06:30. Track-1 queue: permutation init (LOW), fresh-family planning
+(LIT_REVIEW + FUTURE_FEATURES). Earlier today: A8 ACCEPTED + iter 29 (Muon) ACCEPTED
+(champion blocks above; A8's first launch died in the ~02:35 black-screen hang —
+zero telemetry precursor, driver 610.62; crash combo REMAPPED to RIGHT Ctrl +
+SPACE ×2, registry armed + rebooted; relaunch replayed bit-exact). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).

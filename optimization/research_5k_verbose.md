@@ -879,6 +879,29 @@ scratchpad/iter29_muon/ (iter29d_1638.pth kept), result/RWKV[-P]-iter29_muon.jso
 (val half); champion_5k_plain.json = iter29_muon (15 val points, the track-1 vprune
 ref — val traces pair fine across optimizers, same schedule/steps).
 
+### Iter 30 — cautious weight decay (REJECTED 2026-07-21 19:20): a pure imm/ahead trade
+
+The in-family sibling of the accepted iter-29 Muon (modded-nanogpt #43/50):
+RWKV_MUON_CAUTIOUS_WD=1 masks the decoupled decay on the Muon matrix groups to only
+those coordinates whose applied step agrees with the weight's sign (never fight a
+component the update is already shrinking; all wd mass lives on the Muon groups —
+other_params run wd=0, so the Muon-branch mask is complete coverage). Implementation
+`rwkv/muon.py` (cautious_wd group flag; off-path bit-exact — smoke A proved the
+refactor byte-identical on the champion path; masked formula exact, mask fraction
+0.500 on random data).
+
+**Val half n=2500, 0 nanskips: ahead 0.302409 = −0.000376 WORSE (p=1.0); imm 0.271301
+= +0.000139 BETTER (p=4.2e-11 — would pass the gate alone). REJECTED on ahead.** The
+shape echoes the pbin dose-response lesson: one mode pays for the other. Reading:
+freeing growing weights from decay pressure helps the imm pathway but hurts the
+curve/ahead pathway — regularization asymmetry between the two heads again.
+**Optimizer family 1/2** (Muon accepted, cautious-wd rejected); per the scoreboard
+rule, Muon-lr/momentum micro-tuning is NOT auto-queued (cautious-wd didn't signal
+both modes); NorMuon/Polar-Express stay as possible in-family variants, deprioritized.
+The 10-user val ran at parity with iter 29 the whole run — uninformative again. WS
+1h57m + decay 25m + val-half eval 45m. Artifacts scratchpad/iter30_cwd/; iter 29
+stays champion + vprune ref.
+
 ### Iter 28 — xhead-mix v1 re-benchmark (REJECTED 2026-07-20 14:38): the iter-20 effect did not transfer
 
 `RWKV_XHEAD_MIX=1` (the zero-init per-channel (H,H,K) cross-head delta, +896 params →
