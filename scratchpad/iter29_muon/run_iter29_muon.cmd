@@ -5,6 +5,9 @@ REM the iter-26 champion recipe -- the modded-nanogpt sweep's one big transferab
 REM (fresh optimizer family; matrices on Muon @ 0.02, rest on AdamW; matrix wd at
 REM the AdamW-equivalent absolute rate). Gate (new bar): rounded-4dp >=0.0001
 REM BOTH modes + p<0.0001 vs iter 26 (0.303942/0.273353).
+REM FIRST VAL-SPLIT ITER (Andrew 2026-07-21): eval VAL half 5001-7500 only; test
+REM half 7501-10000 reserved for end-of-track honest numbers. Gate pairs vs the
+REM champion's full-range jsonl via --intersect (= the val users automatically).
 REM STEP 0 waits for A8's DONE_EXIT; STEP 0.5 = 40-step E2E sanity (bench mode)
 REM before committing to the full WS. VPRUNE_MIN_STEP=6000 (different optimizer
 REM = different early dynamics). Launch DETACHED (CRLF file!).
@@ -84,8 +87,8 @@ if not %ERRORLEVEL%==0 (
 )
 
 del /Q result\RWKV-iter29_muon.jsonl result\RWKV-P-iter29_muon.jsonl result\RWKV-iter29_muon-solo.jsonl result\RWKV-P-iter29_muon-solo.jsonl result\RWKV-iter29_muon-s0.jsonl result\RWKV-P-iter29_muon-s0.jsonl result\RWKV-iter29_muon-s1.jsonl result\RWKV-P-iter29_muon-s1.jsonl result\RWKV-iter29_muon.nanskip.jsonl result\RWKV-iter29_muon-s0.nanskip.jsonl result\RWKV-iter29_muon-s1.nanskip.jsonl result\RWKV-iter29_muon-solo.nanskip.jsonl 2>nul
-echo === WRITE EVAL TOML (FULL 5001-10000) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/iter29_muon iter29d scratchpad/iter29_muon/iter29_muon_eval.toml RWKV-iter29_muon RWKV-P-iter29_muon 5001 10000 >> "%LOG%" 2>&1
+echo === WRITE EVAL TOML (VAL 5001-7500, first val/test-split iter per Andrew 2026-07-21) %TIME% === >> "%LOG%"
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/iter29_muon iter29d scratchpad/iter29_muon/iter29_muon_eval.toml RWKV-iter29_muon RWKV-P-iter29_muon 5001 7500 >> "%LOG%" 2>&1
 echo === EVAL (phased sharded, state-clamp ON) %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe -u optimization/eval_sharded.py --config scratchpad/iter29_muon/iter29_muon_eval.toml >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (

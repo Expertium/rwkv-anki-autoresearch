@@ -610,22 +610,27 @@ Pairing needs identical db/MAX/seeds.
   iter 25 (0.304427/0.273441, N=2, size-exception accept) → iter 23 (0.304220/0.273423,
   PAVA champion, 64-basis head) → iter 22 (0.304497/0.273539, no-residual re-baseline) →
   iter 15 (0.303663/0.273227, last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **Track 2 CHAMPION = A7 `track2_a7` (accepted 2026-07-21 01:07): ahead 0.300365 /
-  imm 0.268966** (n=5000, 0 nanskips, **1,767,226 params** = A6 −9.36%, A4 −26.4%;
-  `champion_5k_track2.json` = ckpt `scratchpad/track2_a7/t2a7d_5586.pth` + WS/val traces
-  = the track-2 vprune ref). **= A6 + user 4L→3L (arch scratchpad/track2_a7/
-  architecture_d128_cmix1_user3.py) + mixer strips note_id:1, deck_id:2 — full track-2
-  env now: RWKV_ARCH_MODULE=<the current champion arch>, RWKV_GRU_HEAD=2,
-  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
-  RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:1,user_id:2,preset_id:1,preset_id:2,
-  deck_id:1,note_id:1,deck_id:2.** vs A6: **BETTER BOTH MODES — ahead +0.000064
-  (p=1.3e-07), imm +0.000270 (p=9.1e-118, strongest p of the phase)** — user's 4th layer
-  was pure fat (4 grad recordings called it). Best full-n track-2 imm. Saliency-guided
-  pruning is 3/3 since A6; contrast A2 (deck depth = load-bearing). **All future track-2
-  candidates gate vs A7 on FULL n=5000** (A8 running: card 3L→2L + card.L1 mixer,
-  1,617,975 params, also shrinks per-card deploy state). Lineage: A0 (d=128 1-ep retrain,
-  0.299857/0.269030, n=4993, 7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep
-  .pth; beats champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
+- **Track 2 CHAMPION = A8 `track2_a8` (accepted 2026-07-21 12:45, ratio gate): ahead
+  0.300380 / imm 0.269006** (full n=5000, 0 nanskips, **1,617,975 params** = A7 −8.45%,
+  −41.4% vs the original 2.76M; `champion_5k_track2.json` = ckpt
+  `scratchpad/track2_a8/t2a8d_5586.pth` + WS/val traces = the track-2 vprune ref).
+  **= A7 + card 3L→2L (arch scratchpad/track2_a8/architecture_d128_cmix1_user3_card2.py)
+  + card.L1 mixer strip — full track-2 env now: RWKV_ARCH_MODULE=<the current champion
+  arch>, RWKV_GRU_HEAD=2, RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300,
+  RWKV_STATE_CLAMP_WINDOW=32768, RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:1,
+  user_id:2,preset_id:1,preset_id:2,deck_id:1,note_id:1,deck_id:2,card_id:1.** vs A7:
+  ahead +0.0000155 / imm +0.0000402 worse (p 0.59/0.97) → per-100k ratios +0.0000104 /
+  +0.0000269 = 10×/3.7× inside the ≤0.0001 bar; per-card d=128 deploy state −1/3.
+  Saliency-guided pruning 4/4 since A6. **⚠ STABILITY WATCH ITEM: A8's training-time val
+  passes showed 2 deterministic NaN batch-skips (val users 5047+5052, reproduced
+  bit-exact across a crash-relaunch) + recurring 1-head/layer-1 RESET containment on a
+  ~327k-token mega val stream; final eval CLEAN (5000/5000, 1066 soft SHRINKs/0 RESETs)
+  but A5–A7 trained clean → card 2L looks stability-negative; carry into A9 + QAT close.**
+  Prior champion A7 (`track2_a7`, 0.300365/0.268966, 1,767,226): user 4L→3L + note.L1/
+  deck.L2 strips, BETTER both modes vs A6 (imm p=9.1e-118, strongest of the phase) — user's
+  4th layer was pure fat. Lineage: A0 (d=128 1-ep retrain, 0.299857/0.269030, n=4993,
+  7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep .pth; beats
+  champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
   A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead +0.000495 (p=1.0) but imm
   0.000062 BETTER (p=1.1e-07) — cheaper + more asymmetric than d=32's +0.000834/+0.000312.
 - **QAT deploy truth (FROZEN until research closes) = champ5k_b1** (0.306629/0.277893 quant-aware;
@@ -664,6 +669,14 @@ RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYE
 RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32.
 
 **Live rules (5k phase, both tracks):**
+- **⚠ VAL/TEST SPLIT (Andrew 2026-07-21, effective from iter 29 / post-A8): candidates eval
+  ONLY the VAL half = users 5001–7500 (n=2500); all verdicts + p-gates run there, pairing vs
+  the champion's existing jsonls via `paired_pvalue --intersect`. TEST = 7501–10000 is touched
+  ONLY at each track's close (final champion + the 2-ep confirmation + QAT runs) for honest
+  numbers — NEVER for decisions.** Delta bars/p-thresholds unchanged (expect ~1.4× noisier SEs
+  at n=2500). Training-val 5001–5010 + tuner 5001–6000 already ⊂ val (vprune refs stay valid).
+  Eval tomls: `write_eval_toml ... 5001 7500`. Bonus: eval wall-clock halves. Full text:
+  research_5k_notes.md methodology amendment.
 - **RWKV_NO_AHEAD_RESIDUAL=1 in EVERY future run, both tracks (Andrew 2026-07-16: the
   piecewise-linear curve correction is DISABLED)** — track-1 iters and track-2 A3+ alike;
   A2 grandfathered (mid-flight). Iter 22 measures the cost; re-baseline is Andrew's call.
@@ -808,19 +821,23 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (2026-07-21 01:30): A7 DONE/ACCEPTED (champion block above) → A8 RUNNING
-(launched 01:25, ~10.5h → verdict ~12:00): card 3L→2L (arch scratchpad/track2_a8/
-architecture_d128_cmix1_user3_card2.py) + card.L1 mixer strip = **1,617,975 params
-(−8.45% vs A7, −41% vs the original 2.76M)**, STRIP_CMIX now 8 entries, ratio gate vs
-A7 (allowed 0.000149/mode); card-state shrink = deploy bonus. Smoked (params exact,
-8 strips placed, branch test). **→ ITER 29 PARKED on A8's DONE_EXIT (pid 16108,
-launched 02:00, ~4h → verdict ~16:30): hybrid Muon+AdamW (RWKV_MUON=1, rwkv/muon.py —
-matrices on Muon @0.02/NS5/aspect-scaled, rest bit-exact functional AdamW; matrix wd
-at the AdamW-equivalent absolute rate; from the modded-nanogpt sweep = the ONE big
-transferable, a FRESH optimizer family). 40-step E2E sanity phase before WS;
-MIN_STEP=6000; gate vs iter 26 (new bar). Smokes: Adam delegation BIT-EXACT,
+**→ GPU plan (updated 2026-07-21 13:00): A8 DONE/ACCEPTED (champion block above; the
+01:09 launch died in the ~02:35 black-screen hang — machine-wide, zero telemetry
+precursor, on driver 610.62; crash combo REMAPPED to hold RIGHT Ctrl + tap SPACE ×2,
+registry armed + rebooted; from-scratch relaunch replayed bit-exact). → ITER 29
+RUNNING (auto-fired 12:39, 40-step Muon sanity passed → full WS; verdict ~17:30,
+**FIRST VAL-SPLIT ITER: eval 5001–7500 only**): hybrid Muon+AdamW (RWKV_MUON=1,
+rwkv/muon.py — matrices on Muon @0.02/NS5/aspect-scaled, rest bit-exact functional
+AdamW; matrix wd at the AdamW-equivalent absolute rate; from the modded-nanogpt sweep
+= the ONE big transferable, a FRESH optimizer family). MIN_STEP=6000; gate vs iter 26
+(new bar, val-half pairing via --intersect). Smokes: Adam delegation BIT-EXACT,
 state_dict round-trip exact, NS5 sane.** Track-1 queue after: cautious-wd (in-family
-sibling if Muon shows signal), permutation init (LOW). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+sibling if Muon shows signal), permutation init (LOW). Track-2 next: **A9 shortlist
+(from A8's WS grad report): note 2L→1L (note.L1.time_mixer #2-lowest saliency,
+−82,952, also HALVES per-note d=128 deploy state — note state dominates deploy
+memory) + user.L0.channel_mixer strip (#1 lowest, −33,152) + preset.L0.channel_mixer
+strip (−33,152) ≈ −149k = −9.2% vs A8; user.L2.time_mixer (user's new top layer)
+low AGAIN = the follow-up. Keep A9 conservative given A8's stability watch item.** **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).

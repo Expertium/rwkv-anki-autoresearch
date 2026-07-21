@@ -2,6 +2,16 @@
 
 Train **1–5000**, eval **5001–10000** (held-out half); budget **1 WS epoch** + tuned-ratio decay (2→1 on 2026-07-09 via the iter-2 budget A/B — the 2nd epoch adds nothing). Detail & reasoning → [research_5k_notes.md](research_5k_notes.md).
 
+**⚠ VAL/TEST SPLIT (Andrew 2026-07-21, both tracks, from iter 29 / post-A8 onward):** the eval
+half is split into **val = users 5001–7500** (every candidate evals ONLY this half; all
+accept/reject verdicts + p-gates run on it, n=2500) and **test = 7501–10000** (touched ONLY at
+each track's close for the final honest numbers — never for decisions). Candidates gate vs the
+champion's existing jsonls via `paired_pvalue --intersect` (pairs restrict to val users
+automatically). Rows ≤ iter 28 / ≤ A8 were full-range n=5000; the `eval users` column (track 1)
+and n notes mark the switch. Training-time validation (5001–5010) and the tuner range
+(5001–6000) already sit inside val — unchanged. Final test numbers get their own small table at
+track close.
+
 **Two research tracks (Andrew 2026-07-14), separate tables below:** **Track 1** = improve the
 small (d=32) model — the table it always was. **Track 2** = ablate the old d=128 model downward;
 acceptance = `100,000·(LL_after − LL_before)/(params_before − params_after) ≤ 0.0001` **in BOTH
@@ -92,3 +102,4 @@ comparisons pair on full n=5000, and every track-2 run is no-residual (mandatory
 | A5 | 0.3005 | 0.2691 | **accepted** | 2,115,359 | −205,157 | +0.000014 / −0.000066 | 0 | invented | GRU head + L0-v_lora strip + state clamp: imm +0.00014 BETTER (p=4e-38), ahead noise; clamp → 0 NaN-skips; WS 1.67× faster. New champion. |
 | A6 | 0.3004 | 0.2692 | **accepted** | 1,949,624 | −165,735 | −0.000062 / +0.000066 | 0 | invented | Strip 5 bottom-saliency channel mixers (RWKV_STRIP_CMIX): ahead +0.0001 BETTER, imm price 1.5× inside the bar. New champion, −16% vs A4. |
 | A7 | 0.3004 | 0.2690 | **accepted** | 1,767,226 | −182,398 | −0.000035 / −0.000148 | 0 | invented | user 4L→3L + note.L1/deck.L2 mixer strips: BETTER both modes (imm +0.00027, p=9e-118!) — user depth was pure fat. New champion, −26% vs A4. |
+| A8 | 0.3004 | 0.2690 | **accepted** | 1,617,975 | −149,251 | +0.000010 / +0.000027 | 0 | invented | card 3L→2L + card.L1 mixer strip: ~zero accuracy cost (10×/3.7× inside the bar), −41% vs 2.76M; per-card state −1/3. Training-val NaN transients (contained, eval clean) = A9 watch item. New champion. |

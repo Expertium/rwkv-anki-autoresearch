@@ -14,6 +14,23 @@ running notes live here. Pre-5k history: `research_log.md` / `log.md` / `HISTORY
 These are the accept/reject rules for every 5k experiment. Hard invariants (never change): the
 hierarchy card→note→deck→preset→global, and the same preprocessed 92-dim inputs / existing LMDBs.
 
+**⚠ VAL/TEST SPLIT AMENDMENT (Andrew 2026-07-21, both tracks, effective from iter 29 / post-A8):**
+the 5001–10000 eval half is split into **VAL = users 5001–7500** and **TEST = 7501–10000**.
+- **All accept/reject decisions run on VAL only** (candidates eval 5001–7500, n=2500; the delta
+  bars and p<0.0001 gates are unchanged — expect ~1.4× noisier paired SEs than at n=5000).
+  Candidates pair vs the champion's existing jsonls via `paired_pvalue --intersect` (the
+  intersection IS the val set when the champion file is full-range) — no champion re-evals needed.
+- **TEST is touched only at each track's close** — one eval of the final champion (plus the
+  planned 2-ep confirmation + QAT runs) for the honest numbers; never for decisions. Rationale:
+  dozens of adaptive accept/reject decisions against one fixed set overfit to it; the held-out
+  test half prices that honestly.
+- Already-inside-val, so unchanged: training-time validation users 5001–5010 (vprune refs stay
+  valid), hp-tuner tune-eval 5001–6000. Baselines (old d=128 .pth, FSRS-7 refs) have full-range
+  jsonls → subset per half as needed, no new GPU work.
+- Records: research_5k.md tables stay as-is (val-era rows marked; ≤ iter 28 / ≤ A8 were full
+  n=5000); one small "final test numbers" table per track gets filled at close.
+- Bonus: eval wall-clock halves (~3 h → ~1.5 h at d=128).
+
 1. **Split + accept gate.** Train on one 5k half, eval on the other (train 1–5000 → eval 5001–10000;
    the old d=128 model already has weights → just eval it on 5001–10000, same eval set = fair). A change
    is **accepted only if it beats the current champion in BOTH modes by ≥ 0.0001 AFTER ROUNDING

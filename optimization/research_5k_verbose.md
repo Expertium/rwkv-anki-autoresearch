@@ -806,6 +806,41 @@ tier-1-freeness saliency (1.2e-7) and BOTH card.L2 units rank bottom-tier → ca
 with the deploy bonus of a smaller per-card state. Gate vs A7. Artifacts
 scratchpad/track2_a7/ (t2a7d_5586.pth kept), result/RWKV[-P]-track2_a7.jsonl.
 
+### Track-2 A8 — card 3L→2L + card.L1 mixer strip (ACCEPTED 2026-07-21 12:45): −8.45% at ~zero cost; stability watch item
+
+The bundle (from A7's grad recording): card stream 3L→2L
+(`scratchpad/track2_a8/architecture_d128_cmix1_user3_card2.py`, −116,104) + card.L1
+channel-mixer strip (RWKV_STRIP_CMIX now 8 entries, −33,152). **1,767,226 → 1,617,975
+params (−8.45% vs A7, −41.4% vs the original 2.76M)**; also cuts per-card d=128 deploy
+state by 1/3 (2 card layers instead of 3).
+
+**Finals 0.300380/0.269006 (full n=5000, 0 nanskips, COMPLETE 5000/5000) — vs A7: ahead
++0.0000155 worse (p=0.59), imm +0.0000402 worse (p=0.97) → per-100k ratios +0.0000104 /
++0.0000269 vs the ≤0.0001 bar = 10× / 3.7× INSIDE. ACCEPTED on the ratio gate** —
+essentially free at −149,251 params. Saliency-guided pruning is now 4/4 since A6. Eval
+clamp: 1,066 soft SHRINKs / 0 RESETs (lighter than A6's 16k).
+
+**Stability watch item — the phase's first training-time instability since the clamp
+landed:** every ~500-step val pass hit (a) 2 deterministic NaN batch-skips on val users
+5047 + 5052 (short streams, below the clamp window → no-clamp path; the train-loop guard
+skipped them) and (b) recurring 1-head/layer-1 non-finite RESET containment on a mega
+val user's ~327k-token stream (window boundaries t=32768…327680). Determinism proof: the
+machine died at ~02:35 in the recurring black-screen hang (zero telemetry precursor,
+driver 610.62) mid-WS; the from-scratch relaunch (02:51) replayed val-for-val bit-exact
+INCLUDING both NaN users and the RESET pattern. None of it reached the final eval
+(clean 5000/5000), but A5–A7 trained clean → **card 2L looks stability-negative; carry
+into A9 bundling and the QAT close.** Val summaries print roster-n (595795) even when
+batches were skipped — mean-only effect, vprune unaffected (skips flatter the candidate;
+vprune kills only on worse).
+
+Ops: WS 5h36m, decay 1h20m, eval 2h48m. Grad stats recorded both phases
+(t2a8_grad_stats_ws.json + _decay.json) → A9 shortlist. **Methodology cutover: A8 is the
+last full-range (5001–10000) gated track-2 iter — Andrew's val/test split (val
+5001–7500 for verdicts, test 7501–10000 only at track close) applies from the next
+candidates on** (iter 29's parked cmd already re-pointed). Artifacts
+scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
+champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
+
 ### Iter 28 — xhead-mix v1 re-benchmark (REJECTED 2026-07-20 14:38): the iter-20 effect did not transfer
 
 `RWKV_XHEAD_MIX=1` (the zero-init per-channel (H,H,K) cross-head delta, +896 params →

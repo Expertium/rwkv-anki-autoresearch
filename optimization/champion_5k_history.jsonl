@@ -9,3 +9,4 @@
 {"name": "iter25_gru", "date": "2026-07-19 10:33:39", "final_ahead": 0.304427, "final_imm": 0.273441, "n_trace_steps": 6554, "ckpt": "scratchpad/iter25_gru/iter25d_1638.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_a5", "date": "2026-07-19 03:36:49", "final_ahead": 0.300532, "final_imm": 0.269127, "n_trace_steps": 22345, "ckpt": "scratchpad/track2_a5/t2a5d_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_a6", "date": "2026-07-20 10:51:23", "final_ahead": 0.300429, "final_imm": 0.269236, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a6/t2a6d_5586.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "track2_a7", "date": "2026-07-21 01:08:06", "final_ahead": 0.300365, "final_imm": 0.268966, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a7/t2a7d_5586.pth", "cb_wkv": "", "cb_shift": ""}
