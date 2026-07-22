@@ -833,20 +833,23 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (updated 2026-07-22 04:15): A9 DONE/ACCEPTED (champion block above;
-its first eval attempt WEDGED on user 5747 — fetch deadlock, 0 CPU/0 GPU 40 min,
-first ever on the d=128 --shards 1 path; killed + eval_sharded RESUME finished it,
-transient race not data-dependent. Also killed a LEAKED iter-29 fetch worker spinning
-1 core for 14 h — CHECK FOR ORPHAN PYTHONS after every run). **A10 LAUNCHING: user
-3L→2L (user.L1/L2 time-mixers #1/#4 lowest saliency — user depth prunable a THIRD
-time, −82,952) + note.L0.channel_mixer strip (#5, the one A9 kept, −33,147) +
-deck.L3.channel_mixer strip (#3, a mixer strip NOT the A2 depth cut, −33,147) ≈
-1,319,478 params = −10.2% vs A9, −52.2% vs 2.76M; STRIP_CMIX 10 entries; ratio gate
-vs A9 on the val half (allowed ~0.000149/mode); verdict ~13:30.** Track-1 queue:
-permutation init (LOW), fresh-family planning (LIT_REVIEW + FUTURE_FEATURES).
-2026-07-21: A8 + iter 29 (Muon) ACCEPTED, iter 30 (cautious wd) REJECTED; A8's first
-launch died in the ~02:35 black-screen hang (zero telemetry precursor, driver
-610.62; crash combo REMAPPED to RIGHT Ctrl + SPACE ×2, registry armed + rebooted). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+**→ GPU plan (updated 2026-07-22 11:40): A10 DONE/REJECTED — the chain's first floor
+after 5 accepts (both ratios over the bar 1.96×/1.76×; prime suspect = the note_id:0
+strip that left the 1L note stream a bare time-mixer). **A11 RUNNING (launched 11:35,
+verdict ~21:00): the A10 bundle MINUS note_id:0 — user 3L→2L + deck.L3 mixer strip,
+note.L0 mixer KEPT (same A10 arch module), 1,352,620 params (−7.9% vs A9, allowed
+0.000116/mode, gate vs A9 val-half). PASS → banks the size + fingers note.L0; FAIL →
+user depth floors at 3L.** ⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC: every
+eval/rerun leaves 1–2 orphan pythons, some spinning a FULL CORE (iter-29's for 14 h,
+the A9-rerun's for 8.5 h) — the trainer kills its workers ("Killed processes.") but
+the eval path doesn't; CHECK + KILL ORPHAN PYTHONS after every run (spare pythonw =
+bridge/controller, ~80000s-CPU = FSRS, and Andrew's liveplot); fix candidate: worker
+cleanup in eval_sharded/get_result. Track-1 queue: permutation init (LOW),
+fresh-family planning (LIT_REVIEW + FUTURE_FEATURES). 2026-07-21: A8 + iter 29 (Muon)
+ACCEPTED, iter 30 (cautious wd) REJECTED; A8's first launch died in the ~02:35
+black-screen hang (zero telemetry precursor, driver 610.62; crash combo REMAPPED to
+RIGHT Ctrl + SPACE ×2, registry armed + rebooted); A9's first eval WEDGED on user
+5747 (transient fetch race; eval_sharded RESUME recovered it). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).

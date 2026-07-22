@@ -841,6 +841,28 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A10 — user 3L→2L + note.L0/deck.L3 mixer strips (REJECTED 2026-07-22 11:20): the chain's first floor
+
+The bundle (from A9's grad report): user 3L→2L
+(`scratchpad/track2_a10/architecture_d128_cmix1_user2_card2_note1.py`, −82,957 —
+user.L1/L2 time-mixers ranked #1/#4) + mixer strips note_id:0 (the last note mixer,
+kept in A9 for caution; #5) + deck_id:3 (#3). 1,468,724 → 1,319,473 params (−10.2%
+vs A9, −52.2% vs 2.76M); STRIP_CMIX 10 entries.
+
+**Val half n=2500, 0 nanskips: ahead 0.298918 = +0.000293 worse (ratio +0.000196 =
+1.96× the ≤0.0001 bar), imm 0.267877 = +0.000262 worse (+0.000176 = 1.76×), p=1.0
+both → REJECTED — the first ratio-gate failure since A2, ending 5 straight accepts.**
+The bundle confounds three cuts. Prime suspect = note_id:0: it left the 1-layer note
+stream as a BARE time-mixer — the only strip in the chain's history that removed a
+stream's last remaining transform pair. User depth was 2-for-2 (A7, A10's cut =
+third) and deck.L3 was an ordinary low-saliency mixer strip. **A11 = the bundle MINUS
+the note.L0 strip (user 3L→2L + deck.L3 mixer, −116,104 = −7.9% vs A9, allowed
+0.000116/mode): a pass banks most of the size AND fingers note.L0 as the poison; a
+fail puts the posterior on user depth flooring at 3L.** Stability: 2 isolated
+training RESET events (layer-1/1-head containment — milder than A8's recurring
+pattern, not A9's zero). WS 4h37m, decay 1h10m, eval 1h17m (no wedge). Artifacts
+scratchpad/track2_a10/; A9 stays champion + vprune ref.
+
 ### Track-2 A9 — note 2L→1L + L0 mixer strips (ACCEPTED 2026-07-22 04:05): better both modes at −9.2%; cleanest run of the chain
 
 The bundle (from A8's grad report): note stream 2L→1L

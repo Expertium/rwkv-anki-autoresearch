@@ -1,6 +1,6 @@
-FILE_AHEAD = "RWKV-iter28_xhead-solo"
-FILE_IMM = "RWKV-P-iter28_xhead-solo"
-MODEL_PATH = "scratchpad/iter28_xhead/iter28d_1638.pth"
+FILE_AHEAD = "RWKV-iter30_cwd-solo"
+FILE_IMM = "RWKV-P-iter30_cwd-solo"
+MODEL_PATH = "scratchpad/iter30_cwd/iter30d_1638.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
 DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
@@ -11,6 +11,6 @@ RAW = false
 RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
-USER_END = 10000
+USER_END = 7500
 NUM_FETCH_PROCESSES = 4
 USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_solo.json"
