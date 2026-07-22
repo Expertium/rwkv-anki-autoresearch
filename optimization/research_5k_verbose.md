@@ -841,6 +841,32 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A11 — the A10 de-bundle (REJECTED 2026-07-22 19:40): user depth floors at 3L; note.L0 was the imm poison
+
+A11 = A10 minus the note_id:0 strip (same arch module — user 2L/card 2L/note 1L;
+deck.L3 mixer strip kept; note.L0 mixer restored). 1,468,724 → 1,352,620 params
+(−7.9% vs A9); allowed 0.000116/mode.
+
+**Val half n=2500, 0 nanskips: ahead 0.298916 = +0.000291 worse → ratio +0.000251 =
+2.51× the bar (FAIL); imm 0.267700 = +0.000085 worse → +0.000073 (passes alone).
+REJECTED — but the de-bundle splits A10's damage cleanly:** ahead damage is IDENTICAL
+with and without the note strip (+0.000293 A10 vs +0.000291 A11) → **user depth
+floors at 3L and owns the ahead cost** (echoes A2: long-recurrence stream depth loads
+the ahead/curve pathway — deck floors at 4, user at 3); imm damage fell +0.000262 →
++0.000085 → **note.L0's mixer was the imm poison (~+0.00018 imm)** — last-transform
+strips are costly (the only strip in the chain that removed a stream's final
+transform pair). deck.L3.cmix's own share can't be split from user depth here, but
+mixer strips were 7-for-7 harmless before note.L0, so user depth dominates.
+
+**Depth floors now mapped: card=2 (A8), note=1 (A9), user=3 (A7 ok, two 2L fails),
+deck=4 (A2). preset 3L→2L = the ONE untried depth cut** (preset.L1/L2 time-mixers
+#6/#7 in A9's saliency report) → **A12 = preset 3L→2L alone on the A9 champion base**
+(card 2/deck 4/note 1/preset 2/user 3; 1,385,767 params = −5.65% vs A9, allowed
+0.000083/mode). After A12 the chain's remaining moves are structural: LoRA-dim cuts,
+head_w squeeze, d_model 128→96 (the long-queued ~40% step). Clean run: zero training
+NaN events, WS 5h25m, decay 1h12m, eval 1h19m (no wedge). Artifacts
+scratchpad/track2_a11/; A9 stays champion + vprune ref.
+
 ### Track-2 A10 — user 3L→2L + note.L0/deck.L3 mixer strips (REJECTED 2026-07-22 11:20): the chain's first floor
 
 The bundle (from A9's grad report): user 3L→2L

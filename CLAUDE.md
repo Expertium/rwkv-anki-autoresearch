@@ -833,13 +833,16 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (updated 2026-07-22 11:40): A10 DONE/REJECTED — the chain's first floor
-after 5 accepts (both ratios over the bar 1.96×/1.76×; prime suspect = the note_id:0
-strip that left the 1L note stream a bare time-mixer). **A11 RUNNING (launched 11:35,
-verdict ~21:00): the A10 bundle MINUS note_id:0 — user 3L→2L + deck.L3 mixer strip,
-note.L0 mixer KEPT (same A10 arch module), 1,352,620 params (−7.9% vs A9, allowed
-0.000116/mode, gate vs A9 val-half). PASS → banks the size + fingers note.L0; FAIL →
-user depth floors at 3L.** ⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC: every
+**→ GPU plan (updated 2026-07-22 19:50): A10 + A11 DONE/REJECTED — the de-bundle
+SPLIT the damage: user depth FLOORS AT 3L (ahead damage identical ±note strip,
++0.00029, owns the ahead cost — long-recurrence depth serves ahead, cf. A2) and
+note.L0's mixer was the imm poison (~+0.00018; last-transform strips are costly).
+**Depth floors mapped: card=2, note=1, user=3, deck=4. A12 RUNNING (launched 19:50,
+verdict ~05:30): preset 3L→2L on the A9 base — the ONE untried depth cut
+(preset.L1/L2 #6/#7 saliency), 1,385,767 params (−5.65% vs A9, allowed
+0.000083/mode, gate vs A9 val-half). After A12 the chain goes STRUCTURAL: LoRA-dim
+cuts, head_w squeeze, d_model 128→96 (~40%, discuss with Andrew at the verdict).**
+⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC (A11's run left none — intermittent): every
 eval/rerun leaves 1–2 orphan pythons, some spinning a FULL CORE (iter-29's for 14 h,
 the A9-rerun's for 8.5 h) — the trainer kills its workers ("Killed processes.") but
 the eval path doesn't; CHECK + KILL ORPHAN PYTHONS after every run (spare pythonw =
