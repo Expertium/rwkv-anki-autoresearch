@@ -174,3 +174,15 @@ above remains the untested variant).
 - Enhancing Linear Attention with Residual Learning (arXiv 2509.25223) — idea 3.
 - MoE RWKV-7 meta-learner (arXiv 2504.08247), MHLA (arXiv 2601.07832) — multi-head expressivity; reference.
 - xHC: Expanded Hyper-Connections (arXiv 2607.14530) — residual-stream expansion; not applicable, SK-projection primitive noted.
+
+**Bonsai-demo (github.com/PrismML-Eng/Bonsai-demo, Andrew 2026-07-22): 1-bit (Q1_0) + ternary
+(Q2_0, ~1.7 b/weight) WEIGHT quantization for the Bonsai LLM family (1.7B-27B), group-based
+(group 64/128), merged into llama.cpp. Triage: NOT APPLICABLE as a param-count lever --
+low-bit quantization keeps the parameter COUNT unchanged (shrinks bits/weight, not weights);
+our gates count params, and our deploy-memory problem is per-card/note STATE (already 9 B/card
+via the q72u joint-codebook scheme, which is conceptually beyond group-wise scalar low-bit).
+Weight-size itself is a non-problem (d=32 champion ~684 KB fp32) and weight PTQ was already
+rejected (no speed win, lesson bank). One crossover thought kept: '1-bit-survivability' as a
+redundancy PROBE (if a stream's weights survive binarization, its fp32 capacity is redundant ->
+prune it) -- but saliency-guided pruning already measures this more directly and is 5/5.
+Rank: NOT APPLICABLE.**

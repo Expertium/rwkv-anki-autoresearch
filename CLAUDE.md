@@ -837,11 +837,17 @@ lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-mea
 SPLIT the damage: user depth FLOORS AT 3L (ahead damage identical ±note strip,
 +0.00029, owns the ahead cost — long-recurrence depth serves ahead, cf. A2) and
 note.L0's mixer was the imm poison (~+0.00018; last-transform strips are costly).
-**Depth floors mapped: card=2, note=1, user=3, deck=4. A12 RUNNING (launched 19:50,
-verdict ~05:30): preset 3L→2L on the A9 base — the ONE untried depth cut
-(preset.L1/L2 #6/#7 saliency), 1,385,767 params (−5.65% vs A9, allowed
-0.000083/mode, gate vs A9 val-half). After A12 the chain goes STRUCTURAL: LoRA-dim
-cuts, head_w squeeze, d_model 128→96 (~40%, discuss with Andrew at the verdict).**
+**A12 REJECTED (2026-07-23 03:00): preset 3L→2L = imm +0.000102 worse (ratio 1.23×
+the 0.000083 bar; ahead 0.90× passed) — preset floors at 3L. ALL DEPTH FLOORS NOW
+MAPPED: card=2, deck=4, note=1, preset=3, user=3; the depth-cut ladder is EXHAUSTED.
+A13 RUNNING (launched 03:15, verdict ~13:00): the Andrew-directed STATE-FEATURE
+RE-ANCHOR — A9 arch/recipe + RWKV_ZERO_FEATURES=22 (fixes the track-recipe
+divergence: track 1 zeroes the Anki card-state input since iter 15, track 2 never
+did; Andrew 2026-07-22 "remove entirely, both tracks"). Pure re-baseline à la A4,
+NO gate, params unchanged 1,468,724; promoted to track-2 reference at completion;
+tail paired-vs-A9 = the informational price of state removal at d=128. ALL track-2
+runs from A13 on set RWKV_ZERO_FEATURES=22. After A13 the chain goes STRUCTURAL:
+LoRA-dim cuts, head_w squeeze, d_model 128→96 (~40%, discuss with Andrew first).**
 ⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC (A11's run left none — intermittent): every
 eval/rerun leaves 1–2 orphan pythons, some spinning a FULL CORE (iter-29's for 14 h,
 the A9-rerun's for 8.5 h) — the trainer kills its workers ("Killed processes.") but

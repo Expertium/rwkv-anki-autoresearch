@@ -841,6 +841,25 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A12 — preset 3L→2L (REJECTED 2026-07-23 03:00): preset floors at 3L; ALL depth floors mapped
+
+The one untried depth cut: preset 3L→2L on the A9 base (arch
+`scratchpad/track2_a12/architecture_d128_cmix1_user3_card2_note1_preset2.py`;
+preset.L1/L2 time-mixers ranked #6/#7 in A9's grad report). 1,468,724 → 1,385,767
+params (−82,957 = −5.65% vs A9); allowed 0.000083/mode.
+
+**Val half n=2500, 0 nanskips: ahead 0.298699 = +0.000075 worse (ratio 0.0000904 =
+0.90× the bar, passes); imm 0.267717 = +0.000102 worse (ratio 0.000123 = 1.23× the
+bar, FAILS). REJECTED on imm.** Clean run throughout (zero training NaN activity, no
+wedge). **Preset depth floors at 3L — and with it the depth-cut ladder is EXHAUSTED:
+card=2 (A8), deck=4 (A2), note=1 (A9), preset=3 (A12), user=3 (A10/A11).** Every
+stream is now at its measured depth floor under the ratio gate. Track 2 goes
+STRUCTURAL next: first A13 = the Andrew-directed state-feature re-anchor
+(RWKV_ZERO_FEATURES=22 on the A9 recipe — pure re-baseline à la A4, fixing the
+track-recipe divergence; launched 03:15, verdict ~13:00), then LoRA-dim cuts /
+head_w squeeze / d_model 128→96 gate against the new anchor (d_model cut = discuss
+with Andrew first). Artifacts scratchpad/track2_a12/; A9 stays champion until A13.
+
 ### Track-2 A11 — the A10 de-bundle (REJECTED 2026-07-22 19:40): user depth floors at 3L; note.L0 was the imm poison
 
 A11 = A10 minus the note_id:0 strip (same arch module — user 2L/card 2L/note 1L;
