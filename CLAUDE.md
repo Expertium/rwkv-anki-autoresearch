@@ -618,29 +618,28 @@ Pairing needs identical db/MAX/seeds.
   size-exception accept) → iter 23 (0.304220/0.273423, PAVA champion, 64-basis head) →
   iter 22 (0.304497/0.273539, no-residual re-baseline) → iter 15 (0.303663/0.273227,
   last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **Track 2 CHAMPION = A8 `track2_a8` (accepted 2026-07-21 12:45, ratio gate): ahead
-  0.300380 / imm 0.269006** (full n=5000, 0 nanskips, **1,617,975 params** = A7 −8.45%,
-  −41.4% vs the original 2.76M; `champion_5k_track2.json` = ckpt
-  `scratchpad/track2_a8/t2a8d_5586.pth` + WS/val traces = the track-2 vprune ref).
-  **= A7 + card 3L→2L (arch scratchpad/track2_a8/architecture_d128_cmix1_user3_card2.py)
-  + card.L1 mixer strip — full track-2 env now: RWKV_ARCH_MODULE=<the current champion
-  arch>, RWKV_GRU_HEAD=2, RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300,
-  RWKV_STATE_CLAMP_WINDOW=32768, RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:1,
-  user_id:2,preset_id:1,preset_id:2,deck_id:1,note_id:1,deck_id:2,card_id:1.** vs A7:
-  ahead +0.0000155 / imm +0.0000402 worse (p 0.59/0.97) → per-100k ratios +0.0000104 /
-  +0.0000269 = 10×/3.7× inside the ≤0.0001 bar; per-card d=128 deploy state −1/3.
-  Saliency-guided pruning 4/4 since A6. **⚠ STABILITY WATCH ITEM: A8's training-time val
-  passes showed 2 deterministic NaN batch-skips (val users 5047+5052, reproduced
-  bit-exact across a crash-relaunch) + recurring 1-head/layer-1 RESET containment on a
-  ~327k-token mega val stream; final eval CLEAN (5000/5000, 1066 soft SHRINKs/0 RESETs)
-  but A5–A7 trained clean → card 2L looks stability-negative; carry into A9 + QAT close.**
-  Prior champion A7 (`track2_a7`, 0.300365/0.268966, 1,767,226): user 4L→3L + note.L1/
-  deck.L2 strips, BETTER both modes vs A6 (imm p=9.1e-118, strongest of the phase) — user's
-  4th layer was pure fat. Lineage: A0 (d=128 1-ep retrain, 0.299857/0.269030, n=4993,
-  7 nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep .pth; beats
-  champ5k_plain by 0.0036/0.0042) → A1 (mixers→1.0, 0.300009/0.269324, 0 nanskips) →
-  A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead +0.000495 (p=1.0) but imm
-  0.000062 BETTER (p=1.1e-07) — cheaper + more asymmetric than d=32's +0.000834/+0.000312.
+- **Track 2 CHAMPION = A9 `track2_a9` (accepted 2026-07-22 04:05, ratio gate — BETTER
+  both modes): ahead 0.298625 / imm 0.267615 ON THE VAL HALF (5001–7500, n=2500,
+  0 nanskips — first val-split track-2 verdict; not comparable to full-range rows ≤A8),
+  1,468,724 params** (= A8 −9.22%, −46.8% vs the original 2.76M;
+  `champion_5k_track2.json` = ckpt `scratchpad/track2_a9/t2a9d_5586.pth` + WS/val traces
+  = the track-2 vprune ref). **= A8 + note 2L→1L (arch scratchpad/track2_a9/
+  architecture_d128_cmix1_user3_card2_note1.py — HALVES per-note deploy state, the
+  dominant deploy-memory term) + L0 mixer strips user_id:0 + preset_id:0 — full track-2
+  env now: RWKV_ARCH_MODULE=<the current champion arch>, RWKV_GRU_HEAD=2,
+  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
+  RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:0,user_id:1,user_id:2,preset_id:0,
+  preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1.** vs A8 same-users: ahead
+  +0.000098 / imm +0.000010 BETTER (p 0.35/0.60 — not individually significant; the
+  ratio gate prices cuts and both signs are right). Saliency pruning 5/5 since A6.
+  **Stability: cleanest run of the chain — ZERO training NaN activity (A8's watch item
+  did NOT recur; shallow note appears to have helped).** Lineage: A8 (0.300380/0.269006
+  full-range, card 3L→2L + card.L1 strip, per-card state −1/3, the NaN-transients run) →
+  A7 (0.300365/0.268966, user 4L→3L + note.L1/deck.L2 strips, imm p=9.1e-118 the
+  strongest of the phase) → A0 (d=128 1-ep retrain, 0.299857/0.269030, n=4993, 7
+  nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep .pth) → A1
+  (mixers→1.0) → A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead
+  +0.000495 (p=1.0) but imm 0.000062 BETTER — cheaper + more asymmetric than d=32's.
 - **QAT deploy truth (FROZEN until research closes) = champ5k_b1** (0.306629/0.277893 quant-aware;
   `champion_5k.json` + its own cbs). At research close the final champion gets ONE 2-ep
   confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family flags;
@@ -834,18 +833,20 @@ iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
 NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
 exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
 lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (updated 2026-07-21 19:30): iter 30 (cautious wd) DONE/REJECTED (pure
-trade — scoreboard above). **A9 OVERNIGHT (launching): note 2L→1L (new arch module;
-note.L1.time_mixer #2-lowest saliency, −82,952, also HALVES per-note d=128 deploy
-state — note state dominates deploy memory) + user.L0.channel_mixer strip (#1
-lowest, −33,152) + preset.L0.channel_mixer strip (−33,152) ≈ −149k = −9.2% vs A8
-(1,617,975 → ~1,468,700); STRIP_CMIX grows to 10 entries; ratio gate vs A8 on the
-VAL half (allowed ~0.000149/mode); watch A8's stability item (2L card + now-1L note).**
-Verdict ~06:30. Track-1 queue: permutation init (LOW), fresh-family planning
-(LIT_REVIEW + FUTURE_FEATURES). Earlier today: A8 ACCEPTED + iter 29 (Muon) ACCEPTED
-(champion blocks above; A8's first launch died in the ~02:35 black-screen hang —
-zero telemetry precursor, driver 610.62; crash combo REMAPPED to RIGHT Ctrl +
-SPACE ×2, registry armed + rebooted; relaunch replayed bit-exact). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
+**→ GPU plan (updated 2026-07-22 04:15): A9 DONE/ACCEPTED (champion block above;
+its first eval attempt WEDGED on user 5747 — fetch deadlock, 0 CPU/0 GPU 40 min,
+first ever on the d=128 --shards 1 path; killed + eval_sharded RESUME finished it,
+transient race not data-dependent. Also killed a LEAKED iter-29 fetch worker spinning
+1 core for 14 h — CHECK FOR ORPHAN PYTHONS after every run). **A10 LAUNCHING: user
+3L→2L (user.L1/L2 time-mixers #1/#4 lowest saliency — user depth prunable a THIRD
+time, −82,952) + note.L0.channel_mixer strip (#5, the one A9 kept, −33,147) +
+deck.L3.channel_mixer strip (#3, a mixer strip NOT the A2 depth cut, −33,147) ≈
+1,319,478 params = −10.2% vs A9, −52.2% vs 2.76M; STRIP_CMIX 10 entries; ratio gate
+vs A9 on the val half (allowed ~0.000149/mode); verdict ~13:30.** Track-1 queue:
+permutation init (LOW), fresh-family planning (LIT_REVIEW + FUTURE_FEATURES).
+2026-07-21: A8 + iter 29 (Muon) ACCEPTED, iter 30 (cautious wd) REJECTED; A8's first
+launch died in the ~02:35 black-screen hang (zero telemetry precursor, driver
+610.62; crash combo REMAPPED to RIGHT Ctrl + SPACE ×2, registry armed + rebooted). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
 xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
 the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
 the stale iter-15 recipe and must be re-earned (transfer failures are precedented).

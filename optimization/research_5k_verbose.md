@@ -841,6 +841,36 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A9 — note 2L→1L + L0 mixer strips (ACCEPTED 2026-07-22 04:05): better both modes at −9.2%; cleanest run of the chain
+
+The bundle (from A8's grad report): note stream 2L→1L
+(`scratchpad/track2_a9/architecture_d128_cmix1_user3_card2_note1.py`, −82,957 —
+note.L1.time_mixer was #2-lowest saliency; **HALVES per-note d=128 deploy state, the
+dominant deploy-memory term**) + L0 channel-mixer strips user_id:0 (#1 lowest) +
+preset_id:0 (−66,294). **1,617,975 → 1,468,724 params (−9.22% vs A8, −46.8% vs the
+original 2.76M)**; STRIP_CMIX 9 entries; note.L0's own mixer deliberately kept.
+
+**First track-2 verdict on the VAL half (5001–7500, n=2500, paired vs A8's full-range
+jsonl via --intersect): ahead 0.298625 = +0.000098 BETTER (p=0.35), imm 0.267615 =
++0.000010 BETTER (p=0.60). ACCEPTED — ratio gate moot (both deltas improvements, à la
+A7).** Saliency-guided pruning now 5/5 since A6. **Stability: the cleanest d=128 run
+of the chain — ZERO training-time NaN activity** (A8 had 2 deterministic val NaN-skips
++ RESET containment every val pass; shallower note didn't worsen it and appears to have
+helped), 0 eval nanskips, COMPLETE 2500/2500.
+
+Ops: the first eval attempt WEDGED at 02:11 on user 5747 — fetch deadlock (shard at
+0 CPU / 0 GPU for 40 min; first wedge ever on the d=128 `--shards 1` path). Killed the
+tree, relaunched with eval_sharded's RESUME (completed users skipped); user 5747 passed
+cleanly on retry → transient race, not data-dependent. Also found and killed a LEAKED
+iter-29 fetch worker that had been spinning a full core for 14 h (start time matched
+the WS launch to the second) — **check for orphan pythons after every run.** WS 4h34m,
+decay 1h16m, eval 1h07m + 1h00m rerun. A10 shortlist from A9's grad recording:
+user.L1/L2 time-mixers #1/#4 (user depth prunable AGAIN → 3L→2L), deck.L3.channel_mixer
+#3 (mixer strip, NOT the A2 depth cut), note.L0.channel_mixer #5 (the kept one — now
+justified). Artifacts scratchpad/track2_a9/ (t2a9d_5586.pth kept),
+result/RWKV[-P]-track2_a9.jsonl (val half); champion_5k_track2.json = A9 (24 val
+points, the track-2 vprune ref).
+
 ### Iter 29 — hybrid Muon+AdamW (ACCEPTED 2026-07-21 16:05): first optimizer-family win, first val-split verdict
 
 The modded-nanogpt sweep's one big transferable: the four matrix wd-groups
