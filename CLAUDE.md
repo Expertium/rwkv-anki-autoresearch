@@ -702,9 +702,25 @@ RWKV_MUON (now ON in the champion recipe).
 - d=32 evals: phased `eval_sharded.py` (solo mega-users → 2 LPT shards → merge; ~1.9x over
   sequential, wedge-safe; completeness gate = merged+skipped == rostered or exit 3).
   Elevated-VRAM rungs (e.g. K=32 streams) → sequential shards.
-- **No mid-epoch resume on 1-ep runs** (the train loop has NO group skip on STEP_OFFSET — a
-  resume re-sees early groups, drops the tail, breaks pairing → restart from scratch). Vals are
-  only comparable at the SAME step (a val fires at step 50 = standard early ckpt).
+- **MID-EPOCH RESUME NOW SUPPORTED (2026-07-23, Andrew's directive after the reboot ate
+  A14's 18k steps): RWKV_RESUME_SKIP_GROUPS=1** + the existing ckpt machinery = crash
+  recovery losing ≤1000 steps (~15 min). train_rwkv skips the already-trained prefix of
+  the deterministically-shuffled group sequence (epoch e skips min(max(done−e·E,0),E);
+  shuffles still consumed → order replays exactly). Procedure: `python
+  scratchpad/make_resume.py <run_dir> <prefix> <ws_toml>` (finds newest ckpt pair, copies
+  optim to the loader name, writes the resume toml), then rerun the WS phase with the
+  run's FULL env + RWKV_RESUME_SKIP_GROUPS=1, WITHOUT deleting step-trace files;
+  decay/eval phases unchanged. VALIDATED: smoke B1 (mid-epoch-0, 587 keys) + B2
+  (whole-epoch-0+partial-1 skip, 258 keys) both EXACT vs the uninterrupted reference.
+  Caveats: the resumed tail's dropout draws differ (weights/optim exact — statistically
+  equivalent, ≪ cross-seed spread; NOT bit-identical to uninterrupted); a resumed WS's
+  grad-stats json covers only the tail. Vals are only comparable at the SAME step.
+- **⚠ NO co-tenant GPU work during gate-critical runs (2026-07-23, learned twice in one
+  evening):** a d=32 smoke sharing the GPU with A14 first caused ~1e-4 val drift (cuBLAS
+  algo selection under memory pressure breaks bit-replay), then a second smoke leg pushed
+  VRAM to 11.6/12 GB and BOTH processes froze in a WDDM paging deadlock for 2.7 h (log
+  mtimes stuck at the same second; killing the smoke instantly unstuck A14, zero steps
+  lost). Smokes needing GPU wait for a free GPU or run tiny/CPU.
 - **Seed-pair doctrine (research phase):** any single-run margin < ~0.0005 needs the exact recipe
   re-run at RWKV_AUGMENT_SEED=4321 before acting — cross-seed spread on the same recipe is
   ~0.0004 both modes; in-seed Wilcoxon p (even 1e-29) measures per-user consistency, NOT

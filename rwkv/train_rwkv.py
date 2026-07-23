@@ -977,15 +977,32 @@ def main_loop(config, task_queue, batch_queue):
     checkpoint_loss_n = 0
 
     step = config.STEP_OFFSET - 1
+    # RWKV_RESUME_SKIP_GROUPS=1 (2026-07-23, Andrew: stop wasting steps on crashes):
+    # on a mid-epoch resume (STEP_OFFSET>1) skip the already-trained PREFIX of the
+    # deterministically-shuffled group sequence instead of re-seeing it and dropping
+    # the tail (the old behavior that made 1-ep resumes invalid). Epoch e skips
+    # min(max(resume_step - e*E, 0), E) groups; the shuffle is still consumed every
+    # epoch so group order replays exactly. Caveat: the resumed tail's dropout RNG
+    # differs from an uninterrupted run (state/optimizer are exact; statistically
+    # equivalent). Default off = byte-identical legacy behavior.
+    resume_completed = (
+        config.STEP_OFFSET - 1
+        if os.environ.get("RWKV_RESUME_SKIP_GROUPS", "0") == "1"
+        else 0
+    )
     for epoch_i in range(0, int(1e9)):
         if step > total_steps:
             break
 
         random.shuffle(groups)
-        for i in range(FETCH_AHEAD):
+        skip0 = min(max(resume_completed - epoch_i * len(groups), 0), len(groups))
+        if skip0 > 0:
+            print(f"[resume-skip] epoch {epoch_i}: skipping the first {skip0} "
+                  f"already-trained groups (resume at global step {step + 1})")
+        for i in range(skip0, min(skip0 + FETCH_AHEAD, len(groups))):
             data_fetcher.enqueue((f"train-{i}", groups[i]))
 
-        for group_i in range(len(groups)):
+        for group_i in range(skip0, len(groups)):
             step += 1
             if step > total_steps:
                 break

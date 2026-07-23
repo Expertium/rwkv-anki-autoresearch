@@ -1,0 +1,38 @@
+# Resume-skip smoke run A (uninterrupted reference): 3 tiny epochs on users 1-300,
+# d=32 default arch, ckpts at step 50/100/... (VALIDATE_EVERY=100 + the built-in
+# step-50 val). Run B resumes from the step-50 ckpt with RWKV_RESUME_SKIP_GROUPS=1;
+# the group-key sequences from step 51 on must match run A exactly.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5002
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 16384
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 2
+VALIDATE_EVERY = 25
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/resume_smoke"
+SAVE_MODEL_PREFIX = "rsm"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
