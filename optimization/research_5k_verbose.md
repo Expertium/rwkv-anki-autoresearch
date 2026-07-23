@@ -841,6 +841,33 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A13 — state-feature re-anchor (PROMOTED 2026-07-23 10:50): removal costs +0.0002/+0.0002 at d=128 — opposite sign vs d=32
+
+The Andrew-directed recipe fix (2026-07-22 "It should be removed entirely, from both
+track 1 and track 2 models"): the A9 champion arch + recipe with
+**RWKV_ZERO_FEATURES=22** — the Anki card-state input (New/Learning/Review/...,
+feature dim 22) zeroed at input, as track 1 has done since iter 15; track 2 had never
+adopted it (recipe divergence). Pure re-baseline à la A4/iter 22: params unchanged
+1,468,724, NO gate, promoted to track-2 anchor at completion.
+
+**The measured price at d=128 (val half n=2500, 0 nanskips): ahead 0.298837 =
++0.000212 worse / imm 0.267805 = +0.000190 worse than A9 same-users, both p≈1.0
+(systematically worse per-user). OPPOSITE SIGN vs the d=32 measurement** (iter 15:
+removal ~free-to-slightly-better, ~−0.0001) — the d=128 model was extracting real
+signal from the state feature that the d=32 trunk evidently cannot use. Small but
+consistent; the directive stands (consistency/product decision; the price is
+recorded, and reverting = re-pointing champion_5k_track2.json back to A9). All
+track-2 runs from A13 on set RWKV_ZERO_FEATURES=22; vprune ref = A13's same-recipe
+val trace. Clean run (zero training NaN activity, no wedge).
+
+Grad report under the new recipe: the bottom saliency tier is now entirely
+REJECTED-FLOOR territory (deck.L3.cmix #1, user.L2.tm #2, deck.L2.tm #3, note.L0.cmix
+#4 — all depth floors or the A11-diagnosed imm poison) → confirms the structural
+pivot. Next: **A14 = LoRA-dim halving** (decay/a/gate 16→8, v0-mix 8→4, all streams;
+~−86k ≈ −5.9%; pure arch-module change), then head_w squeeze; d_model 128→96 awaits
+Andrew's call. Artifacts scratchpad/track2_a13/ (t2a13d_5586.pth kept),
+result/RWKV[-P]-track2_a13.jsonl; champion_5k_track2.json = A13 (24 val points).
+
 ### Track-2 A12 — preset 3L→2L (REJECTED 2026-07-23 03:00): preset floors at 3L; ALL depth floors mapped
 
 The one untried depth cut: preset 3L→2L on the A9 base (arch

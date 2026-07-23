@@ -618,20 +618,21 @@ Pairing needs identical db/MAX/seeds.
   size-exception accept) → iter 23 (0.304220/0.273423, PAVA champion, 64-basis head) →
   iter 22 (0.304497/0.273539, no-residual re-baseline) → iter 15 (0.303663/0.273227,
   last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **Track 2 CHAMPION = A9 `track2_a9` (accepted 2026-07-22 04:05, ratio gate — BETTER
-  both modes): ahead 0.298625 / imm 0.267615 ON THE VAL HALF (5001–7500, n=2500,
-  0 nanskips — first val-split track-2 verdict; not comparable to full-range rows ≤A8),
-  1,468,724 params** (= A8 −9.22%, −46.8% vs the original 2.76M;
-  `champion_5k_track2.json` = ckpt `scratchpad/track2_a9/t2a9d_5586.pth` + WS/val traces
-  = the track-2 vprune ref). **= A8 + note 2L→1L (arch scratchpad/track2_a9/
-  architecture_d128_cmix1_user3_card2_note1.py — HALVES per-note deploy state, the
-  dominant deploy-memory term) + L0 mixer strips user_id:0 + preset_id:0 — full track-2
-  env now: RWKV_ARCH_MODULE=<the current champion arch>, RWKV_GRU_HEAD=2,
-  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
+- **Track 2 CHAMPION/ANCHOR = A13 `track2_a13` (promoted 2026-07-23 10:50, DIRECTED
+  re-anchor): ahead 0.298837 / imm 0.267805 ON THE VAL HALF (n=2500, 0 nanskips),
+  1,468,724 params** (`champion_5k_track2.json` = ckpt
+  `scratchpad/track2_a13/t2a13d_5586.pth` + WS/val traces = the track-2 vprune ref).
+  **= A9 arch/recipe + RWKV_ZERO_FEATURES=22 (Anki card-state input removed, Andrew's
+  2026-07-22 both-tracks directive; fixes the track-recipe divergence — track 1 has
+  zeroed it since iter 15). THE MEASURED PRICE at d=128: ahead +0.000212 / imm
+  +0.000190 worse than A9 (both p≈1.0) — OPPOSITE SIGN vs d=32 (iter 15: ~free);
+  recorded, directive stands (revert = re-point the json to A9). Full track-2 env now:
+  RWKV_ARCH_MODULE=<champion arch>, RWKV_GRU_HEAD=2, RWKV_STRIP_L0_VLORA=1,
+  RWKV_ZERO_FEATURES=22, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
   RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:0,user_id:1,user_id:2,preset_id:0,
-  preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1.** vs A8 same-users: ahead
-  +0.000098 / imm +0.000010 BETTER (p 0.35/0.60 — not individually significant; the
-  ratio gate prices cuts and both signs are right). Saliency pruning 5/5 since A6.
+  preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1.** Prior champion A9
+  (0.298625/0.267615 val half, note 2L→1L + L0 strips, BETTER both modes vs A8,
+  cleanest run of the chain). Saliency pruning 5/5 since A6.
   **Stability: cleanest run of the chain — ZERO training NaN activity (A8's watch item
   did NOT recur; shallow note appears to have helped).** Lineage: A8 (0.300380/0.269006
   full-range, card 3L→2L + card.L1 strip, per-card state −1/3, the NaN-transients run) →
@@ -837,17 +838,16 @@ lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-mea
 SPLIT the damage: user depth FLOORS AT 3L (ahead damage identical ±note strip,
 +0.00029, owns the ahead cost — long-recurrence depth serves ahead, cf. A2) and
 note.L0's mixer was the imm poison (~+0.00018; last-transform strips are costly).
-**A12 REJECTED (2026-07-23 03:00): preset 3L→2L = imm +0.000102 worse (ratio 1.23×
-the 0.000083 bar; ahead 0.90× passed) — preset floors at 3L. ALL DEPTH FLOORS NOW
-MAPPED: card=2, deck=4, note=1, preset=3, user=3; the depth-cut ladder is EXHAUSTED.
-A13 RUNNING (launched 03:15, verdict ~13:00): the Andrew-directed STATE-FEATURE
-RE-ANCHOR — A9 arch/recipe + RWKV_ZERO_FEATURES=22 (fixes the track-recipe
-divergence: track 1 zeroes the Anki card-state input since iter 15, track 2 never
-did; Andrew 2026-07-22 "remove entirely, both tracks"). Pure re-baseline à la A4,
-NO gate, params unchanged 1,468,724; promoted to track-2 reference at completion;
-tail paired-vs-A9 = the informational price of state removal at d=128. ALL track-2
-runs from A13 on set RWKV_ZERO_FEATURES=22. After A13 the chain goes STRUCTURAL:
-LoRA-dim cuts, head_w squeeze, d_model 128→96 (~40%, discuss with Andrew first).**
+**A13 DONE/PROMOTED (2026-07-23 10:50, the state-feature re-anchor — champion block
+above; price +0.00021/+0.00019, opposite sign vs d=32). A14 RUNNING (launched 11:15,
+verdict ~21:00): LoRA-dim halving (decay/a/gate 16→8, v0-mix 8→4, ALL streams —
+arch scratchpad/track2_a14/architecture_d128_lora8.py) = the first STRUCTURAL cut;
+1,380,660 params (−6.0% vs A13, −50.0% vs 2.76M); ratio gate vs A13 val-half
+(allowed 0.000088/mode). Earlier 2026-07-23: A12 REJECTED (preset 3L→2L, imm ratio
+1.23× bar) — ALL DEPTH FLOORS MAPPED: card=2, deck=4, note=1, preset=3, user=3; the
+depth ladder is EXHAUSTED. Structural queue after A14: head_w squeeze (~83k),
+d_model 128→96 (~40%, DISCUSS WITH ANDREW first — menu presented 2026-07-23
+morning).**
 ⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC (A11's run left none — intermittent): every
 eval/rerun leaves 1–2 orphan pythons, some spinning a FULL CORE (iter-29's for 14 h,
 the A9-rerun's for 8.5 h) — the trainer kills its workers ("Killed processes.") but
