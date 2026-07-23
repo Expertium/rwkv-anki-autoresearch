@@ -298,9 +298,27 @@ class SrsRWKV(ModuleType):
             # without editing the arch files) -- consumed by RWKV_STRIP_CMIX (A6)
             for _name, _cfg in anki_rwkv_config.modules:
                 _cfg.stream_name = _name
-            self.rwkv_modules = torch.nn.ModuleList(
-                [RWKV7(config=config) for _, config in anki_rwkv_config.modules]
+            # Classic-RNN baselines (Andrew 2026-07-23): RWKV_BASELINE_CELL=gru|lstm
+            # swaps ONLY the per-stream recurrent stacks (same hierarchy/depths, same
+            # trunk + heads + pipeline). Default unset = RWKV7, byte-identical.
+            from rwkv.model.rnn_baseline import (
+                RNNStream, baseline_hidden_default, env_baseline_cell,
             )
+            _cell = env_baseline_cell()
+            if _cell:
+                _hidden = int(os.environ.get(
+                    "RWKV_BASELINE_HIDDEN", baseline_hidden_default(_cell)))
+                print(f"[rnn-baseline] {_cell.upper()} streams ON: hidden={_hidden}, "
+                      f"depths={[c.n_layers for _, c in anki_rwkv_config.modules]}")
+                self.rwkv_modules = torch.nn.ModuleList(
+                    [RNNStream(_cell, config.d_model, _hidden, config.n_layers,
+                               config.dropout, stream_name=name)
+                     for name, config in anki_rwkv_config.modules]
+                )
+            else:
+                self.rwkv_modules = torch.nn.ModuleList(
+                    [RWKV7(config=config) for _, config in anki_rwkv_config.modules]
+                )
             self.prehead_norm = torch.nn.LayerNorm(self.d_model)
             self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
             if self.gru_on:
