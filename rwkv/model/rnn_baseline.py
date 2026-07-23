@@ -49,6 +49,9 @@ class RNNStream(ModuleType):
         self.stream_name = stream_name
 
     def forward(self, in_BTC, time_shift_select_BT, skip_BT):
+        # re-flatten after device moves / dtype casts (no-op when already compact;
+        # avoids cuDNN re-compacting the weights on every call)
+        self.rnn.flatten_parameters()
         B, T, C = in_BTC.shape
         keep_BT = ~skip_BT
         lengths_B = keep_BT.sum(dim=1)
