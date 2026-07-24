@@ -854,16 +854,23 @@ lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-mea
 SPLIT the damage: user depth FLOORS AT 3L (ahead damage identical ±note strip,
 +0.00029, owns the ahead cost — long-recurrence depth serves ahead, cf. A2) and
 note.L0's mixer was the imm poison (~+0.00018; last-transform strips are costly).
-**A13 DONE/PROMOTED (2026-07-23 10:50, the state-feature re-anchor — champion block
-above; price +0.00021/+0.00019, opposite sign vs d=32). A14 RUNNING (launched 11:15,
-verdict ~21:00): LoRA-dim halving (decay/a/gate 16→8, v0-mix 8→4, ALL streams —
-arch scratchpad/track2_a14/architecture_d128_lora8.py) = the first STRUCTURAL cut;
-1,380,660 params (−6.0% vs A13, −50.0% vs 2.76M); ratio gate vs A13 val-half
-(allowed 0.000088/mode). Earlier 2026-07-23: A12 REJECTED (preset 3L→2L, imm ratio
-1.23× bar) — ALL DEPTH FLOORS MAPPED: card=2, deck=4, note=1, preset=3, user=3; the
-depth ladder is EXHAUSTED. Structural queue after A14: head_w squeeze (~83k),
-d_model 128→96 (~40%, DISCUSS WITH ANDREW first — menu presented 2026-07-23
-morning).**
+**A14 DONE/ACCEPTED (2026-07-24 03:30) = NEW TRACK-2 CHAMPION: LoRA dims halved
+(decay/a/gate 16→8, v0 8→4, all streams — the first structural cut), 1,380,660
+params (−6.0% vs A13, **−50.03% vs 2.76M — halfway mark crossed**), BETTER both
+modes (+0.000039 p=0.045 / +0.000059 p=0.0069) — the LoRA ranks were oversized;
+a further 8→4 halving is a queue candidate. champion_5k_track2.json = A14 (ckpt
+scratchpad/track2_a14/t2a14d_5586.pth; full env = A13's + the lora8 arch module).
+NOW RUNNING: baseline_gru (Andrew's is-RWKV-needed experiment — GRU streams,
+h=128, ~1.55M params, auto-fired 03:25 on A14's DONE_EXIT; verdict = informational
+comparison vs A13/A14, NOT a champion candidate), then baseline_lstm (h=104,
+~1.52M, parked on GRU's DONE_EXIT), then **A15 = d_model 128→96 (N_HEADS=3) —
+REBUILD on the A14 base first (halved LoRAs; the staged A15 arch predates A14)**.
+Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
+sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS
+MAPPED: card=2, deck=4, note=1, preset=3, user=3; depth ladder EXHAUSTED. Also
+2026-07-23 night: MID-EPOCH RESUME landed (RWKV_RESUME_SKIP_GROUPS=1 +
+scratchpad/make_resume.py, smoke-validated EXACT; crashes now lose ≤1000 steps) +
+the NO-CO-TENANT-GPU hard rule (see Live rules).**
 ⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC (A11's run left none — intermittent): every
 eval/rerun leaves 1–2 orphan pythons, some spinning a FULL CORE (iter-29's for 14 h,
 the A9-rerun's for 8.5 h) — the trainer kills its workers ("Killed processes.") but

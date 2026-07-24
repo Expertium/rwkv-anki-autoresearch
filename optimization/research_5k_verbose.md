@@ -841,6 +841,32 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A14 — LoRA dims halved (ACCEPTED 2026-07-24 03:30): better both modes at −6%; halfway mark crossed
+
+The first STRUCTURAL cut after the depth ladder closed: decay/a/gate LoRAs 16→8 and
+the v0-mix LoRA 8→4 across all five streams
+(`scratchpad/track2_a14/architecture_d128_lora8.py`; pure arch-module change, no new
+code). **1,468,724 → 1,380,660 params (−88,064 = −6.0% vs A13, −50.03% vs the
+original 2.76M — the halfway mark).**
+
+**Val half n=2500, 0 nanskips: ahead 0.298798 = +0.000039 BETTER (p=0.045), imm
+0.267746 = +0.000059 BETTER (p=0.0069) vs A13 same-users. ACCEPTED — ratio gate moot
+(both improvements, à la A7/A9). The LoRA ranks were oversized; a further 8→4 halving
+is a queue candidate.** Zero training NaN activity; COMPLETE 2500/2500.
+
+Ops-heavy history: launched 11:15 on 07-23; killed at step ~18k by Andrew's planned
+PC-off; relaunched 15:41; then the resume-smoke co-tenancy incident froze it 2.7 h in
+a two-process WDDM paging deadlock (17:40→20:21 — VRAM 11.6/12 GB, both logs frozen
+the same second; killing the smoke unstuck it instantly, zero steps lost) and left a
+harmless ~1e-4 cuBLAS-algo drift vs the first launch's trajectory. Two durable
+outcomes: **NO co-tenant GPU work during gate-critical runs** (hard ops rule), and
+**mid-epoch RESUME landed the same night** (RWKV_RESUME_SKIP_GROUPS=1 +
+scratchpad/make_resume.py, smoke-validated exact on 587 + 258 resumed steps — future
+crashes lose ≤1000 steps). Next: the GRU/LSTM stream baselines (Andrew's
+is-RWKV-needed experiment, auto-fired on A14's DONE_EXIT), then A15 = d_model 128→96
+REBUILT on the A14 base (halved LoRAs + N_HEADS=3). Artifacts scratchpad/track2_a14/
+(t2a14d_5586.pth kept); champion_5k_track2.json = A14 (24 val points, vprune ref).
+
 ### Track-2 A13 — state-feature re-anchor (PROMOTED 2026-07-23 10:50): removal costs +0.0002/+0.0002 at d=128 — opposite sign vs d=32
 
 The Andrew-directed recipe fix (2026-07-22 "It should be removed entirely, from both

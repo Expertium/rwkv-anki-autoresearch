@@ -13,3 +13,4 @@
 {"name": "iter26_gru3", "date": "2026-07-19 20:32:47", "final_ahead": 0.303942, "final_imm": 0.273353, "n_trace_steps": 6554, "ckpt": "scratchpad/iter26_gru3/iter26d_1638.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_a8", "date": "2026-07-21 12:39:28", "final_ahead": 0.30038, "final_imm": 0.269006, "n_trace_steps": 22344, "ckpt": "scratchpad/track2_a8/t2a8d_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_a9", "date": "2026-07-22 03:53:53", "final_ahead": 0.298625, "final_imm": 0.267615, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a9/t2a9d_5586.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "track2_a13", "date": "2026-07-23 10:43:23", "final_ahead": 0.298837, "final_imm": 0.267805, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a13/t2a13d_5586.pth", "cb_wkv": "", "cb_shift": ""}
