@@ -41,18 +41,28 @@ for cell in ("gru", "lstm"):
         out = stream(x, sel, skip)
 
         # reference: per-row stepwise loop with the same per-layer nn.GRU/LSTM weights
-        # (dropout inactive under eval(), so layers chain directly)
+        # (dropout inactive under eval(), so layers chain directly). PROBE semantics
+        # (the v1-bug fix): a skip row's output = the layers applied to x_t seeded
+        # from the committed states, WITHOUT committing (LSTM probes use c=0, the
+        # documented fresh-cell caveat); real rows commit normally.
         ref = torch.zeros(B, T, C)
         for b in range(B):
             hxs = [None] * len(stream.rnn)
-            cur = None  # projected output of the last real step
             for t in range(T):
+                o = x[b : b + 1, t : t + 1]
                 if not skip[b, t]:
-                    o = x[b : b + 1, t : t + 1]
                     for li, layer in enumerate(stream.rnn):
                         o, hxs[li] = layer(o, hxs[li]) if hxs[li] is not None else layer(o)
-                    cur = stream.proj(o)[0, 0]
-                ref[b, t] = cur if cur is not None else torch.zeros(C)
+                else:
+                    for li, layer in enumerate(stream.rnn):
+                        prev = hxs[li]
+                        if isinstance(layer, torch.nn.LSTM):
+                            hh = prev[0] if prev is not None else torch.zeros(1, 1, H)
+                            o, _ = layer(o, (hh, torch.zeros_like(hh)))
+                        else:
+                            hh = prev if prev is not None else torch.zeros(1, 1, H)
+                            o, _ = layer(o, hh)
+                ref[b, t] = stream.proj(o)[0, 0]
 
     d = (out - ref).abs().max().item()
     print(f"A. {cell}: max |vectorized - stepwise ref| = {d:.2e}")

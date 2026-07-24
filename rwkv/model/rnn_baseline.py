@@ -6,9 +6,15 @@ whether RWKV-7's complexity is needed. Env: RWKV_BASELINE_CELL=gru|lstm (consume
 srs_model.py), RWKV_BASELINE_HIDDEN=<int> (default: gru 128 / lstm 104 — sized so the
 full model lands ~1.5M params, matching the track-2 champion scale).
 
-Skip semantics (must match the WKV kernel; interior skips exist — e.g. track-1's
-button-probe rows): at skip positions the recurrent state must NOT advance, but the
-position still reads the CURRENT state (probe semantics). Implemented vectorized:
+Skip semantics (must match the WKV kernel — skip rows are the pipeline's QUERY rows:
+one per non-first review, outcome columns zeroed, elapsed/interval features KEPT,
+carrying the labels; ~half of every sequence): at skip positions the recurrent state
+must NOT advance, but the output must be an UNCOMMITTED one-step cell evaluation
+Cell(x_skip, h_prev) — the prediction conditions on the query's features (elapsed
+time!) against the pre-review state, exactly like the WKV kernel's r/k/v-from-x_t
+readout of the un-advanced state. v1 of this module returned the bare h_prev at skip
+rows — predictions were interval-blind, collapsing imm onto ahead and scoring 0.415
+(worse than the featureless blind-RWKV). Implemented vectorized:
   1. stable-argsort each row so non-skipped positions form a dense prefix in original
      order; gather the inputs into that compact layout;
   2. per-layer cuDNN GRU/LSTM over the padded compact rows (NO PackedSequence: the
@@ -116,22 +122,43 @@ class RNNStream(ModuleType):
         B, T, C = in_BTC.shape
         keep_BT = ~skip_BT
         # non-skipped positions -> dense prefix, original order preserved
-        order_BT = torch.argsort(skip_BT.int(), dim=1, stable=True)
-        x_comp = time_shift_gather(in_BTC, order_BT.to(torch.int32))
+        order_i32 = torch.argsort(skip_BT.int(), dim=1, stable=True).to(torch.int32)
+        cum_BT = keep_BT.to(torch.int32).cumsum(dim=1)
+        take_i32 = (cum_BT - 1).clamp(min=0).to(torch.int32)
+        alive = (cum_BT > 0).unsqueeze(-1)  # False only at leading skips (zero-state)
+        skip_col = skip_BT.unsqueeze(-1)
         # stream weights stay fp32 (DTYPE_EXCLUDE '.rnn'/'.proj'): bf16 nn.GRU/LSTM
         # falls off cuDNN onto a 30x-slower native path -- cast at the boundary
-        x = x_comp.float()
+        x = in_BTC.float()
         for i, layer in enumerate(self.rnn):
-            x = self._run_layer_windowed(layer, x)
+            # committed pass over the real rows (dense prefix; the skip-tail is
+            # processed too but its outputs are never read -- causality)
+            x_comp = time_shift_gather(x, order_i32)
+            out_comp = self._run_layer_windowed(layer, x_comp)
+            # base: real position -> its own committed h; skip -> predecessor's h
+            base = time_shift_gather(out_comp, take_i32)
+            # PROBE pass (the v1 bug fix): a skip/query row's output must be the
+            # UNCOMMITTED one-step Cell(x_query, h_prev) -- the prediction conditions
+            # on the query's features (elapsed time) against the pre-review state,
+            # like the WKV kernel's x_t-derived readout of the un-advanced state.
+            # Sync-free: probe ALL positions as length-1 sequences in ONE cuDNN call
+            # (real positions' probes are garbage and discarded by the where()).
+            h_prev = (base * alive.to(base.dtype)).reshape(1, B * T, -1).contiguous()
+            probe_in = x.reshape(B * T, 1, x.size(-1))
+            probe_out, _ = self._layer_call(layer, probe_in, self._probe_hx(h_prev))
+            probe_out = probe_out.reshape(B, T, -1)
+            x = torch.where(skip_col, probe_out, base)
             if i + 1 < len(self.rnn) and self.dropout_p > 0:
                 x = torch.nn.functional.dropout(x, self.dropout_p, self.training)
-        out_comp = self.proj(x).to(in_dtype)
-        # position t reads compact index cumsum(keep)-1: own step if real, else the
-        # last real predecessor (probe semantics); zero before the first real token
-        cum_BT = keep_BT.to(torch.int32).cumsum(dim=1)
-        take_BT = (cum_BT - 1).clamp(min=0)
-        out_BTC = time_shift_gather(out_comp, take_BT.to(torch.int32))
-        return out_BTC * (cum_BT > 0).unsqueeze(-1).to(out_BTC.dtype)
+        return self.proj(x).to(in_dtype)
+
+    def _probe_hx(self, h_prev):
+        # GRU hidden = h; LSTM hidden = (h, c). cuDNN does not expose per-step c, so
+        # the LSTM probe starts from c=0 ("fresh-cell readout") -- h_prev-conditioned
+        # but NOT the exact LSTM probe semantics; documented baseline caveat.
+        if isinstance(self.rnn[0], torch.nn.LSTM):
+            return (h_prev, torch.zeros_like(h_prev))
+        return h_prev
 
 
 def baseline_hidden_default(cell: str) -> int:

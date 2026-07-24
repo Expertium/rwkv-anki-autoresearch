@@ -19,6 +19,7 @@ REM ============================================================================
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\baseline_lstm
 set LOG=%DIR%\baseline_lstm.log
+set STAMP=%RANDOM%%RANDOM%
 set PYTHONUNBUFFERED=1
 set PYTHONPATH=C:\Users\Andrew\rwkv-anki-autoresearch
 set OMP_NUM_THREADS=7
@@ -49,7 +50,7 @@ echo GRU baseline done -- starting LSTM %TIME% >> "%LOG%"
 
 echo === STEP 0.5: 40-step E2E sanity (see sanity.log) %TIME% === >> "%LOG%"
 set RWKV_MAX_STEPS=40
-.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/baseline_lstm/baseline_lstm_ws.toml > "%DIR%\sanity.log" 2>&1
+.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/baseline_lstm/baseline_lstm_ws.toml > "%DIR%\sanity_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_SANITYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 9
@@ -59,7 +60,7 @@ echo sanity OK %TIME% >> "%LOG%"
 
 del /Q scratchpad\baseline_lstm\baseline_lstm_ws_trace.jsonl scratchpad\baseline_lstm\baseline_lstm_ws_trace.jsonl.val.jsonl 2>nul
 echo === WS 1 epoch (1-5000, LSTM streams, vprune OFF; see ws.log) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/baseline_lstm/baseline_lstm_ws.toml > "%DIR%\ws.log" 2>&1
+.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/baseline_lstm/baseline_lstm_ws.toml > "%DIR%\ws_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_WSFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 2
@@ -68,13 +69,13 @@ set RWKV_STEP_TRACE=
 echo WS OK %TIME% >> "%LOG%"
 
 echo === DECAY SETUP (0.25 ep, MAX=32768) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/baseline_lstm blstmws blstmd scratchpad/baseline_lstm/baseline_lstm_decay.toml train_db_5k_h1 1 5000 0.25 1e-3 32768 > "%DIR%\decay_setup.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/baseline_lstm blstmws blstmd scratchpad/baseline_lstm/baseline_lstm_decay.toml train_db_5k_h1 1 5000 0.25 1e-3 32768 > "%DIR%\decay_setup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_DSETUPFAIL %DATE% %TIME% >> "%LOG%"
   exit /b 4
 )
 echo === DECAY (see decay.log) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/baseline_lstm/baseline_lstm_decay.toml > "%DIR%\decay.log" 2>&1
+.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/baseline_lstm/baseline_lstm_decay.toml > "%DIR%\decay_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_DECAYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 5
@@ -83,9 +84,9 @@ echo DECAY OK %TIME% >> "%LOG%"
 
 del /Q result\RWKV-baseline_lstm.jsonl result\RWKV-P-baseline_lstm.jsonl result\RWKV-baseline_lstm-s0.jsonl result\RWKV-P-baseline_lstm-s0.jsonl result\RWKV-baseline_lstm.nanskip.jsonl result\RWKV-baseline_lstm-s0.nanskip.jsonl 2>nul
 echo === WRITE EVAL TOML (VAL 5001-7500) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/baseline_lstm blstmd scratchpad/baseline_lstm/baseline_lstm_eval.toml RWKV-baseline_lstm RWKV-P-baseline_lstm 5001 7500 > "%DIR%\eval_toml.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/baseline_lstm blstmd scratchpad/baseline_lstm/baseline_lstm_eval.toml RWKV-baseline_lstm RWKV-P-baseline_lstm 5001 7500 > "%DIR%\eval_toml_%STAMP%.log" 2>&1
 echo === EVAL (single process, LSTM streams; see eval.log) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe -u optimization/eval_sharded.py --config scratchpad/baseline_lstm/baseline_lstm_eval.toml --shards 1 --solo-threshold 0 --fetch-per-shard 4 --threads-per-shard 7 > "%DIR%\eval.log" 2>&1
+.venv\Scripts\python.exe -u optimization/eval_sharded.py --config scratchpad/baseline_lstm/baseline_lstm_eval.toml --shards 1 --solo-threshold 0 --fetch-per-shard 4 --threads-per-shard 7 > "%DIR%\eval_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_EVALFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 7
@@ -93,6 +94,6 @@ if not %ERRORLEVEL%==0 (
 echo EVAL OK %TIME% >> "%LOG%"
 
 echo === COMPARISON vs A13 champion (INFORMATIONAL -- RWKV vs LSTM at ~equal params; see gate.log) %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe optimization/paired_pvalue.py --intersect --cand-ahead result/RWKV-baseline_lstm.jsonl --cand-imm result/RWKV-P-baseline_lstm.jsonl --champ-ahead result/RWKV-track2_a13.jsonl --champ-imm result/RWKV-P-track2_a13.jsonl > "%DIR%\gate.log" 2>&1
+.venv\Scripts\python.exe optimization/paired_pvalue.py --intersect --cand-ahead result/RWKV-baseline_lstm.jsonl --cand-imm result/RWKV-P-baseline_lstm.jsonl --champ-ahead result/RWKV-track2_a13.jsonl --champ-imm result/RWKV-P-track2_a13.jsonl > "%DIR%\gate_%STAMP%.log" 2>&1
 echo GATE_DONE (paired_pvalue exit %ERRORLEVEL%; baseline -- informational) >> "%LOG%"
 echo DONE_EXIT_0 %DATE% %TIME% >> "%LOG%"

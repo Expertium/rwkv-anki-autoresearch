@@ -87,3 +87,15 @@ GRU-specific tuning -- but the gap (~0.12-0.15) is ~100x the phase's typical eff
 sizes and far beyond tuning slack. **Verdict so far: RWKV-7's complexity is decisively
 needed -- the recurrence itself (matrix-valued state + decay/gating machinery), not just
 the training pipeline, carries the accuracy.** LSTM (h=104, 1,521,360 params) running.
+
+**⚠ v1 RESULTS ABOVE = IMPLEMENTATION BUG (diagnosed 2026-07-24 ~14:00, Andrew's
+suspicion confirmed):** the pipeline's skip rows are QUERY rows (one per non-first
+review, outcome zeroed, elapsed/interval features KEPT, carrying the labels); the WKV
+kernel reads them as x_t-conditioned queries of the un-advanced state, but RNNStream v1
+returned the bare predecessor state -- every labeled prediction was made WITHOUT the
+elapsed interval. Hence ahead==imm and worse-than-blind-RWKV. **v2 fix: per-layer
+UNCOMMITTED one-step probe Cell(x_query, h_prev)** (one extra T=1 cuDNN call per layer,
+sync-free; LSTM probes use c=0, a documented fresh-cell caveat since cuDNN hides
+per-step c). Smoke-verified vs a corrected stepwise reference. v1 numbers kept above as
+the bug record; v2 results replace them as the honest baseline comparison. (The LSTM v1
+run was killed mid-WS at the diagnosis -- its WS val plateau matched the GRU's ~0.385.)
