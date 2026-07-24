@@ -83,6 +83,42 @@ for cell, H in (("gru", 16), ("lstm", 12)):   # lstm H != C exercises the projs
     print(f"A2. {cell} windowed (win=7): max |windowed - stepwise ref| = {dw:.2e}")
     assert dw < 1e-5, f"{cell} windowed h-carry mismatch"
 
+    # A3 (2026-07-25, after the 2,087,967-row mega-user probe OOM: cuDNN wanted 20.93
+    # GiB for ONE B*T-batch probe call): force the CHUNKED probe path (chunk 5 << B*T=92)
+    # incl. all-skip and no-skip chunks -- must still match the stepwise reference.
+    old_chunk = RNNStream.PROBE_CHUNK
+    RNNStream.PROBE_CHUNK = 5
+    with torch.no_grad():
+        out_c = stream(x, sel, skip)
+    RNNStream.PROBE_CHUNK = old_chunk
+    dc = (out_c - ref).abs().max().item()
+    print(f"A3. {cell} chunked probe (chunk=5 of B*T={B*T}): "
+          f"max |chunked - stepwise ref| = {dc:.2e}")
+    assert dc < 1e-5, f"{cell} chunked probe mismatch"
+    with torch.no_grad():
+        RNNStream.PROBE_CHUNK = 5
+        out_c2 = stream(x, sel, skip)   # LEAN path (chunked + norm-per-chunk + in-place)
+        RNNStream.PROBE_CHUNK = old_chunk
+        out_u = stream(x, sel, skip)    # standard path
+    du = (out_c2 - out_u).abs().max().item()
+    print(f"A4. {cell} LEAN (chunk+per-chunk-norm+in-place) vs standard: "
+          f"max |d| = {du:.2e} (want ~0)")
+    assert du < 1e-6, f"{cell} lean/standard disagree"
+
+    # A5: with grad enabled the LEAN path must NOT engage (training keeps the exact code
+    # path the model trained with) -- gradients must still flow and match the ref forward
+    RNNStream.PROBE_CHUNK = 5
+    stream.zero_grad(set_to_none=True)
+    out_g = stream(x, sel, skip)
+    RNNStream.PROBE_CHUNK = old_chunk
+    dg = (out_g.detach() - ref).abs().max().item()
+    out_g.sum().backward()
+    gsum = sum(p.grad.abs().sum().item() for p in stream.parameters() if p.grad is not None)
+    print(f"A5. {cell} grad-enabled with tiny PROBE_CHUNK: fwd matches ref "
+          f"({dg:.2e}), grad flows (sum |g| = {gsum:.3e})")
+    assert dg < 1e-5 and gsum > 0, f"{cell} grad path broken by the chunk gating"
+    stream.zero_grad(set_to_none=True)
+
 # --- B: full-model construction + params ------------------------------------------
 os.environ["RWKV_ARCH_MODULE"] = "scratchpad/track2_a9/architecture_d128_cmix1_user3_card2_note1.py"
 os.environ["RWKV_GRU_HEAD"] = "2"

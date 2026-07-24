@@ -33,7 +33,13 @@ set RWKV_GRU_HEAD=2
 set RWKV_NO_AHEAD_RESIDUAL=1
 set RWKV_ZERO_FEATURES=22
 set RWKV_EVAL_EMPTY_CACHE_EVERY=1
+set RWKV_RNN_PROBE_CHUNK=32768
 set PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+REM 2nd failure (01:14) was a genuine OOM, not fragmentation: user 5626's 2,087,967-row
+REM batch made the probe ask cuDNN for 20.93 GiB in ONE call. Fixed in rnn_baseline.py
+REM (chunked probe + lean no-grad path: preallocated window buffer, per-chunk LayerNorm,
+REM in-place alive-mask and residual add). Mega user verified standalone TWICE with
+REM identical numbers (ahead 0.3254 / imm 0.1170).
 
 echo === EVAL RETRY (resume; empty_cache every user) %DATE% %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe -u optimization/eval_sharded.py --config scratchpad/baseline_gru/baseline_gru_eval.toml --shards 1 --solo-threshold 0 --fetch-per-shard 4 --threads-per-shard 7 > "%DIR%\eval_%STAMP%.log" 2>&1

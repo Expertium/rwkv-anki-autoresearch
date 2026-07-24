@@ -75,6 +75,12 @@ from rwkv.model.rwkv_model import ModuleType, time_shift_gather
 class RNNStream(ModuleType):
     # cuDNN seq-length ceiling is ~65k; also the checkpoint grain (env-tunable)
     RNN_WINDOW = int(os.environ.get("RWKV_RNN_WINDOW", "32768"))
+    # Probe-pass chunk over the FLATTENED B*T dimension. The probe issues one cuDNN
+    # call with B*T length-1 sequences; on the 2,087,967-row mega-user eval batch that
+    # single call asked cuDNN for 20.93 GiB and OOM'd (2026-07-25). Each probe is an
+    # independent one-step evaluation, so chunking is mathematically exact, and with
+    # B*T <= this (every training batch at MAX=32768) it stays ONE call = the old path.
+    PROBE_CHUNK = int(os.environ.get("RWKV_RNN_PROBE_CHUNK", "65536"))
 
     def __init__(self, cell: str, d_model: int, hidden: int, n_layers: int,
                  dropout: float, stream_name: str = ""):
@@ -123,6 +129,17 @@ class RNNStream(ModuleType):
 
     def _run_layer_windowed(self, layer, x):
         T = x.size(1)
+        if T > self.RNN_WINDOW and not torch.is_grad_enabled():
+            # inference over a mega batch: write windows into ONE preallocated buffer.
+            # torch.cat would hold the window list AND the result at once (2x peak on the
+            # 2M-row eval batch, ~1 GB each in fp32). Bit-exact -- same calls, same order.
+            out = x.new_empty(x.size(0), T, layer.hidden_size)
+            hx = None
+            for t0 in range(0, T, self.RNN_WINDOW):
+                out_w, hx = self._layer_call(
+                    layer, x[:, t0:t0 + self.RNN_WINDOW].contiguous(), hx)
+                out[:, t0:t0 + out_w.size(1)] = out_w
+            return out
         hx = None
         outs = []
         for t0 in range(0, T, self.RNN_WINDOW):
@@ -154,31 +171,94 @@ class RNNStream(ModuleType):
         # stream weights stay fp32 (DTYPE_EXCLUDE '.rnn'/'.proj'): bf16 nn.GRU/LSTM
         # falls off cuDNN onto a 30x-slower native path -- cast at the boundary
         x = in_BTC.float()
+        # .float() COPIED (bf16 trunk) -> the residual stream is ours to mutate in lean
+        # mode; if the caller handed us fp32, x IS its tensor until the first add.
+        own_x = x is not in_BTC
+        # LEAN path for mega inference batches (the 2M-row eval user): avoid holding a
+        # full-size normalized copy and a separate h_prev tensor. Both variants are
+        # bit-exact (LayerNorm is per-row, so norm-then-gather == gather-then-norm; the
+        # in-place alive-mask only zeroes rows that precede their first real token, which
+        # are always query rows whose value gets overwritten by the probe anyway).
+        # Gated so every TRAINING batch keeps the exact code path the model trained with.
+        lean = (B * T > self.PROBE_CHUNK) and not torch.is_grad_enabled()
         for i, layer in enumerate(self.rnn):
-            xn = self.rnn_norms[i](x)
+            xn = None if lean else self.rnn_norms[i](x)
             # committed pass over the real rows (dense prefix; the skip-tail is
             # processed too but its outputs are never read -- causality)
-            x_comp = time_shift_gather(xn, order_i32)
+            x_comp = (self.rnn_norms[i](time_shift_gather(x, order_i32)) if lean
+                      else time_shift_gather(xn, order_i32))
             out_comp = self._run_layer_windowed(layer, x_comp)
+            del x_comp
             # base: real position -> its own committed h; skip -> predecessor's h
             base = time_shift_gather(out_comp, take_i32)
+            del out_comp
             # PROBE pass (the v1 bug fix): a skip/query row's output must be the
             # UNCOMMITTED one-step Cell(x_query, h_prev) -- the prediction conditions
             # on the query's features (elapsed time) against the pre-review state,
             # like the WKV kernel's x_t-derived readout of the un-advanced state.
-            # Sync-free: probe ALL positions as length-1 sequences in ONE cuDNN call
-            # (real positions' probes are garbage and discarded by the where()).
-            h_prev = (base * alive.to(base.dtype)).reshape(1, B * T, -1).contiguous()
-            probe_in = xn.reshape(B * T, 1, xn.size(-1))
-            probe_out, _ = self._layer_call(layer, probe_in, self._probe_hx(h_prev))
-            inner = torch.where(skip_col, probe_out.reshape(B, T, -1), base)
+            # Sync-free at training sizes: probe ALL positions as length-1 sequences in
+            # ONE cuDNN call (real positions' probes are garbage, discarded by where()).
+            if lean:
+                base.mul_(alive.to(base.dtype))
+                h_prev = base.reshape(1, B * T, -1)   # view; chunks clone their slice
+                inner = self._probe_pass(layer, x, h_prev, base, skip_col,
+                                         norm=self.rnn_norms[i])
+            else:
+                h_prev = (base * alive.to(base.dtype)).reshape(1, B * T, -1).contiguous()
+                inner = self._probe_pass(layer, xn, h_prev, base, skip_col)
             if self.dropout_p > 0:
                 inner = torch.nn.functional.dropout(
                     inner, self.dropout_p, self.training)
             # v3 residual: query features (and every layer's input) ride the stream
-            # to the heads regardless of gate saturation
-            x = x + self.projs[i](inner)
+            # to the heads regardless of gate saturation. On the lean (mega-batch,
+            # no-grad) path accumulate IN PLACE -- one fewer full-size fp32 tensor per
+            # layer, bit-identical to the out-of-place add.
+            proj_out = self.projs[i](inner)
+            if lean and own_x:
+                x = x.add_(proj_out)
+            else:
+                x = x + proj_out
+                own_x = True
         return x.to(in_dtype)
+
+    def _probe_pass(self, layer, xin, h_prev, base, skip_col, norm=None):
+        """Uncommitted one-step probes for every position, chunked over B*T.
+
+        One cuDNN call when B*T <= PROBE_CHUNK (all training batches) -- identical to
+        the unchunked path. Above that, chunk: probes are independent length-1
+        evaluations, so splitting the batch dimension cannot change any result, and
+        chunks containing no query row are skipped entirely (the .any() host read is
+        a sync, but it only runs on the mega-batch path, never in training).
+
+        `norm` set = LEAN mode: `xin` is the UN-normalized stream and each chunk
+        normalizes its own slice (LayerNorm is per-row -> identical values, no
+        full-size normalized copy). `h_prev` may alias `base`; chunks clone their
+        slice before the write."""
+        B, T, C = xin.shape
+        N = B * T
+        flat = xin.reshape(N, 1, C)
+        if N <= self.PROBE_CHUNK:
+            if norm is not None:
+                flat = norm(flat)
+            out, _ = self._layer_call(layer, flat, self._probe_hx(h_prev))
+            return torch.where(skip_col, out.reshape(B, T, -1), base)
+        # write into base's values (they are exactly the non-query fallback); clone only
+        # when autograd needs base intact -- chunking never triggers during training
+        res = base.reshape(N, -1)
+        res = res.clone() if torch.is_grad_enabled() else res
+        skip_flat = skip_col.reshape(N, 1)
+        for s in range(0, N, self.PROBE_CHUNK):
+            e = min(s + self.PROBE_CHUNK, N)
+            m = skip_flat[s:e]
+            if not bool(m.any()):
+                continue
+            chunk = flat[s:e]
+            if norm is not None:
+                chunk = norm(chunk)
+            hx = self._probe_hx(h_prev[:, s:e].clone())
+            out, _ = self._layer_call(layer, chunk, hx)
+            res[s:e] = torch.where(m, out.reshape(e - s, -1), res[s:e])
+        return res.view(B, T, -1)
 
     def _probe_hx(self, h_prev):
         # GRU hidden = h; LSTM hidden = (h, c). cuDNN does not expose per-step c, so
