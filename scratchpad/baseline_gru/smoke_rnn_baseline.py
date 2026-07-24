@@ -1,14 +1,16 @@
 """RNN-baseline smoke (CPU, RWKV_NO_JIT=1 required — set by the caller).
 
-A. Masking-semantics unit test: RNNStream (compact -> pack -> cuDNN -> scatter-back)
-   vs a slow per-step reference loop sharing the SAME weights, on random data with
-   INTERIOR skips, tail pads, a leading skip, and one all-skip row. Semantics:
-   state advances only on non-skipped steps; every position reads the current state;
-   positions before the first real token are zero. Tolerance 1e-5 (packed vs stepwise
-   kernels differ in accumulation order).
+A. Masking-semantics unit test: RNNStream (compact -> cuDNN -> scatter-back, v3
+   pre-norm per-layer residual x = x + proj(Cell(LN(x)))) vs a slow per-step
+   reference loop sharing the SAME weights, on random data with INTERIOR skips,
+   tail pads, a leading skip, and one all-skip row. Semantics: state advances only
+   on non-skipped steps; skip rows = UNCOMMITTED one-step probes Cell(x_query,
+   h_prev); the residual carries x through every layer. Tolerance 1e-5.
+   LSTM uses hidden != d_model so the per-layer proj path is exercised.
 B. Construction + params under the champion depths (card2/deck4/note1/preset3/user3,
-   arch = track2_a9's module): GRU ~1.55M, LSTM ~1.52M — the ~1.5M Andrew asked for.
-C. Optimizer partition: GRU/LSTM matrix weights land in the main wd group.
+   arch = track2_a9's module): GRU h=128 ~1.56M, LSTM h=92 ~1.49M.
+C. Optimizer partition: stream 2-D weights land in wd groups (the optimizer's rule
+   is dim-based, so 1-D LN weights/biases auto-fall into the no-decay group).
 """
 import os
 import sys
@@ -23,8 +25,8 @@ from rwkv.model.rnn_baseline import RNNStream
 torch.manual_seed(0)
 
 # --- A: masking semantics --------------------------------------------------------
-B, T, C, H, L = 4, 23, 16, 16, 2
-for cell in ("gru", "lstm"):
+B, T, C, L = 4, 23, 16, 2
+for cell, H in (("gru", 16), ("lstm", 12)):   # lstm H != C exercises the projs
     stream = RNNStream(cell, C, H, L, dropout=0.0)
     stream.eval()
     x = torch.randn(B, T, C)
@@ -40,29 +42,31 @@ for cell in ("gru", "lstm"):
     with torch.no_grad():
         out = stream(x, sel, skip)
 
-        # reference: per-row stepwise loop with the same per-layer nn.GRU/LSTM weights
-        # (dropout inactive under eval(), so layers chain directly). PROBE semantics
-        # (the v1-bug fix): a skip row's output = the layers applied to x_t seeded
-        # from the committed states, WITHOUT committing (LSTM probes use c=0, the
-        # documented fresh-cell caveat); real rows commit normally.
+        # reference: per-row stepwise loop with the same per-layer weights (dropout
+        # inactive under eval()). v3 semantics: per layer o = o + proj(Cell(LN(o))).
+        # PROBE semantics at skip rows: the cell step is seeded from the committed
+        # state WITHOUT committing (LSTM probes use c=0, the documented fresh-cell
+        # caveat); real rows commit normally. Residual carries o through either way.
         ref = torch.zeros(B, T, C)
         for b in range(B):
             hxs = [None] * len(stream.rnn)
             for t in range(T):
                 o = x[b : b + 1, t : t + 1]
-                if not skip[b, t]:
-                    for li, layer in enumerate(stream.rnn):
-                        o, hxs[li] = layer(o, hxs[li]) if hxs[li] is not None else layer(o)
-                else:
-                    for li, layer in enumerate(stream.rnn):
+                for li, layer in enumerate(stream.rnn):
+                    on = stream.rnn_norms[li](o)
+                    if not skip[b, t]:
+                        cell_out, hxs[li] = (layer(on, hxs[li])
+                                             if hxs[li] is not None else layer(on))
+                    else:
                         prev = hxs[li]
                         if isinstance(layer, torch.nn.LSTM):
                             hh = prev[0] if prev is not None else torch.zeros(1, 1, H)
-                            o, _ = layer(o, (hh, torch.zeros_like(hh)))
+                            cell_out, _ = layer(on, (hh, torch.zeros_like(hh)))
                         else:
                             hh = prev if prev is not None else torch.zeros(1, 1, H)
-                            o, _ = layer(o, hh)
-                ref[b, t] = stream.proj(o)[0, 0]
+                            cell_out, _ = layer(on, hh)
+                    o = o + stream.projs[li](cell_out)
+                ref[b, t] = o[0, 0]
 
     d = (out - ref).abs().max().item()
     print(f"A. {cell}: max |vectorized - stepwise ref| = {d:.2e}")
@@ -87,7 +91,7 @@ os.environ["RWKV_ZERO_FEATURES"] = "22"
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 from rwkv.model.srs_model import SrsRWKV
 
-for cell, lo, hi in (("gru", 1_500_000, 1_600_000), ("lstm", 1_460_000, 1_560_000)):
+for cell, lo, hi in (("gru", 1_500_000, 1_610_000), ("lstm", 1_430_000, 1_540_000)):
     os.environ["RWKV_BASELINE_CELL"] = cell
     m = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG)
     n = sum(p.numel() for p in m.parameters())
@@ -95,10 +99,12 @@ for cell, lo, hi in (("gru", 1_500_000, 1_600_000), ("lstm", 1_460_000, 1_560_00
     assert lo < n < hi, f"{cell} params {n} outside [{lo}, {hi}]"
     assert all(type(mod).__name__ == "RNNStream" for mod in m.rwkv_modules)
 
-    # C: optimizer partition — matrix weights must reach a wd group
+    # C: optimizer partition mirrors get_optimizer's dim-based rule: 2-D "weight"
+    # stream params decay; 1-D LN weights/biases fall into the no-decay group
     n_wd = sum(p.numel() for name, p in m.named_parameters()
-               if (".rnn." in name and "weight" in name) or ".proj.weight" in name)
-    print(f"C. {cell}: rnn/proj matrix params (should be wd-grouped): {n_wd}")
+               if (".rnn" in name or ".projs." in name)
+               and "weight" in name and len(p.squeeze().shape) >= 2)
+    print(f"C. {cell}: stream 2-D matrix params (wd-grouped): {n_wd}")
     assert n_wd > 1_000_000
 
     # C2 (2026-07-24, the 03:36 copy_downcast_ assert crash): selective_cast(bf16)

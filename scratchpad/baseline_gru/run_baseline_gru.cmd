@@ -1,13 +1,17 @@
 @echo off
 REM ============================================================================
-REM BASELINE GRU (Andrew 2026-07-23): classic GRU streams (rwkv/model/
-REM rnn_baseline.py, RWKV_BASELINE_CELL=gru, hidden=128) replacing the RWKV-7
-REM stacks -- same 5-stream hierarchy/depths (card2/deck4/note1/preset3/user3),
-REM same trunk/heads/pipeline/budget/seed. 1,556,496 params (~A13's 1,468,724).
+REM BASELINE GRU v3 (Andrew 2026-07-23; v3 relaunch 2026-07-24): classic GRU
+REM streams (rwkv/model/rnn_baseline.py, RWKV_BASELINE_CELL=gru, hidden=128)
+REM replacing the RWKV-7 stacks -- same 5-stream hierarchy/depths
+REM (card2/deck4/note1/preset3/user3), same trunk/heads/pipeline/budget/seed.
+REM 1,559,824 params (~A13's 1,468,724).
+REM v3 = pre-norm PER-LAYER RESIDUALS (x = x + proj(Cell(LN(x)))): v2's bare
+REM stacked cells suppressed the one-step query probes ~3-10x/layer (saturated
+REM update gates) -> imm was interval-blind end-to-end despite the v2 probe fix
+REM (probe_sensitivity_check.py, killed mid-WS at step ~7.5k). v1 = no probe.
 REM PURPOSE: is RWKV-7's complexity needed? Tail comparison vs A13 INFORMATIONAL.
 REM Design: per-layer cuDNN + torch-RNG dropout + (layer,window) checkpoints +
 REM fp32 stream weights behind boundary casts + windowed h-carry (mega users).
-REM Intrinsic pace ~0.35 steps/s (sequential-T cost of classic RNNs) ~= 18 h WS.
 REM RWKV_NO_JIT=1 MANDATORY. RWKV_DETERMINISTIC=0 (cuDNN RNN backward nondet).
 REM RWKV_EXIT_HARD=1 (Windows cuDNN-RNN native teardown crashes post-success).
 REM LOG HYGIENE (2026-07-24): the control log (%LOG%) is written ONLY by this

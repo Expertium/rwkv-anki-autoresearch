@@ -1,9 +1,12 @@
 @echo off
 REM ============================================================================
-REM BASELINE LSTM (Andrew 2026-07-23): classic LSTM streams (rwkv/model/
-REM rnn_baseline.py, RWKV_BASELINE_CELL=lstm, hidden=104) replacing the RWKV-7
-REM stacks -- same 5-stream hierarchy/depths (card2/deck4/note1/preset3/user3),
-REM same trunk/heads/pipeline/budget/seed. 1,521,360 params (~A13's 1,468,724).
+REM BASELINE LSTM v3 (Andrew 2026-07-23; v3 2026-07-24): classic LSTM streams
+REM (rwkv/model/rnn_baseline.py, RWKV_BASELINE_CELL=lstm, hidden=92) replacing
+REM the RWKV-7 stacks -- same 5-stream hierarchy/depths (card2/deck4/note1/
+REM preset3/user3), same trunk/heads/pipeline/budget/seed. 1,488,688 params
+REM (~A13's 1,468,724). v3 = pre-norm PER-LAYER RESIDUALS (see the GRU cmd
+REM header for the v2 attenuation post-mortem); h 104->92 pays for the
+REM per-layer projs. LSTM probes use c=0 (fresh-cell caveat, documented).
 REM PURPOSE: is RWKV-7's complexity needed? Tail comparison vs A13 INFORMATIONAL.
 REM Design: per-layer cuDNN + torch-RNG dropout + (layer,window) checkpoints +
 REM fp32 stream weights behind boundary casts + windowed h-carry (mega users).

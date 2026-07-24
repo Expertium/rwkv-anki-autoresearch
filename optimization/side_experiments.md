@@ -99,3 +99,27 @@ sync-free; LSTM probes use c=0, a documented fresh-cell caveat since cuDNN hides
 per-step c). Smoke-verified vs a corrected stepwise reference. v1 numbers kept above as
 the bug record; v2 results replace them as the honest baseline comparison. (The LSTM v1
 run was killed mid-WS at the diagnosis -- its WS val plateau matched the GRU's ~0.385.)
+
+**⚠ v2 ALSO KILLED (2026-07-24 ~19:00, step ~7.5k of 22.3k, Andrew's "you sure there
+are no other bugs?" audit):** mid-WS val showed ahead==imm AGAIN (~0.385/0.385 at step
+7000 where A14 shows a consistent ~0.02 imm advantage), so an end-to-end sensitivity
+check was built (`scratchpad/baseline_gru/probe_sensitivity_check.py`, CPU, on the live
+step-7000 ckpt): zeroing ALL 92 feature dims of every query row changed the imm
+predictions by EXACTLY 0.0 -- the trained model was still interval-blind despite the
+mechanically-correct v2 probe (module-level and smoke tests pass; a v1-semantics control
+in the same script shows the test discriminates). Stage trace (`probe_diag2.py`): the
+query perturbation enters at 10.9 (features2card), exits the card stream at 0.53, then
+ATTENUATES ~3-10x PER LAYER through the chain (deck 1.2e-3, note 3.4e-4, preset 1.9e-5,
+user 1.1e-6, heads ~0). Root cause: v2 stacked bare cells with NO residual connections;
+gates trained for long retention (z->1) suppress one-step probe inputs, and 13
+non-residual layers multiply the suppression to nothing. RWKV is immune BY STRUCTURE:
+each layer is a pre-norm residual block (x = x + att(ln(x))), so query features ride the
+residual stream to the heads at full strength -- an unanticipated, real answer to "what
+does RWKV's structure buy": **the residual skeleton is what makes one-step query
+conditioning survive depth; a readout that multiplies by r(x_t) can't be gated shut.**
+**v3 (relaunched 2026-07-24 ~19:20): pre-norm per-layer residuals x = x + proj(Cell(LN(x)))**
+-- the standard attention-vs-RNN ablation skeleton. GRU h=128 -> 1,559,824 params; LSTM
+h=104->92 (pays for per-layer projs) -> 1,488,688. LN weights auto-land in the no-decay
+optimizer group (dim-based rule). Smoke ALL PASS (stepwise-ref exact <=5e-7, both cells,
+windowed + CUDA mega-user + cast paths). Post-run gate: re-run probe_sensitivity_check
+on the trained v3 ckpt -- imm must respond to query features before the result counts.

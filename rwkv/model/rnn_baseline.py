@@ -30,6 +30,23 @@ The time_shift_select_BT input is accepted for interface parity and ignored — 
 token-shift input mix is RWKV machinery; classic cells read only x_t (the point of
 the baseline).
 
+v3 (2026-07-24, after the mid-WS sensitivity audit `probe_sensitivity_check.py`):
+PRE-NORM PER-LAYER RESIDUALS — x = x + proj(Cell(LN(x))). v2 stacked bare cells
+(classic nn.GRU style, no residuals); the trained gates saturated toward retention
+(z→1) and the one-step probe signal attenuated ~3-10x PER LAYER, so query features
+died before the heads (10.9 at features2card → 1e-6 at the user stream → imm
+predictions effectively interval-blind AGAIN, despite the v2 probe fix being
+mechanically correct). RWKV never has this failure mode because each layer is a
+residual block (x = x + att(ln(x))) — the query row's features ride the residual
+stream to the heads at full strength. Keeping the residual skeleton and swapping
+only the recurrence operator is also the standard way attention-vs-RNN ablations
+are built, so v3 is the fairer "is RWKV needed" baseline. Every layer now reads
+the d_model residual stream (input_size=d_model for all layers); per-layer
+projs (Identity when hidden==d_model) map cell space back to the stream. Module
+names: `.rnn.` / `.rnn_norms.` / `.projs.` — ALL matched by DTYPE_EXCLUDE
+(".rnn" and ".proj" are substrings), so the whole stream stays fp32. LayerNorm
+weights are 1-D → the optimizer's dim-based grouping auto-assigns wd=0.
+
 Memory (2026-07-24, the 33 GB peak_reserved WDDM-paging incident): fp32 activations +
 cuDNN training reserves across 13 layers x ~32k tokens blow past 12 GB — each
 (layer, window) segment is gradient-CHECKPOINTED (recompute in backward). Safe with
@@ -68,14 +85,21 @@ class RNNStream(ModuleType):
         rnn_cls = {"gru": torch.nn.GRU, "lstm": torch.nn.LSTM}[cell]
         # per-layer single-layer modules (not one multilayer module): inter-layer
         # dropout moves OUTSIDE cuDNN (torch RNG -> checkpoint-safe), and each
-        # (layer, window) segment can be checkpointed independently
+        # (layer, window) segment can be checkpointed independently.
+        # v3: every layer reads the d_model residual stream (pre-norm residual).
         self.rnn = torch.nn.ModuleList([
-            rnn_cls(input_size=(d_model if i == 0 else hidden), hidden_size=hidden,
+            rnn_cls(input_size=d_model, hidden_size=hidden,
                     num_layers=1, batch_first=True)
-            for i in range(n_layers)
+            for _ in range(n_layers)
         ])
-        self.proj = (torch.nn.Linear(hidden, d_model)
-                     if hidden != d_model else torch.nn.Identity())
+        self.rnn_norms = torch.nn.ModuleList([
+            torch.nn.LayerNorm(d_model) for _ in range(n_layers)
+        ])
+        self.projs = torch.nn.ModuleList([
+            (torch.nn.Linear(hidden, d_model)
+             if hidden != d_model else torch.nn.Identity())
+            for _ in range(n_layers)
+        ])
         self.dropout_p = float(dropout)
         self.stream_name = stream_name
 
@@ -131,9 +155,10 @@ class RNNStream(ModuleType):
         # falls off cuDNN onto a 30x-slower native path -- cast at the boundary
         x = in_BTC.float()
         for i, layer in enumerate(self.rnn):
+            xn = self.rnn_norms[i](x)
             # committed pass over the real rows (dense prefix; the skip-tail is
             # processed too but its outputs are never read -- causality)
-            x_comp = time_shift_gather(x, order_i32)
+            x_comp = time_shift_gather(xn, order_i32)
             out_comp = self._run_layer_windowed(layer, x_comp)
             # base: real position -> its own committed h; skip -> predecessor's h
             base = time_shift_gather(out_comp, take_i32)
@@ -144,13 +169,16 @@ class RNNStream(ModuleType):
             # Sync-free: probe ALL positions as length-1 sequences in ONE cuDNN call
             # (real positions' probes are garbage and discarded by the where()).
             h_prev = (base * alive.to(base.dtype)).reshape(1, B * T, -1).contiguous()
-            probe_in = x.reshape(B * T, 1, x.size(-1))
+            probe_in = xn.reshape(B * T, 1, xn.size(-1))
             probe_out, _ = self._layer_call(layer, probe_in, self._probe_hx(h_prev))
-            probe_out = probe_out.reshape(B, T, -1)
-            x = torch.where(skip_col, probe_out, base)
-            if i + 1 < len(self.rnn) and self.dropout_p > 0:
-                x = torch.nn.functional.dropout(x, self.dropout_p, self.training)
-        return self.proj(x).to(in_dtype)
+            inner = torch.where(skip_col, probe_out.reshape(B, T, -1), base)
+            if self.dropout_p > 0:
+                inner = torch.nn.functional.dropout(
+                    inner, self.dropout_p, self.training)
+            # v3 residual: query features (and every layer's input) ride the stream
+            # to the heads regardless of gate saturation
+            x = x + self.projs[i](inner)
+        return x.to(in_dtype)
 
     def _probe_hx(self, h_prev):
         # GRU hidden = h; LSTM hidden = (h, c). cuDNN does not expose per-step c, so
@@ -163,10 +191,12 @@ class RNNStream(ModuleType):
 
 def baseline_hidden_default(cell: str) -> int:
     # sized so the full 5-stream model lands ~1.5M params at d_model=128 with the
-    # champion depths (card2/deck4/note1/preset3/user3 = 13 layers):
-    #   gru  h=128: 13 * 99,072  = 1,287,936 (+ trunk/heads ~265k) ~= 1.55M
-    #   lstm h=104: ~1,185,600 + 5 projections (13,440 each) + trunk ~= 1.52M
-    return {"gru": 128, "lstm": 104}[cell]
+    # champion depths (card2/deck4/note1/preset3/user3 = 13 layers). v3 (pre-norm
+    # residual): every layer reads d_model, plus per-layer LN (256) and, when
+    # hidden != d_model, a per-layer proj:
+    #   gru  h=128: 13 * (99,072 + 256)            = 1,291,264 (+ trunk ~265k) ~= 1.56M
+    #   lstm h=92:  13 * (81,696 + 11,904 + 256)   = 1,220,128 (+ trunk ~265k) ~= 1.49M
+    return {"gru": 128, "lstm": 92}[cell]
 
 
 def env_baseline_cell() -> str:

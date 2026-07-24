@@ -2,8 +2,13 @@
 
 Auto-discovers the ACTIVE run: newest *_ws_trace.jsonl under scratchpad/tuner5k/*/ or
 scratchpad/*/ (HP-tuner trials and champion runs both write RWKV_STEP_TRACE), excluding the
-current champion's own trace. Champion reference = optimization/champion_5k.json (embedded
-trace). Two panels (ahead / imm): EMA-smoothed curves for display; the p-value is a paired
+current champions' own traces. Champion reference is picked PER RUN (2026-07-24, two-track
+era): the run folder's ws toml MAX_TRAIN_GLOBAL_LEN decides -- 32768 = track-2/d=128 ->
+champion_5k_track2.json, else track-1 -> champion_5k_plain.json (the old hardwired
+champion_5k.json = the FROZEN QAT-era deploy champion, wrong overlay for plain-era runs).
+Pairing stays honest either way: any run sharing seed/db/MAX with its track's champion
+trains on byte-identical batches at every step. Two panels (ahead / imm): EMA-smoothed
+curves for display; the p-value is a paired
 one-sided Wilcoxon (candidate better) on the RAW per-step diffs over the common window --
 the same pairing the tuner's prune test uses. Vertical lines: warmup end + WS end (= decay
 phase start; the trace itself covers the WS phase). When a new trial starts, the plot
@@ -39,8 +44,13 @@ C_INK = "#333333"
 C_LINEMARK = "#888888"
 
 
-def load_champion():
-    with open("optimization/champion_5k.json") as fh:
+CHAMP_JSONS = ("optimization/champion_5k_plain.json",     # track 1 (d=32 plain era)
+               "optimization/champion_5k_track2.json",    # track 2 (d=128)
+               "optimization/champion_5k.json")           # frozen QAT deploy truth
+
+
+def load_champion(path):
+    with open(path) as fh:
         d = json.load(fh)
     # step-indexed dense arrays (trace_step is 1..N)
     return {
@@ -51,9 +61,30 @@ def load_champion():
     }
 
 
-def discover_trace(champ_name):
+def champion_names():
+    names = []
+    for p in CHAMP_JSONS:
+        try:
+            names.append(json.load(open(p))["name"])
+        except Exception:
+            pass
+    return names
+
+
+def pick_champion_json(trace_path):
+    """Track-2 (d=128) runs train at MAX_TRAIN_GLOBAL_LEN=32768; track-1 at 110000.
+    Read the run folder's ws toml and route to the matching track's champion ref."""
+    folder = os.path.dirname(trace_path)
+    for toml in glob.glob(os.path.join(folder, "*ws.toml")):
+        m = re.search(r"^MAX_TRAIN_GLOBAL_LEN\s*=\s*(\d+)", open(toml).read(), re.M)
+        if m:
+            return CHAMP_JSONS[1] if int(m.group(1)) == 32768 else CHAMP_JSONS[0]
+    return CHAMP_JSONS[0]
+
+
+def discover_trace(excl_names):
     cands = glob.glob("scratchpad/tuner5k/*/*_ws_trace.jsonl") + glob.glob("scratchpad/*/*_ws_trace.jsonl")
-    cands = [p for p in cands if champ_name not in os.path.basename(p)]
+    cands = [p for p in cands if not any(n in os.path.basename(p) for n in excl_names)]
     if not cands:
         return None
     return max(cands, key=os.path.getmtime)
@@ -196,7 +227,6 @@ def draw(fig, axes, champ, trace_path):
 
 
 def main():
-    champ = load_champion()
     fig, axes = plt.subplots(2, 1, figsize=(10, 7), sharex=True)
     if not ONCE:
         fig.canvas.manager.set_window_title("RWKV 5k: champion vs candidate")
@@ -208,9 +238,11 @@ def main():
         # renderer (seen live: FT_Render_Glyph "raster overflow"), and those exceptions
         # surface here via flush_events/draw_idle. Log + continue, always.
         try:
-            trace = discover_trace(champ["name"])
+            trace = discover_trace(champion_names())
             if trace:
                 try:
+                    # re-read per refresh: cheap, and a promotion re-points the ref live
+                    champ = load_champion(pick_champion_json(trace))
                     draw(fig, axes, champ, trace)
                 except Exception as e:  # file mid-rotation etc. -- keep the window alive
                     axes[0].set_title(f"(draw error, retrying: {e})", fontsize=9)

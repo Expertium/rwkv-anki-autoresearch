@@ -860,11 +860,18 @@ params (−6.0% vs A13, **−50.03% vs 2.76M — halfway mark crossed**), BETTER
 modes (+0.000039 p=0.045 / +0.000059 p=0.0069) — the LoRA ranks were oversized;
 a further 8→4 halving is a queue candidate. champion_5k_track2.json = A14 (ckpt
 scratchpad/track2_a14/t2a14d_5586.pth; full env = A13's + the lora8 arch module).
-NOW RUNNING: baseline_gru (Andrew's is-RWKV-needed experiment — GRU streams,
-h=128, ~1.55M params, auto-fired 03:25 on A14's DONE_EXIT; verdict = informational
-comparison vs A13/A14, NOT a champion candidate), then baseline_lstm (h=104,
-~1.52M, parked on GRU's DONE_EXIT), then **A15 = d_model 128→96 (N_HEADS=3) —
-REBUILD on the A14 base first (halved LoRAs; the staged A15 arch predates A14)**.
+NOW RUNNING: baseline_gru **v3** (Andrew's is-RWKV-needed experiment — GRU streams
+h=128, 1,559,824 params; verdict = informational comparison vs A13/A14, NOT a
+champion candidate). ⚠ v1 (no query probe → interval-blind, 0.415/0.415) AND v2
+(probe correct but NO residuals → signal attenuated 3-10x/layer, imm still blind —
+proven by probe_sensitivity_check.py on the live ckpt, killed at step 7.5k after
+Andrew's "any other bugs?" audit) are both bug records in side_experiments.md SE-2.
+v3 = pre-norm per-layer residuals x = x + proj(Cell(LN(x))) — RWKV's residual
+skeleton turned out to be WHAT carries query conditioning; the audit + v1-control
+test is the post-run gate (imm must respond to query features before any v3 result
+counts). Then baseline_lstm v3 (h=92, 1,488,688, parked on GRU's DONE_EXIT_0),
+then **A15 = d_model 128→96 (N_HEADS=3) — REBUILD on the A14 base first (halved
+LoRAs; the staged A15 arch predates A14)**.
 Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
 sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS
 MAPPED: card=2, deck=4, note=1, preset=3, user=3; depth ladder EXHAUSTED. Also
