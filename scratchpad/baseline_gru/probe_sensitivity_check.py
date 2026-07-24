@@ -14,10 +14,12 @@ end through the heads, on a real training batch:
      never leak into committed state -- that would be a new bug).
   B. Scale ONLY the elapsed-time dims (0..7: elapsed days/secs/cumulative/phases) at
      query rows by 1.5 -> imm predictions must move: elapsed time specifically flows.
-  C. CONTROL: monkeypatch RNNStream.forward back to v1 semantics (skip rows read the
-     committed predecessor state, no probe) and repeat B -> the delta must be EXACTLY
-     zero. Proves the test discriminates v1 from v2 (i.e. it would have caught the
-     bug), and quantifies how much the fix changes trained predictions.
+  C. PROBE-CONTRIBUTION REPORT (v3 rework -- informational, no hard gate): rerun with
+     a NO-PROBE forward (skip rows read the predecessor's committed value, v1-style,
+     but under v3's norm+residual structure). Under v2's bare stack this control
+     proved the test discriminates (delta exactly 0 = blind). Under v3 the residual
+     bypass transmits query features even without the probe, so C instead quantifies
+     what the state-conditioned probe adds beyond the raw residual bypass.
 
 Feature-dim facts (INPUT_FEATURES.md): dim 23 = the explicit query flag (row
 identification); dims 0-7 = elapsed-time family; RWKV_ZERO_FEATURES=22 (card state)
@@ -130,11 +132,11 @@ print(f"B. elapsed dims x1.5 on query rows: imm |dP| max {dq_B.max():.4f} "
       f"mean {dq_B.mean():.4f} (must be >0)")
 assert dq_B.max() > 1e-4, "B FAILED: imm insensitive to elapsed time"
 
-# --- C: v1-semantics control (bare h_prev at skips, no probe) ----------------------
-_v2_forward = RNNStream.forward
+# --- C: probe-contribution report (no-probe forward under the v3 structure) --------
+_probe_forward = RNNStream.forward
 
 
-def _v1_forward(self, in_BTC, time_shift_select_BT, skip_BT):
+def _noprobe_forward(self, in_BTC, time_shift_select_BT, skip_BT):
     if not getattr(self, "_flat_ok", False):
         for layer in self.rnn:
             layer.flatten_parameters()
@@ -147,25 +149,26 @@ def _v1_forward(self, in_BTC, time_shift_select_BT, skip_BT):
     alive = (cum_BT > 0).unsqueeze(-1)
     x = in_BTC.float()
     for i, layer in enumerate(self.rnn):
-        x_comp = time_shift_gather(x, order_i32)
+        xn = self.rnn_norms[i](x)
+        x_comp = time_shift_gather(xn, order_i32)
         out_comp = self._run_layer_windowed(layer, x_comp)
-        x = time_shift_gather(out_comp, take_i32) * alive.to(out_comp.dtype)
-        if i + 1 < len(self.rnn) and self.dropout_p > 0:
-            x = torch.nn.functional.dropout(x, self.dropout_p, self.training)
-    return self.proj(x).to(in_dtype)
+        base = time_shift_gather(out_comp, take_i32) * alive.to(out_comp.dtype)
+        if self.dropout_p > 0:
+            base = torch.nn.functional.dropout(base, self.dropout_p, self.training)
+        x = x + self.projs[i](base)
+    return x.to(in_dtype)
 
 
-RNNStream.forward = _v1_forward
+RNNStream.forward = _noprobe_forward
 try:
-    v1_base = fwd(start0)
-    v1_B = fwd(sB)
-    dq_v1 = (p_binary(v1_B) - p_binary(v1_base))[q_lab].abs()
-    d_fix = (p_binary(v1_base) - pb0)[q_lab].abs()
-    print(f"C. v1 semantics: same elapsed perturbation -> imm |dP| max {dq_v1.max():.2e} "
-          f"(must be EXACTLY 0);  v1-vs-v2 trained imm gap max {d_fix.max():.4f} "
-          f"mean {d_fix.mean():.4f}")
-    assert dq_v1.max() == 0.0, "C FAILED: v1 control shows sensitivity?!"
+    np_base = fwd(start0)
+    np_B = fwd(sB)
+    dq_np = (p_binary(np_B) - p_binary(np_base))[q_lab].abs()
+    d_probe = (p_binary(np_base) - pb0)[q_lab].abs()
+    print(f"C. no-probe (residual bypass only): elapsed perturbation imm |dP| "
+          f"max {dq_np.max():.4f} mean {dq_np.mean():.4f}; probe-vs-noprobe trained "
+          f"imm gap max {d_probe.max():.4f} mean {d_probe.mean():.4f} (informational)")
 finally:
-    RNNStream.forward = _v2_forward
+    RNNStream.forward = _probe_forward
 
 print("PROBE_CHECK_ALL_PASS")
