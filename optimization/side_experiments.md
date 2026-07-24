@@ -46,3 +46,44 @@ context) would score worse. (2) Grades are truly gone; duration is the only corr
 (3) The blind model's imm mode beating its own ahead mode by 0.011 (vs ~0.031 for the
 full model) shows the ahead task suffers more from blindness — predicting *decay over an
 unknown interval* is exactly where the interval features were load-bearing.
+
+## SE-2 -- GRU / LSTM stream baselines: is RWKV-7 needed? (2026-07-23..24, Andrew's directive)
+
+**Question:** replace ONLY the per-stream RWKV-7 stacks with classic GRU/LSTM stacks at
+~equal parameters (~1.5M, the track-2 champion scale) -- same 5-stream hierarchy and
+depths (card2/deck4/note1/preset3/user3), same 92-dim input FC, same instant/curve heads,
+same pipeline/budget/seed -- and measure whether RWKV-7's complexity earns its keep.
+
+**Implementation:** `rwkv/model/rnn_baseline.py` (RWKV_BASELINE_CELL=gru|lstm): per-layer
+cuDNN cells, torch-RNG inter-layer dropout, skip-semantics matched to the WKV kernel via
+compact-run-scatter (smoke-verified bit-close vs a stepwise reference incl. interior
+skips), windowed h-carry for >65k-token users, fp32 weights behind bf16 boundary casts,
+(layer,window) gradient checkpointing. Deviations from the RWKV recipe (forced):
+RWKV_DETERMINISTIC=0 (cuDNN RNN backward nondet), vprune OFF (cross-arch val ref),
+no token-shift input mix (that is RWKV machinery -- classic cells read x_t only).
+
+**GRU result (h=128, 1,556,496 params, val half 5001-7500, n=2500, 0 nanskips):**
+
+| model | ahead | imm | vs A13 (1.469M RWKV) |
+|---|---|---|---|
+| GRU streams | 0.415110 | 0.415352 | +0.116 / +0.148 WORSE (p=1.0 both) |
+| A13 RWKV | 0.298837 | 0.267805 | -- |
+| FSRS-7 (ref) | ~0.3179 | -- | GRU loses to FSRS-7 by ~0.10 |
+| SE-1 blind RWKV (ref) | 0.3519 | 0.3413 | GRU (with ALL features) loses to BLIND RWKV |
+
+Val trajectory plateaued at ~0.385/0.385 by mid-WS (RWKV: 0.325/0.306); the 0.25-ep decay
+barely moved it (0.3854 -> eval 0.415 on the val half). **Striking secondary observation:
+GRU ahead == imm to 3 decimals -- the GRU cannot exploit the immediate-prediction
+conditioning at all, while RWKV's imm advantage is ~0.031.**
+
+**Training speed (the other half of the question):** on the real group-size mix the GRU
+trained ~2x FASTER wall-clock (WS 2.5 h at ~2.5 steps/s vs RWKV d=128's ~4.7 h at ~1.3);
+on max-size 32k-token groups it is ~3x SLOWER (0.35 vs 1.15 steps/s) -- classic RNNs pay
+sequentially for T, RWKV's chunk-parallel kernel is ~flat. CPU/deploy inference was not
+measured (moot given the accuracy).
+
+**Caveats:** HPs (peak_lr 1e-3, wd, clip) are RWKV-tuned, 1-epoch budget, no
+GRU-specific tuning -- but the gap (~0.12-0.15) is ~100x the phase's typical effect
+sizes and far beyond tuning slack. **Verdict so far: RWKV-7's complexity is decisively
+needed -- the recurrence itself (matrix-valued state + decay/gating machinery), not just
+the training pipeline, carries the accuracy.** LSTM (h=104, 1,521,360 params) running.
