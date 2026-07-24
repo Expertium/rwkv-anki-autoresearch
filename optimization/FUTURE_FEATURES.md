@@ -64,6 +64,54 @@ Candidate research moves (both break invariants → Andrew's call):
   degenerate as a partition — plausibly acting as a second global stream at a different
   time constant. So *augment* looks safer than *replace*; measure both.
 
+### ARBITRARY-DEPTH deck trees — design sketch (Andrew's question, 2026-07-24)
+
+Andrew: "instead of card→note→deck→parent-deck→preset→global, can RWKV process deck trees
+of arbitrary depth?" Yes — by making depth a LOOP COUNT rather than an architecture
+constant. **Iterative coarsening with weight sharing:** run ONE deck module L times; at
+iteration ℓ the rows are grouped by their ancestor ℓ hops up, chained as usual
+(x ← module output), with rows that have no ancestor at that level BYPASSING via a mask
+(`x = where(active_ℓ, module(x), x)` — the same trick the RNN-baseline probe uses). Depth
+becomes data, not parameters.
+
+Why it fits: the 5 streams already ARE "partition rows by entity → run a sequence model per
+entity → chain fine→coarse". A level is just another partition, so the WKV kernel is
+untouched — only the gathers change (preprocessing emits L sets of deck-style
+`sub_gather`/`split_len`/`perm` artifacts instead of 1). States key on (deck, level) — a
+deck that is a leaf for some cards and an ancestor for others gets separate states, which
+is correct because the input representation differs per level. Add a tiny per-level
+embedding (L×d params) so shared weights can still specialize.
+
+**Measured cost (review-weighted, 80-user sample, 7.94M reviews —
+`scratchpad/dataset_id/deck_depth_by_review.py`):** 49.3% of reviews sit in top-level decks
+(no ancestors); reviews having an ancestor at level 1/2/3/4 = 50.7/42.2/22.9/12.5%, and
+96.1% of reviews are at depth ≤ 4. Because inactive rows bypass, an L=4 loop costs
+0.507+0.422+0.229+0.125 ≈ **1.28× one deck-stream pass, at ZERO extra parameters** — not
+4×. Ancestor entities per level shrink 2,467 → 630 → 265 → 113, so each level is a real
+coarsening (a proper pyramid), and extra state ≈ +45 deck-sized states/user (deck states
+are the cheap tier; card/note dominate deploy memory).
+
+Variants worth measuring: (a) PARALLEL instead of chained — run all levels off the same
+input and sum with level embeddings; order-invariant in depth and all levels compute
+concurrently (better GPU utilization), but a bigger break from the chain invariant;
+(b) read-only ancestor pooling (single per-deck state, read all ancestors at each review) —
+cheaper reads but ancestors never accumulate subtree history unless updates also scatter to
+them, which costs the same as (a); (c) depth + ancestor-ID codes as plain FEATURES, no new
+stream — the near-free control.
+
+Costs/risks, honestly: needs `parent_id` through preprocessing → **LMDB rebuild** (breaks
+the no-new-inputs invariant) and changes the fixed-hierarchy invariant — both Andrew's call.
+Deploy needs the Rust engine to loop over ancestor levels with (deck, level) states (Anki
+has the real tree at inference, so nothing is blocked). Half the reviews have no ancestor at
+all, so any gain must come from the deep-tree half.
+
+**Sequencing (cheap-first, and one rebuild serves everything):** the expensive step is the
+LMDB rebuild, so emit gathers for levels 1..6 in that SINGLE rebuild and gate levels by env.
+Then: (1) control = fixed 6th stream at the immediate parent (no loop) — if null, the family
+is likely null; (2) shared-weight loop L=2/3/4 + level embedding; (3) parallel-pooling
+variant; (4) features-only control. The rebuild is CPU-side and can overlap GPU runs
+(it does compete with fetch workers for cores).
+
 ## Leakage rule
 All count/batch features must be computed **as of review time** during preprocessing (not from
 the full table) so same-day-created-and-reviewed cards stay honest.
