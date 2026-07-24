@@ -31,6 +31,39 @@ exists; the `#N` references below are its row numbers.
 | skip | card_id − note_id gap | ~always zero (cards generated at note creation) — not worth a dim. |
 | skip | Session count per day | Splitting is arbitrary; the sub-day #10 upgrade carries the signal continuously. |
 
+## ⚠ DECK TREE — available TODAY, no new export needed (Andrew's find, 2026-07-24)
+
+`DeckEntry.parent_id` (stats.proto field 2, present in BOTH the raw `-id` rebuild and the
+PUBLISHED anonymized dataset) is **the parent deck's `deck_id`** — Anki's `A::B::C` deck
+tree, one row per deck. Verified on the raw set (300-user sample, 58,552 deck rows):
+94.8% of decks have a non-zero parent; **100% of those resolve to a `deck_id` in the SAME
+user's table**; zero cycles, zero self-parents; `parent_id == 0` = top-level; depth up to
+11 levels (mean per-user max 2.54). Parent is usually older than child (51,533 vs 3,967 —
+the inversions are Anki auto-creating a parent when a deck is renamed into a new path),
+and 98% of children share their parent's preset.
+
+**The PUBLISHED set preserves it too** (200-user sample, 39,179 rows): `parent_id` was
+factorized with the SAME codebook as `deck_id`, so 94.2% still resolve to real deck rows
+and the depth profile matches; the `0` root sentinel became a per-user code that isn't a
+deck (that's the 5.8% "unresolvable" = top-level decks). **So deck-hierarchy features need
+NO new dataset export** — unlike everything else on this page. Our pipeline simply throws
+it away: `rwkv/data_processing.py:203` does `df_decks.drop(columns=["user_id", "parent_id"])`
+(inherited from upstream). Cost to use it = an LMDB rebuild, not a data rebuild.
+
+**Why it may matter more than a feature — the PRESET STREAM IS DEGENERATE FOR MOST USERS**
+(800-user sample, all owned decks): median user has **56 decks, 6 root decks, 1 preset**;
+**67.4% of users have exactly ONE preset**, i.e. for two thirds of users the preset stream
+pools exactly what the user/global stream already pools. The tree gives a genuine middle
+level for **76.5%** of users (decks > roots > 1) and is finer than presets for **92.5%**.
+Candidate research moves (both break invariants → Andrew's call):
+- **parent/root-deck ID code** as a new input dim group (12 dims like the other IDs; codes
+  are re-randomized per batch, identity carried by matching — same machinery).
+- **A parent-deck STREAM** replacing or inserted before `preset_id` in the chain
+  (card→note→deck→**parent-deck**→preset→global). Note A12 showed preset depth 3L→2L still
+  costs accuracy (imm 1.23× the bar), so the preset stack is doing real work even when
+  degenerate as a partition — plausibly acting as a second global stream at a different
+  time constant. So *augment* looks safer than *replace*; measure both.
+
 ## Leakage rule
 All count/batch features must be computed **as of review time** during preprocessing (not from
 the full table) so same-day-created-and-reviewed cards stay honest.
