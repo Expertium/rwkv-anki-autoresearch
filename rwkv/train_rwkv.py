@@ -1431,14 +1431,37 @@ def main(config):
             process.start()
             prepare_processes.append(process)
 
+        exit_code = 0
         try:
             main_loop(config=config, task_queue=task_queue, batch_queue=batch_queue)
+        except SystemExit as e:
+            exit_code = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
         except Exception:
             traceback.print_exc()
+            exit_code = -1  # legacy behavior: swallowed (process exits 0)
         finally:
             for process in prepare_processes:
                 process.terminate()
+            # 2026-07-24: CONFIRM the workers die -- a straggler inherits the .cmd's
+            # log redirect handle and its lingering open blocked the cmd's next >>
+            # (silent phase-chain death). terminate() alone left orphans on Windows.
+            for process in prepare_processes:
+                process.join(timeout=10)
+                if process.is_alive():
+                    process.kill()
+                    process.join(timeout=5)
             print("Killed processes.")
+        # RWKV_EXIT_HARD=1 (2026-07-24, RNN baselines): torch + cuDNN-RNN on Windows
+        # crashes with 0xC0000409 in NATIVE TEARDOWN after all work is done, turning
+        # successful runs into nonzero exits (.cmd phase gating breaks both ways --
+        # this also converts the swallowed main_loop exception into an honest exit 1).
+        # os._exit skips the crashing native teardown. Default off = legacy exit flow.
+        if os.environ.get("RWKV_EXIT_HARD", "0") == "1":
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(1 if exit_code == -1 else exit_code)
+        if exit_code not in (0, -1):
+            raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":

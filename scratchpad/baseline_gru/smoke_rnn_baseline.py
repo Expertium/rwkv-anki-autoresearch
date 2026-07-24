@@ -40,20 +40,34 @@ for cell in ("gru", "lstm"):
     with torch.no_grad():
         out = stream(x, sel, skip)
 
-        # reference: per-row stepwise loop with the same nn.GRU/LSTM weights
+        # reference: per-row stepwise loop with the same per-layer nn.GRU/LSTM weights
+        # (dropout inactive under eval(), so layers chain directly)
         ref = torch.zeros(B, T, C)
         for b in range(B):
-            hx = None
+            hxs = [None] * len(stream.rnn)
             cur = None  # projected output of the last real step
             for t in range(T):
                 if not skip[b, t]:
-                    o, hx = stream.rnn(x[b : b + 1, t : t + 1], hx)
+                    o = x[b : b + 1, t : t + 1]
+                    for li, layer in enumerate(stream.rnn):
+                        o, hxs[li] = layer(o, hxs[li]) if hxs[li] is not None else layer(o)
                     cur = stream.proj(o)[0, 0]
                 ref[b, t] = cur if cur is not None else torch.zeros(C)
 
     d = (out - ref).abs().max().item()
     print(f"A. {cell}: max |vectorized - stepwise ref| = {d:.2e}")
     assert d < 1e-5, f"{cell} masking semantics mismatch"
+
+    # A2 (2026-07-24, after the mega-user CUDNN_STATUS_NOT_SUPPORTED crash): force the
+    # WINDOWED h-carry path (window 7 << T=23) — must match the same stepwise ref.
+    old_win = RNNStream.RNN_WINDOW
+    RNNStream.RNN_WINDOW = 7
+    with torch.no_grad():
+        out_w = stream(x, sel, skip)
+    RNNStream.RNN_WINDOW = old_win
+    dw = (out_w - ref).abs().max().item()
+    print(f"A2. {cell} windowed (win=7): max |windowed - stepwise ref| = {dw:.2e}")
+    assert dw < 1e-5, f"{cell} windowed h-carry mismatch"
 
 # --- B: full-model construction + params ------------------------------------------
 os.environ["RWKV_ARCH_MODULE"] = "scratchpad/track2_a9/architecture_d128_cmix1_user3_card2_note1.py"
@@ -73,9 +87,37 @@ for cell, lo, hi in (("gru", 1_500_000, 1_600_000), ("lstm", 1_460_000, 1_560_00
 
     # C: optimizer partition — matrix weights must reach a wd group
     n_wd = sum(p.numel() for name, p in m.named_parameters()
-               if ".rnn.weight" in name or ".proj.weight" in name)
+               if (".rnn." in name and "weight" in name) or ".proj.weight" in name)
     print(f"C. {cell}: rnn/proj matrix params (should be wd-grouped): {n_wd}")
     assert n_wd > 1_000_000
 
+    # C2 (2026-07-24, the 03:36 copy_downcast_ assert crash): selective_cast(bf16)
+    # must leave the RNN stream params fp32 (RNNStream._apply blocks dtype casts;
+    # parents cast children so the name list alone can't), and the master->child
+    # copy_downcast_ path must run clean.
+    master = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG)
+    master.load_state_dict(m.state_dict())
+    m.selective_cast(torch.bfloat16)
+    bad = [n for n, p in m.named_parameters()
+           if (".rnn." in n or ".proj." in n) and p.dtype != torch.float32]
+    assert not bad, f"stream params downcast despite _apply block: {bad[:3]}"
+    m.copy_downcast_(master, dtype=torch.bfloat16)
+    print(f"C2. {cell}: selective_cast(bf16) + copy_downcast_ clean; streams stay fp32")
+
 os.environ["RWKV_BASELINE_CELL"] = ""
+
+# --- D: CUDA mega-user length (the crash repro): T > the cuDNN ~65k ceiling must now
+# run through the 32768-window path without CUDNN_STATUS_NOT_SUPPORTED ------------
+if torch.cuda.is_available():
+    s = RNNStream("gru", 16, 16, 2, dropout=0.0).cuda().eval()  # weights fp32
+    Tm = 70_000
+    xm = torch.randn(1, Tm, 16, device="cuda", dtype=torch.bfloat16)  # bf16 boundary
+    skipm = torch.zeros(1, Tm, dtype=torch.bool, device="cuda")
+    selm = torch.zeros(1, Tm, dtype=torch.int32, device="cuda")
+    with torch.no_grad():
+        om = s(xm, selm, skipm)
+    assert om.dtype == torch.bfloat16 and torch.isfinite(om).all()
+    print(f"D. CUDA T={Tm}, bf16 in / fp32 weights / bf16 out: OK (3 windows)")
+else:
+    print("D. skipped (no CUDA)")
 print("SMOKE_ALL_PASS")

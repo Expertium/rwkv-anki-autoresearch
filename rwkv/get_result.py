@@ -5,6 +5,7 @@ This script takes a trained model and a list of users and produces a result file
 import json
 import multiprocessing
 import os
+import sys
 from pathlib import Path
 import traceback
 import lmdb
@@ -544,4 +545,18 @@ def main(config):
 
 if __name__ == "__main__":
     config = parse_toml()
-    main(config)
+    try:
+        main(config)
+    except Exception:
+        if os.environ.get("RWKV_EXIT_HARD", "0") == "1":
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(1)
+        raise
+    # RWKV_EXIT_HARD=1 (2026-07-24, RNN baselines): torch + cuDNN-RNN on Windows
+    # crashes with 0xC0000409 in native teardown AFTER a successful eval, failing the
+    # shard exit code. os._exit skips the crashing teardown. Default off = legacy.
+    if os.environ.get("RWKV_EXIT_HARD", "0") == "1":
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)

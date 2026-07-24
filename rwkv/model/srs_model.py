@@ -159,6 +159,14 @@ DTYPE_EXCLUDE = [
     "ahead_linear",
     "gru_",  # GRU head root Parameters -- fp32 like the linears they replace
     "pava_",  # rectifier junction thetas -- fp32, used in the eager fp32 probe loss
+    # RNN baselines (2026-07-24): bf16 nn.GRU/LSTM falls off cuDNN onto a 30x-slower
+    # native path (micro-benched 1258 vs 42 ms) -- keep the stream weights fp32;
+    # RNNStream.forward casts activations at the boundary. NO trailing dot: the
+    # substrings must match MODULE names too ("rwkv_modules.0.rnn" -- selective_cast
+    # calls .to() directly on nested modules), not just param names. No RWKV
+    # param/module names contain these. RNNStream._apply is the second guard.
+    ".rnn",
+    ".proj",
 ]
 
 
