@@ -25,6 +25,14 @@ from rwkv.utils import load_tensor, save_tensor  # type: ignore
 # wait ~4 ms per fetch anyway. Depth only throttles the workers -- numerics/order untouched.
 FETCH_AHEAD = 5
 
+# How often (in USERS) the eval loop calls torch.cuda.empty_cache(). Default 20 = the
+# historical constant, so RWKV runs are byte-identical. Lower it for memory-hungry
+# variants: the 2026-07-25 GRU-baseline eval wedged on its 11th user with ~11 GB VRAM
+# reserved and a 27 GB host working set (fp32 RNN stream weights + the per-layer probe
+# tensors fragment the caching allocator much faster than a bf16 RWKV eval; once VRAM is
+# oversubscribed, WDDM spills to host RAM and the process stops making progress).
+EVAL_EMPTY_CACHE_EVERY = max(1, int(os.environ.get("RWKV_EVAL_EMPTY_CACHE_EVERY", "20")))
+
 
 # label_filter env opened ONCE per process and cached (2026-07-08): the old per-user
 # lmdb.open(map_size=40GB) never closed its envs -- after ~2000 users the accumulated
@@ -367,7 +375,7 @@ def run(
             # if len(stats_batch) > 1:
             #     print(f"ALL {user_id} ahead_loss: {stats.ahead_equalize_avg.item():.3f}, imm_loss: {stats.imm_binary_equalize_avg.item():.3f}, imm_n: {stats.imm_binary_equalize_n}")
 
-            if (i + 1) % 20 == 0:
+            if (i + 1) % EVAL_EMPTY_CACHE_EVERY == 0:
                 print("Emptying cache.")
                 torch.cuda.empty_cache()
 

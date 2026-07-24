@@ -117,6 +117,19 @@ each layer is a pre-norm residual block (x = x + att(ln(x))), so query features 
 residual stream to the heads at full strength -- an unanticipated, real answer to "what
 does RWKV's structure buy": **the residual skeleton is what makes one-step query
 conditioning survive depth; a readout that multiplies by r(x_t) can't be gated shut.**
+**v3 EVAL WEDGE + FIX (2026-07-25 00:30):** the v3 eval froze on its 11th user
+(~11 GB VRAM reserved, 27 GB host working set, 0% GPU util) — WDDM oversubscription
+spilling GPU memory to host RAM, NOT the A9-style fetch race, and NOT co-tenancy (the
+FSRS benchmark held only ~0.5 GB; killing our eval left 580 MiB total). Cause: the eval
+loop called `torch.cuda.empty_cache()` only every 20 users, and the GRU streams fragment
+the caching allocator far faster than a bf16 RWKV eval (fp32 stream weights, per-layer
+probe tensors, per-user shape changes). Fix: `RWKV_EVAL_EMPTY_CACHE_EVERY` env in
+get_result.py (default 20 = the historical constant → RWKV runs byte-identical), set to 1
+for the retry plus `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`. The retry resumes
+from the 10 scored users. Lesson: memory-hungry ARCH VARIANTS need the eval cache interval
+lowered; a frozen process at high VRAM + huge host working set = WDDM paging, and the
+tell-tale is 0% GPU util with the allocator near the 12 GB ceiling.
+
 **v3 (relaunched 2026-07-24 ~19:20): pre-norm per-layer residuals x = x + proj(Cell(LN(x)))**
 -- the standard attention-vs-RNN ablation skeleton. GRU h=128 -> 1,559,824 params; LSTM
 h=104->92 (pays for per-layer projs) -> 1,488,688. LN weights auto-land in the no-decay
