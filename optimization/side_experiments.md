@@ -62,7 +62,42 @@ skips), windowed h-carry for >65k-token users, fp32 weights behind bf16 boundary
 RWKV_DETERMINISTIC=0 (cuDNN RNN backward nondet), vprune OFF (cross-arch val ref),
 no token-shift input mix (that is RWKV machinery -- classic cells read x_t only).
 
-**GRU result (h=128, 1,556,496 params, val half 5001-7500, n=2500, 0 nanskips):**
+### ★ HONEST GRU RESULT (v3, 2026-07-25 04:06) -- RWKV-7 WINS, BUT ONLY BY ~0.002/~0.003
+
+**GRU v3 (h=128, 1,559,824 params, per-layer pre-norm residuals, verified query-probe
+sensitivity), val half 5001-7500, n=2500, 0 nanskips:**
+
+| model | params | ahead | imm | vs A13 RWKV |
+|---|---|---|---|---|
+| **A13 RWKV-7 (d=128)** | 1,468,724 | **0.298837** | **0.267805** | -- |
+| **GRU v3 streams** | 1,559,824 (+6.2%) | 0.300778 | 0.270525 | **+0.001941 / +0.002720 worse** (p=1.0 both) |
+| A14 RWKV-7 (current champ) | 1,380,660 | 0.298798 | 0.267746 | better AND 11.5% smaller than the GRU |
+| FSRS-7 (full-range ref) | 21 | 0.317933 | -- | both nets beat it by >0.017 |
+
+**Interpretation (the answer to Andrew's question).** RWKV-7's recurrence IS worth
+something real, but it is worth **~0.002 ahead / ~0.003 imm at matched parameters** -- not
+the 0.116/0.148 the v1 bug implied. Context: that margin is ~4-9x the phase's acceptance bar
+and roughly the size of ALL recent accepted architecture wins COMBINED (iter 23 PAVA
++0.0003/+0.0001, iter 26 GRU-head N=3 +0.0005/+0.0001, iter 29 Muon +0.0001/+0.0005) -- so
+it is not a rounding error, and RWKV-7 also costs FEWER params (A14 beats the GRU while
+being 11.5% smaller) and trains slightly faster (1.24 vs 1.18 steps/s, and RWKV pays a
+determinism tax the GRU cannot).
+**But the bigger share of the leaderboard margin is NOT the recurrence:** a plain GRU with
+the same 92-dim features, the same instant/curve heads and the same pipeline already beats
+FSRS-7 by ~0.017 (caveat: the FSRS number is full-range 5001-10000, ours is the val half).
+So of the ~0.019 total margin over FSRS-7, the shared features/heads/training carry ~0.017
+and RWKV-7's specific recurrence adds the last ~0.002.
+**Deploy nuance worth remembering:** the GRU's per-entity state is a VECTOR (h floats per
+layer) while RWKV-7's is MATRIX-valued (H*K*K per layer, ~32x larger at d=128) -- so if a
+classic cell's accuracy deficit were ever closed, it would be the cheaper thing to ship.
+The quantization endgame (9 B/card) was built for the RWKV state, so this is a note for a
+future deploy-side comparison, not a live proposal.
+
+**⚠ The three v1/v2 tables below are BUG RECORDS, not results** (v1: no query probe at all;
+v2: probe correct but no residuals, so it was suppressed 3-10x per layer and imm stayed
+blind). Kept because both failure modes are instructive.
+
+**GRU v1 result (BUGGED -- h=128, 1,556,496 params, val half 5001-7500, n=2500, 0 nanskips):**
 
 | model | ahead | imm | vs A13 (1.469M RWKV) |
 |---|---|---|---|
@@ -82,11 +117,13 @@ on max-size 32k-token groups it is ~3x SLOWER (0.35 vs 1.15 steps/s) -- classic 
 sequentially for T, RWKV's chunk-parallel kernel is ~flat. CPU/deploy inference was not
 measured (moot given the accuracy).
 
-**Caveats:** HPs (peak_lr 1e-3, wd, clip) are RWKV-tuned, 1-epoch budget, no
-GRU-specific tuning -- but the gap (~0.12-0.15) is ~100x the phase's typical effect
-sizes and far beyond tuning slack. **Verdict so far: RWKV-7's complexity is decisively
-needed -- the recurrence itself (matrix-valued state + decay/gating machinery), not just
-the training pipeline, carries the accuracy.** LSTM (h=104, 1,521,360 params) running.
+**Caveats (still apply to v3):** HPs (peak_lr 1e-3, wd 0.01, clip 0.25) are RWKV-tuned,
+1-epoch budget, no cell-specific tuning, and the GRU gets no token-shift input mix (that is
+RWKV machinery). A tuned GRU could plausibly close part of a 0.002-0.003 gap -- so read the
+v3 result as "RWKV-7 wins by a small but real margin under RWKV's own recipe", not as a
+proof of a floor. ⚠ The v1 sentence that once stood here ("decisively needed... ~0.12-0.15
+gap") was an artifact of the interval-blind bug -- deleted, see the v3 section above.
+LSTM v3 (h=92, 1,488,688 params) launched 04:07 on the GRU's DONE_EXIT_0.
 
 **⚠ v1 RESULTS ABOVE = IMPLEMENTATION BUG (diagnosed 2026-07-24 ~14:00, Andrew's
 suspicion confirmed):** the pipeline's skip rows are QUERY rows (one per non-first
