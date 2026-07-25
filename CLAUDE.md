@@ -618,10 +618,24 @@ Pairing needs identical db/MAX/seeds.
   size-exception accept) → iter 23 (0.304220/0.273423, PAVA champion, 64-basis head) →
   iter 22 (0.304497/0.273539, no-residual re-baseline) → iter 15 (0.303663/0.273227,
   last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **Track 2 CHAMPION/ANCHOR = A13 `track2_a13` (promoted 2026-07-23 10:50, DIRECTED
-  re-anchor): ahead 0.298837 / imm 0.267805 ON THE VAL HALF (n=2500, 0 nanskips),
-  1,468,724 params** (`champion_5k_track2.json` = ckpt
-  `scratchpad/track2_a13/t2a13d_5586.pth` + WS/val traces = the track-2 vprune ref).
+- **★ Track 2 CHAMPION = A15 `track2_a15` (accepted 2026-07-25 17:08): ahead 0.299031 /
+  imm 0.268111 ON THE VAL HALF (n=2500, 0 nanskips), 808,762 params = −41.4% vs A14 and
+  3.41× below the original 2.76M (70.7% cut); per-card state 6,528 floats (−25%)**
+  (`champion_5k_track2.json` = ckpt `scratchpad/track2_a15/t2a15d_5586.pth` + WS/val
+  traces = the track-2 vprune ref). **= A14 + THE WIDTH CUT: d_model 128→96 (N_HEADS 4→3,
+  head dim K=32 kept), arch `scratchpad/track2_a15/architecture_d96_lora8.py` rebuilt on
+  the A14 base.** Ratio gate passed with room: per-100k +0.0000407 ahead (41% of the bar)
+  / +0.0000638 imm (64%) for 571,898 params bought. Training-val tracked A14 exactly all
+  run ⇒ **the d=128 trunk was over-wide** (same lesson as A14's oversized LoRA ranks;
+  depths, by contrast, are all at real floors). Speed did NOT improve (1.43 steps/s vs
+  ~1.25) — width is not what costs GPU time here. **NEXT: A16 = d_model 96→64
+  (N_HEADS=2) ≈ 520k params ≈ 5.3× — Andrew's ≥5× goal in one more cut; allowance
+  tightens to ~0.00029/mode.** Prior anchor A13 (0.298837/0.267805, 1,468,724 params,
+  the ZERO_FEATURES=22 re-anchor) and A14 (0.298798/0.267746, 1,380,660, LoRA halving —
+  better both modes).
+- Superseded track-2 detail: A13 `track2_a13` (promoted 2026-07-23 10:50, DIRECTED
+  re-anchor): ahead 0.298837 / imm 0.267805 val half, 1,468,724 params, ckpt
+  `scratchpad/track2_a13/t2a13d_5586.pth`.
   **= A9 arch/recipe + RWKV_ZERO_FEATURES=22 (Anki card-state input removed, Andrew's
   2026-07-22 both-tracks directive; fixes the track-recipe divergence — track 1 has
   zeroed it since iter 15). THE MEASURED PRICE at d=128: ahead +0.000212 / imm
@@ -878,8 +892,13 @@ the query rows and the imm predictions MUST move). Eval-side fixes banked from t
 work: `RWKV_EVAL_EMPTY_CACHE_EVERY` (default 20 = unchanged) and
 `RWKV_RNN_PROBE_CHUNK`/lean no-grad path in rnn_baseline.py (a 2,087,967-row eval batch
 made one cuDNN call ask for 20.93 GiB).
-NEXT: **A15 = d_model 128→96 (N_HEADS=3) — REBUILD on the A14 base first (halved
-LoRAs; the staged A15 arch predates A14)**.
+**A15 DONE/ACCEPTED 2026-07-25 17:08 (see the champion block above): d_model 128→96 =
+−41.4% params, 3.41× below 2.76M. NEXT = A16, the goal-line cut: d_model 96→64
+(N_HEADS=2, K=32) ≈ 520k params ≈ 5.3× below 2.76M. Rebuild the arch from
+`scratchpad/track2_a15/architecture_d96_lora8.py` with N_HEADS=2; full A15 env; gate
+allowance tightens to ~0.00029/mode (Δ≈289k params), so it is NOT a formality — if it
+misses, the fallback rungs are d_model 80 (N_HEADS=? — needs K≠32, e.g. 5 heads × 16)
+or trimming the SRS heads/input FC, which A15 leaves untouched.**
 Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
 sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS
 MAPPED: card=2, deck=4, note=1, preset=3, user=3; depth ladder EXHAUSTED. Also

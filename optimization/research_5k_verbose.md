@@ -841,6 +841,46 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A15 — THE WIDTH CUT, d_model 128→96 (ACCEPTED 2026-07-25 17:08): −41.4% params, 3.41× below 2.76M
+
+The largest single reduction of the track and the first move on WIDTH: `N_HEADS` 4→3
+with head dim K=32 unchanged, so `d_model` 128→96
+(`scratchpad/track2_a15/architecture_d96_lora8.py`). **REBUILT on the A14 base** — the
+staged pre-A14 file was checked before launch and did already carry the halved LoRAs, so
+nothing was silently reverted. **1,380,660 → 808,762 params (−571,898 = −41.4% vs A14;
+3.41× below the original 2.76M = 70.7% total reduction).** Per-card state 8,704 → 6,528
+floats (−25%), per-note 4,352 → 3,264 — welcome on the deploy side and permitted (state
+may shrink).
+
+**Val half n=2500, 0 nanskips, COMPLETE 2500/2500: ahead 0.299031 (+0.000233 worse), imm
+0.268111 (+0.000365 worse) vs A14 same-users. ACCEPTED on the ratio gate with room to
+spare — per-100k ratios +0.0000407 ahead (41% of the ≤0.0001 bar) and +0.0000638 imm
+(64%), against an allowance of 0.000572/mode for the 571,898 params bought.** The p-gate
+FAILs by construction: it is the accuracy-IMPROVEMENT gate, and size cuts are judged on
+the ratio gate (same as A2/A12, which failed it on ratio, not on p).
+
+**Why it worked: the d=128 trunk was over-wide for this data.** The 10-user training-val
+tracked A14 essentially exactly for the entire run — level or better at steps 3k/6k, a
+hair behind at 9k/11k/14k, dead level at 17k, and WS-final 0.32568/0.30548 vs A14's
+0.32501/0.30537 — despite carrying 41% fewer parameters. That mirrors what A14 found one
+level down (the LoRA ranks were oversized): this architecture had slack in its widths,
+not in its depths (the depth ladder floors were all real, A10–A12).
+
+**Speed note, contrary to expectation: d=96 did NOT train faster** — 1.43 steps/s
+effective (WS 22,346 steps in 4 h 21 m) vs A14's ~1.24–1.27. The first steps/s print was
+0.82, which is startup-inclusive and misleading; measured over 690 steps the rate was
+1.27 and it improved as the run settled. This is consistent with the 2026-07-03 profile
+where elementwise mass and fixed per-step overheads, not stream width, dominate the step
+— shrinking the model buys parameters and state, not GPU time. H=3 is also the phase's
+first non-power-of-2 head count; no kernel trouble (determinism on, zero NaN activity,
+zero eval nanskips).
+
+**Next rung is the goal line:** d_model 96→64 (N_HEADS=2, K=32) would land near ~520k
+params ≈ 5.3× below 2.76M — Andrew's ≥5× target in ONE more cut. Its ratio-gate allowance
+would be ~0.00029/mode (Δ≈289k params), i.e. tighter than A15's, so it is not a
+formality. Artifacts: `scratchpad/track2_a15/` (t2a15d_5586.pth kept);
+`champion_5k_track2.json` = A15 (24 val points = the new vprune ref).
+
 ### Track-2 A14 — LoRA dims halved (ACCEPTED 2026-07-24 03:30): better both modes at −6%; halfway mark crossed
 
 The first STRUCTURAL cut after the depth ladder closed: decay/a/gate LoRAs 16→8 and
