@@ -860,17 +860,25 @@ params (−6.0% vs A13, **−50.03% vs 2.76M — halfway mark crossed**), BETTER
 modes (+0.000039 p=0.045 / +0.000059 p=0.0069) — the LoRA ranks were oversized;
 a further 8→4 halving is a queue candidate. champion_5k_track2.json = A14 (ckpt
 scratchpad/track2_a14/t2a14d_5586.pth; full env = A13's + the lora8 arch module).
-NOW RUNNING: baseline_gru **v3** (Andrew's is-RWKV-needed experiment — GRU streams
-h=128, 1,559,824 params; verdict = informational comparison vs A13/A14, NOT a
-champion candidate). ⚠ v1 (no query probe → interval-blind, 0.415/0.415) AND v2
-(probe correct but NO residuals → signal attenuated 3-10x/layer, imm still blind —
-proven by probe_sensitivity_check.py on the live ckpt, killed at step 7.5k after
-Andrew's "any other bugs?" audit) are both bug records in side_experiments.md SE-2.
-v3 = pre-norm per-layer residuals x = x + proj(Cell(LN(x))) — RWKV's residual
-skeleton turned out to be WHAT carries query conditioning; the audit + v1-control
-test is the post-run gate (imm must respond to query features before any v3 result
-counts). Then baseline_lstm v3 (h=92, 1,488,688, parked on GRU's DONE_EXIT_0),
-then **A15 = d_model 128→96 (N_HEADS=3) — REBUILD on the A14 base first (halved
+**SE-2 BASELINES DONE + CLOSED 2026-07-25 (Andrew's "is RWKV needed?" experiment;
+informational, never champion candidates): RWKV-7 WINS by ~0.002 ahead / ~0.003 imm at
+matched params — real (4-9× the acceptance bar) but ~1/10 of the ~0.019 margin over
+FSRS-7; the other ~0.017 is the shared features/heads/pipeline, which the classic cells
+inherit.** Val half n=2500, 0 nanskips: GRU v3 0.300778/0.270525 (1,559,824 p) and LSTM
+v3 0.301103/0.270973 (1,488,688 p) vs A13 0.298837/0.267805 (1,468,724 p) — two
+independent cell families reproducing the same deficit ⇒ property of the recurrence
+CLASS. A14 beats both while 7-11% smaller ⇒ no plan changes. Speed: LSTM 1.74 steps/s >
+RWKV 1.24 > GRU 1.18 (RWKV's win is accuracy-per-param, not step rate). ⚠ Two bug
+generations are recorded in side_experiments.md SE-2 and are the lasting lessons: v1 had
+no query probe (interval-blind, 0.415/0.415); v2 probed correctly but had NO residuals,
+so the signal attenuated 3-10×/layer and imm stayed blind — caught only because Andrew
+asked "are you sure there are no other bugs?", proven by
+`scratchpad/baseline_gru/probe_sensitivity_check.py` (now a reusable post-run gate: zero
+the query rows and the imm predictions MUST move). Eval-side fixes banked from the same
+work: `RWKV_EVAL_EMPTY_CACHE_EVERY` (default 20 = unchanged) and
+`RWKV_RNN_PROBE_CHUNK`/lean no-grad path in rnn_baseline.py (a 2,087,967-row eval batch
+made one cuDNN call ask for 20.93 GiB).
+NEXT: **A15 = d_model 128→96 (N_HEADS=3) — REBUILD on the A14 base first (halved
 LoRAs; the staged A15 arch predates A14)**.
 Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
 sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS

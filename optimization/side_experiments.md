@@ -71,8 +71,20 @@ sensitivity), val half 5001-7500, n=2500, 0 nanskips:**
 |---|---|---|---|---|
 | **A13 RWKV-7 (d=128)** | 1,468,724 | **0.298837** | **0.267805** | -- |
 | **GRU v3 streams** | 1,559,824 (+6.2%) | 0.300778 | 0.270525 | **+0.001941 / +0.002720 worse** (p=1.0 both) |
-| A14 RWKV-7 (current champ) | 1,380,660 | 0.298798 | 0.267746 | better AND 11.5% smaller than the GRU |
-| FSRS-7 (full-range ref) | 21 | 0.317933 | -- | both nets beat it by >0.017 |
+| **LSTM v3 streams** | 1,488,688 (+1.4%) | 0.301103 | 0.270973 | **+0.002266 / +0.003169 worse** (p=1.0 both) |
+| A14 RWKV-7 (current champ) | 1,380,660 | 0.298798 | 0.267746 | better AND 7-11% smaller than either cell |
+| FSRS-7 (full-range ref) | 21 | 0.317933 | -- | all three nets beat it by >0.016 |
+
+**Both classic cells agree** (LSTM v3 done 2026-07-25 10:16, n=2500, 0 nanskips): ordering is
+**RWKV-7 > GRU > LSTM**, with the two classic cells only 0.0003/0.0004 apart and both landing
+~0.002-0.003 behind RWKV-7. Two independent cell families reproducing the same deficit makes
+this a property of the recurrence CLASS, not a quirk of one cell. The LSTM is also the
+closest parameter match (+1.4% vs A13) and still loses by slightly more than the GRU.
+Training speed went the other way: LSTM 1.74 steps/s > RWKV 1.24 > GRU 1.18 (the LSTM runs
+h=92 vs the GRU's h=128), so RWKV-7's win is on accuracy-per-parameter, not raw step rate.
+⚠ LSTM caveat: cuDNN hides per-step cell state, so its query probes start from c=0
+("fresh-cell readout") -- a small handicap unique to the LSTM; the GRU has no such caveat and
+is the cleaner of the two comparisons.
 
 **Interpretation (the answer to Andrew's question).** RWKV-7's recurrence IS worth
 something real, but it is worth **~0.002 ahead / ~0.003 imm at matched parameters** -- not
@@ -123,7 +135,18 @@ RWKV machinery). A tuned GRU could plausibly close part of a 0.002-0.003 gap -- 
 v3 result as "RWKV-7 wins by a small but real margin under RWKV's own recipe", not as a
 proof of a floor. ⚠ The v1 sentence that once stood here ("decisively needed... ~0.12-0.15
 gap") was an artifact of the interval-blind bug -- deleted, see the v3 section above.
-LSTM v3 (h=92, 1,488,688 params) launched 04:07 on the GRU's DONE_EXIT_0.
+
+**SE-2 CLOSED 2026-07-25 10:17.** Andrew's question -- "is the complexity RWKV brings to the
+table needed?" -- answered: **yes, but it buys ~0.002 ahead / ~0.003 imm at matched
+parameters, roughly a tenth of the ~0.019 total margin over FSRS-7.** The other ~0.017 comes
+from the shared 92-dim features, the instant/curve heads and the training pipeline, which a
+plain GRU or LSTM inherits unchanged. Since RWKV-7 also reaches that accuracy with FEWER
+parameters (A14: 1.38M vs 1.49-1.56M) it stays the right choice for the deploy target, and
+no track-1/track-2 plan changes. Three engineering lessons banked: (1) query rows are the
+pipeline's prediction rows -- any new stream type must condition on them (v1 bug);
+(2) residual blocks are what carry that conditioning through depth -- bare stacked cells
+attenuate it 3-10x per layer (v2 bug); (3) memory-hungry variants need the eval's
+empty_cache interval lowered and mega-batch cuDNN calls chunked (the two eval failures).
 
 **⚠ v1 RESULTS ABOVE = IMPLEMENTATION BUG (diagnosed 2026-07-24 ~14:00, Andrew's
 suspicion confirmed):** the pipeline's skip rows are QUERY rows (one per non-first
