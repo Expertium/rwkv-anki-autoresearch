@@ -273,6 +273,16 @@ deltas so dead ends aren't re-run.
   (Rust-parity vectors); `.safetensors` untracked by design.
 - **`rust/rwkv-infer/`** — the Rust CPU inference engine (`src/{main,model,fast}.rs`,
   `BATCHING_PLAN.md`); K-dynamic + full PQ/joint-cb/norm-quant engine since `1d3b5b8`.
+- **`vendor/jschoreels_anki/`** (NEW 2026-07-25, Andrew's directive) — READ-ONLY reference
+  copy of the RWKV code from `github.com/JSchoreels/anki`, an Anki fork shipping the OLD
+  2.76M RWKV as a live scheduler: `rust/` (mod.rs = the whole engine incl. the 5-stream
+  chain `review_features`, the p(recall) head `retrievability_head` = 1−P(Again), state
+  serialization and a `StateCompression` scheme; bulk.rs; matmul.rs = macOS Accelerate
+  BLAS; **x86_simd.patch = AVX2/FMA `dot_product`+`add_scaled_in_place`, the most portable
+  speed win for our engine, which has NO SIMD**; two CPU benches) + `python/` (his shipped
+  torch RNN package). **`NOTICE.md` = provenance + ⚠ AGPL-3.0-or-later: copying any of it
+  into `rust/rwkv-infer` makes that AGPL-derived — fine for shipping inside Anki, but flag
+  it to Andrew first and keep provenance comments.** `INDEX.md` = the function map.
 - **`scratchpad/`** — per-run pipelines + shared helpers. Tracked per run: `.cmd` + tomls +
   `*_ws_trace.jsonl` (+ champions' final cbs `cb_{wkv,shift}_final.txt`). Shared:
   `write_decay_setup.py`, `write_eval_toml.py`, `detach.ps1`, `liveplot/`,
