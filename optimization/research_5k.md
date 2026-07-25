@@ -112,3 +112,42 @@ comparisons pair on full n=5000, and every track-2 run is no-residual (mandatory
 | A13 | 0.2988ᵛ | 0.2678ᵛ | **accepted** (directed re-anchor) | 1,468,724 | 0 | n/a (re-baseline) | 0 | Andrew | State-feature removal (ZERO_FEATURES=22) re-anchor: costs +0.00021/+0.00019 at d=128 (opposite sign vs d=32!) — price recorded, directive stands. New track-2 reference. |
 | A14 | 0.2988ᵛ | 0.2677ᵛ | **accepted** | 1,380,660 | −88,064 | −0.000044 / −0.000067 | 0 | invented | LoRA dims halved (all streams): BETTER both modes — the ranks were oversized. First structural cut; −50.03% vs 2.76M (halfway mark crossed). New champion. |
 | A15 | 0.2990ᵛ | 0.2681ᵛ | **accepted** | 808,762 | −571,898 | +0.000041 / +0.000064 | 0 | Andrew (delegated) | **THE WIDTH CUT: d_model 128→96 (N_HEADS 4→3, K=32 kept).** Largest single cut of the track: −41.4% params, per-card state −25%. Ratios 41%/64% of the bar. Training-val tracked A14 exactly all run ⇒ the d=128 trunk was over-wide. 3.41× below 2.76M. New champion. |
+
+### Track-2 compression curve — the WHOLE lineage on ONE scale (val half, recomputed 2026-07-25)
+
+Andrew asked whether the stored result files let us re-score old runs on the 2.5k val half.
+They do: `result/RWKV-<tag>.jsonl` holds one record per user and the benchmark metric is the
+unweighted mean of per-user LogLoss, so restricting the average to users 5001–7500 gives
+exactly what a val-half eval would have produced — no GPU, no re-run. Tool:
+`python optimization/val_half_recompute.py [tags] [--lo N --hi N]` (defaults: all track-2
+tags, users 5001–7500). **This removes the ᵛ-marker caveat retroactively — the pre-split
+rows (A0–A8) and the post-split rows are now directly comparable.**
+
+| run | params | vs 2.76M | ahead | imm | Δahead vs A0 | Δimm vs A0 |
+|---|---|---|---|---|---|---|
+| A0 (1-ep d=128 retrain) | 2,762,884 | 1.00× | 0.298342 | 0.267858 | — | — |
+| A1 (mixers→1.0) | 2,320,516 | 1.19× | 0.298252 | 0.267927 | −0.000090 | +0.000069 |
+| A2 (deck 4L→3L, rej) | 2,204,412 | 1.25× | 0.298435 | 0.267936 | +0.000093 | +0.000078 |
+| A3 (GRU head, unstable) | 2,126,224 | 1.30× | 0.298184 | 0.266818 | −0.000158 | −0.001040 |
+| A4 (no-residual re-anchor) | — | — | 0.298798 | 0.267867 | +0.000456 | +0.000009 |
+| A5 | 2,115,359 | 1.30× | 0.298813 | 0.267722 | +0.000471 | −0.000136 |
+| A6 | 1,949,624 | 1.42× | 0.298758 | 0.267837 | +0.000416 | −0.000021 |
+| A7 (user 4L→3L) | 1,767,226 | 1.56× | 0.298689 | 0.267576 | +0.000347 | −0.000282 |
+| A8 (card 3L→2L) | 1,617,975 | 1.71× | 0.298723 | 0.267625 | +0.000381 | −0.000233 |
+| A9 (note 2L→1L) | 1,468,724 | 1.88× | 0.298625 | 0.267615 | +0.000283 | −0.000243 |
+| A10 (rej) | 1,319,473 | 2.09× | 0.298918 | 0.267877 | +0.000576 | +0.000019 |
+| A11 (rej) | 1,352,620 | 2.04× | 0.298916 | 0.267700 | +0.000574 | −0.000158 |
+| A12 (rej) | 1,385,767 | 1.99× | 0.298699 | 0.267717 | +0.000357 | −0.000141 |
+| A13 (state-feature re-anchor) | 1,468,724 | 1.88× | 0.298837 | 0.267805 | +0.000495 | −0.000053 |
+| A14 (LoRA halving) | 1,380,660 | 2.00× | 0.298798 | 0.267746 | +0.000456 | −0.000112 |
+| **A15 (d_model 128→96)** | **808,762** | **3.41×** | 0.299031 | 0.268111 | **+0.000689** | **+0.000253** |
+
+**Headline: the entire journey from the 2.76M-param A0 to the 808k-param A15 — a 3.41×
+reduction — cost +0.000689 ahead and +0.000253 imm.** For scale, that total is about the
+size of ONE accepted track-1 accuracy iteration, and it is ~1/3 of what the GRU baseline
+gave up (SE-2: +0.0019/+0.0027) for a model that is *larger*. Two structure notes fall out:
+(a) imm was essentially FREE until A15 (every accepted rung sat at or below A0 on imm; the
+width cut is the first to spend it), and (b) the rejected rungs A10–A12 are visible as the
+depth floors — they cost more ahead than their neighbours while saving less.
+Caveats: A3's row is n=2436 (its 129 NaN skips) and A4 predates the params column in the
+log; A0's n=2498 (7 nanskips, 2 in the val half).
