@@ -841,6 +841,46 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A16 — d_model 96→64 (REJECTED 2026-07-25 23:29): the WIDTH FLOOR is between 96 and 64
+
+The obvious follow-through to A15, and it would have crossed Andrew's target in one step:
+`N_HEADS` 3→2 at K=32, i.e. `d_model` 96→64, **388,032 params = −52.0% vs A15 and 7.11×
+below the original 2.76M**. It did not survive the gate.
+
+**Val half n=2500, 0 nanskips: ahead 0.299863 (+0.000832 worse), imm 0.268831 (+0.000720)
+vs A15. REJECTED — per-100k ratios +0.0001978 ahead (198% of the ≤0.0001 bar) and
++0.0001711 imm (171%), against an allowance of 0.000421/mode.**
+
+**This is a floor, not noise.** A15's 41% cut spent 41% (ahead) and 64% (imm) of its
+allowance; A16's 52% cut spent ~180% of a *larger* allowance — the cost per parameter
+roughly quadrupled in a single rung. Two further signs it is a genuine capacity limit
+rather than a pathway quirk: (a) both modes failed *together*, unlike the depth rungs
+A10–A12 where ahead and imm dissociated (user depth owned ahead, note.L0's mixer owned
+imm); (b) the 10-user training-val called it in advance — WS-final gap 0.00063/0.00130,
+the first rung where the val gap exceeded the allowance in BOTH modes (A15's was
+0.00067/0.00011 and it passed). Worth remembering as a weak but real predictor: the val
+overstates ahead and understates imm, but a both-modes-over-allowance val gap has now
+predicted a both-modes rejection.
+
+Clean, fast run otherwise: WS 3 h 35 m at 1.746 steps/s — the fastest of the phase (and the
+data point that made the training-speed ladder monotone, A0 0.933 → A16 1.746 = 1.87×).
+
+**Where this leaves the ≥5× goal.** Width alone cannot reach it: 96 passes, 64 fails.
+⚠ **The "free dead-param strip" I first proposed here is a MIRAGE** — checking A15's
+grad-stats json, its 66 never-grad tensors are all **1×1 dummies** totalling 66 params: the
+GRU head already replaced the ahead head structurally, and `srs_model.py` keeps 1×1
+stand-ins purely so the scripted dead branches still compile. There is no 74k to reclaim.
+Measured ladder of what actually remains:
+
+| option | params | vs 2.76M | allowance vs A15 | note |
+|---|---|---|---|---|
+| d_model 80 (5 heads × K=16) | 584,766 | 4.72× | 0.000224/mode | state per layer 3,264 → 1,440 (more than halves); K=16 is proven (track-1 champion) |
+| + head_fc_mult & features_fc_mult 4→2 | 529,246 | 5.21× | 0.000280/mode | **crosses the goal, but the 100-user era rejected mult 4→2 hard (imm +0.053)** — strong negative prior |
+| + LoRA 8→4 | ~556k | ~4.96× | — | the queued A14 follow-up, small |
+⚠ And per `optimization/CPU_INFERENCE.md`, none of these will show up as user-visible speed
+until `rust/rwkv-infer` can run the track-2 arch — param count has already decoupled from
+CPU rev/s in the engine we can measure today.
+
 ### Track-2 A15 — THE WIDTH CUT, d_model 128→96 (ACCEPTED 2026-07-25 17:08): −41.4% params, 3.41× below 2.76M
 
 The largest single reduction of the track and the first move on WIDTH: `N_HEADS` 4→3

@@ -112,6 +112,7 @@ comparisons pair on full n=5000, and every track-2 run is no-residual (mandatory
 | A13 | 0.2988ᵛ | 0.2678ᵛ | **accepted** (directed re-anchor) | 1,468,724 | 0 | n/a (re-baseline) | 0 | Andrew | State-feature removal (ZERO_FEATURES=22) re-anchor: costs +0.00021/+0.00019 at d=128 (opposite sign vs d=32!) — price recorded, directive stands. New track-2 reference. |
 | A14 | 0.2988ᵛ | 0.2677ᵛ | **accepted** | 1,380,660 | −88,064 | −0.000044 / −0.000067 | 0 | invented | LoRA dims halved (all streams): BETTER both modes — the ranks were oversized. First structural cut; −50.03% vs 2.76M (halfway mark crossed). New champion. |
 | A15 | 0.2990ᵛ | 0.2681ᵛ | **accepted** | 808,762 | −571,898 | +0.000041 / +0.000064 | 0 | Andrew (delegated) | **THE WIDTH CUT: d_model 128→96 (N_HEADS 4→3, K=32 kept).** Largest single cut of the track: −41.4% params, per-card state −25%. Ratios 41%/64% of the bar. Training-val tracked A14 exactly all run ⇒ the d=128 trunk was over-wide. 3.41× below 2.76M. New champion. |
+| A16 | 0.2999ᵛ | 0.2688ᵛ | rejected | 388,032 | −420,730 | +0.000198 / +0.000171 | 0 | invented | **d_model 96→64 (N_HEADS 2): THE WIDTH FLOOR.** Both modes ~1.7–2.0× the bar — per-param cost quadrupled in one rung vs A15. Would have been 7.11× below 2.76M. A15 stands. |
 
 ### Track-2 compression curve — the WHOLE lineage on ONE scale (val half, recomputed 2026-07-25)
 
