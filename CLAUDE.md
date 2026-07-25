@@ -256,7 +256,9 @@ deltas so dead ends aren't re-run.
   AI-only) · `research_log.jsonl` (5k source of truth) · `log.md`/`log.jsonl` (regenerated
   canonical table — `python optimization/logbook.py rebuild`) · `research_log.md` (CLOSED
   100/100-era log) · `HISTORY.md` (superseded plans + archived CLAUDE.md live-state) ·
-  `FUTURE_FEATURES.md` · `LIT_REVIEW.md` · `PROTOCOL.md` (iter0-era mirror of §11) ·
+  `FUTURE_FEATURES.md` · `LIT_REVIEW.md` · **`CPU_INFERENCE.md`** (the deploy-speed
+  scoreboard: why param cuts have NOT yet bought CPU rev/s, and the Rust port that gates
+  the real answer; bench `cpu_infer_bench.py`) · `PROTOCOL.md` (iter0-era mirror of §11) ·
   `STATEFUL_BPTT_PLAN.md` (shelved). Champions: `champion_5k.json` (QAT deploy truth, FROZEN) ·
   `champion_5k_plain.json` (track-1 plain) · `champion_5k_track2.json` (A0 anchor) ·
   `champion_5k_history.jsonl`. Tools: `logbook.py`, `gate.py`, `paired_pvalue.py`,
@@ -627,7 +629,18 @@ Pairing needs identical db/MAX/seeds.
   the A14 base.** Ratio gate passed with room: per-100k +0.0000407 ahead (41% of the bar)
   / +0.0000638 imm (64%) for 571,898 params bought. Training-val tracked A14 exactly all
   run ⇒ **the d=128 trunk was over-wide** (same lesson as A14's oversized LoRA ranks;
-  depths, by contrast, are all at real floors). **TRAINING SPEED IS MONOTONE IN WIDTH
+  depths, by contrast, are all at real floors). **⚠ CPU-INFERENCE REALITY CHECK (Andrew
+  2026-07-25: "I told you to do ablations hoping that fewer params → faster CPU inference
+  in Anki"; state size is quantization's job, training speed serves only us): measured
+  today in `optimization/CPU_INFERENCE.md` — in the PYTHON RNN path a 4.5× arithmetic cut
+  buys only 1.24× wall-clock and PLATEAUS after A14 (A15/A16 width cuts buy ~nothing),
+  because that path runs at 0.08–0.30 GMAC/s vs a core's 5–20 = OVERHEAD-bound: cost
+  tracks op count (layers × streams), not width. 1 thread beats 3 and 6 → deploy
+  single-threaded. The deploy path is Rust (~10× faster, far less per-op overhead) where
+  width SHOULD pay off, but `rust/rwkv-infer` does not yet support the track-2 arch (GRU
+  head, STRIP_CMIX, parameterized d_model/H) — PORTING IT IS NOW THE GATING WORK for
+  answering whether the ablations bought user-visible speed.** Bench:
+  `python optimization/cpu_infer_bench.py`. **TRAINING SPEED IS MONOTONE IN WIDTH
   (measured 2026-07-25 on Andrew's question; an earlier "speed did NOT improve" note here
   was WRONG — it anchored on a startup-inclusive first print): median steps/s A0 0.933 →
   A7 1.022 → A9 1.203 → A14 1.200 → A15 1.434 → A16 1.746 = 1.87× faster than A0 at 7.11×
