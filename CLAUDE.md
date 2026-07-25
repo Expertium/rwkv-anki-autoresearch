@@ -627,8 +627,11 @@ Pairing needs identical db/MAX/seeds.
   the A14 base.** Ratio gate passed with room: per-100k +0.0000407 ahead (41% of the bar)
   / +0.0000638 imm (64%) for 571,898 params bought. Training-val tracked A14 exactly all
   run ⇒ **the d=128 trunk was over-wide** (same lesson as A14's oversized LoRA ranks;
-  depths, by contrast, are all at real floors). Speed did NOT improve (1.43 steps/s vs
-  ~1.25) — width is not what costs GPU time here. **NEXT: A16 = d_model 96→64
+  depths, by contrast, are all at real floors). **TRAINING SPEED IS MONOTONE IN WIDTH
+  (measured 2026-07-25 on Andrew's question; an earlier "speed did NOT improve" note here
+  was WRONG — it anchored on a startup-inclusive first print): median steps/s A0 0.933 →
+  A7 1.022 → A9 1.203 → A14 1.200 → A15 1.434 → A16 1.746 = 1.87× faster than A0 at 7.11×
+  fewer params — sublinear in params, as the elementwise-dominated profile predicts.** **NEXT: A16 = d_model 96→64
   (N_HEADS=2) ≈ 520k params ≈ 5.3× — Andrew's ≥5× goal in one more cut; allowance
   tightens to ~0.00029/mode.** Prior anchor A13 (0.298837/0.267805, 1,468,724 params,
   the ZERO_FEATURES=22 re-anchor) and A14 (0.298798/0.267746, 1,380,660, LoRA halving —

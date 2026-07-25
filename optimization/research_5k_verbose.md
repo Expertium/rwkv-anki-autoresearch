@@ -866,12 +866,17 @@ hair behind at 9k/11k/14k, dead level at 17k, and WS-final 0.32568/0.30548 vs A1
 level down (the LoRA ranks were oversized): this architecture had slack in its widths,
 not in its depths (the depth ladder floors were all real, A10–A12).
 
-**Speed note, contrary to expectation: d=96 did NOT train faster** — 1.43 steps/s
-effective (WS 22,346 steps in 4 h 21 m) vs A14's ~1.24–1.27. The first steps/s print was
-0.82, which is startup-inclusive and misleading; measured over 690 steps the rate was
-1.27 and it improved as the run settled. This is consistent with the 2026-07-03 profile
-where elementwise mass and fixed per-step overheads, not stream width, dominate the step
-— shrinking the model buys parameters and state, not GPU time. H=3 is also the phase's
+**Speed note — ⚠ CORRECTED 2026-07-25 21:10 after Andrew asked "is training getting
+faster?"** The original entry here claimed "d=96 did NOT train faster (1.43 vs A14's
+~1.24–1.27)", which is self-contradictory — 1.43 IS faster than 1.27. I had anchored on
+A15's first steps/s print (0.82, startup-inclusive) and never re-checked against the
+run's own median. Measured properly (median of the 52 periodic prints per run, first
+dropped): **A15 1.434 steps/s vs A14 1.200 = 1.20× faster**, and the whole track-2 curve
+is monotone in width: A0 0.933 → A7 1.022 → A9 1.203 → A14 1.200 → A15 1.434 → A16 1.746
+(**1.87× faster than A0 at 7.11× fewer params**). The correct framing is that speed
+scales SUBLINEARLY with parameters (7.1× smaller buys 1.9× faster), which is what the
+2026-07-03 elementwise-dominated profile predicts — not that shrinking buys no time at
+all. H=3 is also the phase's
 first non-power-of-2 head count; no kernel trouble (determinism on, zero NaN activity,
 zero eval nanskips).
 
