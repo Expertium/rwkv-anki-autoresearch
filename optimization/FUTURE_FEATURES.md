@@ -39,7 +39,23 @@ exists; the `#N` references below are its row numbers.
 | high | Seconds-resolution "time since any review" (session position) | #10 is integer-day (built from day_offset) → sub-day session structure is invisible today. Continuous gap ≫ arbitrary session-split heuristics. |
 | med | Creation-batch size at ±1 min / ±1 h / same day (+ position in batch) | Andrew's #4 generalized; import-vs-handmade signal. Andrew 👍 |
 | med | User tenure (time since user's first-ever review) | Confirmed NOT in the table. |
-| med | note_id/deck_id/preset_id ages: card − deck creation, card - preset creation, deck age at review, preset age at review | Early core card vs late addition; preset ids are creation timestamps too (Andrew 2026-07-16: use both). ⚠ the DEFAULT deck and DEFAULT preset both have id 1 (constant, not a timestamp) — derive an is-default flag for those instead of an age. Andrew 👍 |
+| med | note_id/deck_id/preset_id ages: card − deck creation, card - preset creation, deck age at review, preset age at review | Early core card vs late addition; preset ids are creation timestamps too (Andrew 2026-07-16: use both). ⚠ the DEFAULT deck and DEFAULT preset both have id 1 (constant, not a timestamp) — derive an is-default flag for those instead of an age. Andrew 👍 **Coverage MEASURED 2026-07-27, and it splits the row in two — see below.** |
+
+### Coverage of the id-age features, measured (300 users, 59,285 deck rows, `-id` set)
+The `id == 1` default case the row above anticipated is **the entire non-timestamp population** —
+the only small `preset_id` value that occurs at all is `1` (in 296 of 300 users). So these ids are
+cleanly bimodal: real epoch-ms creation stamp, or the default sentinel. Nothing in between, no
+parsing risk. But the two ids have very different coverage, and that changes what each dim is worth:
+
+| id | timestamp-like | what that means for the feature |
+|---|---|---|
+| `deck_id` | **99.5%** of deck rows | deck age / card−deck-creation are **full-coverage** features. Build them. |
+| `preset_id` | **7.0%** of deck rows (34.3% of users have ≥1) | "preset age" is defined for 1 row in 14. Ship the **is-default-preset flag** (93% vs 7% — a real split, and it says the user bothered to configure this deck); treat preset AGE as a low-value add-on, not a peer of deck age. |
+
+Consistent with the degeneracy finding below (67.4% of users have exactly one preset): most users
+never leave the default preset, so most of what a preset-age dim could carry is already carried by
+the flag. `review_time` and `card_id`/`note_id` are timestamps for **100%** of rows (5 users
+spot-checked end to end), so the high-priority rows are unaffected by any of this.
 | low | Card created before vs after user's first-ever review | "Probably not important, but we can try" (Andrew). |
 | skip | card_id − note_id gap | ~always zero (cards generated at note creation) — not worth a dim. |
 | skip | Session count per day | Splitting is arbitrary; the sub-day #10 upgrade carries the signal continuously. |
@@ -166,3 +182,58 @@ variant; (4) features-only control. The rebuild is CPU-side and can overlap GPU 
 ## Leakage rule
 All count/batch features must be computed **as of review time** during preprocessing (not from
 the full table) so same-day-created-and-reviewed cards stay honest.
+
+## ★ IMPLEMENTATION PLAN (2026-07-27) — and the delete is probably NOT needed
+
+### The four code sites
+The RWKV feature vector is built in `rwkv/data_processing.py`, not in `features/` — that is where
+every change lands:
+
+1. **`CARD_FEATURE_COLUMNS`** (`data_processing.py:16-41`, currently 24 named columns) — append the
+   new names. This list *is* the per-review feature order; the ID encodings make up the rest of the
+   92 dims.
+2. **`STATISTICS`** (`:43+`) — each new continuous column needs a mean/std, in the same
+   `scale_*`/`base_transform_*` idiom already used for `elapsed_seconds` etc. Compute them once on a
+   user sample and hardcode, matching what is there now.
+3. **`add_segment_features`** (`:185`) — the actual derivations. It already receives the per-user
+   revlog frame sorted by review order and asserts `day_offset` monotonicity, so the running
+   circular mean (2 floats of state) and the "as of review time" counts are plain cumulative ops
+   here. This is the only site where the leakage rule can be got wrong.
+4. **The dataset root** (`:196-202`, `read_parquet` of `revlogs`/`cards`/`decks`) — point at
+   `anki-revlogs-10k-id`. **Schema-verified 2026-07-27**: `-id`'s `revlogs` is the published schema
+   **plus `review_time`**, and `cards`/`decks` are column-identical. So this is a path change, not a
+   reader change — every existing derivation keeps working untouched.
+
+### Disk: build on F:, side by side — do NOT delete first
+CLAUDE.md records the sequencing as "delete the only copy, no rollback", from the estimate that the
+rebuild must land on C:. Measured 2026-07-27, it does not have to:
+
+| | C: (242.2 GB free) | F: (889.5 GB free) |
+|---|---|---|
+| train | **`train_db_5k_h1` 372.5 GB** (every live run) | `train_db_5k_h2` 372.5 GB (not referenced by any live toml) |
+| eval | `label_filter_db` 37.3, `test_db` 22.8, `train_db_sc8k` 3.7, `train_db_sc8k_1500` 74.5 | **`test_db_5k` 232.8 GB** (every live eval) |
+
+A rebuild written to **F:** costs 372.5 (train) + 232.8 (test) = **605 GB against 889.5 free**, so
+both new DBs fit **beside** the originals with ~284 GB spare. The old DBs stay readable the whole
+time, which means a bad rebuild is a `rm` of the new dir instead of a 2-4 day re-run of the old one.
+Only the LMDB_PATH values change (`train_db_5k_h1` is a bare relative path today, i.e. repo root on
+C:; `test_db_5k` is already absolute on F:).
+
+⚠ **The test DB must be rebuilt too, not just the train DB** — eval feeds the model the same feature
+vector, so a train-only rebuild would silently score a mismatched input layout. Budget both.
+
+If F: gets tight, the honest candidates to reclaim are `train_db_5k_h2` (372.5 GB, the train/eval
+swap half, unused since the 5k phase fixed h1) and the closed-era `train_db_sc8k*` + `test_db`
+(101 GB on C:). **Both are Andrew's call and neither is needed to start** — flagging, not deleting.
+
+### De-risk before committing anything
+Build a **100-user** LMDB from `-id` first (~7.5 GB at the measured ~75 MB/user, trivial on either
+drive) and check two things that catch a broken pipeline for ~1% of the cost:
+1. **`size` parity** — per-user equalized review count must be unchanged vs the current DB. Row
+   counts are already known identical user-for-user and `day_offset` differs on only 4 of 363,598
+   reviews (0.001%), so any real movement here is a bug in the new derivations, not the data.
+2. **A champion re-run reproduces** on those users with the new columns zeroed/excluded — proving
+   the rebuild is additive before any candidate is judged on it.
+
+Then re-base: the champion re-runs on the new DBs and every later candidate is scored against
+*that*, since cross-rebuild numbers are not comparable.

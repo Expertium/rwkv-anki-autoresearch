@@ -847,14 +847,33 @@ Plain-era and QAT-era logloss are NOT comparable.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE — a 3-job GPU chain, each parked on the previous one's `DONE_EXIT_`
-1. **RUNNING: rectified evals** — `scratchpad/eval_pava/run_rect_evals.cmd`, detached pid 33012.
-   Started 19:22 after iter 31 finished; A18 leg ~2.4 h then the iter-31 leg, so the pair lands
-   ~00:10. Log `scratchpad/eval_pava/rect_evals.log`.
+1. **★ DONE 00:28 (2026-07-27): rectified evals — BOTH METRICS AGREE, and the deploy metric is
+   5x MORE favourable to iter 31 than the gate it was accepted on.** n=2500, VAL half:
+
+   | metric | A18 | iter 31 | delta | p |
+   |---|---|---|---|---|
+   | ahead unrect (PRIMARY gate) | 0.299302 | 0.298909 | +0.000393 | 6.0e-26 |
+   | imm unrect (PRIMARY gate) | 0.268390 | 0.267637 | +0.000753 | 1.5e-209 |
+   | **ahead RECT (deploy)** | 0.302890 | **0.300802** | **+0.002088** | 2.4e-160 |
+   | **imm RECT (deploy)** | 0.268670 | **0.267691** | **+0.000979** | 6.0e-294 |
+
+   **★ TRAINING UNDER PAVA HALVES THE DEPLOY-TIME RECTIFICATION COST — the finding this pair was
+   run for.** Post-hoc rectification costs A18 (never trained under the constraint)
+   **+0.003588** on ahead; it costs iter 31 (trained at `RWKV_PAVA_LAMBDA=0.1`) only **+0.001893**.
+   So iter 31's real deploy gain is 5.3x what the unrectified gate reported, and the ahead
+   rectification penalty is a *training* problem, not an inherent cost of the rectifier.
+   ⚠ **Residual, stated honestly:** even the PAVA-trained model still pays +0.001893 ahead to be
+   rectified (0.298909 -> 0.300802), and the rectifier SHIPS, so **0.300802 is what a user gets**.
+   Driving that residual toward zero is a live research target (higher lambda? probe density?).
+   The +0.001893 is ~19x iter 31's own probe-insertion noise floor (its imm rect-vs-unrect delta is
+   only +0.000054), so it is a real effect. Note that noise floor is 5x SMALLER than A18's
+   +0.000280 on the identical probe machinery — a per-model sensitivity difference, worth a look
+   if the state clamp or PAVA training turns out to be what damps it.
    **WHY TWO METRICS:** iter 31's own eval leg is UNRECTIFIED (its `.cmd` predates
    `RWKV_EVAL_PAVA`, and a RUNNING `.cmd` must never be edited — cmd.exe re-reads it at a saved
    byte offset). That is fine and is the **PRIMARY gate**, being directly comparable to A18's
-   existing jsonls; the rectified pair is the **deploy metric**. **If the two disagree, report
-   both to Andrew — do not pick.**
+   existing jsonls; the rectified pair is the **deploy metric**. They agreed in both modes, so the
+   "report both, do not pick" instruction did not have to fire.
 2. **PARKED: mode-2 duration diagnostic** — `scratchpad/eval_pava/run_mode2_diag.cmd`, pid 17928,
    log `scratchpad/eval_pava/mode2_diag.log`. Answers Andrew's question about zeroing the current
    review's duration. `RWKV_EVAL_PAVA=2` substitutes the pressed probe WITHOUT pooling, so modes
@@ -1013,8 +1032,20 @@ All hooks stay in-repo, env-gated, default off.
   - **What IS still needed for them:** they are per-review FEATURE COLUMNS, so they need a preprocessing
     change + an **LMDB rebuild** sourced from `-id`. **Unlike the DECK TREE**, which needs NO rebuild at
     all — see the correction in `FUTURE_FEATURES.md`.
+  - **★ THE DELETE IS PROBABLY UNNECESSARY — BUILD ON F: (measured 2026-07-27).** The "must delete
+    first" conclusion assumed the rebuild lands on C:. It does not have to. `train_db_5k_h1` is a
+    BARE RELATIVE path (`data_processing_train_5k_h1.toml:10`), i.e. repo root on C:, which is the
+    only reason it is competing for C:'s 242 GB. Retarget it at F: and the new train (372.5 GB) +
+    new test (232.8 GB) = **605 GB against F:'s 889.5 GB free** — both fit BESIDE the originals with
+    ~284 GB spare, so a bad rebuild is `rm -rf` of the new dir instead of a 2-4 day re-run. Reclaim
+    candidates if F: gets tight, both Andrew's call and neither needed to start: `train_db_5k_h2`
+    (372.5 GB on F:, the swap half, referenced by NO live toml) and the closed-era `train_db_sc8k`
+    + `train_db_sc8k_1500` + `test_db` (101 GB on C:). ⚠ **The TEST db must be rebuilt too** — eval
+    feeds the same feature vector, so a train-only rebuild silently scores a mismatched layout.
+    Full plan + the four code sites + the 100-user de-risk build: `optimization/FUTURE_FEATURES.md`
+    "IMPLEMENTATION PLAN". Andrew's delete authorization stands as a fallback; prefer not to use it.
   - **DISK / DELETE-THE-OLD-DB — AUTHORIZED, WITH A SEQUENCING CONSTRAINT (Andrew 2026-07-26).**
-    `train_db_5k_h1` is 372.5 GB and C: has 229 GB free, so a side-by-side rebuild does NOT fit. Andrew:
+    `train_db_5k_h1` is 372.5 GB and C: has 229 GB free, so a side-by-side rebuild does NOT fit ON C:. Andrew:
     *"We can delete the current copy, sure. It's strictly more data, not less, so nothing will be lost."*
     **Verified, and he is right:** published vs `-id` over 6 users (1/2/3/17/101/555, 363,598 reviews) —
     row counts IDENTICAL user-for-user, and `day_offset` differs on **4 of 363,598 reviews = 0.001%**

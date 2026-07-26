@@ -1384,3 +1384,34 @@ pair (A18 at classic p=1, iter 31 with its learned powers) runs separately as th
 ⚠ Note that rect-vs-unrect moves *two* things at once — the pooling and the scored row's duration
 going real → 0 — so the rectified comparison cannot attribute its own result either. `RWKV_EVAL_PAVA=2`
 was added the same day to separate them (see `research_5k_notes.md`).
+
+### ★ RECTIFIED RESULT (landed 00:28, 2026-07-27) — both metrics agree, deploy is 5.3x better
+
+| metric | A18 | iter 31 | delta | p |
+|---|---|---|---|---|
+| ahead unrect (PRIMARY gate) | 0.299302 | 0.298909 | +0.000393 | 6.0e-26 |
+| imm unrect (PRIMARY gate) | 0.268390 | 0.267637 | +0.000753 | 1.5e-209 |
+| **ahead RECT (deploy)** | 0.302890 | **0.300802** | **+0.002088** | 2.4e-160 |
+| **imm RECT (deploy)** | 0.268670 | **0.267691** | **+0.000979** | 6.0e-294 |
+
+The two metrics agree in sign in both modes, so the standing "if they disagree, report both to
+Andrew — do not pick" instruction did not fire. The *magnitudes* differ a lot, and that difference
+is the finding:
+
+**Training under PAVA halves the deploy-time rectification cost.** Rectifying A18 — a model that
+never saw the constraint — costs **+0.003588** on ahead. Rectifying iter 31, trained at
+`RWKV_PAVA_LAMBDA=0.1`, costs only **+0.001893**. The earlier reading of A18's +0.003588 was
+"post-hoc rectification badly hurts a model never trained under the constraint"; this pair supplies
+the matched comparison that turns that into a *quantified* claim — ~47% of the penalty is
+recoverable by training, i.e. it is a training problem, not an inherent cost of the rectifier.
+
+**Residual, stated plainly:** iter 31 still pays +0.001893 on ahead to be rectified (0.298909 →
+0.300802), and the rectifier is in the deploy contract, so **0.300802 is the number a user actually
+gets**. Shrinking that residual is a live target (raise `RWKV_PAVA_LAMBDA`? raise probe density?
+both are one-flag runs on an existing recipe).
+
+**It is not noise.** iter 31's own probe-insertion noise floor — its imm rect-vs-unrect delta, the
+channel the rectifier cannot reach — is **+0.000054**, so the ahead penalty is ~19x it. Worth
+flagging separately: that floor is **5x smaller than A18's +0.000280** on identical probe
+machinery and identical data, i.e. the two models differ in how much bf16 batch re-bucketing
+perturbs them. Candidate causes are the state clamp and PAVA training itself; untested.
