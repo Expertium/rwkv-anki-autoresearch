@@ -1051,6 +1051,22 @@ Recommendation: run **(A) first** — it is the cheap upper bound on the parity 
 result tells us whether past-duration signal is worth (B)'s 2x. If (A) wins the rectified gate,
 take it; if it loses by less than the +0.001451 duration penalty it removes, (B) is justified.
 
+5. **PARKED behind iter 32: iter 33 = the duration fix** — `scratchpad/iter33_dur/run_iter33_dur.cmd`,
+   **pid 15496**, log `scratchpad/iter33_dur/iter33_dur.log`. `RWKV_PROBE_DENSITY=1.0` +
+   **`RWKV_AHEAD_PROBE_ONLY=1`** (new flag): the ahead objective moves entirely onto the
+   duration-zeroed probe path, which is the quantity deploy serves. Eval is **RECTIFIED**
+   (`RWKV_EVAL_PAVA=1`) and the gate pairs against `RWKV-iter31_algo_rect.jsonl`.
+   **Projected ~16 h** (WS ~11 h at 2.54x rows, decay ~2.7 h, rectified eval ~2.5 h).
+   ⚠ **`MAX_TRAIN_GLOBAL_LEN` lowered 32768 -> 16384 and it is load-bearing.** Probes are inserted
+   AFTER grouping, so density 1.0 does not add steps — it makes each batch ~2.54x LONGER, which at
+   MAX=32768 is ~83k rows on a 12 GB card. 16384 keeps post-probe rows near iter 31's effective
+   ~36.7k and doubles the step count instead. **16384 is the FLOOR, not free**: the largest chunk
+   is 16,384 and `get_groups` SILENTLY DROPS anything larger than MAX. The 40-step sanity phase is
+   the VRAM check; a `DONE_EXIT_SANITYFAIL` means lower the batch, not abandon the idea.
+   ⚠ vprune OFF (objective changed + MAX moved, so step pairing is meaningless). The gate's
+   baseline is only the final `paired_pvalue` call, so it can be RE-POINTED for free after iter 32's
+   verdict without re-running anything.
+
 #### QUEUE
 0. **RESOLVED by the directive above** — kept for the reasoning, since it explains WHY the gate
    moved. **★ ASK ANDREW — THE GATE AND THE DEPLOY METRIC ARE DIFFERENT NUMBERS (surfaced 2026-07-27).**
