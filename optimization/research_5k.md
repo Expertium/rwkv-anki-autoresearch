@@ -113,6 +113,7 @@ comparisons pair on full n=5000, and every track-2 run is no-residual (mandatory
 | A14 | 0.2988ᵛ | 0.2677ᵛ | **accepted** | 1,380,660 | −88,064 | −0.000044 / −0.000067 | 0 | invented | LoRA dims halved (all streams): BETTER both modes — the ranks were oversized. First structural cut; −50.03% vs 2.76M (halfway mark crossed). New champion. |
 | A15 | 0.2990ᵛ | 0.2681ᵛ | **accepted** | 808,762 | −571,898 | +0.000041 / +0.000064 | 0 | Andrew (delegated) | **THE WIDTH CUT: d_model 128→96 (N_HEADS 4→3, K=32 kept).** Largest single cut of the track: −41.4% params, per-card state −25%. Ratios 41%/64% of the bar. Training-val tracked A14 exactly all run ⇒ the d=128 trunk was over-wide. 3.41× below 2.76M. New champion. |
 | A16 | 0.2999ᵛ | 0.2688ᵛ | rejected | 388,032 | −420,730 | +0.000198 / +0.000171 | 0 | invented | **d_model 96→64 (N_HEADS 2): THE WIDTH FLOOR.** Both modes ~1.7–2.0× the bar — per-param cost quadrupled in one rung vs A15. Would have been 7.11× below 2.76M. A15 stands. |
+| A17 | 0.2993ᵛ | 0.2683ᵛ | rejected (by 26 millionths) | 584,766 | −223,996 | +0.000112 / +0.000083 | 0 | invented | **d_model 96→80 (5 heads × K=16).** imm PASSES (83% of bar), ahead 112% — a 0.000026 raw miss, ~15× inside cross-seed spread ⇒ noise-limited, not a floor. Per-card state −56% (K=16). Retry = A18 (same width + LoRA 8→4 buys the allowance). |
 
 ### Track-2 compression curve — the WHOLE lineage on ONE scale (val half, recomputed 2026-07-25)
 

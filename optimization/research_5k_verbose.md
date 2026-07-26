@@ -841,6 +841,38 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A17 — d_model 96→80 via 5×K=16 (REJECTED 2026-07-26 05:03 by 26 millionths): noise-limited, retry launched
+
+The intermediate rung between A15's passing 96 and A16's failing 64, taken as **5 heads ×
+K=16** (K=16 is proven — the track-1 champion has run it since the H2K16 acceptance, and the
+WKV kernel is K-dynamic). **584,766 params = −27.7% vs A15, 4.72× below the original 2.76M.**
+A bonus the gate does not score: K=16 shrinks the WKV matrix per layer from 3,072 to 1,280
+floats, so **per-card state falls 6,528 → 2,880 (−56%)** — the largest state cut of the track.
+
+**Val half n=2500, 0 nanskips: ahead 0.299281 (+0.000250), imm 0.268296 (+0.000185) vs A15.
+imm PASSES at ratio +0.0000826 (83% of the ≤0.0001 bar); ahead misses at +0.0001116 (112%),
+i.e. a raw overage of 0.000026 against an allowance of 0.000224.**
+
+**⚠ Read this verdict as noise-limited, not as a floor.** 26 millionths of logloss is roughly
+**15× inside the ~0.0004 cross-seed spread** the seed-pair doctrine documents for identical
+recipes, so a single run cannot separate "d=80 genuinely costs too much" from "unlucky
+draw". The training-val agreed it was ambiguous: A17 traded modes with A15 for the whole run
+(behind at 3k/11k, *better* on ahead at 14k, level at 18k) — quite unlike A16, which held a
+consistent both-modes deficit and then failed decisively at ~1.8× the bar.
+
+**Response per the near-miss conduct rule** (an idea that barely misses gets a different
+implementation, not a writeoff): **A18 = the same width plus the second LoRA halving
+(decay/a/gate 8→4, v0-mix 4→2)**, launched 05:10. It buys 27,520 more params of allowance
+(0.000224 → 0.000252/mode), which A17's *measured* cost would clear at 99% ahead / 74% imm,
+and A14 established that the first LoRA halving was free-to-positive at d=128. At 557,246
+params it also lands at **4.95× — effectively Andrew's ≥5× target**. If A18 lands at ~112%
+of bar too, then d=80 is a real floor and the honest move is to stop cutting width and put
+the effort into the Rust engine instead (see `CPU_INFERENCE.md` — param count has already
+decoupled from the CPU rev/s that users actually feel).
+
+Speed footnote: A17 was the fastest run of the phase, WS 3 h 21 m at 1.861 steps/s (K=16
+halves the WKV kernel work on top of the narrower trunk).
+
 ### Track-2 A16 — d_model 96→64 (REJECTED 2026-07-25 23:29): the WIDTH FLOOR is between 96 and 64
 
 The obvious follow-through to A15, and it would have crossed Andrew's target in one step:
