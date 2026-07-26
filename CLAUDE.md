@@ -663,13 +663,15 @@ Pairing needs identical db/MAX/seeds.
   was WRONG — it anchored on a startup-inclusive first print): median steps/s A0 0.933 →
   A7 1.022 → A9 1.203 → A14 1.200 → A15 1.434 → A16 1.746 = 1.87× faster than A0 at 7.11×
   fewer params — sublinear in params, as the elementwise-dominated profile predicts.**
-  **NEXT = A19 (Andrew 2026-07-26, second half of the same message): carry the three
-  track-1 ALGORITHMIC wins onto the A18 trunk as one bundle — PAVA (iter 23) + GRU N=3
-  (iter 26) + Muon (iter 29), i.e. exactly the iter-29 champion recipe's extra flags.
-  Env deltas vs A18: RWKV_PAVA_LAMBDA=0.1 + RWKV_PROBE_DENSITY=0.08, RWKV_GRU_HEAD 2→3,
-  RWKV_MUON=1 + RWKV_MUON_LR=0.02 + RWKV_MUON_MOMENTUM=0.95. +~966 params. Gate = ordinary
-  ACCURACY iter vs A18 (both modes ≥0.0001 after 4-dp rounding + p<0.0001), not the ratio
-  gate. De-bundle precedent if it regresses = A10→A11.** Prior anchor A13
+  **NEXT = ITER 31 (Andrew 2026-07-26, second half of the same message + his naming
+  correction "it shouldn't be called A19, it should be iter 31, first table in research
+  5k"): carry the three track-1 ALGORITHMIC wins onto the A18 trunk as one bundle — PAVA
+  (iter 23) + GRU N=3 (iter 26) + Muon (iter 29), i.e. exactly the iter-29 champion
+  recipe's extra flags. Env deltas vs A18: RWKV_PAVA_LAMBDA=0.1 + RWKV_PROBE_DENSITY=0.08,
+  RWKV_GRU_HEAD 2→3, RWKV_MUON=1 + RWKV_MUON_LR=0.02 + RWKV_MUON_MOMENTUM=0.95. 558,212
+  params (+966). Gate = ordinary ACCURACY iter vs A18 (both modes ≥0.0001 after 4-dp
+  rounding + p<0.0001), not the ratio gate. De-bundle precedent if it regresses =
+  A10→A11.** Prior anchor A13
   (0.298837/0.267805, 1,468,724 params, the ZERO_FEATURES=22 re-anchor) and A14
   (0.298798/0.267746, 1,380,660, LoRA halving — better both modes).
 - Superseded track-2 detail: A13 `track2_a13` (promoted 2026-07-23 10:50, DIRECTED
@@ -941,10 +943,20 @@ product goal outranks a marginal RATE the run missed by ~10% while costing only
 halving is NOT free at d=80 (+0.00002/+0.00009 for −27.5k) whereas A14's first halving
 IMPROVED both modes at d=128 — the lever flips sign as the trunk narrows, i.e. the model is
 now truly capacity-limited. A15 kept as the gate-clean fallback.
-**→ TRACK CONTINUES ON ALGORITHMS, NOT SHAPE (Andrew, same message): A19 = A18 + PAVA + GRU
-N=3 + Muon**, the three track-1 wins track 2 never received, bundled (all independently
-validated; together = the iter-29 recipe; 1 run ≈ 6 h vs ~20 h for three). Ordinary accuracy
-gate vs A18. ⚠ Treat as a hypothesis, not a deposit — they were tuned at d=32 and the
+**★ THE TWO TRACKS HAVE MERGED (Andrew 2026-07-26: "continue track 1 with it" + "it
+shouldn't be called A19, it should be iter 31 (first table in research 5k)"). From here
+there is ONE lineage: the A18 trunk, numbered as track-1 iterations in research_5k.md's
+FIRST table.** The track-2 A-series is closed at A18. ⚠ The old track-1 `params ≤ 225,000`
+cap does NOT carry over — it belonged to the d=32 track; this lineage's size story is the
+4.95× reduction (558,212 params). Flagged to Andrew rather than silently dropped.
+**→ ITER 31 (RUNNING, launched 2026-07-26 ~12:05, pid 36080, `scratchpad/iter31_algo/`)
+= A18 + PAVA + GRU N=3 + Muon**, the three track-1 wins track 2 never received, bundled (all
+independently validated; together = the iter-29 recipe; 1 run ≈ 10 h vs ~30 h for three).
+Ordinary accuracy gate vs A18 (0.299302/0.268390 val half). **SPEED: this recipe runs
+~0.7–0.9 steps/s vs A18's 1.86** — probes add ~30% rows, PAVA runs eager, Muon adds
+Newton-Schulz; WS ~7–8 h, total ~10 h, 8.8 GB peak reserved. Not a bug, but it makes each
+merged-lineage iteration ~2× more expensive than a plain track-2 one.
+⚠ Treat as a hypothesis, not a deposit — they were tuned at d=32 and the
 transfer ledger (iter 28, A13's opposite-sign state price) says d=32 wins need re-earning;
 the encouraging prior is that A18's own LoRA finding shows the trunk is capacity-limited,
 and PAVA/GRU-N add head-side capacity.
@@ -953,8 +965,8 @@ committed 1a86f04): `optimization/CPU_INFERENCE.md` shows param count has alread
 from the metric users feel (4.5× fewer MACs bought 1.24× wall-clock, plateauing after A14)
 and the engine cannot run the track-2 arch at all — but `model.rs` IS already dim-agnostic,
 so the 5 gaps are shape-detectable (1×1 dummies): GRU head, stripped cmix, stripped L0
-v_lora, no ahead residual, state clamp. ⚠ A19 changes the parity target (GRU N=2→3), so
-port against A18/A19 whichever is champion when the port lands.
+v_lora, no ahead residual, state clamp. ⚠ Iter 31 changes the parity target (GRU N=2→3), so
+port against A18/iter31 whichever is champion when the port lands.
 Reference implementation + an AVX2/FMA patch to crib from: `vendor/jschoreels_anki/`.
 Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
 sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS

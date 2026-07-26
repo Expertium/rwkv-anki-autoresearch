@@ -896,10 +896,10 @@ unchanged; only the verdict moved.
 
 The second half of his message redirects the track: with the width road closed, the next
 gains come from **algorithms rather than shape**. Track 1 found three at d=32 that track 2
-never received — PAVA (iter 23), GRU N=3 (iter 26) and Muon (iter 29) — and A19 carries all
-three onto the A18 trunk at once. Bundling is deliberate: each is independently validated,
-together they are exactly the iter-29 champion recipe, and one run costs ~6 h against ~20 h
-for three. If the bundle regresses, the de-bundle precedent is A10→A11.
+never received — PAVA (iter 23), GRU N=3 (iter 26) and Muon (iter 29) — and the next run
+carries all three onto the A18 trunk at once. Bundling is deliberate: each is independently
+validated, together they are exactly the iter-29 champion recipe, and one run costs ~10 h
+against ~30 h. If the bundle regresses, the de-bundle precedent is A10→A11.
 
 Worth flagging as a real possibility rather than a formality: these three were tuned on a
 d=32 trunk, and the transfer-failure ledger (iter 28's xhead mix, A13's state-feature price
@@ -907,6 +907,40 @@ landing opposite in sign to d=32's) says a d=32 win is a *hypothesis* at d=80, n
 deposit. What makes this one better-founded than most is that the trunk is now demonstrably
 capacity-limited (A18's own LoRA finding), and PAVA/GRU-N are head-side changes that add
 capacity where the trunk cannot.
+
+### ⇒ THE TWO TRACKS MERGE — the next run is **iter 31**, not A19
+
+I launched it as `track2_a19` and Andrew corrected the naming within minutes:
+
+> *"Yeah, it shouldn't be called A19, it should be iter 31 (first table in research 5k)"*
+
+Which settles what "continue track 1 with it" meant: not a track-2 run that borrows track-1
+ideas, but **one merged lineage** — the A18 trunk, numbered as ordinary research iterations
+in this document's first table, continuing from iter 30. The track-2 A-series is closed at
+A18, and its ratio gate retires with it: from iter 31 on, candidates face the ordinary
+accuracy gate (both modes ≥0.0001 after 4-dp rounding, p<0.0001), measured against A18 as
+the reigning champion.
+
+⚠ **One inherited rule does NOT survive the merge and I am flagging it rather than dropping
+it silently: the track-1 `params ≤ 225,000` cap.** It was written for the d=32 lineage,
+where 225k was a real ceiling; the merged model is 558,212 params and its size story is the
+4.95× cut from 2.76M. Reading the cap literally would reject the champion Andrew just
+accepted, so it cannot mean what it used to. Until he says otherwise I treat it as retired
+and the 4.95× reduction as the standing size result.
+
+The rename cost ~4 minutes of training (I killed the run at step 126 of 22,346). Worth it:
+checkpoint prefixes, trace filenames, result tags and log paths all embed the run name, and
+a mislabelled lineage is the kind of thing that quietly corrupts a record months later.
+
+**Speed, measured on that first launch and worth recording:** this recipe runs at ~0.7–0.9
+steps/s against A18's 1.86 — probe rows add ~30% more rows, PAVA's rectifier runs eager
+inside a `@torch.jit.ignore` method, and Muon adds a Newton-Schulz iteration per matrix.
+Peak reserved 8.8 GB of 12 GB. So WS ~7–8 h and ~10 h end-to-end, i.e. **every merged-lineage
+iteration costs about twice a plain track-2 one.** Not a bug — it is the price of the three
+features — but it halves iteration velocity and is worth knowing before planning a long
+queue. (Footnote on the 40-step sanity bench: it reported 0.29 steps/s, and iter 29's bench
+reported 0.275 against ~0.93 actual. The bench systematically understates steady state by
+~3×; use it for wiring and VRAM, never for scheduling.)
 
 ### Track-2 A17 — d_model 96→80 via 5×K=16 (REJECTED 2026-07-26 05:03 by 26 millionths): noise-limited, retry launched
 

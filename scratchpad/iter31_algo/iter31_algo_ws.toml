@@ -1,0 +1,47 @@
+# RESEARCH ITER 31 (Andrew 2026-07-26: "it should be iter 31", first table in research_5k):
+# the FIRST iteration of the MERGED lineage -- the track-2 A18 champion trunk (d=80 = 5 heads
+# x K=16, LoRA 4, 557,246 params, 4.95x below 2.76M) carrying the three track-1 ALGORITHMIC
+# wins it never received: PAVA (iter 23) + GRU N=3 (iter 26) + Muon (iter 29). Arch module is
+# A18's, unchanged -- the only deltas are env flags, so params move by ~+966 (one extra row in
+# each of gru_w/s/d + 3 PAVA thetas) to 558,212.
+# GATE = the ordinary research accuracy gate vs A18 (0.299302 / 0.268390 on VAL 5001-7500):
+# both modes improve >= 0.0001 after 4-dp rounding AND paired Wilcoxon p < 0.0001.
+# NOTE the old track-1 "params <= 225,000" cap does NOT apply to this lineage -- it belonged
+# to the d=32 track; the merged model's size story is the 4.95x reduction. Flagged to Andrew.
+# MAX_TRAIN_GLOBAL_LEN stays 32768 so the group sequence (22,346) and therefore step pairing
+# against A18's trace are identical; probe rows are inserted per-sample AFTER grouping, so they
+# inflate row counts (~+30%) without changing the step count.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter31_algo"
+SAVE_MODEL_PREFIX = "iter31ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
