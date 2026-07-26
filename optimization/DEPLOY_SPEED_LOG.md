@@ -73,6 +73,49 @@ measurements here before. This mirrors CLAUDE.md §11's "paired simultaneous tri
 unit changed from a trial to a user (see above): for each of the 200 users, before and after run
 side by side and yield that user's one paired point.
 
+### M3. Pin each worker to its own thread (CPU affinity)
+
+Andrew, 2026-07-26, from the FSRS-7 param-optimization work: pinning **did not reduce noise, but
+made runs a few % faster**, and it cannot make noise worse — so do it. The mechanism is cache
+warmth: an unpinned worker gets migrated between cores by the Windows scheduler and abandons its
+warm L1/L2 each time.
+
+```powershell
+# after launching a worker, pin it to ONE logical CPU (bit i = logical CPU i)
+(Get-Process -Id $procId).ProcessorAffinity = [IntPtr](1 -shl $cpuIndex)
+```
+
+⚠ **Use distinct PHYSICAL cores, not adjacent logical CPUs.** The 5950X is 16 cores / 32 threads,
+and Windows numbers SMT siblings adjacently — logical 0 and 1 are two threads of the *same*
+physical core. Pinning two workers there makes them fight over one core's execution units. Use
+**even** logical indices (0, 2, 4, …) to get one worker per physical core.
+
+**This is where M3 and M2 interact, and getting it wrong silently corrupts the ratio:** the
+simultaneous champion and candidate must land on **different physical cores**. If they end up on
+SMT siblings they contend with each other, and the measured "speedup" is really a measurement of
+that contention. Workers are single-threaded here anyway (`CPU_INFERENCE.md`: 1 thread beats 3
+and 6 on this workload), so one worker per physical core is the natural layout.
+
+### M4. LPT — dispatch the largest users first
+
+Sort the 200 users by review count **descending** and hand them to workers in that order (Longest
+Processing Time first).
+
+**Why:** it is the makespan that costs wall-clock, not the total work. If a 5,000-review user
+happens to be dispatched last, every other worker sits idle while it finishes alone. LPT is the
+classic greedy fix and bounds the makespan at ≤ (4/3 − 1/(3m)) × optimal. It pays off here in
+particular because our per-user review counts are **heavy-tailed** — the same property that makes
+us report a median rather than a mean speedup.
+
+Two invariants:
+
+- **LPT changes only dispatch ORDER, never the work**, so it cannot move LogLoss or `size`. If a
+  row's numbers shift when LPT is switched on, that is a bug in the harness, not a scheduling
+  effect.
+- **Champion and candidate must use the SAME order.** They are paired per user, so a different
+  schedule on each side would compare users measured under different machine conditions and quietly
+  break the pairing that M2 exists to protect.
+
 ## ACCEPTANCE CRITERIA (Andrew, 2026-07-26) — accept a speedup iff ALL FOUR hold
 
 1. **Wilcoxon signed-rank p < 0.01**, one-sided, on the 200 paired per-user rates.
