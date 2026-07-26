@@ -1144,6 +1144,13 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    wall-clock, not the design. Budget question CLOSED: the 10x run happens once, last, after this.
 6. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); permutation init (LOW).
    `pava_loss_avg` / `pava_pool_frac` step-trace fields: DONE (train_rwkv.py, keyed on enablement).
+7. **POSTPONED by Andrew 2026-07-27 — the users-vs-epochs ablation** (2,500 users x 2 epochs vs
+   iter 31's 5,000 x 1, step count held fixed; a 2-line toml change, ~6-7 h, no rebuild). Design +
+   why it matters in `optimization/DATASETS.md`. Do NOT start it unprompted. It is the cheap test
+   of whether the model is data-limited at 5,000 users, so it is worth re-offering **before** the
+   ~4-day 10x-budget endgame run, whose whole premise is that more epochs buy the +0.0037/+0.0043.
+   Same doc's VERDICT: **do not train on FSRS-Anki-20k** (1.5 TB LMDB vs 1.13 TB free; no
+   note/deck/preset = a regime that is 0% of deployment; 4.3% of its users leak into our eval half).
 
 **⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
 fewer params -> faster CPU inference in Anki").** Measured in `optimization/CPU_INFERENCE.md`:
