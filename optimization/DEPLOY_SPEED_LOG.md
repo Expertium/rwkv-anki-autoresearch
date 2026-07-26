@@ -30,8 +30,8 @@ This file is per-*optimization*, paired across **users**.
   assertions*, not accuracy rankings.
 - **Median relative speedup** = median over the 200 users of `after_rate_u / before_rate_u`.
   Median, not mean — per-user rates are heavy-tailed in review count.
-- **Wilcoxon signed-rank**, one-sided, on the 200 paired rates. Accept a speedup claim only at
-  **p < 0.01**.
+- **Wilcoxon signed-rank**, one-sided, on the 200 paired rates. Threshold and the rest of the gate:
+  see ACCEPTANCE CRITERIA below.
 ### M1. Lock the CPU frequency BEFORE measuring (once per session, needs admin)
 
 Without this the CPU boosts and throttles on its own schedule and the measurement drifts under
@@ -73,11 +73,23 @@ measurements here before. This mirrors CLAUDE.md §11's "paired simultaneous tri
 unit changed from a trial to a user (see above): for each of the 200 users, before and after run
 side by side and yield that user's one paired point.
 
-## The two assertions every row must carry
+## ACCEPTANCE CRITERIA (Andrew, 2026-07-26) — accept a speedup iff ALL FOUR hold
 
-1. **`size` identical.** Per-user equalized review count must match iter 0 EXACTLY. It is a
+1. **Wilcoxon signed-rank p < 0.01**, one-sided, on the 200 paired per-user rates.
+   *Deliberately looser than the accuracy gate's p < 0.0001* (CLAUDE.md §"ACCEPTANCE GATE"):
+   **timing measurements are noisy**, so demanding accuracy-grade significance from them would
+   reject real wins for reasons that have nothing to do with the code.
+2. **`size` identical to iter 0.** Per-user equalized review count must match EXACTLY. It is a
    property of the data and the filters, so any change at all is a pipeline bug, not a result.
-2. **LogLoss within ±0.0005 of iter 0**, both modes (ahead and imm), by-user mean.
+3. **LogLoss within ±0.0005 of iter 0 on BOTH heads** — ahead (curve head) and imm (rating head),
+   by-user mean. See the exact/inexact note below for how to read this one.
+4. **Median relative speedup ≥ 1.03 (at least +3%).** A floor on *practical* significance, not
+   statistical: with 200 paired users measured simultaneously, the test is sensitive enough to
+   certify a 0.5% win with a tiny p-value, and a 0.5% win is not worth the complexity it costs to
+   maintain. Criterion 1 says "the speedup is real"; criterion 4 says "it is worth having".
+
+Criteria 1 and 4 are independent and BOTH bind: a large median speedup with an inconsistent sign
+across users fails 1, and a rock-solid 1% win fails 4.
 
 **What the ±0.0005 is for (Andrew, 2026-07-26): it is headroom for INEXACT speedups** — changes
 that replace something with a cheaper approximation (a fast `exp`/`tanh`, a lower-precision
@@ -108,8 +120,10 @@ pairing, and would not satisfy the columns below.
 |---|---|---|---|---|---|---|---|---|---|
 | 0 | baseline — engine at `a3f7003`, parity-verified | — | — | *(to measure)* | 1.00× | n/a | n/a (defines it) | 0.000000 / 0.000000 | baseline |
 
-`kind` = **exact** or **inexact** (see the assertions above) — an inexact row must also name the
-approximation it made.
+`kind` = **exact** or **inexact** (see criterion 3) — an inexact row must also name the
+approximation it made. `verdict` = **accepted** only when all four criteria hold; otherwise
+**rejected**, with the failing criterion number. Log rejected rows too: a 2% win that failed the
+3% floor is exactly the thing someone will otherwise retry in three weeks.
 
 ### Candidate optimizations, roughly by expected value
 
