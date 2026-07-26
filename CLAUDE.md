@@ -995,8 +995,23 @@ All hooks stay in-repo, env-gated, default off.
     + circular-mean deviation, true calendar phase, creation->first-review, seconds-resolution
     time-since-any-review, creation-batch size, tenure, note/deck/preset ages). No export is blocked.
   - **What IS still needed for them:** they are per-review FEATURE COLUMNS, so they need a preprocessing
-    change + an **LMDB rebuild** sourced from `-id`. ⚠ Plan disk FIRST: `train_db_5k_h1` is 372.5 GB and C:
-    has 229 GB free, so a side-by-side rebuild does not fit (F: has 890 GB). **Unlike the DECK TREE**, which
-    needs NO rebuild at all — see the correction in `FUTURE_FEATURES.md`.
+    change + an **LMDB rebuild** sourced from `-id`. **Unlike the DECK TREE**, which needs NO rebuild at
+    all — see the correction in `FUTURE_FEATURES.md`.
+  - **DISK / DELETE-THE-OLD-DB — AUTHORIZED, WITH A SEQUENCING CONSTRAINT (Andrew 2026-07-26).**
+    `train_db_5k_h1` is 372.5 GB and C: has 229 GB free, so a side-by-side rebuild does NOT fit. Andrew:
+    *"We can delete the current copy, sure. It's strictly more data, not less, so nothing will be lost."*
+    **Verified, and he is right:** published vs `-id` over 6 users (1/2/3/17/101/555, 363,598 reviews) —
+    row counts IDENTICAL user-for-user, and `day_offset` differs on **4 of 363,598 reviews = 0.001%**
+    (the show-time correction moving a review across a day rollover). So the rebuild is additive in
+    columns and ~identical in rows.
+    ⚠ **BUT DO NOT DELETE UNTIL THE REBUILD IS READY TO RUN.** The endgame order puts the algorithmic
+    phase FIRST, and every run in it reads `train_db_5k_h1`; the rebuild is 2-4 days of CPU. Deleting
+    early = a dead GPU and a killed run for zero gain. **The delete is step 1 of the FEATURES phase, not
+    a preparatory step.** Do it when the preprocessing change is written and smoke-tested, not before.
+    Three things to settle at that moment, none now: (1) re-run the champion on the new DB to re-base —
+    at 0.001% it should be ~free, but cross-rebuild numbers are otherwise not comparable; (2) confirm
+    the `size` gate still holds (row counts say yes, but the equalize filter is derived); (3) decide
+    whether `label_filter_db` (37.3 GB, the "permanent deterministic cache") needs rebuilding too.
+    `test_db_5k` (232.8 GB) lives on F: with 890 GB free, so it CAN be built side-by-side.
 - Quant papers: `scratchpad/{rwkvquant,rwkvedge}.txt` (poppler installed; the Read tool handles PDFs). Use the
   CURRENT session's scratchpad dir for transient logs (it rotates on teardown -- check task-output paths).
