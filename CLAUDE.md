@@ -359,9 +359,21 @@ WS 18 epochs (558 steps, `train_rwkv_config_iterN.toml`) then **D** 2-epoch cosi
 (`..._iterN_decay.toml`, loads the WS-final ckpt) — the decay phase matters (it's what landed
 the iter3 champion). **Rust-parity invariant:** `verify_rust.py` (3-user float32) must pass for
 the champion arch before "shipping" (re-export trace + match the trained model bit-exactly).
-**RUN IT WITH `RWKV_WEIGHTS=reference/rwkv_iter36_124.safetensors`** -- the trace_user py_pred is the
-iter36 champion's; verify_rust's DEFAULT (rwkv_ref_558) and other models (iter45 etc.) will MISMATCH
-(that is wrong-weights, not a regression). Confirmed 2026-06-29 bit-exact: dpred ~3e-7, |rust-python| 0.000000.
+⚠ **CORRECTED 2026-07-26 -- the old instruction here was WRONG and self-confirming.** It said to run
+with `RWKV_WEIGHTS=reference/rwkv_iter36_124.safetensors` and that the default `rwkv_ref_558` "will
+MISMATCH (wrong-weights, not a regression)". In fact **`verify_rust.py` never runs the engine** -- it
+scores `reference/rust_pred_<user>.json` left by an earlier manual run, so `RWKV_WEIGHTS` cannot affect
+its verdict, and any weights argument "works" or "fails" identically. Those files were stale (Jun 30,
+quant-ladder era), which is how a FAIL with identical dpred across 3 crate versions and 3 weight files
+went unnoticed. Correct procedure: **run the binary from the REPO ROOT** (`RWKV_WEIGHTS=...
+./rust/rwkv-infer/target/release/rwkv-infer.exe`; it resolves `reference/trace_user_*` relative to CWD)
+-> it writes `preds/rust_pred_*.json` -> **copy those into `reference/`** -> `python verify_rust.py`.
+`reference/ref_metrics.json` names the reference model: **`rwkv_ref_558.pth`**, not iter36.
+**STATUS: the gate is RED** -- freshly generated preds give imm 0.004425 / ahead 0.024390 vs the 0.0005
+tolerance (down from 0.0187/0.0209 on the stale files). Cause not yet identified (wrong weights? stale
+trace? id-encoding seed scheme? a real regression since June). The 2026-06-29 "bit-exact, dpred ~3e-7"
+claim is from before the sibling-engine port and has NOT been reproduced. Fix this before treating
+"A15/A18 parity" as the port's definition of done.
 
 **Speed = batch throughput via simultaneous paired Wilcoxon (protocol point 7–8):**
 - **Lock CPU freq** (admin, once/session): `powercfg -attributes SUB_PROCESSOR

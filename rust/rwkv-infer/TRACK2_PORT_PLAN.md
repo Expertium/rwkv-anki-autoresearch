@@ -108,6 +108,21 @@ user L0 v_lora + L0/L1/L2 cmix.
 4. **Parity gate** — extend `verify_rust.py` to the track-2 champion: export
    `t2a15d_5586.pth` → safetensors, run the 3 reference users, require |rust − python| within
    the usual float tolerance. **A15 parity is the definition of done for the port.**
+   ⚠ **The gate is RED today and its wiring is a trap — fix this before step 4 can mean
+   anything (found 2026-07-26).** `verify_rust.py` does **not** run the engine: it scores
+   `reference/rust_pred_<user>.json` files that a previous manual run left behind, so
+   `RWKV_WEIGHTS` does not influence its verdict at all. The files sitting there were from
+   **Jun 30**, left over from the quantization-ladder sweep (note the `_int4_`, `_i2_`,
+   `_qatq_` siblings), which is why the gate reported `PARITY: FAIL` with an identical
+   `dpred 6.8e-01` across three different crate versions *and* three different weight files.
+   The real procedure is: run the binary **from the repo root** (it resolves
+   `reference/trace_user_*` relative to CWD) → it writes `preds/rust_pred_*.json` → copy those
+   into `reference/` → then score. Done that way with
+   `RWKV_WEIGHTS=reference/rwkv_ref_558.safetensors` (the model `reference/ref_metrics.json`
+   actually names), the gate still fails, but far less: imm 0.004425, ahead 0.024390 against a
+   0.0005 tolerance. **Unresolved:** whether that residual is wrong weights, a stale trace, the
+   per-user id-encoding seed scheme, or a genuine engine regression since June. `preds/` and
+   `reference/rust_pred_*` are untracked, so nothing was lost by regenerating them.
 5. **THEN measure** — `optimization/measure_throughput.py` on A0/A14/A15 and compare against
    the Python-path curve in `CPU_INFERENCE.md`. This is the experiment that finally answers
    whether the ablations bought user-visible speed.
