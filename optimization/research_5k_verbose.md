@@ -1410,6 +1410,40 @@ recoverable by training, i.e. it is a training problem, not an inherent cost of 
 gets**. Shrinking that residual is a live target (raise `RWKV_PAVA_LAMBDA`? raise probe density?
 both are one-flag runs on an existing recipe).
 
+### ★ WHAT THE RECTIFICATION PENALTY IS ACTUALLY MADE OF (mode-2 diagnostic, 2026-07-27)
+
+Andrew asked how much zeroing the current review's duration costs. `RWKV_EVAL_PAVA=2` substitutes
+the pressed probe WITHOUT pooling, so modes 0/1/2 split the penalty additively. iter 31, users
+5001-5500 (n=500), additivity exact at 0.00e+00:
+
+| component | ahead |
+|---|---|
+| duration zeroing (m2 - m0) | **+0.001451** |
+| PAVA pooling itself (m1 - m2) | +0.000611 |
+| total rect-vs-unrect (m1 - m0) | +0.002062 |
+
+by-user mean ahead: unrectified 0.301461 -> raw probe 0.302912 -> rectified 0.303523.
+Probe-insertion noise on the imm channel is **+0.000056** (identical for modes 1 and 2, p=2.1e-8,
+worse on 284/500 — a good consistency check, since imm depends on probe INSERTION and not on what
+gets substituted), so the duration term is ≈+0.00140 net. `RWKV_EVAL_PAVA=3` measures the ahead-side
+noise directly and is queued.
+
+**The headline is that the rectifier is the SMALL half. ~70% of the penalty is the model losing the
+current review's duration, and only ~30% is the monotonicity pooling.** That matters because it
+redirects the obvious follow-up: raising `RWKV_PAVA_LAMBDA` can only attack the 30%.
+
+**And the 70% is a TRAIN/DEPLOY MISMATCH, not a law of nature** — precisely the failure class the
+§9 three-way-parity directive exists to catch. Training feeds the real `scaled_duration` for the
+scored row; deploy CANNOT, because Anki has to show intervals *before* the user presses, so the
+duration of a review that has not happened yet is unknowable. The model therefore learns to lean on
+a feature that vanishes at serving time, and +0.00140 is the bill.
+**=> the better iter-33 candidate is to zero the current row's duration during TRAINING** (the
+`RWKV_ZERO_FEATURES` mechanism already exists and is already in use for dim 22), so train and deploy
+compute the same quantity. Expect it to cost a little on the unrectified metric — that number is
+measured WITH the duration the deploy path won't have — while removing most of the deploy penalty.
+This is a case where the gate metric and the deploy metric point in opposite directions, so it must
+be judged on both (see the gate question in CLAUDE.md QUEUE 0).
+
 **It is not noise.** iter 31's own probe-insertion noise floor — its imm rect-vs-unrect delta, the
 channel the rectifier cannot reach — is **+0.000054**, so the ahead penalty is ~19x it. Worth
 flagging separately: that floor is **5x smaller than A18's +0.000280** on identical probe

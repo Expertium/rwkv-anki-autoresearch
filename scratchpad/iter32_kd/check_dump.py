@@ -6,8 +6,14 @@ QUANTITY at all -- a teacher loaded into the wrong architecture, or run with a f
 trained under, produces perfectly well-aligned garbage, and the student would train on it happily
 for ten hours. So this checks the two things that are true of teacher outputs and nothing else:
 
-  * p_curve is a PROBABILITY   -> strictly inside (0,1)
+  * p_curve is a PROBABILITY   -> inside [0,1], and NOT collapsed onto the endpoints
   * p_imm_all is a DISTRIBUTION over the 4 ratings -> rows sum to 1
+
+⚠ The p_curve bound was "strictly inside (0,1)" and FALSE-FAILED the first real dump 5/5, costing
+a night's queue slot. fp16 storage rounds everything above ~0.99951 to exactly 1.0 (10% of values),
+which is fine for a soft BCE target. The useful test is the anti-collapse one, not the open
+interval -- a dump that had degenerated to hard labels is the failure that would actually waste the
+ten hours, and the open-interval test would have PASSED that as long as one value sat at 0.9999.
 
 and it projects the full dump's disk footprint from the smoke files, because the per-step size
 depends on the padded batch shape (B*T), which is not something to discover at 90% disk usage.
@@ -59,9 +65,24 @@ def main():
         pi = rec["p_imm_all"].float()
         if not torch.isfinite(pc).all() or not torch.isfinite(pi).all():
             print(f"  {os.path.basename(f)}: NON-FINITE values"); bad += 1; continue
-        if pc.min() <= 0.0 or pc.max() >= 1.0:
-            print(f"  {os.path.basename(f)}: p_curve outside (0,1): "
+        # ⚠ RELAXED 2026-07-27 from "strictly inside (0,1)", which FALSE-FAILED the real dump.
+        # p_curve is stored fp16 (train_rwkv.py:1090) and fp16 spacing just below 1.0 is 4.88e-4,
+        # so every teacher output above ~0.99951 lands on exactly 1.0 -- 9.97% of values in the
+        # smoke dump. That is harmless HERE because p_curve is consumed as a soft BCE TARGET
+        # (srs_model.py:772, label_y = alpha*teacher + (1-alpha)*hard) and hard labels are already
+        # exactly 0/1: a target of 1.0 gives -log(p), which is finite. It is also nearly costless
+        # as signal, since saturation happens precisely where the soft target and the hard label
+        # coincide; the informative mid-range keeps ~5e-4 relative precision.
+        # The check that IS worth making is the opposite one -- that the dump has not collapsed to
+        # the hard labels, which would make KD a no-op while every alignment check still passed.
+        if pc.min() < 0.0 or pc.max() > 1.0:
+            print(f"  {os.path.basename(f)}: p_curve outside [0,1]: "
                   f"[{pc.min():.6f}, {pc.max():.6f}]"); bad += 1; continue
+        interior = ((pc > 1e-3) & (pc < 1.0 - 1e-3)).float().mean().item()
+        if interior < 0.10:
+            print(f"  {os.path.basename(f)}: p_curve is ~ALL saturated (only {100*interior:.1f}% "
+                  f"strictly interior) -- these targets carry no more information than the hard "
+                  f"labels, so KD would be a no-op"); bad += 1; continue
         rowsum = pi.sum(dim=-1)
         # fp16 storage, so allow a loose tolerance -- this is a "is it a distribution at all"
         # test, not a numerics test.
