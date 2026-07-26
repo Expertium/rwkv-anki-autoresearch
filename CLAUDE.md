@@ -1028,6 +1028,11 @@ ahead correction (`RWKV_NO_AHEAD_RESIDUAL=1`, already in every run).
   **This was about to get much worse:** iter 33 masks dim 8, whose column L2 is **42.07 — 5x the
   median and 50x dim 22's**. Unmasked that is a large error, not a subtle one. Exactly the failure
   class §9 exists to catch, caught by asking what the deploy path actually computes.
+  **→ RECOMMENDED FOLLOW-UP (Andrew's call, not done unilaterally):** bake the mask into the
+  **exported safetensors** at export time instead of applying it from an env var at load. Since it
+  is just zeroed weight columns, the deploy artifact would then be correct for ANY consumer without
+  that consumer knowing the flag exists — and Anki will not be setting `RWKV_ZERO_FEATURES`. The
+  env path stays useful for research runs; this only changes what ships.
 
 **⚠ IMPLEMENTATION IS A REAL FORK — read before writing the run.** "The most recent review's
 duration" is the CURRENT row's, and in a causal RNN each row's duration is unavailable to its OWN
