@@ -861,6 +861,9 @@ def main_loop(config, task_queue, batch_queue):
         Path(step_trace_path).parent.mkdir(parents=True, exist_ok=True)
         trace_file = open(step_trace_path, "a", buffering=1)  # line-buffered: survives crashes
         print(f"[trace] per-step WS logloss -> {step_trace_path}")
+    _pava_on = float(os.environ.get("RWKV_PAVA_LAMBDA", "0") or 0) != 0.0
+    if _pava_on and step_trace_path:
+        print("[trace] PAVA on -> also logging pava_pool_frac + pava_loss per step")
     champ_meta, champ_steps = None, {}
     if prune_ref_path:
         with open(prune_ref_path) as _f:
@@ -1178,7 +1181,20 @@ def main_loop(config, task_queue, batch_queue):
                     _ta, _ti = float(stats.ahead_avg.item()), float(stats.imm_avg.item())
                     trace_steps[step] = (_ta, _ti)
                     if trace_file is not None:
-                        trace_file.write(json.dumps({"step": step, "ahead": _ta, "imm": _ti}) + "\n")
+                        _rec = {"step": step, "ahead": _ta, "imm": _ti}
+                        # PAVA diagnostics, when the rectifier is on. pool_frac is the one that
+                        # answers "is the rectifier doing anything?" -- it is the fraction of rows
+                        # whose raw button curves were OUT OF ORDER and therefore got pooled. A
+                        # pool_frac near 0 means the model already orders its buttons and PAVA is
+                        # inert; near 1 means it is carrying the ordering guarantee on every row.
+                        # Emitted only when present so old traces stay byte-comparable.
+                        # Keyed on whether the rectifier is ENABLED, not on whether it fired this
+                        # step: a field that appears and disappears with the data would make a
+                        # legitimately-zero pool_frac indistinguishable from PAVA being off.
+                        if _pava_on and hasattr(stats, "pava_pool_frac"):
+                            _rec["pava_pool_frac"] = float(stats.pava_pool_frac.item())
+                            _rec["pava_loss"] = float(stats.pava_loss_avg.item())
+                        trace_file.write(json.dumps(_rec) + "\n")
 
                 # NaN/inf safeguard: clip_grad_norm_ returns the total grad norm; if it's non-finite, a NaN
                 # grad slipped through -> DO NOT step (that would write NaN into the weights and kill the model).
