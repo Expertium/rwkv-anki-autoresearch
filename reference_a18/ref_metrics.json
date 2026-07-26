@@ -1,0 +1,35 @@
+{
+  "model": "t2a18d_5586.pth",
+  "arch_module": "scratchpad/track2_a18/architecture_d80_lora4.py",
+  "mode": "RNN eval (dropout off), float32",
+  "seed_scheme": "torch.manual_seed(user_id) per user (id-encodings only)",
+  "users": [
+    107,
+    136,
+    156
+  ],
+  "per_user": [
+    {
+      "user": 107,
+      "size": 3510,
+      "imm_logloss": 0.22201,
+      "ahead_logloss": 0.308786
+    },
+    {
+      "user": 136,
+      "size": 3870,
+      "imm_logloss": 0.109538,
+      "ahead_logloss": 0.134931
+    },
+    {
+      "user": 156,
+      "size": 3710,
+      "imm_logloss": 0.27573,
+      "ahead_logloss": 0.291216
+    }
+  ],
+  "mean_imm_logloss": 0.202426,
+  "mean_ahead_logloss": 0.244978,
+  "tolerance": 0.0005,
+  "note": "Rust RNN port must match mean_*_logloss within +/-tolerance."
+}

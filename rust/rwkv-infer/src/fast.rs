@@ -688,12 +688,14 @@ impl FastModel {
             Some(_) => self.gru_forgetting_curve(curve, elapsed),
             None => self.forgetting_curve(&curve.w, elapsed),
         };
-        if !self.arch.ahead_residual {
-            // No residual -> the curve IS the mixture, monotone in t by construction.
-            return p_raw;
-        }
         let logit_raw = (p_raw / (1.0 - p_raw)).ln();
-        let residual = self.interp(out_ahead_logits, elapsed);
+        // Mirrors Model::predict_ahead: with the residual stripped Python still adds 1e-5 in
+        // logit space (its zeroed logits pass through interp's `1e-5 + (1 - 2e-5) * 0`).
+        let residual = if self.arch.ahead_residual {
+            self.interp(out_ahead_logits, elapsed)
+        } else {
+            1e-5
+        };
         let logit = logit_raw + residual;
         1.0 / (1.0 + (-logit).exp())
     }

@@ -8,13 +8,19 @@ Gate (CLAUDE.md §5): each mode's by-user-mean LogLoss within +/-0.0005 of Pytho
 Run: python verify_rust.py
 """
 import json
+import os
 from pathlib import Path
 
 import numpy as np
 from sklearn.metrics import log_loss
 
 REF_USERS = [107, 136, 156]
-REF = Path("reference")
+# Artifact dir. Overridable to match export_rnn_trace.py's RWKV_REF_DIR and the Rust engine's
+# RWKV_TRACE_DIR, so a parity check always scores ONE self-consistent set of artifacts.
+# ⚠ This script does NOT run the engine -- it scores rust_pred_<user>.json files already sitting
+# in this directory. Run the binary from the repo root first (it writes preds/), copy them here,
+# then run this. See CLAUDE.md sec 11.
+REF = Path(os.environ.get("RWKV_REF_DIR", "reference"))
 TOL = 0.0005
 
 

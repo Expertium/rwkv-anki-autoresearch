@@ -369,11 +369,28 @@ went unnoticed. Correct procedure: **run the binary from the REPO ROOT** (`RWKV_
 ./rust/rwkv-infer/target/release/rwkv-infer.exe`; it resolves `reference/trace_user_*` relative to CWD)
 -> it writes `preds/rust_pred_*.json` -> **copy those into `reference/`** -> `python verify_rust.py`.
 `reference/ref_metrics.json` names the reference model: **`rwkv_ref_558.pth`**, not iter36.
-**STATUS: the gate is RED** -- freshly generated preds give imm 0.004425 / ahead 0.024390 vs the 0.0005
-tolerance (down from 0.0187/0.0209 on the stale files). Cause not yet identified (wrong weights? stale
-trace? id-encoding seed scheme? a real regression since June). The 2026-06-29 "bit-exact, dpred ~3e-7"
-claim is from before the sibling-engine port and has NOT been reproduced. Fix this before treating
-"A15/A18 parity" as the port's definition of done.
+**★ SOLVED + GREEN 2026-07-26 -- the ROOT CAUSE was that the June `reference/` trace is not
+reproducible by current Python, so the gate was scoring the artifacts, not the port.** New tool
+`scratchpad/parity3/trace_selfcontained.py` asks the question that settles it: feed the trace's own
+92-dim features back through the Python RNN at review 0 (all states empty = pure forward pass) and see
+if it reproduces the `py_pred` frozen in the same file. The June trace FAILS at |d| up to 3.4e-1 -- the
+same magnitude as the Rust "error" -- because `architecture.py` has since moved from d=128 to d=32 and
+the model code has evolved, so nothing can reproduce those numbers now. **Run this check FIRST whenever
+a parity gate looks wrong; a stale reference is far likelier than a broken engine.**
+**FIX = regenerate, do not archaeologise.** `export_rnn_trace.py` now honours `RWKV_REF_DIR` (and
+`verify_rust.py` too, matching the engine's `RWKV_TRACE_DIR`), so a fresh trace lands beside the old one
+instead of clobbering it; `ref_metrics.json` now records the checkpoint + arch module actually exported
+(the old code hardcoded "rwkv_ref_558.pth" regardless -- the very thing that made CLAUDE.md's
+instruction wrong). The fresh A18 trace is `reference_a18/` and is SELF-CONTAINED at exactly 0.000e+00.
+**RESULT -- the first-ever track-2 parity verification: `PARITY: PASS`, imm 0.000035 / ahead 0.000044
+vs tol 0.0005** (14x and 11x inside). Procedure:
+`RWKV_WEIGHTS=reference_a18/track2_a18.safetensors RWKV_TRACE_DIR=reference_a18 RWKV_STATE_CLAMP_TAU=300
+RWKV_PRED_DIR=preds_a18v ./rust/rwkv-infer/target/release/rwkv-infer.exe` -> copy `preds_a18v/*` into
+`reference_a18/` -> `RWKV_REF_DIR=reference_a18 python verify_rust.py`.
+⚠ Note max per-review |rust-python| = 9.6e-3 (one review in 5,229) even though the by-user means agree
+to 3.5e-5. That is accumulated float divergence over a ~5,000-step recurrence in two independent
+implementations, not a formula error -- the gate measures the mean and passes with wide margin. Do not
+expect the old d=32 port's "dpred ~3e-7"; that model was shallower and its chain shorter.
 
 **Speed = batch throughput via simultaneous paired Wilcoxon (protocol point 7–8):**
 - **Lock CPU freq** (admin, once/session): `powercfg -attributes SUB_PROCESSOR

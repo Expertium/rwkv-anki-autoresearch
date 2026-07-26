@@ -42,6 +42,13 @@ target/
 reference/*.safetensors
 reference/trace_user_*.json
 reference/rust_pred_*.json
+# reference_a18/ = the self-consistent track-2 parity trace (2026-07-26). Same rule: the bulk
+# artifacts are regenerable via export_rnn_trace.py with RWKV_REF_DIR, so only ref_metrics.json
+# (the small record of WHICH model+arch the trace belongs to) is tracked.
+reference_a18/*.safetensors
+reference_a18/trace_user_*.json
+reference_a18/rust_pred_*.json
+reference_a18/weight_names.json
 
 # Model checkpoints (regenerable binaries; never track) + papers + any stray safetensors
 *.pth

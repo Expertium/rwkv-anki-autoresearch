@@ -39,7 +39,11 @@ LABEL_DB_SIZE = 2_000_000_000
 MODEL_PATH = os.environ.get("RWKV_CHAMP_CKPT", "pretrain/rwkv/ref_100/rwkv_ref_558.pth")
 WEIGHTS_SFT = os.environ.get("RWKV_CHAMP_SFT", "rwkv_ref_558.safetensors")
 REF_USERS = [107, 136, 156]
-OUT_DIR = Path("reference")
+# Output dir. Overridable so a NEW parity trace can be exported without clobbering an existing
+# one -- the June-2026 `reference/` trace belongs to the d=128 rwkv_ref_558 model and current
+# Python can no longer reproduce its frozen py_pred (the model code has moved on), so fresh
+# traces go somewhere else and the Rust side is pointed at them with RWKV_TRACE_DIR.
+OUT_DIR = Path(os.environ.get("RWKV_REF_DIR", "reference"))
 
 
 class CapturingRNN(rnn_mod.RNNProcess):
@@ -220,11 +224,15 @@ def main():
 
     # This export is now the canonical, EVAL-MODE reference (dropout off). It replaces
     # the earlier dropout-on numbers. Show the shift for transparency.
-    old = json.load(open("reference/ref_metrics.json")) if (
+    old = json.load(open(OUT_DIR / "ref_metrics.json")) if (
         OUT_DIR / "ref_metrics.json"
     ).exists() else None
     ref = {
-        "model": "rwkv_ref_558.pth",
+        # Record the checkpoint actually exported, not a hardcoded name -- the old constant here
+        # said "rwkv_ref_558.pth" regardless, which is how CLAUDE.md ended up telling people to
+        # verify against a different model than ref_metrics.json named.
+        "model": os.path.basename(MODEL_PATH),
+        "arch_module": os.environ.get("RWKV_ARCH_MODULE", "rwkv/architecture.py"),
         "mode": "RNN eval (dropout off), float32",
         "seed_scheme": "torch.manual_seed(user_id) per user (id-encodings only)",
         "users": REF_USERS,
@@ -238,7 +246,7 @@ def main():
         "tolerance": 0.0005,
         "note": "Rust RNN port must match mean_*_logloss within +/-tolerance.",
     }
-    with open("reference/ref_metrics.json", "w") as f:
+    with open(OUT_DIR / "ref_metrics.json", "w") as f:
         json.dump(ref, f, indent=2)
     if old is not None:
         print(

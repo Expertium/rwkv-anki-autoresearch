@@ -108,8 +108,12 @@ user L0 v_lora + L0/L1/L2 cmix.
 4. **Parity gate** — extend `verify_rust.py` to the track-2 champion: export
    `t2a15d_5586.pth` → safetensors, run the 3 reference users, require |rust − python| within
    the usual float tolerance. **A15 parity is the definition of done for the port.**
-   ⚠ **The gate is RED today and its wiring is a trap — fix this before step 4 can mean
-   anything (found 2026-07-26).** `verify_rust.py` does **not** run the engine: it scores
+   **★ DONE 2026-07-26 — `PARITY: PASS` for A18, imm 0.000035 / ahead 0.000044 vs tol 0.0005.**
+   The first-ever parity verification of the track-2 architecture, so steps 1–3 are certified.
+   Target regenerated as `reference_a18/` (self-contained at exactly 0.000e+00); see CLAUDE.md
+   §11 for the exact procedure and the 9.6e-3 max-per-review note. The history below is kept
+   because the *reason* it was red is the reusable lesson.
+   ⚠ **The gate WAS red and its wiring is a trap (found 2026-07-26).** `verify_rust.py` does **not** run the engine: it scores
    `reference/rust_pred_<user>.json` files that a previous manual run left behind, so
    `RWKV_WEIGHTS` does not influence its verdict at all. The files sitting there were from
    **Jun 30**, left over from the quantization-ladder sweep (note the `_int4_`, `_i2_`,

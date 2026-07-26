@@ -1825,9 +1825,13 @@ impl Model {
             Some(_) => self.gru_forgetting_curve(curve, elapsed)?,
             None => self.forgetting_curve(&curve.w, elapsed)?,
         };
-        // No residual -> the curve IS the mixture, monotone in t by construction.
+        // No residual -> the curve is the pure mixture, monotone in t by construction. NOT a
+        // plain early return: Python still ADDS 1e-5 in logit space, because its zeroed logits
+        // go through interp's `1e-5 + (1 - 2e-5) * 0` (srs_model_rnn.ahead_residual documents
+        // this, and run_as_rnn.predict_func calls interp unconditionally). Worth ~2.5e-6 in
+        // probability -- far inside tolerance, but parity means parity.
         let residual = match (self.arch.ahead_residual, out_ahead_logits) {
-            (false, _) => return Ok(p_raw),
+            (false, _) => 1e-5f32,
             (true, Some(al)) => self.interp(al, elapsed)?,
             (true, None) => {
                 return Err(anyhow!("ahead residual is live but no ahead logits were stored"))
