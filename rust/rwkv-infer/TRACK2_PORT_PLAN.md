@@ -72,14 +72,27 @@ together. Two things it learned the hard way, both worth copying:
   gives a different answer. Cheap regardless: the heads do not depend on `t`, so a probe is
   closed-form arithmetic and the RWKV forward runs exactly 4 times per press.
 
-## ⚠ Gaps 2, 3 and 5 are PYTHON-RNN gaps too (found 2026-07-26)
+## Gaps 2, 3 and 5 were PYTHON-RNN gaps too — now closed there (2026-07-26, `921ac76`)
 
-`rwkv/model/rwkv_rnn_model.py` implements **none** of `RWKV_STRIP_CMIX`,
-`RWKV_STRIP_L0_VLORA` or `RWKV_STATE_CLAMP_*` — those flags live only in `rwkv_model.py`
-(the training/eval form). So the Python RNN twin cannot run the merged A18-trunk champion
-either. This matters for sequencing: **`verify_rust.py` compares Rust against the Python
-RNN**, so the Python side of gaps 2/3/5 has to land *before* the Rust side can be gated.
-Doing it there first is also the cheaper place to get the semantics right.
+`rwkv/model/rwkv_rnn_model.py` implemented **none** of `RWKV_STRIP_CMIX`,
+`RWKV_STRIP_L0_VLORA` or `RWKV_STATE_CLAMP_*` — they lived only in `rwkv_model.py`. Since
+`verify_rust.py` gates Rust *against* the Python RNN, that side had to land first; it has,
+and `scratchpad/parity3/parity_train_vs_rnn.py` now holds RWKV7 (parallel) against
+RWKV7RNN (recurrent) on identical weights at ~1e-6 across seven cases. Three things the
+Rust port should copy rather than rediscover:
+
+- `stream_name` must be **stamped onto each stream's config** or `RWKV_STRIP_CMIX` matches
+  `":<layer>"` and strips nothing while appearing to comply. Silent, and it makes the
+  engine compute a different model than the one trained.
+- The strips leave **1×1 dummies**, so the state dict stays symmetric — which is exactly
+  the shape-detection the table above relies on.
+- **The state clamp cannot be bit-identical to training**, and Rust should not pretend
+  otherwise. Training clamps between windows of `state_clamp_window` steps; a
+  one-step-at-a-time engine cannot reconstruct those boundaries, since they depend on how
+  `prepare_batch` packed the batch. Clamp every step. The two agree exactly wherever
+  ‖S‖ ≤ τ (the factor is then exactly 1.0), and differ only on already-diverging states,
+  where per-step is the more conservative choice. Note this in the parity gate's tolerance
+  story rather than chasing an exact match that does not exist.
 
 A15's exact strip map (auto-detected, for the parity test): card L0 v_lora, card L1 cmix;
 deck L0 v_lora, deck L1/L2 cmix; note L0 v_lora; preset L0 v_lora + L0/L1/L2 cmix;

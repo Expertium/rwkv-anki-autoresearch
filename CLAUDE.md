@@ -229,6 +229,15 @@ deltas so dead ends aren't re-run.
   that are unavailable at deploy time? Does the Rust engine implement it? Note that `imm`
   comes from the rating head and `ahead` from the curve head, so a curve-side change moves
   only one of the two gate modes.
+  **THE TOOL (2026-07-26): `scratchpad/parity3/parity_train_vs_rnn.py`** — feeds identical
+  weights + inputs through RWKV7 (parallel/training) and RWKV7RNN (recurrent/deploy) and
+  requires ~1e-6 agreement. CPU-only, seconds to run, one subprocess per env combination
+  (ScriptModule bakes the first construction's flags). **Add a case to it whenever you add
+  an arch env flag** — that is the cheap check that would have caught STRIP_CMIX /
+  STRIP_L0_VLORA / STATE_CLAMP living only in `rwkv_model.py` for a whole track-2 phase.
+  Two vacuity traps it guards and yours should too: randomize the zero-init params (W_o and
+  the scale linears zero out most of the recurrence) and assert the output scale is
+  non-trivial before comparing.
 - **Git:** commit/push only when asked; for non-trivial pushes branch off `main`; end commit
   messages with the `Co-Authored-By` trailer. GitHub comments start "Written by Claude".
 - When a step is ambiguous (exact split, quant target, candle vs other Rust ML lib), state
@@ -970,17 +979,42 @@ there is ONE lineage: the A18 trunk, numbered as track-1 iterations in research_
 FIRST table.** The track-2 A-series is closed at A18. ⚠ The old track-1 `params ≤ 225,000`
 cap does NOT carry over — it belonged to the d=32 track; this lineage's size story is the
 4.95× reduction (558,212 params). Flagged to Andrew rather than silently dropped.
-**→ ITER 31 (RUNNING, launched 2026-07-26 ~12:05, pid 36080, `scratchpad/iter31_algo/`)
-= A18 + PAVA + GRU N=3 + Muon**, the three track-1 wins track 2 never received, bundled (all
-independently validated; together = the iter-29 recipe; 1 run ≈ 10 h vs ~30 h for three).
-Ordinary accuracy gate vs A18 (0.299302/0.268390 val half). **SPEED: this recipe runs
-~0.7–0.9 steps/s vs A18's 1.86** — probes add ~30% rows, PAVA runs eager, Muon adds
-Newton-Schulz; WS ~7–8 h, total ~10 h, 8.8 GB peak reserved. Not a bug, but it makes each
-merged-lineage iteration ~2× more expensive than a plain track-2 one.
+**→ ITER 31 (RUNNING, relaunched 2026-07-26 12:42 on the corrected duration convention,
+pid 3136, `scratchpad/iter31_algo/`) = A18 + PAVA + GRU N=3 + Muon**, the three track-1 wins
+track 2 never received, bundled (all independently validated; together = the iter-29 recipe;
+1 run ≈ 10 h vs ~30 h for three).
+Ordinary accuracy gate vs A18 (0.299302/0.268390 val half). **SPEED: measured ~1.1–1.4
+steps/s** (4,657 steps in the first 68 min) vs A18's 1.86 — probes add ~30% rows, PAVA runs
+eager, Muon adds Newton-Schulz; WS ~4.5 h, verdict ~20:45. 8.8 GB peak reserved. (The 40-step
+`BENCH_RESULT` said 0.29 — it understates steady state ~3×, NEVER schedule off it.)
+**⚠ ITS EVAL LEG IS UNRECTIFIED** — the `.cmd` was written before `RWKV_EVAL_PAVA` existed
+and a RUNNING batch file must not be edited (cmd.exe re-reads it at a saved byte offset).
+That is fine and arguably better: the unrectified number is directly comparable to A18's
+existing jsonls, so it is the primary gate; the rectified pair (A18 falls back to classic
+p=1, having no `pava_theta`) then follows as two separate ~1.25 h evals for the DEPLOY
+metric. If the two metrics disagree on the verdict, report both to Andrew rather than
+picking one.
 ⚠ Treat as a hypothesis, not a deposit — they were tuned at d=32 and the
 transfer ledger (iter 28, A13's opposite-sign state price) says d=32 wins need re-earning;
 the encouraging prior is that A18's own LoRA finding shows the trunk is capacity-limited,
 and PAVA/GRU-N add head-side capacity.
+**★ DEPLOY-PATH WORK DONE 2026-07-26 (the "implement everywhere" directive + its fallout),
+commits `11ab7e0` / `921ac76` / `db85154`:** (1) the Python RNN got the 4-BUTTON API it never
+had — `SrsRWKVRnn.button_heads` / `button_curves` / `button_intervals`, plus `pava_theta` in
+the state dict (without it `load_state_dict`, which is strict, could not even OPEN a
+PAVA-trained checkpoint); probes read the state and never advance it, duration is zeroed on
+all four inside the API so a caller cannot get the contract wrong, and the interval solver
+bisects on the RECTIFIED curve (the rectifier couples the buttons, so rectifying after
+solving gives a different answer). Smoke `scratchpad/eval_pava/smoke_rnn_buttons.py`.
+(2) **Gaps 2/3/5 turned out to be PYTHON-RNN gaps, not just Rust ones** —
+`RWKV_STRIP_CMIX` / `RWKV_STRIP_L0_VLORA` / `RWKV_STATE_CLAMP_*` lived only in
+`rwkv_model.py`, so the deploy twin could not run the merged champion; now ported, with
+`stream_name` stamped in `srs_model_rnn.py` (unstamped, STRIP_CMIX matches `":<layer>"` and
+strips NOTHING while appearing to comply). ⚠ The state clamp is per-step at deploy vs
+per-window in training — equal wherever ‖S‖ ≤ τ (factor exactly 1.0, bit-inert), different
+only on already-diverging states; that belongs in the parity gate's tolerance story, not
+chased as a bug. (3) New harness `scratchpad/parity3/parity_train_vs_rnn.py`, 7/7 at ~1e-6
+— see §9.
 **RUST PORT still the highest-value NON-research work** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`,
 committed 1a86f04): `optimization/CPU_INFERENCE.md` shows param count has already decoupled
 from the metric users feel (4.5× fewer MACs bought 1.24× wall-clock, plateauing after A14)
