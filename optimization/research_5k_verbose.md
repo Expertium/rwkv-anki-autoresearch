@@ -1336,3 +1336,51 @@ re-pointed; recipe now RWKV_GRU_HEAD=3. Iter 27 (N=4, mid-WS) gates vs iter 26 v
 GATE-B tail. Historical note: under this bar iter 20 (xhead-mix v1, +0.000178/+0.000107,
 both p≪1e-9 vs iter 15) would also have passed — the xhead-mix v3 queue entry gains
 priority accordingly; no retroactive flips (the champion lineage moved on).
+
+## iter 31 — graft PAVA + GRU N=3 + Muon onto the A18 trunk (ACCEPTED, 2026-07-26)
+
+**The first iteration of the merged lineage.** Track-2's A-series closed at A18, and track-1's
+d=32 lineage closed at iter 29; this takes track-1's three algorithmic wins and puts them on the
+A18 trunk. `scratchpad/iter31_algo/`, ckpt `iter31d_5586.pth`, 558,212 params (+966 vs A18 = the
+GRU head going N=2→3, plus `pava_theta`'s 3 floats).
+
+| | A18 | iter 31 | delta | p |
+|---|---|---|---|---|
+| ahead | 0.299302 | **0.298909** | +0.000393 | 5.99e-26 |
+| imm | 0.268390 | **0.267637** | +0.000753 | 1.49e-209 |
+
+n=2500 (val half 5001–7500), **0 nanskips**. Both deltas clear the ≥0.0001-after-4dp-rounding bar
+(0.0004 / 0.0008) and both p-values clear 1e-4 by many orders. `size` IDENTICAL to A18 — 0/2500
+mismatches, 128,800,080 reviews on both sides. Per-entity state unchanged (card 2,880 floats, note
+1,440), as expected: PAVA and Muon are train-time only and the GRU head is a *head*, not a stream.
+
+### The val-lag was a red herring for the third time
+
+iter 31 TRAILED A18 on validation at matched steps all through WS (step 4000: 0.33287/0.31385 vs
+A18's 0.33265/0.31356) and then won the eval in both modes. That is now three data points in both
+directions — Muon/iter 29 trailed val for the whole run and won; iters 25 and 27 led val and lost.
+**The rule stands: record val lag, never act on it.** Had this run been killed on the val trace it
+would have cost the largest single accuracy gain of the merged lineage so far.
+
+### What this does and does not establish
+
+It establishes that the graft transfers: three levers tuned at d=32 still pay at d=80, which was
+not obvious — the transfer ledger (iter 28) and A13's opposite-sign state price both say d=32 wins
+need re-earning, and the LoRA-halving lever had just *flipped sign* between d=128 and d=80.
+
+It does **not** attribute. This is a bundle of three changes in one run, so we know the package
+works and not which part carries it. The imm gain (+0.00075) being nearly 2× the ahead gain
+(+0.00039) is at least consistent with iter 29's finding that Muon's largest effect is on imm, and
+PAVA is curve-side so it can only move ahead — but that is inference, not measurement. A clean
+ablation is three more runs (~10 h each); deferred pending Andrew's call, since the bundle is
+already accepted and the ablation buys understanding rather than accuracy.
+
+### Two metrics, deliberately
+
+iter 31's own eval leg is UNRECTIFIED, because its `.cmd` predates `RWKV_EVAL_PAVA` and a running
+batch file must not be edited (cmd.exe re-reads it at a saved byte offset). That is the number
+above and it is the PRIMARY gate, being directly comparable to A18's existing jsonls. A rectified
+pair (A18 at classic p=1, iter 31 with its learned powers) runs separately as the deploy metric.
+⚠ Note that rect-vs-unrect moves *two* things at once — the pooling and the scored row's duration
+going real → 0 — so the rectified comparison cannot attribute its own result either. `RWKV_EVAL_PAVA=2`
+was added the same day to separate them (see `research_5k_notes.md`).

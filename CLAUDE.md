@@ -684,7 +684,21 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = A18 `track2_a18`
+#### CHAMPION = iter 31 `iter31_algo` (A18 trunk + PAVA + GRU N=3 + Muon)
+Accepted 2026-07-26, the FIRST merged-lineage iteration. **ahead 0.298909 / imm 0.267637** on the
+VAL half (5001-7500, n=2500, 0 nanskips) = +0.000393 / +0.000753 vs A18 at p=6.0e-26 / 1.5e-209;
+`size` identical (0/2500 mismatches). **558,212 params** (+966 vs A18 = GRU N=2->3 + `pava_theta`);
+per-card state 2,880 floats and note 1,440, both UNCHANGED (PAVA and Muon are train-time only; the
+GRU head is a head, not a stream). ckpt `scratchpad/iter31_algo/iter31d_5586.pth`;
+`champion_5k_track2.json` now points at it (= the vprune ref). Env = A18's full env below PLUS
+`RWKV_GRU_HEAD=3`, `RWKV_PAVA_LAMBDA=0.1`, `RWKV_PROBE_DENSITY=0.08`, `RWKV_MUON=1`,
+`RWKV_PROBE_DUR=0.0`.
+⚠ A BUNDLE of three changes -- it establishes that the graft transfers to d=80, NOT which part
+carries it. Ablation = 3 more runs, deferred pending Andrew.
+⚠ Third confirmation that VAL LAG IS BIDIRECTIONAL: iter 31 trailed A18 on val all through WS and
+won both modes on eval. Record val lag; never act on it.
+
+#### PREVIOUS CHAMPION = A18 `track2_a18` (the trunk iter 31 builds on)
 Accepted 2026-07-26 by Andrew's directed verdict change over an auto-reject at 108%/111% of
 the ratio bar: *the >=5x product goal outranks a marginal RATE missed by ~10%*, costing only
 +0.000960 ahead / +0.000532 imm cumulative vs A0 (~1/3 of what the matched-param GRU baseline

@@ -75,6 +75,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 28 | 1–5000 | 0.3041 | 0.2735 | exact | rejected | 1.0 / 1.0 (vs iter 26) | 172,349 | 0 | Andrew | xhead v1 re-bench: iter 20's gain did NOT transfer to the GRU-N=3 recipe (both modes worse). v3 rationale inverted → family closed. |
 | 29 | 1–5000 | 0.3020ᵛ | 0.2714ᵛ | exact | **accepted** | 2.5e-06 / 6.5e-71 (vs iter 26, better) | 171,453 | 0 | lit review | Hybrid Muon+AdamW: ahead +0.00014, imm +0.00049 (largest imm gain of the phase) — first optimizer-family win. ᵛ = VAL half 5001–7500 (first val-split row; absolute values not comparable to rows ≤28). NEW champion. |
 | 30 | 1–5000 | 0.3024ᵛ | 0.2713ᵛ | exact | rejected | 1.0 / 4.2e-11 (vs iter 29) | 171,453 | 0 | lit review | Cautious wd on the Muon groups: pure trade — imm +0.00014 better, ahead −0.00038 worse. Optimizer family 1/2; iter 29 stands. |
+| 31 | 1–5000 | 0.2989ᵛ | 0.2676ᵛ | exact | **accepted** | 6.0e-26 / 1.5e-209 (vs A18) | 558,212 | 0 | invented | Graft track-1's three wins (PAVA + GRU N=3 + Muon) onto the A18 trunk: ahead +0.00039, imm +0.00075, both clear. First merged-lineage iter. Bundle — does not attribute. |
 
 ## Track 2 — ablate the old d=128 model
 
