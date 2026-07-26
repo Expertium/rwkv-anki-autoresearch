@@ -904,16 +904,49 @@ Plain-era and QAT-era logloss are NOT comparable.
    byte offset). That is fine and is the **PRIMARY gate**, being directly comparable to A18's
    existing jsonls; the rectified pair is the **deploy metric**. They agreed in both modes, so the
    "report both, do not pick" instruction did not have to fire.
-2. **PARKED: mode-2 duration diagnostic** — `scratchpad/eval_pava/run_mode2_diag.cmd`, pid 17928,
-   log `scratchpad/eval_pava/mode2_diag.log`. Answers Andrew's question about zeroing the current
-   review's duration. `RWKV_EVAL_PAVA=2` substitutes the pressed probe WITHOUT pooling, so modes
-   0/1/2 give an additive split: `m2-m0` = duration zeroing, `m1-m2` = PAVA pooling, `m1-m0` = the
-   total a rect-vs-unrect run reports. 500 users (5001-5500, ~30 min) — a paired diagnostic on one
-   model with one flag moving, not a cross-training ranking, so the 200-user subset-overfit lesson
-   does not bite. `scratchpad/eval_pava/decompose_duration.py` (verified: it reproduces the
-   recorded iter31−A18 delta and p exactly).
-3. **PARKED: iter 32 = full-run DISTILLATION** — `scratchpad/iter32_kd/run_iter32_kd.cmd`, pid
-   25348, log `scratchpad/iter32_kd/iter32_kd.log`. ~10 h (teacher dump ~3 h + WS + decay + eval).
+2. **★ DONE 00:56 (2026-07-27): mode-2 duration diagnostic — ANDREW'S QUESTION IS ANSWERED, and
+   the rectifier turns out to be the SMALL half.** iter 31, users 5001-5500 (n=500), additive to
+   exactly 0.00e+00:
+
+   | component | ahead |
+   |---|---|
+   | **duration zeroing (m2 - m0)** | **+0.001451** |
+   | PAVA pooling itself (m1 - m2) | +0.000611 |
+   | total rect-vs-unrect (m1 - m0) | +0.002062 |
+
+   imm probe-insertion noise = +0.000056 (identical for modes 1 and 2, p=2.1e-8 — a good
+   consistency check, since imm depends on probe INSERTION, not on what is substituted), so the
+   duration term is ~+0.00140 net; mode 3 pins the ahead-side noise directly.
+   **~70% of the deploy penalty is the model losing the current review's duration; only ~30% is
+   the monotonicity pooling.** And the 70% is a **TRAIN/DEPLOY MISMATCH**, exactly the class §9's
+   three-way-parity directive exists to catch: training feeds the real `scaled_duration` for the
+   scored row, deploy CANNOT (Anki must show intervals *before* the press), so the model learns to
+   lean on a feature that vanishes at serving time. **=> the strongest iter-33 candidate is to zero
+   the current row's duration during TRAINING** (`RWKV_ZERO_FEATURES` already exists and is in use
+   for dim 22) so the two paths compute the same quantity. It should cost a little on the
+   unrectified gate — which is scored WITH a feature deploy will not have — while removing most of
+   the deploy penalty, so it must be judged on BOTH metrics (see QUEUE 0). A `RWKV_PAVA_LAMBDA`
+   sweep can only ever attack the 30%.
+3. **RUNNING (started 01:00): mode-3 noise control** — `run_mode3_noise.cmd`, log
+   `scratchpad/eval_pava/mode3_noise.log`, 500 users, ~01:30. Gives `m3-m0` = pure bf16
+   probe-insertion noise on `ahead`, making `m2-m3` the duration cost with the noise removed.
+4. **PARKED: iter 32 = full-run DISTILLATION, RELAUNCHED as v2** —
+   `scratchpad/iter32_kd/run_iter32_kd_v2.cmd`, **pid 7192**, log
+   `scratchpad/iter32_kd/iter32_kd_v2.log`, parked behind mode 3. ~10 h.
+   ⚠ **v1 (pid 25348) DIED at its smoke gate on a FALSE FAILURE — the check was wrong, not the
+   dump.** `DUMP_CHECK_FAIL 5/5, "p_curve outside (0,1): [.., 1.000000]"`. `p_curve` is stored
+   **fp16** (`train_rwkv.py:1090`) and fp16 spacing below 1.0 is 4.88e-4, so every teacher output
+   above ~0.99951 becomes exactly 1.0 — 9.97% of values. Harmless: it is consumed as a soft **BCE
+   target** (`srs_model.py:772`) mixed with hard labels that are themselves exactly 0/1, so a 1.0
+   target gives `-log(p)`, finite; and saturation lands precisely where soft and hard targets
+   coincide, so almost no signal is lost. `check_dump.py` now tests `[0,1]` **plus an
+   ANTI-COLLAPSE condition** (>=10% strictly interior) — a dump degenerated to hard labels is the
+   failure that would actually waste the ten hours, and the old open-interval test would have
+   PASSED that. Re-verified `DUMP_CHECK_OK`, 7.6 GB projected.
+   ⚠ **v2 writes its OWN log, deliberately — a DEADLOCK guard.** mode 3 is still polling
+   `iter32_kd.log` for `DONE_EXIT_`, and the script opens its log with `>`, which TRUNCATES.
+   Sharing the file would have erased the token mode 3 waits for while v2 waited on mode 3.
+   Original v1 spec (unchanged otherwise): ~10 h (teacher dump ~3 h + WS + decay + eval).
    Teacher = `pretrain/RWKV_trained_on_101_4999.pth` under `scratchpad/architecture_old_d128.py`;
    student = the iter-31 recipe unchanged plus `RWKV_KD_MIX` + **`RWKV_KD_ALPHA=0.5`** (new flag,
    2026-07-26: holds alpha FIXED = the classic form; unset keeps iter 10's linear 1->0 ramp
@@ -924,10 +957,10 @@ Plain-era and QAT-era logloss are NOT comparable.
    replaces the target wholesale while validation still scores HARD labels; (b) the teacher must
    set `RWKV_PROBE_DENSITY=0.08` + `RWKV_PROBE_DUR=0.0` even though it has no PAVA, because probes
    are a DATA-side row-layout change and teacher/student must agree or the per-step shape check
-   exit-43s; (c) a smoke dump of 5 steps gates the full one on `check_dump.py`, which tests that
-   p_curve is inside (0,1) and p_imm_all sums to 1 — the student's checksum proves ALIGNMENT but
-   nothing else proves the tensors are teacher outputs at all, and a wrong arch/flag yields
-   perfectly aligned garbage. It also projects the dump's disk footprint before committing.
+   exit-43s; (c) a smoke dump of 5 steps gates the full one on `check_dump.py` — the student's
+   checksum proves ALIGNMENT but nothing else proves the tensors are teacher outputs at all, and a
+   wrong arch/flag yields perfectly aligned garbage. It also projects the dump's disk footprint
+   before committing.
 - ⚠ **WAITLOOP TRAP, cost one wrongly-started co-tenant eval (2026-07-26):** `findstr /C:"DONE_EXIT"`
   matches a log line that merely MENTIONS the token — including the waiter's own
   `=== WAIT for ... DONE_EXIT ===` message — so the loop fires instantly. **Anchor it:
