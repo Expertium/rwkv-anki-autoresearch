@@ -1075,6 +1075,49 @@ impl Model {
         let arch = detect_arch(&w, &stream_layers)?;
         eprintln!("[rwkv-infer] {}", arch.describe());
 
+        // RWKV_ZERO_FEATURES: the input-feature mask the Python model applies at its own input
+        // (srs_model.py:314, srs_model_rnn.py:50). It had NO Rust counterpart, which is a
+        // three-way-parity break: the mask lives inside the Python module, so the exported trace
+        // carries RAW features and this engine consumed the columns Python had thrown away. It
+        // hid because the parity gate scores MEAN LogLoss and the champion's masked dim (22,
+        // scaled_state) has a small input weight -- but it was costing max per-review
+        // |rust-python| 1.59e-3, and with the mask applied that drops to 2.28e-6 (~700x).
+        // NOTE this also corrects the record: that per-review spread was written up as
+        // "accumulated float divergence over a ~5,000-step recurrence, not a formula error". It
+        // was a formula error.
+        //
+        // Zeroing input column j is exactly equivalent to zeroing feature j (y = Wx+b is linear in
+        // x), so it is done ONCE here on the weight rather than per-call on the features: free at
+        // runtime, and impossible to forget at one of the three call sites (model.rs x2, fast.rs).
+        if let Ok(spec) = std::env::var("RWKV_ZERO_FEATURES") {
+            let dims: Vec<usize> = spec
+                .split(',')
+                .filter_map(|t| t.trim().parse::<usize>().ok())
+                .collect();
+            if !dims.is_empty() {
+                let key = "features2card.0.weight";
+                let wt = get(&w, key)?;
+                let (out, n_in) = wt.dims2()?;
+                if n_in != FEATURE_DIM {
+                    return Err(anyhow!(
+                        "{key} has {n_in} inputs, expected {FEATURE_DIM} -- refusing to mask"
+                    ));
+                }
+                let mut buf = wt.to_vec2::<f32>()?;
+                for &d in &dims {
+                    if d >= FEATURE_DIM {
+                        return Err(anyhow!("RWKV_ZERO_FEATURES dim {d} >= {FEATURE_DIM}"));
+                    }
+                    for row in buf.iter_mut().take(out) {
+                        row[d] = 0.0;
+                    }
+                }
+                let flat: Vec<f32> = buf.into_iter().flatten().collect();
+                w.insert(key.to_string(), Tensor::from_vec(flat, (out, n_in), &dev)?);
+                eprintln!("[rwkv-infer] zeroed input features {dims:?} (RWKV_ZERO_FEATURES)");
+            }
+        }
+
         // Curve-head width. Under the GRU head the stabilities S and decays d are PREDICTED per
         // review, so there is no fixed basis grid at all: s_space stays None and any attempt to
         // use the classic mixture errors instead of quietly evaluating a grid the model never saw.

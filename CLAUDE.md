@@ -442,10 +442,14 @@ vs tol 0.0005** (14x and 11x inside). Procedure:
 `RWKV_WEIGHTS=reference_a18/track2_a18.safetensors RWKV_TRACE_DIR=reference_a18 RWKV_STATE_CLAMP_TAU=300
 RWKV_PRED_DIR=preds_a18v ./rust/rwkv-infer/target/release/rwkv-infer.exe` -> copy `preds_a18v/*` into
 `reference_a18/` -> `RWKV_REF_DIR=reference_a18 python verify_rust.py`.
-⚠ Note max per-review |rust-python| = 9.6e-3 (one review in 5,229) even though the by-user means agree
-to 3.5e-5. That is accumulated float divergence over a ~5,000-step recurrence in two independent
-implementations, not a formula error -- the gate measures the mean and passes with wide margin. Do not
-expect the old d=32 port's "dpred ~3e-7"; that model was shallower and its chain shorter.
+⚠ ~~Note max per-review |rust-python| = 9.6e-3 ... accumulated float divergence over a ~5,000-step
+recurrence, not a formula error.~~ **THIS EXPLANATION WAS WRONG (corrected 2026-07-27).** It WAS a
+formula error: `rust/rwkv-infer` had no `RWKV_ZERO_FEATURES` mask, so it consumed input columns the
+Python model zeroes at its own input. With the mask implemented, iter 31's max per-review |diff|
+falls from 1.59e-3 to **2.28e-6** over that same ~5,000-step recurrence — so accumulated float
+divergence was never the story, and a large per-review spread should be read as a SIGNAL that the
+two paths compute different formulas, not excused as float noise. Details + the measurement table
+are in the deploy-contract section of CURRENT STATE.
 
 **★ THE CHAMPION ITSELF IS NOW PARITY-VERIFIED TOO (iter 31, 2026-07-27): `PARITY: PASS`, imm
 0.000008 / ahead 0.000001 vs tol 0.0005** -- 62x and 500x inside, TIGHTER than A18's, and max
@@ -1002,12 +1006,28 @@ ahead correction (`RWKV_NO_AHEAD_RESIDUAL=1`, already in every run).
 - **iter 32 straddles the change.** It was launched on the old basis (unrectified eval, no training
   zeroing), so judge it against iter 31 UNRECTIFIED as designed, and run a rectified eval before
   comparing it with anything from iter 33 on.
-- ⚠ **`RWKV_ZERO_FEATURES` IS NOT IMPLEMENTED IN `rust/rwkv-infer` (verified 2026-07-27).** This is
-  already a latent three-way-parity gap — the champion trains with dim 22 zeroed and the Rust engine
-  has no mask — and it is invisible today only because parity traces are exported from Python with
-  dim 22 ALREADY zeroed, so the engine never has to do it. In real Anki the features are built on
-  the deploy side and nothing would zero them. **If iter 33 implements zeroing via that flag, the
-  Rust mask becomes mandatory, not optional.** Exactly the failure class §9 exists to catch.
+- **★ `RWKV_ZERO_FEATURES` WAS MISSING FROM `rust/rwkv-infer` — FOUND AND FIXED 2026-07-27, AND IT
+  WAS A LIVE BUG, NOT A LATENT ONE.** The mask lives INSIDE the Python module (`srs_model.py:314`,
+  `srs_model_rnn.py:50`), so the exported trace carries RAW features (verified: `feats_proc` dim 22
+  is nonzero on 45.1% of rows) and the engine was consuming columns Python had thrown away.
+  Measured on iter 31, same weights and trace, only the mask differing:
+
+  | | mean \|rust-python\| | max per-review \|diff\| |
+  |---|---|---|
+  | no mask (how the gate ran) | imm 8e-6 / ahead 1e-6 | **1.59e-03** |
+  | mask applied | imm 0.000000 / ahead 0.000000 | **2.28e-06** |
+
+  ~700x tighter. It survived the gate because the gate scores MEAN LogLoss and dim 22's input
+  weight is small (column L2 0.844 vs median 8.0) — the error partly cancels across reviews.
+  ⚠ **This also CORRECTS §11's explanation of the per-review spread**, which called it "accumulated
+  float divergence over a ~5,000-step recurrence ... not a formula error". It was a formula error;
+  over the identical recurrence a masked engine agrees to 2.28e-6.
+  **Fix:** `model.rs::load` zeroes the named input columns of `features2card.0.weight` once at load.
+  Zeroing input column j is exactly equivalent to zeroing feature j (`y = Wx+b` is linear in x), so
+  it costs nothing at runtime and cannot be forgotten at one of the three call sites.
+  **This was about to get much worse:** iter 33 masks dim 8, whose column L2 is **42.07 — 5x the
+  median and 50x dim 22's**. Unmasked that is a large error, not a subtle one. Exactly the failure
+  class §9 exists to catch, caught by asking what the deploy path actually computes.
 
 **⚠ IMPLEMENTATION IS A REAL FORK — read before writing the run.** "The most recent review's
 duration" is the CURRENT row's, and in a causal RNN each row's duration is unavailable to its OWN
