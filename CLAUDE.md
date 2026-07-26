@@ -984,8 +984,51 @@ Plain-era and QAT-era logloss are NOT comparable.
 - ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
   relative script path exits instantly, silently, and still returns a pid.
 
+### ★★ THE DEPLOY CONTRACT IS NOW ONE QUANTITY IN ALL THREE PATHS (Andrew, 2026-07-27)
+> *"Everywhere (train+eval+CPU inference): duration of the most recent review zeroed out + PAVA +
+> no piecewise correction. And yes, train with zeroing as iter 33."*
+
+This settles the gate question below (QUEUE 0) by removing the divergence instead of choosing a
+side: **train, eval and CPU inference must all compute the SAME quantity**, namely
+1. the most recent review's duration zeroed, 2. PAVA rectification applied, 3. no piecewise
+ahead correction (`RWKV_NO_AHEAD_RESIDUAL=1`, already in every run).
+
+**Consequences, in order of how much they change:**
+- **The gate becomes the RECTIFIED metric.** Eval runs `RWKV_EVAL_PAVA=1` from iter 33 on. The
+  champion baseline to beat is therefore iter 31's **rectified** VAL-half numbers —
+  **ahead 0.300802 / imm 0.267691** (n=2500) — NOT the 0.298909/0.267637 the front table shows.
+  Pre-iter-31 rows are unrectified and are NOT comparable; do not retro-score them, the
+  rect-vs-unrect delta is model-dependent (A18 +0.003588 vs iter 31 +0.001893).
+- **iter 32 straddles the change.** It was launched on the old basis (unrectified eval, no training
+  zeroing), so judge it against iter 31 UNRECTIFIED as designed, and run a rectified eval before
+  comparing it with anything from iter 33 on.
+- ⚠ **`RWKV_ZERO_FEATURES` IS NOT IMPLEMENTED IN `rust/rwkv-infer` (verified 2026-07-27).** This is
+  already a latent three-way-parity gap — the champion trains with dim 22 zeroed and the Rust engine
+  has no mask — and it is invisible today only because parity traces are exported from Python with
+  dim 22 ALREADY zeroed, so the engine never has to do it. In real Anki the features are built on
+  the deploy side and nothing would zero them. **If iter 33 implements zeroing via that flag, the
+  Rust mask becomes mandatory, not optional.** Exactly the failure class §9 exists to catch.
+
+**⚠ IMPLEMENTATION IS A REAL FORK — read before writing the run.** "The most recent review's
+duration" is the CURRENT row's, and in a causal RNN each row's duration is unavailable to its OWN
+prediction but perfectly available to every LATER one (at deploy it is history the moment the user
+presses). So:
+- **(A) GLOBAL zeroing** — `RWKV_ZERO_FEATURES=22,8` (`scaled_duration` is index 8; confirmed
+  independently by `CARD_FEATURE_COLUMNS[8]` and Rust `COL_DUR=8`). One flag, exact three-way
+  parity by construction, ~free. But it is a SUPERSET of the ask: it also destroys PAST reviews'
+  durations, which deploy genuinely has.
+- **(B) SURGICAL zeroing** — exclude the row's duration from its own ahead prediction while keeping
+  it in the state passed forward. This is precisely what a probe (a skip row) already does, so it
+  means `RWKV_PROBE_DENSITY=1.0` with the ahead loss taken from the pressed probe. Faithful, but
+  +1 row per scored review is ~+93% rows ≈ **2x training cost** (baseline is ~1.07 rows/scored
+  review: 4 probes at density 0.08 inflate the batch ~30%).
+Recommendation: run **(A) first** — it is the cheap upper bound on the parity benefit and its
+result tells us whether past-duration signal is worth (B)'s 2x. If (A) wins the rectified gate,
+take it; if it loses by less than the +0.001451 duration penalty it removes, (B) is justified.
+
 #### QUEUE
-0. **★ ASK ANDREW — THE GATE AND THE DEPLOY METRIC ARE DIFFERENT NUMBERS (surfaced 2026-07-27).**
+0. **RESOLVED by the directive above** — kept for the reasoning, since it explains WHY the gate
+   moved. **★ ASK ANDREW — THE GATE AND THE DEPLOY METRIC ARE DIFFERENT NUMBERS (surfaced 2026-07-27).**
    Candidates are gated on the **unrectified** logloss, but the rectifier is in the deploy contract,
    so what a user gets is the **rectified** number. iter 31 happened to win both, so nothing is
    wrong today — but the two are not the same quantity and can in principle diverge, which would
