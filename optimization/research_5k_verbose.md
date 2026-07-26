@@ -841,7 +841,7 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
-### Track-2 A18 — d=80 + LoRA 8→4 (REJECTED 2026-07-26 10:30): the second draw at d=80 ⇒ THE WIDTH LADDER IS DONE
+### Track-2 A18 — d=80 + LoRA 8→4 (auto-verdict REJECTED 2026-07-26 10:30; **VERDICT CHANGED BY ANDREW → ACCEPTED, NEW TRACK-2 CHAMPION**): the second draw at d=80 ⇒ THE WIDTH LADDER IS DONE
 
 The in-family retry A17 earned. Same width (5 heads × K=16) plus the second LoRA halving,
 **557,246 params = 4.95× below the original 2.76M** — effectively Andrew's target — with the
@@ -881,6 +881,32 @@ has already decoupled from CPU rev/s in the only engine we can measure (a 4.5× 
 bought 1.24× wall-clock and plateaued), and `rust/rwkv-infer` cannot run the track-2 arch at
 all. **The Rust port is now the highest-value work in this track** — it is what converts any
 of these cuts into something an Anki user feels.
+
+### ANDREW'S ANSWER (2026-07-26): option (b) — A18 accepted, and the track continues on it
+
+> *"Let's accept A18 and continue track 1 with it. Add the algorithmic improvements (PAVA,
+> GRU n_head=3, Muon) to it"*
+
+So `champion_5k_track2.json` now points at `scratchpad/track2_a18/t2a18d_5586.pth`
+(557,246 params, 4.95×, per-card state 2,880 floats, val-half 0.299302/0.268390), and it is
+the vprune reference for everything that follows. The ratio gate is not repealed — it simply
+lost a tie-break against an explicit product goal, on a rung it missed by ~10% of a *marginal
+rate* while costing under a thousandth of a nat in total. Every measurement above stands
+unchanged; only the verdict moved.
+
+The second half of his message redirects the track: with the width road closed, the next
+gains come from **algorithms rather than shape**. Track 1 found three at d=32 that track 2
+never received — PAVA (iter 23), GRU N=3 (iter 26) and Muon (iter 29) — and A19 carries all
+three onto the A18 trunk at once. Bundling is deliberate: each is independently validated,
+together they are exactly the iter-29 champion recipe, and one run costs ~6 h against ~20 h
+for three. If the bundle regresses, the de-bundle precedent is A10→A11.
+
+Worth flagging as a real possibility rather than a formality: these three were tuned on a
+d=32 trunk, and the transfer-failure ledger (iter 28's xhead mix, A13's state-feature price
+landing opposite in sign to d=32's) says a d=32 win is a *hypothesis* at d=80, not a
+deposit. What makes this one better-founded than most is that the trunk is now demonstrably
+capacity-limited (A18's own LoRA finding), and PAVA/GRU-N are head-side changes that add
+capacity where the trunk cannot.
 
 ### Track-2 A17 — d_model 96→80 via 5×K=16 (REJECTED 2026-07-26 05:03 by 26 millionths): noise-limited, retry launched
 

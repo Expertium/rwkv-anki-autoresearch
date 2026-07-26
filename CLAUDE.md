@@ -630,16 +630,24 @@ Pairing needs identical db/MAX/seeds.
   size-exception accept) → iter 23 (0.304220/0.273423, PAVA champion, 64-basis head) →
   iter 22 (0.304497/0.273539, no-residual re-baseline) → iter 15 (0.303663/0.273227,
   last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **★ Track 2 CHAMPION = A15 `track2_a15` (accepted 2026-07-25 17:08): ahead 0.299031 /
-  imm 0.268111 ON THE VAL HALF (n=2500, 0 nanskips), 808,762 params = −41.4% vs A14 and
-  3.41× below the original 2.76M (70.7% cut); per-card state 6,528 floats (−25%)**
-  (`champion_5k_track2.json` = ckpt `scratchpad/track2_a15/t2a15d_5586.pth` + WS/val
-  traces = the track-2 vprune ref). **= A14 + THE WIDTH CUT: d_model 128→96 (N_HEADS 4→3,
-  head dim K=32 kept), arch `scratchpad/track2_a15/architecture_d96_lora8.py` rebuilt on
-  the A14 base.** Ratio gate passed with room: per-100k +0.0000407 ahead (41% of the bar)
-  / +0.0000638 imm (64%) for 571,898 params bought. Training-val tracked A14 exactly all
-  run ⇒ **the d=128 trunk was over-wide** (same lesson as A14's oversized LoRA ranks;
-  depths, by contrast, are all at real floors). **⚠ CPU-INFERENCE REALITY CHECK (Andrew
+- **★ Track 2 CHAMPION = A18 `track2_a18` (ACCEPTED 2026-07-26 by Andrew's directed verdict
+  change; the auto-verdict was reject-on-ratio at 108%/111% of bar): ahead 0.299302 / imm
+  0.268390 ON THE VAL HALF (n=2500, 0 nanskips), 557,246 params = 4.95× below the original
+  2.76M (79.8% cut); per-card state 2,880 floats (−56% vs A15)** (`champion_5k_track2.json`
+  = ckpt `scratchpad/track2_a18/t2a18d_5586.pth` + WS/val traces = the track-2 vprune ref).
+  **= d_model 80 (5 heads × K=16) + LoRA decay/a/gate 4, v0-mix 2; arch
+  `scratchpad/track2_a18/architecture_d80_lora4.py`.** Andrew's call: *"Let's accept A18 and
+  continue track 1 with it"* — **the ≥5× product goal outranks a marginal-RATE gate missed
+  by ~10%**; in absolute terms A18 costs only +0.000960 ahead / +0.000532 imm cumulative vs
+  A0 (≈1/3 of what the matched-param GRU baseline gave up). Precedent = iters 23/25/26.
+  **THE WIDTH LADDER IS CLOSED: two independent draws at d=80 (A17 112%/83%, A18 108%/111%)
+  ⇒ genuine accuracy floor; d=64 (A16) is ~180% of bar. 4.95× is the end of the width road.**
+  Side-finding: the second LoRA halving is NOT free at d=80 (+0.00002/+0.00009 for −27.5k)
+  whereas A14's first halving IMPROVED both modes at d=128 — the lever flips sign as the
+  trunk narrows ⇒ **the model is now genuinely capacity-limited**, so further gains must come
+  from ALGORITHMS, not shape. Prior champion A15 (0.299031/0.268111, 808,762 params, 3.41×,
+  ckpt `scratchpad/track2_a15/t2a15d_5586.pth` — kept as the gate-clean fallback).
+  **⚠ CPU-INFERENCE REALITY CHECK (Andrew
   2026-07-25: "I told you to do ablations hoping that fewer params → faster CPU inference
   in Anki"; state size is quantization's job, training speed serves only us): measured
   today in `optimization/CPU_INFERENCE.md` — in the PYTHON RNN path a 4.5× arithmetic cut
@@ -654,11 +662,16 @@ Pairing needs identical db/MAX/seeds.
   (measured 2026-07-25 on Andrew's question; an earlier "speed did NOT improve" note here
   was WRONG — it anchored on a startup-inclusive first print): median steps/s A0 0.933 →
   A7 1.022 → A9 1.203 → A14 1.200 → A15 1.434 → A16 1.746 = 1.87× faster than A0 at 7.11×
-  fewer params — sublinear in params, as the elementwise-dominated profile predicts.** **NEXT: A16 = d_model 96→64
-  (N_HEADS=2) ≈ 520k params ≈ 5.3× — Andrew's ≥5× goal in one more cut; allowance
-  tightens to ~0.00029/mode.** Prior anchor A13 (0.298837/0.267805, 1,468,724 params,
-  the ZERO_FEATURES=22 re-anchor) and A14 (0.298798/0.267746, 1,380,660, LoRA halving —
-  better both modes).
+  fewer params — sublinear in params, as the elementwise-dominated profile predicts.**
+  **NEXT = A19 (Andrew 2026-07-26, second half of the same message): carry the three
+  track-1 ALGORITHMIC wins onto the A18 trunk as one bundle — PAVA (iter 23) + GRU N=3
+  (iter 26) + Muon (iter 29), i.e. exactly the iter-29 champion recipe's extra flags.
+  Env deltas vs A18: RWKV_PAVA_LAMBDA=0.1 + RWKV_PROBE_DENSITY=0.08, RWKV_GRU_HEAD 2→3,
+  RWKV_MUON=1 + RWKV_MUON_LR=0.02 + RWKV_MUON_MOMENTUM=0.95. +~966 params. Gate = ordinary
+  ACCURACY iter vs A18 (both modes ≥0.0001 after 4-dp rounding + p<0.0001), not the ratio
+  gate. De-bundle precedent if it regresses = A10→A11.** Prior anchor A13
+  (0.298837/0.267805, 1,468,724 params, the ZERO_FEATURES=22 re-anchor) and A14
+  (0.298798/0.267746, 1,380,660, LoRA halving — better both modes).
 - Superseded track-2 detail: A13 `track2_a13` (promoted 2026-07-23 10:50, DIRECTED
   re-anchor): ahead 0.298837 / imm 0.267805 val half, 1,468,724 params, ckpt
   `scratchpad/track2_a13/t2a13d_5586.pth`.
@@ -918,26 +931,30 @@ the query rows and the imm predictions MUST move). Eval-side fixes banked from t
 work: `RWKV_EVAL_EMPTY_CACHE_EVERY` (default 20 = unchanged) and
 `RWKV_RNN_PROBE_CHUNK`/lean no-grad path in rnn_baseline.py (a 2,087,967-row eval batch
 made one cuDNN call ask for 20.93 GiB).
-**★ THE WIDTH LADDER IS CLOSED (2026-07-26). A15 (d=96, 808,762 params, 3.41×) is the
-final width champion.** A16 (d=64, 7.11×) REJECTED at ~1.8× the bar in both modes; A17
-(d=80 via 5 heads × K=16, 4.72×) missed by 26 millionths (ahead 112%, imm 83% — inside
-cross-seed noise, so it got the in-family retry); A18 (= A17 + LoRA 8→4, 557,246 params,
-**4.95×**) REJECTED at 108%/111%. **Two independent draws at d=80 both ~110% ⇒ genuine
-floor.** Side-finding: the second LoRA halving is NOT free at d=80 (+0.00002/+0.00009 for
-−27.5k) whereas A14's first halving IMPROVED both modes at d=128 — the lever flips sign as
-the trunk narrows, i.e. the model is now truly capacity-limited.
-**⚠ DECISION FOR ANDREW — the ≥5× goal and the ratio gate now conflict.** The gate scores a
-marginal RATE, not an absolute budget, and in absolute terms A18 is cheap: cumulative vs A0
-it is +0.000960 ahead / +0.000532 imm at 4.95× (about a third of what the GRU baseline lost
-while being larger, and ~half of one accepted track-1 iteration's gain). Options: **(a)**
-keep A15 (3.41×, gate-clean, cumulative +0.000689/+0.000253) or **(b)** take A18 (4.95×) as
-a deliberate goal-driven exception (precedent: his verdict changes on iters 23/25/26).
-Artifacts for (b) are complete and kept: `scratchpad/track2_a18/t2a18d_5586.pth` +
-`architecture_d80_lora4.py`.
-**NEXT WORK = THE RUST PORT, not more param cuts.** `optimization/CPU_INFERENCE.md` shows
-param count has already decoupled from the metric users feel (4.5× fewer MACs bought 1.24×
-wall-clock, plateauing after A14) and `rust/rwkv-infer` cannot run the track-2 arch at all
-(needs parameterized d_model/H/layers, the GRU head, STRIP_CMIX, no-ahead-residual).
+**★ THE WIDTH LADDER IS CLOSED (2026-07-26) AND ANDREW TOOK OPTION (b): A18 (d=80 via 5
+heads × K=16 + LoRA 4, 557,246 params, 4.95×) IS THE TRACK-2 CHAMPION** — accepted by his
+directed verdict change over an auto-reject at 108%/111% of the ratio bar, because the ≥5×
+product goal outranks a marginal RATE the run missed by ~10% while costing only
++0.000960/+0.000532 cumulative vs A0. A16 (d=64, 7.11×) REJECTED at ~1.8× the bar; A17
+(d=80, 4.72×) missed by 26 millionths (112%/83%). **Two independent draws at d=80 both
+~110% ⇒ genuine floor — 4.95× is the end of the width road.** Side-finding: the second LoRA
+halving is NOT free at d=80 (+0.00002/+0.00009 for −27.5k) whereas A14's first halving
+IMPROVED both modes at d=128 — the lever flips sign as the trunk narrows, i.e. the model is
+now truly capacity-limited. A15 kept as the gate-clean fallback.
+**→ TRACK CONTINUES ON ALGORITHMS, NOT SHAPE (Andrew, same message): A19 = A18 + PAVA + GRU
+N=3 + Muon**, the three track-1 wins track 2 never received, bundled (all independently
+validated; together = the iter-29 recipe; 1 run ≈ 6 h vs ~20 h for three). Ordinary accuracy
+gate vs A18. ⚠ Treat as a hypothesis, not a deposit — they were tuned at d=32 and the
+transfer ledger (iter 28, A13's opposite-sign state price) says d=32 wins need re-earning;
+the encouraging prior is that A18's own LoRA finding shows the trunk is capacity-limited,
+and PAVA/GRU-N add head-side capacity.
+**RUST PORT still the highest-value NON-research work** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`,
+committed 1a86f04): `optimization/CPU_INFERENCE.md` shows param count has already decoupled
+from the metric users feel (4.5× fewer MACs bought 1.24× wall-clock, plateauing after A14)
+and the engine cannot run the track-2 arch at all — but `model.rs` IS already dim-agnostic,
+so the 5 gaps are shape-detectable (1×1 dummies): GRU head, stripped cmix, stripped L0
+v_lora, no ahead residual, state clamp. ⚠ A19 changes the parity target (GRU N=2→3), so
+port against A18/A19 whichever is champion when the port lands.
 Reference implementation + an AVX2/FMA patch to crib from: `vendor/jschoreels_anki/`.
 Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
 sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS

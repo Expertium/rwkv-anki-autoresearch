@@ -15,3 +15,4 @@
 {"name": "track2_a9", "date": "2026-07-22 03:53:53", "final_ahead": 0.298625, "final_imm": 0.267615, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a9/t2a9d_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_a13", "date": "2026-07-23 10:43:23", "final_ahead": 0.298837, "final_imm": 0.267805, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a13/t2a13d_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "track2_a14", "date": "2026-07-24 03:25:02", "final_ahead": 0.298798, "final_imm": 0.267746, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a14/t2a14d_5586.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "track2_a15", "date": "2026-07-25 17:10:33", "final_ahead": 0.299031, "final_imm": 0.268111, "n_trace_steps": 22346, "ckpt": "scratchpad/track2_a15/t2a15d_5586.pth", "cb_wkv": "", "cb_shift": ""}
