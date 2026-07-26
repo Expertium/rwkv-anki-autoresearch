@@ -20,6 +20,137 @@ fn get<'a>(m: &'a TMap, k: &str) -> Result<&'a Tensor> {
     m.get(k).ok_or_else(|| anyhow!("missing weight: {k}"))
 }
 
+/// True iff `k` is a STRIPPED component's leftover dummy.
+///
+/// The training side removes a sublayer by replacing it with a `d_model=1, n_heads=1` module
+/// (rwkv_model.py / rwkv_rnn_model.py) rather than deleting it, so the state dict stays
+/// symmetric and older checkpoints keep loading. The dummy is therefore exactly `(1,1)` and
+/// "was this stripped?" is a SHAPE question -- no env vars needed on the deploy side.
+///
+/// The test is exact-`[1,1]` on purpose: a real rank-1 LoRA is `(1, d_model)` and a real
+/// rank-2 one is `(2, d_model)` (verified against t2a18d_5586.pth), so any `min(dim)==1`
+/// heuristic would silently strip a genuine rank-1 projection.
+fn is_stripped(m: &TMap, k: &str) -> bool {
+    m.get(k).is_some_and(|t| t.dims() == [1, 1])
+}
+
+/// Architecture features detected from the checkpoint's weight SHAPES.
+///
+/// Everything here used to be an env-var recipe flag on the training side. At deploy the
+/// checkpoint is the only input, so each one is recovered from the weights instead -- which
+/// also means a mismatch cannot happen silently: `Model::load` prints this and refuses the
+/// combinations that would otherwise run at a wrong width (see `detect_arch`).
+#[derive(Clone, Debug)]
+pub struct ArchFlags {
+    /// `[stream][layer]` -- does this layer have a real channel mixer? (`RWKV_STRIP_CMIX`)
+    pub has_cmix: Vec<Vec<bool>>,
+    /// `[stream][layer]` -- does this layer have a real v_lora / v0 mixing?
+    /// (`RWKV_STRIP_L0_VLORA`; layer 0 never mixes v0 regardless -- it *produces* it.)
+    pub has_vlora: Vec<Vec<bool>>,
+    /// `Some(N)` = GRU power-curve head with N curves, replacing the fixed-basis `w_linear`
+    /// mixture: `R(t) = sum_i w_i * (1 + t/(1e-7+S_i))^(-d_i)`. (`RWKV_GRU_HEAD=N`)
+    pub gru_curves: Option<usize>,
+    /// Is the piecewise-linear ahead residual live? False = curve is the pure mixture, monotone
+    /// in t by construction. (`RWKV_NO_AHEAD_RESIDUAL=1` strips `ahead_linear` to a dummy.)
+    pub ahead_residual: bool,
+    /// PAVA rectifier junction powers `theta` (3 floats), if the checkpoint carries them.
+    /// `p = 2*tanh(theta)`; absent = classic arithmetic PAVA (p=1) for models trained without it.
+    pub pava_theta: Option<Vec<f32>>,
+    /// Per-step Frobenius clamp on the carried WKV state. Recipe flag, not a weight, so it comes
+    /// from the environment (`RWKV_STATE_CLAMP_TAU`). See TRACK2_PORT_PLAN.md on why this is
+    /// deliberately NOT bit-identical to the training clamp.
+    pub state_clamp_tau: Option<f32>,
+}
+
+impl ArchFlags {
+    /// One-line summary, printed at load. The whole point of shape-detection is that a
+    /// checkpoint/engine mismatch is visible rather than silently numerically wrong.
+    pub fn describe(&self) -> String {
+        let strip = |v: &Vec<Vec<bool>>| -> String {
+            let mut out = Vec::new();
+            for (m, layers) in v.iter().enumerate() {
+                for (l, live) in layers.iter().enumerate() {
+                    if !*live {
+                        out.push(format!("{m}:{l}"));
+                    }
+                }
+            }
+            if out.is_empty() { "none".into() } else { out.join(",") }
+        };
+        format!(
+            "arch: head={} ahead_residual={} pava={} clamp={} | stripped cmix=[{}] vlora=[{}]",
+            match self.gru_curves {
+                Some(n) => format!("gru{n}"),
+                None => "basis".into(),
+            },
+            self.ahead_residual,
+            match &self.pava_theta {
+                Some(t) => format!("{:?}", t),
+                None => "no".into(),
+            },
+            match self.state_clamp_tau {
+                Some(t) => format!("{t}"),
+                None => "off".into(),
+            },
+            strip(&self.has_cmix),
+            strip(&self.has_vlora),
+        )
+    }
+}
+
+/// Recover [`ArchFlags`] from weight shapes + the two recipe env vars that leave no trace in
+/// the weights.
+fn detect_arch(w: &TMap, stream_layers: &[usize]) -> Result<ArchFlags> {
+    let mut has_cmix = Vec::new();
+    let mut has_vlora = Vec::new();
+    for (m, &n_layers) in stream_layers.iter().enumerate() {
+        let mut cm = Vec::new();
+        let mut vl = Vec::new();
+        for l in 0..n_layers {
+            cm.push(!is_stripped(w, &format!("rwkv_modules.{m}.blocks.{l}.channel_mixer.W_k.weight")));
+            vl.push(!is_stripped(
+                w,
+                &format!("rwkv_modules.{m}.blocks.{l}.time_mixer.v_lora_simple.A.weight"),
+            ));
+        }
+        has_cmix.push(cm);
+        has_vlora.push(vl);
+    }
+
+    let gru_curves = match w.get("gru_w_weight") {
+        Some(t) => Some(t.dim(0)?),
+        None => None,
+    };
+    // Guard the highest-risk line in the loader: with the GRU head the old `w_linear` is a (1,1)
+    // dummy, and reading num_curves off it would silently give a width-1 mixture that computes
+    // "successfully" and wrongly. Only one of the two heads may be live.
+    let w_linear_stripped = is_stripped(w, "w_linear.weight");
+    match (gru_curves, w_linear_stripped) {
+        (Some(_), false) => return Err(anyhow!(
+            "checkpoint has BOTH a GRU head (gru_w_weight) and a live w_linear -- ambiguous curve head"
+        )),
+        (None, true) => return Err(anyhow!(
+            "checkpoint has NO curve head: w_linear is a (1,1) dummy and gru_w_weight is absent"
+        )),
+        _ => {}
+    }
+
+    let ahead_residual = !is_stripped(w, "ahead_linear.weight");
+    let pava_theta = match w.get("pava_theta") {
+        Some(t) => Some(t.flatten_all()?.to_vec1::<f32>()?),
+        None => None,
+    };
+    let state_clamp_tau = match std::env::var("RWKV_STATE_CLAMP_TAU") {
+        Ok(s) if !s.is_empty() => {
+            let v: f32 = s.parse().map_err(|_| anyhow!("bad RWKV_STATE_CLAMP_TAU: {s}"))?;
+            if v > 0.0 { Some(v) } else { None }
+        }
+        _ => None,
+    };
+
+    Ok(ArchFlags { has_cmix, has_vlora, gru_curves, ahead_residual, pava_theta, state_clamp_tau })
+}
+
 /// Debug: print sum / L2 norm / first 3 values of a tensor (matches debug_review0.py).
 fn summ(name: &str, t: &Tensor) {
     let v: Vec<f32> = t.flatten_all().unwrap().to_vec1().unwrap();
@@ -849,8 +980,13 @@ pub struct Model {
     k: usize,              // head dim = c / h
     c: usize,              // d_model (derived from weights)
     stream_layers: Vec<usize>, // layers per stream (derived by counting blocks)
-    s_space: Tensor,       // (1,128) forgetting-curve time constants
-    point_space: Vec<f32>, // (128) interp grid
+    /// Architecture features recovered from the weight shapes (stripped sublayers, curve-head
+    /// type, ahead residual, PAVA powers). See [`ArchFlags`] / `detect_arch`.
+    arch: ArchFlags,
+    /// (1,num_curves) fixed forgetting-curve time constants. `None` under a GRU head, which
+    /// predicts S per review instead of reading a grid.
+    s_space: Option<Tensor>,
+    point_space: Vec<f32>, // (num_points) interp grid; EMPTY when the ahead residual is stripped
     // Per-stream STATE quant: module_idx -> qmax (127=int8, 7=int4). Empty = fp32 everywhere.
     // Allows MIXED bits across streams (e.g. card int4 + note int8). See load() for env parsing.
     state_quant_qmax: std::collections::HashMap<usize, f64>,
@@ -913,29 +1049,52 @@ impl Model {
             }
             stream_layers.push(l);
         }
-        // forgetting_curve s_space: length = num_curves, DERIVED from w_linear out-features
-        // (so the engine auto-adapts to SRS-head-width changes, e.g. iter29's 128->64).
-        let num_curves = get(&w, "w_linear.weight")?.dim(0)?;
-        let num_points = get(&w, "ahead_linear.weight")?.dim(0)?;
-        let s_max = 22.0f32;
-        let s_spread = 18.5f32;
-        let s_scale = (s_max - s_spread).exp();
-        let s_space: Vec<f32> = (0..num_curves)
-            .map(|i| {
-                let l = 18.5f32 * i as f32 / (num_curves as f32 - 1.0);
-                0.1 + (l.exp() - 1.0) * s_scale
-            })
-            .collect();
-        // interp point_space: length = num_points, grid identical formula, different consts
-        let max_e = 21.0f32;
-        let p_spread = 18.5f32;
-        let p_scale = (max_e - p_spread).exp();
-        let point_space: Vec<f32> = (0..num_points)
-            .map(|i| {
-                let l = 18.5f32 * i as f32 / (num_points as f32 - 1.0);
-                0.5 + (l.exp() - 1.0) * p_scale
-            })
-            .collect();
+        // Which architecture is this checkpoint? Recovered from weight shapes -- see detect_arch.
+        let arch = detect_arch(&w, &stream_layers)?;
+        eprintln!("[rwkv-infer] {}", arch.describe());
+
+        // Curve-head width. Under the GRU head the stabilities S and decays d are PREDICTED per
+        // review, so there is no fixed basis grid at all: s_space stays None and any attempt to
+        // use the classic mixture errors instead of quietly evaluating a grid the model never saw.
+        // (num_curves must NOT come from w_linear here -- under a GRU head that is a (1,1) dummy
+        // and would silently make the mixture width 1. detect_arch has already rejected the
+        // ambiguous cases, so this match is exhaustive and safe.)
+        let (num_curves, s_space) = match arch.gru_curves {
+            Some(n) => (n, None),
+            None => {
+                // forgetting_curve s_space: length = num_curves, DERIVED from w_linear
+                // out-features (so the engine auto-adapts to head-width changes, e.g. 128->64).
+                let n = get(&w, "w_linear.weight")?.dim(0)?;
+                let s_max = 22.0f32;
+                let s_spread = 18.5f32;
+                let s_scale = (s_max - s_spread).exp();
+                let grid: Vec<f32> = (0..n)
+                    .map(|i| {
+                        let l = 18.5f32 * i as f32 / (n as f32 - 1.0);
+                        0.1 + (l.exp() - 1.0) * s_scale
+                    })
+                    .collect();
+                (n, Some(grid))
+            }
+        };
+        // interp point_space: length = num_points, grid identical formula, different consts.
+        // Empty when the ahead residual is stripped -- the curve is then the pure mixture and
+        // nothing may interpolate. `interp` rejects an empty grid rather than degenerating.
+        let (num_points, point_space) = if arch.ahead_residual {
+            let n = get(&w, "ahead_linear.weight")?.dim(0)?;
+            let max_e = 21.0f32;
+            let p_spread = 18.5f32;
+            let p_scale = (max_e - p_spread).exp();
+            let grid: Vec<f32> = (0..n)
+                .map(|i| {
+                    let l = 18.5f32 * i as f32 / (n as f32 - 1.0);
+                    0.5 + (l.exp() - 1.0) * p_scale
+                })
+                .collect();
+            (n, grid)
+        } else {
+            (0usize, Vec::new())
+        };
         // STATE quantization (weights stay fp32). Two env vars build a per-stream qmax map:
         //   RWKV_STATE_QUANT       = default level (int8=127, int4=7) for streams without an override
         //   RWKV_STATE_QUANT_SCOPE = comma list selecting streams; each entry is "name" (use default
@@ -1102,7 +1261,10 @@ impl Model {
                 lin_wt.insert(key.clone(), t.t()?.contiguous()?);
             }
         }
-        let s_space_t = Tensor::from_vec(s_space.clone(), (1, num_curves), &dev)?;
+        let s_space_t = match &s_space {
+            Some(g) => Some(Tensor::from_vec(g.clone(), (1, num_curves), &dev)?),
+            None => None,
+        };
         // Build the plain-Rust fast forward from the same f32 weight maps + derived dims.
         let compress_cfg = CompressCfg {
             lowrank: state_lowrank.clone(),
@@ -1126,7 +1288,7 @@ impl Model {
         };
         let fast = crate::fast::FastModel::build(
             &w, &lin_wt, c, h, k, stream_layers.clone(), num_curves, num_points,
-            s_space.clone(), point_space.clone(), compress_cfg,
+            s_space.clone().unwrap_or_default(), point_space.clone(), arch.clone(), compress_cfg,
         )?;
         Ok(Self {
             w,
@@ -1136,6 +1298,7 @@ impl Model {
             k,
             c,
             stream_layers,
+            arch,
             s_space: s_space_t,
             point_space,
             state_quant_qmax,
@@ -1463,7 +1626,10 @@ impl Model {
         let e = elapsed.max(1.0);
         // 0.9^(e/s) = exp(ln(0.9) * e / s)
         let ln09 = 0.9f64.ln() as f32;
-        let inv_s = self.s_space.recip()?;
+        let s_space = self.s_space.as_ref().ok_or_else(|| {
+            anyhow!("classic forgetting_curve called on a GRU-head checkpoint (no fixed basis grid)")
+        })?;
+        let inv_s = s_space.recip()?;
         let pw = inv_s.affine((ln09 * e) as f64, 0.0)?.exp()?; // exp(ln09*e/s)
         let summed = (out_w * pw)?.sum_keepdim(D::Minus1)?; // (1,1)
         let s: f32 = summed.reshape(())?.to_scalar()?;
@@ -1474,6 +1640,11 @@ impl Model {
     fn interp(&self, out_ahead_logits: &Tensor, elapsed: f32) -> Result<f32> {
         let e = elapsed.max(1.0);
         let ps = &self.point_space;
+        if ps.len() < 2 {
+            // Empty grid = the ahead residual was stripped. Reaching here means a caller skipped
+            // the arch.ahead_residual branch; the old code would have underflowed `ps.len()-1`.
+            return Err(anyhow!("interp called with no point_space (ahead residual is stripped)"));
+        }
         // bisect_left (torch.searchsorted default, right=False)
         let mut right = ps.partition_point(|&v| v < e);
         if right < 1 {

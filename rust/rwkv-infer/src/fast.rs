@@ -42,8 +42,12 @@ pub struct FastModel {
     pub stream_layers: Vec<usize>,
     pub num_curves: usize,
     pub num_points: usize,
-    s_space: Vec<f32>,    // (num_curves) forgetting-curve time constants
-    point_space: Vec<f32>, // (num_points) interp grid
+    s_space: Vec<f32>,    // (num_curves) forgetting-curve time constants; EMPTY under a GRU head
+    point_space: Vec<f32>, // (num_points) interp grid; EMPTY when the ahead residual is stripped
+    /// Same shape-detected arch flags the candle path uses. Threaded in rather than re-derived:
+    /// FastModel never sees the raw shapes it would need, and two independent detections could
+    /// disagree -- which is precisely the fast/candle divergence class this crate is prone to.
+    pub arch: crate::model::ArchFlags,
     compress: crate::model::CompressCfg, // per-stream state compression (matches the candle path)
     fw: HashMap<String, FastW>,  // raw weights (norms, lerps, bias, bonus, ...) as f32
     fwt: HashMap<String, FastW>, // linear weights pre-transposed to (in,out) f32
@@ -67,6 +71,7 @@ impl FastModel {
         num_points: usize,
         s_space: Vec<f32>,
         point_space: Vec<f32>,
+        arch: crate::model::ArchFlags,
         compress: crate::model::CompressCfg,
     ) -> Result<Self> {
         let mut fw = HashMap::new();
@@ -84,7 +89,7 @@ impl FastModel {
             let dims = t.dims(); // (in,out)
             fwt.insert(key.clone(), FastW { v: to_vec(t)?, d0: dims[0], d1: dims[1] });
         }
-        Ok(Self { c, h, k, stream_layers, num_curves, num_points, s_space, point_space, compress, fw, fwt })
+        Ok(Self { c, h, k, stream_layers, num_curves, num_points, s_space, point_space, arch, compress, fw, fwt })
     }
 
     fn raw(&self, key: &str) -> Result<&FastW> {
@@ -602,6 +607,16 @@ impl FastModel {
 
     /// Combined ahead prediction from a stored curve (out_ahead_logits, out_w) at elapsed. Mirrors model.rs.
     pub fn predict_ahead(&self, out_ahead_logits: &[f32], out_w: &[f32], elapsed: f32) -> f32 {
+        // Both grids are EMPTY on a track-2 checkpoint (GRU head / no ahead residual), and both
+        // loops below would then index out of bounds or underflow. Fail with the reason instead.
+        assert!(
+            self.arch.gru_curves.is_none(),
+            "fast: GRU curve head not implemented yet (checkpoint has gru_w_weight)"
+        );
+        assert!(
+            self.arch.ahead_residual,
+            "fast: ahead residual is stripped in this checkpoint but predict_ahead used it"
+        );
         let p_raw = self.forgetting_curve(out_w, elapsed);
         let logit_raw = (p_raw / (1.0 - p_raw)).ln();
         let residual = self.interp(out_ahead_logits, elapsed);
