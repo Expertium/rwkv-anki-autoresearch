@@ -85,6 +85,11 @@ class SrsRWKVRnn(ModuleType):
             torch.nn.Linear(self.features_fc_dim, self.d_model),
             torch.nn.SiLU(),
         )
+        # stamp each stream's name onto its config, exactly as SrsRWKV.__init__ does --
+        # RWKV_STRIP_CMIX matches on "<stream_name>:<layer_id>", so without this the deploy
+        # path would silently strip NOTHING and quietly diverge from the trained model
+        for _name, _cfg in anki_rwkv_config.modules:
+            _cfg.stream_name = _name
         self.rwkv_modules = torch.nn.ModuleList(
             [RWKV7RNN(config=config) for _, config in anki_rwkv_config.modules]
         )

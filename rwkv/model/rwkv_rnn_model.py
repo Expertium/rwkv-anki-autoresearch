@@ -1,3 +1,4 @@
+import os
 from typing import Optional, Tuple
 from rwkv.model.rwkv_model import LoraMLP, LoraSimple, RWKV7Config
 from rwkv.model.rwkv_ops import single_timestep
@@ -47,7 +48,19 @@ class RWKV7RNNLayer(ModuleType):
     def __init__(self, config: RWKV7Config, layer_id):
         super().__init__()
         self.time_mixer = RWKV7RNNTimeMixer(config, layer_id)
-        self.channel_mixer = RWKV7RNNChannelMixer(config, layer_id)
+        # RWKV_STRIP_CMIX: mirror of RWKV7Layer (rwkv_model.py, A6) -- keep in sync. The
+        # deploy path must strip exactly the same mixers as the trained model, or its
+        # state_dict does not load and its arithmetic is not the model we trained.
+        _strip_list = [
+            t.strip() for t in os.environ.get("RWKV_STRIP_CMIX", "").split(",") if t.strip()
+        ]
+        self.cmix_stripped = f"{config.stream_name}:{layer_id}" in _strip_list
+        if self.cmix_stripped:
+            import dataclasses
+            _dummy_cfg = dataclasses.replace(config, d_model=1, n_heads=1)
+            self.channel_mixer = RWKV7RNNChannelMixer(_dummy_cfg, layer_id)
+        else:
+            self.channel_mixer = RWKV7RNNChannelMixer(config, layer_id)
 
     def forward(
         self,
@@ -63,6 +76,10 @@ class RWKV7RNNLayer(ModuleType):
         x_BC, v0_BC, time_state = self.time_mixer(
             in_BC=in_BC, v0_BC=v0_BC, state=time_state
         )
+        if self.cmix_stripped:
+            # the mixer (and its residual add) is skipped entirely; its shift state stays
+            # None forever, so a stripped layer carries no channel state at deploy
+            return x_BC, v0_BC, (time_state, channel_state)
         x_BC, channel_state = self.channel_mixer(x_BC, state=channel_state)
         return x_BC, v0_BC, (time_state, channel_state)
 
@@ -124,10 +141,16 @@ class RWKV7RNNTimeMixer(ModuleType):
 
         self.k_scale_linear = torch.nn.Linear(config.d_model, self.H, bias=True)
         self.v_scale_linear = torch.nn.Linear(config.d_model, self.H, bias=True)
+        # RWKV_STRIP_L0_VLORA: mirror of RWKV7TimeMixer (rwkv_model.py, A5) -- keep in sync.
+        # Layer 0 takes the v0_BC = v branch below, so v_lora_simple is provably dead there;
+        # the 1x1 dummy keeps the attribute (and the state_dict shape) identical.
+        strip_l0_vlora = (
+            layer_id == 0 and os.environ.get("RWKV_STRIP_L0_VLORA", "0") == "1"
+        )
         self.v_lora_simple = LoraSimple(
             name="v",
-            d_model=config.d_model,
-            d_lora=config.v0_mix_amt_lora,
+            d_model=config.d_model if not strip_l0_vlora else 1,
+            d_lora=config.v0_mix_amt_lora if not strip_l0_vlora else 1,
             layer_id=layer_id,
         )
         self.a_lora_simple = LoraSimple(
@@ -147,6 +170,36 @@ class RWKV7RNNTimeMixer(ModuleType):
         self.out_group_norm = torch.nn.GroupNorm(
             config.n_heads, config.d_model, eps=64e-5
         )
+
+        # RWKV_STATE_CLAMP_TAU: the deploy twin of windowed_clamped_wkv (rwkv_model.py, the
+        # A3-instability fix). Same soft shrink, S *= tau / max(tau, ||S||_F) per head.
+        #
+        # ⚠ NOT bit-identical to training BY CONSTRUCTION, and this is the honest reading:
+        # training clamps between WINDOWS of state_clamp_window steps (and only when the
+        # chunk is longer than one window), while an RNN sees one step at a time and has no
+        # access to the training chunk boundaries -- those depend on how prepare_batch
+        # packed the batch, which no deploy stream can reconstruct. So this clamps EVERY
+        # step. The two agree exactly wherever ||S|| stays under tau, since the factor is
+        # then exactly 1.0 and the multiply is inert; they differ only on states that were
+        # already diverging, where per-step is the more conservative of the two. Training's
+        # clamp is also CUDA-only, so a CPU run of the training path does not clamp at all.
+        self.state_clamp_tau = float(os.environ.get("RWKV_STATE_CLAMP_TAU", "0") or 0)
+
+    def clamp_state(self, state_BHKK):
+        """S *= tau / max(tau, ||S||_F) per (batch, head); non-finite states are zeroed."""
+        if self.state_clamp_tau <= 0.0:
+            return state_BHKK
+        norms_BH = state_BHKK.flatten(2).norm(p=2.0, dim=-1)
+        bad_BH = ~torch.isfinite(norms_BH)
+        if bool(bad_BH.any()):
+            # scaling cannot rescue a non-finite state; restart it from zero rather than
+            # poison every later step (mirrors the training clamp)
+            state_BHKK = torch.where(
+                bad_BH[..., None, None], torch.zeros_like(state_BHKK), state_BHKK
+            )
+            norms_BH = torch.where(bad_BH, torch.zeros_like(norms_BH), norms_BH)
+        scale_BH = self.state_clamp_tau / torch.clamp(norms_BH, min=self.state_clamp_tau)
+        return state_BHKK * scale_BH[..., None, None]
 
     def forward(self, in_BC, v0_BC, state: Optional[Tuple[torch.Tensor, torch.Tensor]]):
         B, C = in_BC.shape
@@ -211,6 +264,8 @@ class RWKV7RNNTimeMixer(ModuleType):
             k_deformed_B1HK.float().squeeze(1),
             state_B1HKK.float().squeeze(1),
         )
+
+        next_state_BHKK = self.clamp_state(next_state_BHKK)
 
         out_B1HK = out_BHK.to(in_B1C.dtype).unsqueeze(1)
 
