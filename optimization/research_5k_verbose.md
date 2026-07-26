@@ -1425,8 +1425,28 @@ the pressed probe WITHOUT pooling, so modes 0/1/2 split the penalty additively. 
 by-user mean ahead: unrectified 0.301461 -> raw probe 0.302912 -> rectified 0.303523.
 Probe-insertion noise on the imm channel is **+0.000056** (identical for modes 1 and 2, p=2.1e-8,
 worse on 284/500 — a good consistency check, since imm depends on probe INSERTION and not on what
-gets substituted), so the duration term is ≈+0.00140 net. `RWKV_EVAL_PAVA=3` measures the ahead-side
-noise directly and is queued.
+gets substituted).
+
+**★ MODE-3 CONTROL LANDED 01:29 (2026-07-27) AND THE AHEAD NOISE IS EXACTLY ZERO**, so the split
+above needs no correction at all:
+
+| component | ahead | p | worse on |
+|---|---|---|---|
+| probe-insertion noise (m3 - m0) | **+0.000000 ± 0.000014** | **0.33** | 253/500 (a coin flip) |
+| duration zeroing (m2 - m3) — the clean pair | **+0.001451** | 1.8e-47 | 401/500 |
+| PAVA pooling (m1 - m2) | +0.000611 | 3.9e-4 | 262/500 |
+| total (m1 - m0) | +0.002062 | 1.7e-49 | 409/500 |
+
+`m2 - m3` and `m2 - m0` agree to six decimals, which is the whole point of running the control: the
+duration number was never confounded, and that is now measured rather than assumed.
+
+⚠ **This refutes a generalization we were carrying.** A18's imm noise (+0.000280, n=2500) had been
+written up as a blanket "probe insertion costs ~3x the gate". It is **channel- and model-dependent**:
+on iter 31 it is 0 on ahead and +0.000056 on imm — 5x below A18 on identical probe machinery and
+identical data. The "don't compare rectified to unrectified at the 0.0001 gate" rule survives for
+**imm**, but must not be quoted for ahead or as a fixed magnitude; run the ~30 min control for the
+model in hand. What damps it in iter 31 is untested — the state clamp and training WITH probes
+(`RWKV_PROBE_DENSITY=0.08`, which A18 did not have) are the obvious candidates.
 
 **The headline is that the rectifier is the SMALL half. ~70% of the penalty is the model losing the
 current review's duration, and only ~30% is the monotonicity pooling.** That matters because it

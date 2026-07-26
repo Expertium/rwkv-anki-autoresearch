@@ -337,6 +337,17 @@ deltas so dead ends aren't re-run.
   (the 4 button intervals, Python vs Rust). **`eval_pava/`** = the rectified-eval pipeline +
   `check_imm_identical.py` (⚠ its premise is WRONG in bf16 — see below) + `decompose_duration.py`
   (splits the rect-vs-unrect ahead delta) + `run_mode3_noise.cmd` (the noise control).
+  **★★ REFINED 2026-07-27 BY THE MODE-3 CONTROL — THE NOISE IS CHANNEL- AND MODEL-DEPENDENT, AND
+  ON `ahead` IT IS ZERO.** The bullet below generalized A18's imm measurement into a blanket "probe
+  insertion costs ~3x the gate"; the direct control says otherwise. iter 31, n=500, `RWKV_EVAL_PAVA=3`
+  (probes inserted, nothing substituted): **ahead noise = +0.000000 +/- 0.000014, p=0.33, worse on
+  253/500 users** — an exact coin flip. Its imm noise is **+0.000056** (p=2.1e-8), itself 5x below
+  A18's +0.000280 on identical probe machinery. So: (1) the duration decomposition was never
+  confounded on ahead, which is now VERIFIED rather than hoped; (2) the "never compare rectified to
+  unrectified at the 0.0001 gate" rule still stands for **imm**, but must not be quoted for ahead or
+  as a fixed magnitude — **measure the control for the model in hand** (`RWKV_EVAL_PAVA=3`, ~30 min
+  at n=500); (3) whatever damps it in iter 31 (state clamp? training WITH probes at
+  `RWKV_PROBE_DENSITY=0.08`, which A18 lacked?) is untested and would be worth knowing.
   **★ PROBE INSERTION IS NOT NUMERICALLY FREE (measured 2026-07-26 — supersedes "imm must be
   bit-identical rect vs unrect, which proves the probes are non-perturbative").** The reasoning was
   right and the conclusion wrong: probes ARE skip rows, and the token shift does step over them
@@ -927,12 +938,15 @@ Plain-era and QAT-era logloss are NOT comparable.
    unrectified gate — which is scored WITH a feature deploy will not have — while removing most of
    the deploy penalty, so it must be judged on BOTH metrics (see QUEUE 0). A `RWKV_PAVA_LAMBDA`
    sweep can only ever attack the 30%.
-3. **RUNNING (started 01:00): mode-3 noise control** — `run_mode3_noise.cmd`, log
-   `scratchpad/eval_pava/mode3_noise.log`, 500 users, ~01:30. Gives `m3-m0` = pure bf16
-   probe-insertion noise on `ahead`, making `m2-m3` the duration cost with the noise removed.
-4. **PARKED: iter 32 = full-run DISTILLATION, RELAUNCHED as v2** —
+3. **★ DONE 01:29: mode-3 noise control — the AHEAD noise is EXACTLY ZERO**
+   (+0.000000 +/- 0.000014, p=0.33, worse on 253/500 = a coin flip), so `m2-m3` and `m2-m0` agree
+   to six decimals and the duration number above was never confounded. That is the point of the
+   control: measured, not assumed. It also refutes the blanket "probe insertion costs ~3x the gate"
+   generalization — see the ★★ refinement in the probe-insertion bullet above.
+4. **RUNNING since 01:30: iter 32 = full-run DISTILLATION, RELAUNCHED as v2** —
    `scratchpad/iter32_kd/run_iter32_kd_v2.cmd`, **pid 7192**, log
-   `scratchpad/iter32_kd/iter32_kd_v2.log`, parked behind mode 3. ~10 h.
+   `scratchpad/iter32_kd/iter32_kd_v2.log`. Smoke gate passed 01:30 (`DUMP_CHECK_OK` / `SMOKE OK`);
+   full 22,346-step teacher dump started 01:30:32. **Verdict ~11:30.**
    ⚠ **v1 (pid 25348) DIED at its smoke gate on a FALSE FAILURE — the check was wrong, not the
    dump.** `DUMP_CHECK_FAIL 5/5, "p_curve outside (0,1): [.., 1.000000]"`. `p_curve` is stored
    **fp16** (`train_rwkv.py:1090`) and fp16 spacing below 1.0 is 4.88e-4, so every teacher output
