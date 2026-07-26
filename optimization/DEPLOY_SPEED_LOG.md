@@ -32,9 +32,46 @@ This file is per-*optimization*, paired across **users**.
   Median, not mean — per-user rates are heavy-tailed in review count.
 - **Wilcoxon signed-rank**, one-sided, on the 200 paired rates. Accept a speedup claim only at
   **p < 0.01**.
-- **Before/after in one run, same process conditions.** Lock CPU frequency first (CLAUDE.md §11
-  has the `powercfg` recipe) and keep the machine otherwise idle — in particular no co-tenant GPU
-  or FSRS-benchmark load, which has skewed measurements here before.
+### M1. Lock the CPU frequency BEFORE measuring (once per session, needs admin)
+
+Without this the CPU boosts and throttles on its own schedule and the measurement drifts under
+you — a 3.4 GHz baseline that quietly becomes 4.2 GHz mid-run invents a speedup that is not there.
+Run in an **elevated PowerShell**:
+
+```powershell
+powercfg -attributes SUB_PROCESSOR 75b0ae3f-bce0-45a7-8c89-c9611c25e100 -ATTRIB_HIDE
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCFREQMAX 3400
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100
+powercfg /setactive SCHEME_CURRENT
+```
+
+The first line unhides the max-frequency setting, which Windows keeps hidden by default. Pinning
+`PROCTHROTTLEMIN = PROCTHROTTLEMAX = 100` holds the perf state flat. ⚠ `PROCFREQMIN` is **not** a
+valid alias — pin the perf state instead, as above. Restore afterwards:
+
+```powershell
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCFREQMAX 0
+powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 5
+powercfg /setactive SCHEME_CURRENT
+```
+
+### M2. ALWAYS run before and after SIMULTANEOUSLY, on different threads
+
+Never measure the champion, then the candidate. Launch **both at the same instant**, each pinned to
+its own thread(s), both looping the same frozen work.
+
+**Why:** any outside factor — the FSRS benchmark, a Windows update, thermal drift, another
+process waking up — then lands on *both* sides at once and cancels in the ratio. Sequential
+measurement silently attributes whatever changed between the two runs to the code change, and on
+this machine there is nearly always something else running (Andrew's FSRS benchmark, a Reddit bot,
+the liveplot). Simultaneity does not remove the noise; it makes the **sign** of the difference
+clean, which is all the Wilcoxon test needs.
+
+Keep the machine otherwise idle anyway — in particular **no co-tenant GPU work**, which has skewed
+measurements here before. This mirrors CLAUDE.md §11's "paired simultaneous trial", with the pairing
+unit changed from a trial to a user (see above): for each of the 200 users, before and after run
+side by side and yield that user's one paired point.
 
 ## The two assertions every row must carry
 
@@ -42,11 +79,22 @@ This file is per-*optimization*, paired across **users**.
    property of the data and the filters, so any change at all is a pipeline bug, not a result.
 2. **LogLoss within ±0.0005 of iter 0**, both modes (ahead and imm), by-user mean.
 
-⚠ **±0.0005 is a CEILING, not an allowance.** These are pure-speed changes: the arithmetic is
-supposed to be identical, so **the expected delta is 0.000000**. A row showing +0.0003 has not
-"passed with margin" — it has quietly changed the model and needs explaining before it is kept.
-Treat any nonzero drift as a bug report. (Contrast the +0.0015 *efficiency* budget in CLAUDE.md §5,
-which exists for param-cutting and quantization — changes that are *meant* to cost accuracy.)
+**What the ±0.0005 is for (Andrew, 2026-07-26): it is headroom for INEXACT speedups** — changes
+that replace something with a cheaper approximation (a fast `exp`/`tanh`, a lower-precision
+accumulation, a truncated softmax, a skipped negligible term). Those genuinely move the numbers a
+little, and the band is what says "little enough to keep".
+
+So label every row **exact** or **inexact**, because the same ΔLogLoss means different things:
+
+- **exact** (SIMD, batching, memory layout, allocation removal — the arithmetic is unchanged):
+  the expected delta is **0.000000**. Anything else is a bug, not a pass. A nonzero drift on a row
+  claiming exactness means the rewrite changed the math — investigate before keeping it.
+- **inexact** (a cheaper approximation): spend the band deliberately, and record *what*
+  approximation bought the speed. Cost is cumulative against iter 0, not against the previous row,
+  so the budget cannot be laundered by taking it 0.0004 at a time.
+
+(Distinct from the +0.0015 *efficiency* budget in CLAUDE.md §5, which covers param-cutting and
+quantization — architecture changes rather than implementation changes.)
 
 ## Table — `review_features` (states/s)
 
@@ -56,9 +104,12 @@ algorithmic improvements and the new input features (Andrew, 2026-07-26). Do not
 table from `CPU_INFERENCE.md`: those are cross-architecture numbers, measured without per-user
 pairing, and would not satisfy the columns below.
 
-| iter | change | states/s before | states/s after | median rel. speedup (200 u) | Wilcoxon p | size identical | Δ LogLoss vs iter 0 (ahead / imm) | verdict |
-|---|---|---|---|---|---|---|---|---|
-| 0 | baseline — engine at `a3f7003`, parity-verified | — | *(to measure)* | 1.00× | n/a | n/a (defines it) | 0.000000 / 0.000000 | baseline |
+| iter | change | kind | states/s before | states/s after | median rel. speedup (200 u) | Wilcoxon p | size identical | Δ LogLoss vs iter 0 (ahead / imm) | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | baseline — engine at `a3f7003`, parity-verified | — | — | *(to measure)* | 1.00× | n/a | n/a (defines it) | 0.000000 / 0.000000 | baseline |
+
+`kind` = **exact** or **inexact** (see the assertions above) — an inexact row must also name the
+approximation it made.
 
 ### Candidate optimizations, roughly by expected value
 
