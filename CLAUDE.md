@@ -958,8 +958,17 @@ Plain-era and QAT-era logloss are NOT comparable.
    — `--bench-buttons`, CPU_INFERENCE.md Measurement 3: serving all 4 intervals costs 0.76 ms/card
    = 2.69x a plain prediction, of which 93% is the probe forward and only 7% the 50-step bisection.
    Cheap in absolute terms, and NOT a lever — the solver is noise and the 4 probes already batch to
-   2.5x rather than 4x, so nothing cheap is left in it**; (b)
-   throughput with QUANTIZED state (the deploy config is q72u, all numbers above are fp32); (c)
+   2.5x rather than 4x, so nothing cheap is left in it**;
+   ~~(b) throughput with QUANTIZED state~~ **(b) DONE 2026-07-27 — Measurement 4. ★ THE 256x STATE
+   COMPRESSION COSTS ~3x INFERENCE TIME** (review 0.307 -> 0.917 ms; with buttons 0.839 -> 3.530 ms
+   = 4.2x). Absolute cost stays under 4 ms/card, so this is a **Pareto CHOICE to put to Andrew**,
+   not a blocker: 9 bytes/card and 3x slower, or 51 KiB/card and fast. The compression work was
+   justified on SIZE alone and its time price had never been on the table. Most expensive single
+   component = **shift PQ + 1-bit norms** (+68% of baseline in one rung; m2b12L searches 2x4096
+   entries per shift vector per layer per stream vs the WKV side's one 1024-entry catalog) — the
+   same lever that dominates the BITS, so one change moves both. ⚠ Warm search
+   (`warm_wkv`/`warm_shift`, which travel with the state) is load-bearing: a cold-search harness
+   reports 6.17x instead of the true 2.99x; (c)
    the AVX2/FMA `dot_product` + `add_scaled_in_place` from `vendor/jschoreels_anki/x86_simd.patch`
    — our engine has NO SIMD, and that is the most portable remaining speed win (⚠ AGPL: flag to
    Andrew before copying, keep provenance comments).

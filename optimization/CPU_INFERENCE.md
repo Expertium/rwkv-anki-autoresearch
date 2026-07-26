@@ -127,7 +127,50 @@ state so the B=1 -> B=4 tiling is genuinely exercised):
    cheap restructuring left.
 
 ⚠ **Read the RATIOS, not the absolute rate.** This bench reuses pre-built synthetic states and
-times a single step, so its B=1 figure (~3,530 rev/s) runs well above Measurement 2's trace-driven
+times a single step, so its B=1 figure (~3,255 rev/s) runs well above Measurement 2's trace-driven
 ~1,703 rev/s, which includes real state management across thousands of chained reviews. The two
 are not comparable and Measurement 2 is the honest throughput number; what Measurement 3 
 establishes is the *relative* cost of buttons, where both sides share the identical harness.
+
+## Measurement 4 — what STATE COMPRESSION costs in time, 2026-07-27
+
+Measurements 2-3 are fp32. The config we actually intend to ship is **q72u** — 72 bits/layer, a
+**9-byte card state, 256x compression**. Its accuracy price is on the record (+0.00114/+0.00021 vs
+fp32); its **time** price was never measured. Same harness as Measurement 3, A18 weights,
+single-threaded, so the columns are directly comparable:
+
+| state config | review B=1 | vs fp32 | buttons | vs fp32 |
+|---|---|---|---|---|
+| fp32, no compression | 0.307 ms | 1.00x | 0.839 ms | 1.00x |
+| low-rank rank-1 int4 (card+note) | 0.373 ms | 1.21x | 0.977 ms | 1.16x |
+| + per-column scale + WKV PQ codebook | 0.547 ms | 1.78x | 1.770 ms | 2.11x |
+| **full q72u (the deploy config)** | **0.917 ms** | **2.99x** | **3.530 ms** | **4.21x** |
+
+**The headline: 256x state compression costs ~3x inference time** (4.2x when also serving buttons).
+Both remain comfortable in absolute terms — under 4 ms per card — so this is a Pareto *choice*, not
+a blocker: 9 bytes/card and 3x slower, or 51 KiB/card and fast. Worth putting to Andrew explicitly,
+because the compression work was justified on SIZE and its speed cost had simply never been on the
+table.
+
+**Where the time goes:** the single most expensive component is the **shift PQ + 1-bit norms**
+(0.547 -> 0.917 ms, +68% of the fp32 baseline in one step) — unsurprising, since the shift catalog
+is m2b12L, i.e. 2 chunks x 4096 entries searched per shift vector per layer per stream, against the
+WKV side's single 1024-entry joint catalog. If this tradeoff is ever worth revisiting, the shift
+side is where the time is, and the size ladder already showed shift coding is where the *bits* are
+too — so it is one lever moving both.
+
+⚠ **WARM SEARCH IS LOAD-BEARING, and getting this wrong doubles the apparent cost.**
+`FastLayerState::warm_wkv` / `warm_shift` carry the entity's previously-winning centroid indices and
+travel with the state; `fast.rs:585,614` take the warm path only when they are non-empty. The first
+version of this bench passed them empty and rebuilt state per iteration, measuring a COLD
+full-catalog search and reporting **6.17x** for q72u instead of the true **2.99x**. The bench now
+threads returned state back in and warms 32 reviews before timing. Any future harness touching
+compressed state must do the same.
+
+⚠ The forward/solver split from Measurement 3 **does not survive heavy quantization** — under q72u
+`button_intervals` (3.530 ms) comes out *below* the B=4 review baseline (3.810 ms), i.e. a nonsense
+negative solver cost. That is not noise: the 4 probes are near-identical vectors (same row, only the
+button one-hot and duration differ) tiled from ONE warm state, so their warm search converges
+immediately, whereas the B=4 control holds four independently-random states. Real conclusion, which
+is better news than the split would have been: **serving 4 buttons costs far less than 4 independent
+reviews under compression**, because the probes are mutually coherent.

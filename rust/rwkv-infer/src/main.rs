@@ -905,6 +905,19 @@ fn bench_synth_fast(model: &Model, secs: f64, b: usize) -> Result<()> {
 ///
 /// States are B=1 and randomized, matching `bench_synth_fast`: real per-card state, not the empty
 /// state `--buttons-fast` runs with, so the B=1 -> B=4 tiling is actually exercised here.
+///
+/// ⚠ **State is CARRIED FORWARD between timed iterations, and that is load-bearing whenever state
+/// compression is on.** `FastLayerState::warm_wkv` / `warm_shift` hold this entity's previously
+/// winning centroid indices ("task25", speed-only) and travel with the state; `fast.rs:585,614`
+/// take the warm path only when those vectors are NON-empty. A bench that rebuilt a fresh state per
+/// iteration — or passed empty warm vecs, as the first version of this function did — would force a
+/// COLD full-catalog search every call and overstate the cost of quantization severalfold. Reviews
+/// therefore thread the returned state back in, and the button timing runs on a state that has
+/// already been warmed by real reviews.
+///
+/// `button_intervals` itself correctly does NOT carry: probes read state and never advance it, so
+/// every press warm-starts from whatever the card's own review history left behind — which is
+/// exactly what the loop below reproduces.
 fn bench_buttons(model: &Model, secs: f64) -> Result<()> {
     let dev = Device::Cpu;
     let (h, k, c) = model.dims();
@@ -930,13 +943,23 @@ fn bench_buttons(model: &Model, secs: f64) -> Result<()> {
         }
         states.try_into().map_err(|_| anyhow::anyhow!("stream count"))
     };
-    let s1 = mk(1)?;
-    let s4 = mk(4)?;
+    let mut s1 = mk(1)?;
+    let mut s4 = mk(4)?;
     let f1: Vec<f32> = Tensor::rand(0f32, 1f32, (1, 92), &dev)?.flatten_all()?.to_vec1()?;
     let f4: Vec<f32> = Tensor::rand(0f32, 1f32, (4, 92), &dev)?.flatten_all()?.to_vec1()?;
 
-    let timed = |label: &str, mut f: Box<dyn FnMut() -> Result<()> + '_>| -> Result<f64> {
-        f()?; // warm
+    // Warm the centroid indices with real reviews before ANY timing, so the compressed path is
+    // measured as deploy runs it. 32 is far past what a warm search needs to settle.
+    const WARM: usize = 32;
+    for _ in 0..WARM {
+        let (_, _, _, ns) = model.fast.review_batched(&f1, 1, &s1)?;
+        s1 = ns.map(Some);
+        let (_, _, _, ns4) = model.fast.review_batched(&f4, 4, &s4)?;
+        s4 = ns4.map(Some);
+    }
+
+    let mut timed = |label: &str, mut f: Box<dyn FnMut() -> Result<()> + '_>| -> Result<f64> {
+        f()?; // warm the instruction/data caches too
         let mut n: u64 = 0;
         let t0 = Instant::now();
         while t0.elapsed().as_secs_f64() < secs {
@@ -950,15 +973,19 @@ fn bench_buttons(model: &Model, secs: f64) -> Result<()> {
     };
 
     let ms1 = timed("review B=1", Box::new(|| {
-        let (_, _, out_p, _) = model.fast.review_batched(&f1, 1, &s1)?;
+        let (_, _, out_p, ns) = model.fast.review_batched(&f1, 1, &s1)?;
         let _ = model.fast.imm_prob(&out_p, 1);
+        s1 = ns.map(Some); // carry: keeps warm_* alive across iterations
         Ok(())
     }))?;
     let ms4 = timed("review B=4 (probe fwd)", Box::new(|| {
-        let (_, _, out_p, _) = model.fast.review_batched(&f4, 4, &s4)?;
+        let (_, _, out_p, ns) = model.fast.review_batched(&f4, 4, &s4)?;
         let _ = model.fast.imm_prob(&out_p, 4);
+        s4 = ns.map(Some);
         Ok(())
     }))?;
+    // No carry here, deliberately: probes never advance state, so each press re-warms from the
+    // card's own history -- which the WARM loop above has already established in s1.
     let msb = timed("button_intervals", Box::new(|| {
         let _ = model.fast.button_intervals(&f1, &s1, 0.9)?;
         Ok(())
