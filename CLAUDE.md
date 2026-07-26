@@ -281,7 +281,7 @@ deltas so dead ends aren't re-run.
   `srs_model_rnn.py`, `rwkv_model.py`, `rwkv_rnn_model.py`, `rwkv_ops.py`, `csrc/` (CUDA kernel;
   the built `RWKV_CUDA.pyd` is untracked). Live tomls only (the ~120 closed-era iterN run
   configs were git-rm'd 2026-07-15; git history keeps them).
-- **`optimization/`** — tooling + the canonical record. Record: `research_5k.md` (front tables,
+- **`optimization/`** — tooling + the canonical record. `DEPLOY_FUNCTIONS.md` (the 2 Anki-fork target functions: `review_features` = the 5 stream states, `retrievability_head` = 1-P(Again); + the AGPL caveat) · `DEPLOY_SPEED_LOG.md` (the SINGLE `review_features` states/s table: 200-user paired Wilcoxon, size-identical + logloss-within-0.0005 assertions; distinct from `cpu_speed_log.md`, which pairs trials) ·  Record: `research_5k.md` (front tables,
   4dp) · `research_5k_notes.md` (methodology) · `research_5k_verbose.md` (per-iter detail,
   AI-only) · `research_log.jsonl` (5k source of truth) · `log.md`/`log.jsonl` (regenerated
   canonical table — `python optimization/logbook.py rebuild`) · `research_log.md` (CLOSED
