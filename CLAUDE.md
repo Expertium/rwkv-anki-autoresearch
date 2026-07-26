@@ -780,6 +780,34 @@ Plain-era and QAT-era logloss are NOT comparable.
    the 0.25 ratio ~55,900 steps ~= 11 h, plus eval ~= **2.5 days of continuous GPU**. Use the
    mid-epoch resume (`RWKV_RESUME_SKIP_GROUPS=1` + `make_resume.py`) — over that span a crash or
    reboot is likely, and losing it whole is the only real failure mode.
+   **⚠ AND IT IS QUANT-AWARE (Andrew 2026-07-26, "It will also be with QAT").** Two open items,
+   both to settle BEFORE launching, neither expensive:
+   - **THE QAT TAX IS ~1.7x WALL-CLOCK, NOT 13% — do not quote the 13% (Andrew corrected this
+     2026-07-26: "IIRC it ended by being like 3x slower").** Both numbers are in the record and
+     they measure different things:
+     * **+13%** (`research_5k_notes.md` 2026-07-03) is a PROFILED GPU STEP, 651 vs 578 ms, kernel
+       share only, at MAX=110000 on `train_db_sc8k_1500`.
+     * **1.7x** is WALL-CLOCK at the real recipe: iter 14 `champ5k_plain` is champ5k_b1's exact
+       recipe with the QAT env stripped and ran **WS 0.82 s/step = "1.7x faster than
+       quant-aware"** (`research_5k_verbose.md` iter 14). Its eval was 75 min phased vs the
+       **145-min sequential QAT eval**.
+     * **The gap between them is almost all LOST JIT:** QAT forces `RWKV_NO_JIT=1`, and the banked
+       JIT restoration is worth ~1.38x. 1.13 x 1.38 = 1.56, vs 1.7 observed. The profiled figure
+       never included it.
+     **=> the 10x run costs ~4 DAYS of training, not 2.5** (WS 43 h -> ~73 h, decay 11 h -> ~19 h),
+     and that is still at d=32 state sizes; iter 31's per-card state is **2,880 floats vs 576**, so
+     the kernel share should be re-measured at d=80 (100-step A/B, plain vs q72u env, ~5 min GPU).
+   - **★ HIGH-VALUE, CHEAP: test whether QAT can run JIT-ON.** If the tax is mostly lost JIT rather
+     than kernel work, it is recoverable — CLAUDE.md already flags "JIT on the grafted q72u paths
+     unverified -- A/B once at champion-run launch", and the `torch.linalg.svd` that originally
+     broke TorchScript was fixed by `@torch.jit.ignore` on `quant_aware_rwkv7`. Worth **~1.38x, i.e.
+     roughly 1.5 days off a 4-day run**, for what is a smoke test. Do this BEFORE the long run.
+   - **WHERE the QAT sits in the 10x is a real fork,** because `QAT from scratch = +0.0118` (iter
+     40) — it MUST warm-start. Reading A: 10x plain -> warm-start QAT for the existing 2.0-ep
+     fine-tune. Reading B: 10x budget with QAT active throughout, warm-started from the current
+     champion. A is much cheaper and matches how QAT has always behaved here (a fine-tune);
+     B is the literal reading of "the long run is quant-aware". **ASK Andrew which, with the
+     measured overhead in hand — do not assume.**
    **Three things that are tuned for 1 epoch and must be RECONSIDERED at 12.5 — write the answers
    down before launching:** (a) **warmup 200 steps** is 0.9% of a 1-ep run but 0.09% of this one;
    upstream used 20,000. (b) **augmentation is OFF** (`RWKV_AUGMENT_SEED=1234`) — a deliberate
