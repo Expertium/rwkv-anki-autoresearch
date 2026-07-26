@@ -3,7 +3,8 @@ mod model;
 
 use anyhow::Result;
 use candle_core::{Device, Tensor};
-use model::{stack_stream_states, BatchedStreamState, Model, StreamState};
+use fast::FastCurve;
+use model::{stack_stream_states, BatchedStreamState, CurveOut, Model, StreamState};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -86,7 +87,8 @@ fn run_user_fast(model: &Model, user: i64) -> Result<()> {
     let mut s_note: HashMap<i64, FastStreamState> = HashMap::new();
     let mut s_preset: HashMap<i64, FastStreamState> = HashMap::new();
     let mut s_global: Option<FastStreamState> = None;
-    let mut curve: HashMap<i64, (Vec<f32>, Vec<f32>)> = HashMap::new(); // (out_ahead_logits, out_w)
+    // (out_ahead_logits, curve params). The logits are EMPTY when the residual is stripped.
+    let mut curve: HashMap<i64, (Vec<f32>, FastCurve)> = HashMap::new();
 
     let mut pred_imm = vec![0.0f32; n];
     let mut pred_ahead = vec![None; n];
@@ -148,7 +150,8 @@ fn run_user_candle(model: &Model, user: i64) -> Result<()> {
     let mut s_note: HashMap<i64, StreamState> = HashMap::new();
     let mut s_preset: HashMap<i64, StreamState> = HashMap::new();
     let mut s_global: Option<StreamState> = None;
-    let mut curve: HashMap<i64, (Tensor, Tensor)> = HashMap::new();
+    // (out_ahead_logits, curve params). The logits are None when the residual is stripped.
+    let mut curve: HashMap<i64, (Option<Tensor>, CurveOut)> = HashMap::new();
 
     let mut pred_imm = vec![0.0f32; n];
     let mut pred_ahead = vec![None; n];
@@ -158,7 +161,7 @@ fn run_user_candle(model: &Model, user: i64) -> Result<()> {
         let (cidx, nidx, didx, pidx) = (route[i][0], route[i][1], route[i][2], route[i][3]);
 
         if let Some((al, ow)) = curve.get(&cidx) {
-            pred_ahead[i] = Some(san(model.predict_ahead(al, ow, elapsed[i])?));
+            pred_ahead[i] = Some(san(model.predict_ahead(al.as_ref(), ow, elapsed[i])?));
         }
 
         let states: [Option<StreamState>; 5] = [
@@ -205,11 +208,12 @@ fn bench(model: &Model, user: i64, secs: f64) -> Result<()> {
         let mut s_note: HashMap<i64, StreamState> = HashMap::new();
         let mut s_preset: HashMap<i64, StreamState> = HashMap::new();
         let mut s_global: Option<StreamState> = None;
-        let mut curve: HashMap<i64, (Tensor, Tensor)> = HashMap::new();
+        // (out_ahead_logits, curve params). The logits are None when the residual is stripped.
+        let mut curve: HashMap<i64, (Option<Tensor>, CurveOut)> = HashMap::new();
         for i in 0..n {
             let (cidx, nidx, didx, pidx) = (route[i][0], route[i][1], route[i][2], route[i][3]);
             if let Some((al, ow)) = curve.get(&cidx) {
-                let _ = model.predict_ahead(al, ow, elapsed[i])?;
+                let _ = model.predict_ahead(al.as_ref(), ow, elapsed[i])?;
             }
             let states: [Option<StreamState>; 5] = [
                 s_card.get(&cidx).cloned(),

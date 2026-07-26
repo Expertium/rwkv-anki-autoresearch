@@ -35,6 +35,15 @@ pub struct FastLayerState {
 }
 pub type FastStreamState = Vec<FastLayerState>;
 
+/// Curve-head outputs, fast-path twin of [`crate::model::CurveOut`]. Row-major (B, num_curves).
+/// `s_raw`/`d_raw` are empty under the classic fixed-basis head.
+#[derive(Clone, Debug, Default)]
+pub struct FastCurve {
+    pub w: Vec<f32>,
+    pub s_raw: Vec<f32>,
+    pub d_raw: Vec<f32>,
+}
+
 pub struct FastModel {
     pub c: usize,
     pub h: usize,
@@ -395,7 +404,7 @@ impl FastModel {
         feats: &[f32],
         b: usize,
         states: &[Option<FastStreamState>; 5],
-    ) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, [FastStreamState; 5])> {
+    ) -> Result<(Vec<f32>, FastCurve, Vec<f32>, [FastStreamState; 5])> {
         let mut x = self.features2card(feats, b)?;
         let mut new: Vec<FastStreamState> = Vec::with_capacity(5);
         for m in 0..5 {
@@ -405,20 +414,38 @@ impl FastModel {
         }
         let xh = self.layernorm(&x, b, self.c, "prehead_norm")?;
 
-        // head_w -> softmax (num_curves)
+        // curve head -- classic fixed-basis mixture, or the GRU w/S/d triple.
+        // Mirrors Model::curve_head; keep the two in sync.
         let mut hw = self.linear(&xh, b, "head_w.0", true)?;
         relu_(&mut hw);
         let hwn = hw.len() / b;
         let hw = self.layernorm(&hw, b, hwn, "head_w.2")?;
         let hw = self.linear(&hw, b, "head_w.4", true)?;
-        let out_w_logits = self.linear(&hw, b, "w_linear", true)?;
-        let mut out_w = out_w_logits;
-        softmax_rows_(&mut out_w, b, self.num_curves);
+        let curve = match self.arch.gru_curves {
+            None => {
+                let mut w = self.linear(&hw, b, "w_linear", true)?;
+                softmax_rows_(&mut w, b, self.num_curves);
+                FastCurve { w, s_raw: Vec::new(), d_raw: Vec::new() }
+            }
+            Some(_) => {
+                let mut w = self.linear(&hw, b, "gru_w", true)?;
+                softmax_rows_(&mut w, b, self.num_curves);
+                let s_raw = self.linear(&hw, b, "gru_s", true)?;
+                let d_raw = self.linear(&hw, b, "gru_d", true)?;
+                FastCurve { w, s_raw, d_raw }
+            }
+        };
 
-        // head_ahead (num_points)
-        let mut ha = self.linear(&xh, b, "head_ahead_logits.0", true)?;
-        relu_(&mut ha);
-        let out_ahead = self.linear(&ha, b, "ahead_linear", true)?;
+        // head_ahead (num_points). Skipped entirely when stripped -- the whole head is dummied
+        // to (1,1) there, so computing it would be a shape-mismatch matmul (see Model::review).
+        let out_ahead = match self.arch.ahead_residual {
+            true => {
+                let mut ha = self.linear(&xh, b, "head_ahead_logits.0", true)?;
+                relu_(&mut ha);
+                self.linear(&ha, b, "ahead_linear", true)?
+            }
+            false => Vec::new(),
+        };
 
         // head_p (4)
         let mut hp = self.linear(&xh, b, "head_p.0", true)?;
@@ -427,7 +454,7 @@ impl FastModel {
 
         let new_arr: [FastStreamState; 5] =
             new.try_into().map_err(|_| anyhow!("stream count mismatch"))?;
-        Ok((out_ahead, out_w, out_p, new_arr))
+        Ok((out_ahead, curve, out_p, new_arr))
     }
 
     /// imm prob per card = 1 - softmax(out_p)[again]. out_p is (B,4).
@@ -605,19 +632,30 @@ impl FastModel {
         1e-5 + (1.0 - 2e-5) * val
     }
 
-    /// Combined ahead prediction from a stored curve (out_ahead_logits, out_w) at elapsed. Mirrors model.rs.
-    pub fn predict_ahead(&self, out_ahead_logits: &[f32], out_w: &[f32], elapsed: f32) -> f32 {
-        // Both grids are EMPTY on a track-2 checkpoint (GRU head / no ahead residual), and both
-        // loops below would then index out of bounds or underflow. Fail with the reason instead.
-        assert!(
-            self.arch.gru_curves.is_none(),
-            "fast: GRU curve head not implemented yet (checkpoint has gru_w_weight)"
-        );
-        assert!(
-            self.arch.ahead_residual,
-            "fast: ahead residual is stripped in this checkpoint but predict_ahead used it"
-        );
-        let p_raw = self.forgetting_curve(out_w, elapsed);
+    /// GRU power-curve recall for ONE card. Mirrors Model::gru_forgetting_curve, which in turn
+    /// mirrors srs_model_rnn.py::gru_forgetting_curve. Keep the log1p form -- it is the Python's,
+    /// and the algebraically-equal (1+t/S)^(-d) rounds differently.
+    fn gru_forgetting_curve(&self, c: &FastCurve, elapsed: f32) -> f32 {
+        let t = elapsed.max(1.0);
+        let mut r = 0f32;
+        for i in 0..self.num_curves {
+            let s = c.s_raw[i].clamp(-25.0, 25.0).exp();
+            let d = c.d_raw[i].clamp(-25.0, 25.0).exp();
+            r += c.w[i] * (-d * (t / (1e-7 + s)).ln_1p()).exp();
+        }
+        1e-5 + (1.0 - 2e-5) * r
+    }
+
+    /// Combined ahead prediction from a stored curve at elapsed. Mirrors model.rs::predict_ahead.
+    pub fn predict_ahead(&self, out_ahead_logits: &[f32], curve: &FastCurve, elapsed: f32) -> f32 {
+        let p_raw = match self.arch.gru_curves {
+            Some(_) => self.gru_forgetting_curve(curve, elapsed),
+            None => self.forgetting_curve(&curve.w, elapsed),
+        };
+        if !self.arch.ahead_residual {
+            // No residual -> the curve IS the mixture, monotone in t by construction.
+            return p_raw;
+        }
         let logit_raw = (p_raw / (1.0 - p_raw)).ln();
         let residual = self.interp(out_ahead_logits, elapsed);
         let logit = logit_raw + residual;

@@ -34,6 +34,21 @@ fn is_stripped(m: &TMap, k: &str) -> bool {
     m.get(k).is_some_and(|t| t.dims() == [1, 1])
 }
 
+/// Curve-head outputs for one review (candle path).
+///
+/// The classic head predicts only mixture weights over a FIXED log-spaced grid of stabilities.
+/// The GRU head predicts stability and decay per curve as well, so the grid disappears and the
+/// stored curve needs all three. Keeping them in one value (rather than widening the review()
+/// tuple) means the ~20 call sites that only want the rating head stay untouched.
+#[derive(Clone, Debug)]
+pub struct CurveOut {
+    /// (B, num_curves) post-softmax mixture weights.
+    pub w: Tensor,
+    /// `Some((s_raw, d_raw))` under the GRU head, each (B, num_curves). Raw = pre-clamp,
+    /// pre-exp; the exp(clamp(.)) happens at curve-evaluation time, as in the Python.
+    pub gru: Option<(Tensor, Tensor)>,
+}
+
 /// Architecture features detected from the checkpoint's weight SHAPES.
 ///
 /// Everything here used to be an env-var recipe flag on the training side. At deploy the
@@ -1034,7 +1049,7 @@ pub struct Model {
 
 impl Model {
     pub fn load(path: &str, dev: Device) -> Result<Self> {
-        let w = candle_core::safetensors::load(path, &dev)?;
+        let mut w = candle_core::safetensors::load(path, &dev)?;
         // Derive dims from the weight shapes so the engine auto-adapts to any arch.
         let c = get(&w, "prehead_norm.weight")?.dim(0)?;
         let h = get(&w, "rwkv_modules.0.blocks.0.time_mixer.k_scale_linear.weight")?.dim(0)?;
@@ -1260,6 +1275,25 @@ impl Model {
             if key.ends_with(".weight") && t.dims().len() == 2 {
                 lin_wt.insert(key.clone(), t.t()?.contiguous()?);
             }
+        }
+        // The GRU head's three linears are ROOT-level Parameters on the Python side, named
+        // `gru_w_weight` / `gru_w_bias` rather than a `gru_w` submodule -- a TorchScript
+        // constraint (CLAUDE.md sec 9: scripted hook bodies may not call submodules, so these
+        // are bare Parameters + F.linear). That underscore means they miss the `.weight` test
+        // above and would never reach lin_wt. Alias them into the dotted convention so the
+        // ordinary lin()/linear() helpers find them, in BOTH engines (fast.rs builds its maps
+        // from these same two, below).
+        let mut bias_aliases = Vec::new();
+        for base in ["gru_w", "gru_s", "gru_d"] {
+            if let Some(t) = w.get(&format!("{base}_weight")) {
+                lin_wt.insert(format!("{base}.weight"), t.t()?.contiguous()?);
+            }
+            if let Some(t) = w.get(&format!("{base}_bias")) {
+                bias_aliases.push((format!("{base}.bias"), t.clone()));
+            }
+        }
+        for (k, t) in bias_aliases {
+            w.insert(k, t);
         }
         let s_space_t = match &s_space {
             Some(g) => Some(Tensor::from_vec(g.clone(), (1, num_curves), &dev)?),
@@ -1560,12 +1594,14 @@ impl Model {
 
     /// Full forward over all 5 chained streams + heads.
     /// states: [card, deck, note, preset, user] in chain order.
-    /// Returns (out_ahead_logits(1,128), out_w(1,128), out_p_logits(1,4), new_states).
+    /// Returns (out_ahead_logits, curve, out_p_logits(1,4), new_states), where out_ahead_logits
+    /// is `None` when the piecewise-linear residual is stripped and `curve` carries the
+    /// mixture weights (+ per-review S and d under a GRU head).
     pub fn review(
         &self,
         feats: &Tensor,
         states: &[Option<StreamState>; 5],
-    ) -> Result<(Tensor, Tensor, Tensor, [StreamState; 5])> {
+    ) -> Result<(Option<Tensor>, CurveOut, Tensor, [StreamState; 5])> {
         let dbg = std::env::var("RWKV_DEBUG").is_ok();
         let mut x = self.features2card(feats)?;
         if dbg {
@@ -1588,16 +1624,24 @@ impl Model {
             summ("prehead_norm", &xh);
         }
 
-        // head_w -> w_linear -> softmax  (128 curve weights)
+        // head_w -> curve head (fixed-basis mixture weights, or GRU w/S/d)
         let hw = self.lin(&xh, "head_w.0", true)?.relu()?;
         let hw = self.ln(&hw, "head_w.2", LN_EPS)?;
         let hw = self.lin(&hw, "head_w.4", true)?;
-        let out_w_logits = self.lin(&hw, "w_linear", true)?;
-        let out_w = candle_nn::ops::softmax(&out_w_logits, D::Minus1)?;
+        let out_curve = self.curve_head(&hw)?;
 
-        // head_ahead_logits -> ahead_linear  (128 points)
-        let ha = self.lin(&xh, "head_ahead_logits.0", true)?.relu()?;
-        let out_ahead_logits = self.lin(&ha, "ahead_linear", true)?;
+        // head_ahead_logits -> ahead_linear (the piecewise-linear residual). When the residual is
+        // stripped the ENTIRE head is dummied -- head_ahead_logits.0 is (1,1) too -- so this is
+        // skipped rather than computed and thrown away: running it would be a shape-mismatch
+        // matmul against a (1,C) input. Skipping is also the point (dead compute: ~131.7k params
+        // of matmul per review at d=128).
+        let out_ahead_logits = match self.arch.ahead_residual {
+            true => {
+                let ha = self.lin(&xh, "head_ahead_logits.0", true)?.relu()?;
+                Some(self.lin(&ha, "ahead_linear", true)?)
+            }
+            false => None,
+        };
 
         // head_p -> p_linear  (4-way)
         let hp = self.lin(&xh, "head_p.0", true)?.relu()?;
@@ -1605,13 +1649,15 @@ impl Model {
 
         if dbg {
             summ("out_p_logits", &out_p_logits);
-            summ("out_w", &out_w);
-            summ("out_ahead_logits", &out_ahead_logits);
+            summ("out_w", &out_curve.w);
+            if let Some(al) = &out_ahead_logits {
+                summ("out_ahead_logits", al);
+            }
         }
         let new_arr: [StreamState; 5] = new
             .try_into()
             .map_err(|_| anyhow!("stream count mismatch"))?;
-        Ok((out_ahead_logits, out_w, out_p_logits, new_arr))
+        Ok((out_ahead_logits, out_curve, out_p_logits, new_arr))
     }
 
     /// imm probability = 1 - softmax(out_p_logits)[again]
@@ -1619,6 +1665,49 @@ impl Model {
         let p = candle_nn::ops::softmax(out_p_logits, D::Minus1)?; // (1,4)
         let again: f32 = p.narrow(1, 0, 1)?.reshape(())?.to_scalar()?;
         Ok(1.0 - again)
+    }
+
+    /// Curve-head parameters from the shared trunk feature `hw`.
+    ///
+    /// Classic: one linear + softmax over a fixed grid of stabilities.
+    /// GRU (srs_model.py::gru_forgetting_curve): three tiny linears off the SAME trunk feature --
+    /// w (softmaxed), plus raw S and d which stay raw here and are exp(clamp(.))'d at evaluation
+    /// time, exactly as the Python does.
+    fn curve_head(&self, hw: &Tensor) -> Result<CurveOut> {
+        match self.arch.gru_curves {
+            None => {
+                let logits = self.lin(hw, "w_linear", true)?;
+                Ok(CurveOut { w: candle_nn::ops::softmax(&logits, D::Minus1)?, gru: None })
+            }
+            Some(_) => {
+                let w = candle_nn::ops::softmax(&self.lin(hw, "gru_w", true)?, D::Minus1)?;
+                let s_raw = self.lin(hw, "gru_s", true)?;
+                let d_raw = self.lin(hw, "gru_d", true)?;
+                Ok(CurveOut { w, gru: Some((s_raw, d_raw)) })
+            }
+        }
+    }
+
+    /// GRU power-curve recall. Mirrors srs_model_rnn.py::gru_forgetting_curve EXACTLY:
+    ///   s = exp(clamp(s_raw,-25,25)); d = exp(clamp(d_raw,-25,25)); t = max(1,elapsed)
+    ///   r = sum_i w_i * exp(-d_i * log1p(t / (1e-7 + s_i)))
+    /// The log1p form is the Python's, not the algebraically equal (1+t/S)^(-d) -- keep it, so
+    /// the float rounding matches too.
+    fn gru_forgetting_curve(&self, c: &CurveOut, elapsed: f32) -> Result<f32> {
+        let (s_raw, d_raw) = c.gru.as_ref().ok_or_else(|| {
+            anyhow!("gru_forgetting_curve called on a classic fixed-basis checkpoint")
+        })?;
+        let t = elapsed.max(1.0);
+        let w: Vec<f32> = c.w.flatten_all()?.to_vec1()?;
+        let sr: Vec<f32> = s_raw.flatten_all()?.to_vec1()?;
+        let dr: Vec<f32> = d_raw.flatten_all()?.to_vec1()?;
+        let mut r = 0f32;
+        for i in 0..w.len() {
+            let s = sr[i].clamp(-25.0, 25.0).exp();
+            let d = dr[i].clamp(-25.0, 25.0).exp();
+            r += w[i] * (-d * (t / (1e-7 + s)).ln_1p()).exp();
+        }
+        Ok(1e-5 + (1.0 - 2e-5) * r)
     }
 
     /// forgetting_curve(out_w, elapsed_seconds) -> probability scalar.
@@ -1666,13 +1755,23 @@ impl Model {
     /// Combined ahead prediction from a stored curve at a given elapsed_seconds.
     pub fn predict_ahead(
         &self,
-        out_ahead_logits: &Tensor,
-        out_w: &Tensor,
+        out_ahead_logits: Option<&Tensor>,
+        curve: &CurveOut,
         elapsed: f32,
     ) -> Result<f32> {
-        let p_raw = self.forgetting_curve(out_w, elapsed)?;
+        let p_raw = match self.arch.gru_curves {
+            Some(_) => self.gru_forgetting_curve(curve, elapsed)?,
+            None => self.forgetting_curve(&curve.w, elapsed)?,
+        };
+        // No residual -> the curve IS the mixture, monotone in t by construction.
+        let residual = match (self.arch.ahead_residual, out_ahead_logits) {
+            (false, _) => return Ok(p_raw),
+            (true, Some(al)) => self.interp(al, elapsed)?,
+            (true, None) => {
+                return Err(anyhow!("ahead residual is live but no ahead logits were stored"))
+            }
+        };
         let logit_raw = (p_raw / (1.0 - p_raw)).ln();
-        let residual = self.interp(out_ahead_logits, elapsed)?;
         let logit = logit_raw + residual;
         Ok(1.0 / (1.0 + (-logit).exp()))
     }
@@ -1833,12 +1932,12 @@ impl Model {
     }
 
     /// Batched forward over all 5 chained streams + heads. feats is (B,92); each state is (B,...).
-    /// Returns (out_ahead_logits (B,np), out_w (B,nc), out_p_logits (B,4), new_states).
+    /// Returns (out_ahead_logits (B,np) or None, curve (B,nc), out_p_logits (B,4), new_states).
     pub fn review_batched(
         &self,
         feats: &Tensor,
         states: &[Option<BatchedStreamState>; 5],
-    ) -> Result<(Tensor, Tensor, Tensor, [BatchedStreamState; 5])> {
+    ) -> Result<(Option<Tensor>, CurveOut, Tensor, [BatchedStreamState; 5])> {
         let mut x = self.features2card(feats)?; // (B,C); features2card is last-dim ops -> batch-fine
         let mut new: Vec<BatchedStreamState> = Vec::with_capacity(5);
         for m in 0..5 {
@@ -1849,14 +1948,19 @@ impl Model {
         }
         let xh = self.ln(&x, "prehead_norm", LN_EPS)?;
 
+        // Same curve head as the B=1 path -- softmax is last-dim, so it is batch-agnostic.
         let hw = self.lin(&xh, "head_w.0", true)?.relu()?;
         let hw = self.ln(&hw, "head_w.2", LN_EPS)?;
         let hw = self.lin(&hw, "head_w.4", true)?;
-        let out_w_logits = self.lin(&hw, "w_linear", true)?;
-        let out_w = candle_nn::ops::softmax(&out_w_logits, D::Minus1)?;
+        let out_curve = self.curve_head(&hw)?;
 
-        let ha = self.lin(&xh, "head_ahead_logits.0", true)?.relu()?;
-        let out_ahead_logits = self.lin(&ha, "ahead_linear", true)?;
+        let out_ahead_logits = match self.arch.ahead_residual {
+            true => {
+                let ha = self.lin(&xh, "head_ahead_logits.0", true)?.relu()?;
+                Some(self.lin(&ha, "ahead_linear", true)?)
+            }
+            false => None,
+        };
 
         let hp = self.lin(&xh, "head_p.0", true)?.relu()?;
         let out_p_logits = self.lin(&hp, "p_linear", true)?;
@@ -1864,7 +1968,7 @@ impl Model {
         let new_arr: [BatchedStreamState; 5] = new
             .try_into()
             .map_err(|_| anyhow!("stream count mismatch"))?;
-        Ok((out_ahead_logits, out_w, out_p_logits, new_arr))
+        Ok((out_ahead_logits, out_curve, out_p_logits, new_arr))
     }
 
     /// Batched imm probability = 1 - softmax(out_p_logits)[again] per card. Returns B values.
