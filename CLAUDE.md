@@ -335,9 +335,25 @@ deltas so dead ends aren't re-run.
   weights — ADD A CASE PER NEW ARCH ENV FLAG), `trace_selfcontained.py` (is a parity trace
   reproducible by current Python? run this FIRST when a gate looks wrong), `buttons_py_vs_rust.py`
   (the 4 button intervals, Python vs Rust). **`eval_pava/`** = the rectified-eval pipeline +
-  `check_imm_identical.py` (imm must be bit-identical rect vs unrect — proves the probes are
-  non-perturbative) + `decompose_duration.py` (splits the rect-vs-unrect ahead delta into
-  duration-zeroing vs PAVA-pooling). **`dataset_id/`** (2026-07-15/16, was MISSING from this map —
+  `check_imm_identical.py` (⚠ its premise is WRONG in bf16 — see below) + `decompose_duration.py`
+  (splits the rect-vs-unrect ahead delta) + `run_mode3_noise.cmd` (the noise control).
+  **★ PROBE INSERTION IS NOT NUMERICALLY FREE (measured 2026-07-26 — supersedes "imm must be
+  bit-identical rect vs unrect, which proves the probes are non-perturbative").** The reasoning was
+  right and the conclusion wrong: probes ARE skip rows, and the token shift does step over them
+  (`prepare_batch` advances `last` only on non-skip rows), so in EXACT arithmetic imm is
+  unchanged. But +4 rows per scored review inflates the batch ~30%, which re-buckets sequences by
+  length and reorders bf16 reductions. Measured on A18, n=2500, `imm` (the channel the rectifier
+  cannot reach, hence the clean probe): **mean +0.000280**, 2,425/2,500 users moved, median only
+  +1.6e-5 but max 6.4e-3; **magnitude scales with recurrence length** (mean |d| 1.98e-4 at ~4.7k
+  reviews/user -> 3.97e-4 at ~179k) and the bias grows with it too (62% -> 78% of users worse).
+  One-signed because **LogLoss is CONVEX** — zero-mean noise on a prediction raises it.
+  **Consequences:** (1) NEVER compare a rectified eval to an unrectified one at the 0.0001 gate —
+  probe insertion alone costs ~3x the gate on imm; compare rect-to-rect only. (2) `mode2 - mode0`
+  confounds duration-zeroing with this noise, which is why **`RWKV_EVAL_PAVA=3`** (probes inserted,
+  nothing substituted) exists: `m3-m0` = noise, `m2-m3` = the clean duration cost, `m1-m2` = pooling.
+  (3) A18 rectified scores ahead **0.302890 vs 0.299302 unrectified (+0.003588, worse on
+  2080/2500)** — post-hoc rectification badly hurts a model never trained under the constraint,
+  which is 10x the noise and so a real effect, not an artifact. **`dataset_id/`** (2026-07-15/16, was MISSING from this map —
   Andrew flagged it 2026-07-26) = **the builder for the real-timestamp `anki-revlogs-10k-id`
   dataset**: `run_build_id.cmd` (download -> extract -> build) + `download_from_hf.py` +
   `extract_7z.py` + `build_parquet_id.py` (the real work; `build_parquet_upstream.py` is the

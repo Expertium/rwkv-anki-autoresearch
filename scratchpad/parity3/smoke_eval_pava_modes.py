@@ -1,4 +1,4 @@
-"""Smoke-test RWKV_EVAL_PAVA modes 0/1/2 before spending GPU hours on them.
+"""Smoke-test RWKV_EVAL_PAVA modes 0/1/2/3 before spending GPU hours on them.
 
 Mode 2 (substitute the UNRECTIFIED pressed probe) was added 2026-07-26 to separate the PAVA
 pooling from the zeroed current-row duration, which modes 0 and 1 move together. It is new code
@@ -13,6 +13,8 @@ What is asserted, on synthetic tensors with a KNOWN answer:
   mode 0 -> the eval-rectify path is inert (curve_probs returned unchanged)
   mode 2 -> scored rows take the RAW pressed probe          (pooling must NOT happen)
   mode 1 -> scored rows take the RECTIFIED pressed probe    (pooling MUST happen)
+  mode 3 -> scored rows keep their OWN value (probes inserted, nothing substituted) = the
+            bf16-noise control; probe insertion re-buckets the batch and is NOT free
 and that modes 1 and 2 actually DIFFER on a deliberately out-of-order input -- otherwise the whole
 decomposition would silently measure nothing.
 
@@ -36,8 +38,9 @@ mode = os.environ.get("RWKV_EVAL_PAVA", "0")
 class Stub:
     pass
 s = Stub()
-s.eval_pava = mode in ("1", "2")
+s.eval_pava = mode in ("1", "2", "3")
 s.eval_pava_rectify = mode != "2"
+s.eval_pava_substitute = mode in ("1", "2")
 s.pava_lambda = 0.0            # -> classic p=1 PAVA, no pava_theta needed
 s._pava_rectify_eval = sm.SrsRWKV._pava_rectify_eval.__get__(s, Stub)
 
@@ -68,14 +71,23 @@ if mode == "2":
     assert abs(got_A - raw_A) < 1e-6, f"mode 2 must NOT pool: got {got_A}, want raw {raw_A}"
 elif mode == "1":
     assert abs(got_A - rect_A) < 1e-6, f"mode 1 must pool: got {got_A}, want rect {rect_A}"
-assert abs(got_B - raw_B) < 1e-6, "ordered block must be untouched in every mode"
+elif mode == "3":
+    # the bf16-noise control: probes exist (the caller inserted them) but NOTHING is written
+    # back, so the scored row keeps its own curve value -- 0.10 at target row 0 here, which is
+    # neither raw_A (0.30) nor rect_A, so this genuinely discriminates all three modes.
+    assert abs(got_A - 0.10) < 1e-6, f"mode 3 must substitute nothing: got {got_A}, want 0.10"
+if mode == "3":
+    # block B's target row also keeps its OWN value (0.10), not the pressed probe's 0.30
+    assert abs(got_B - 0.10) < 1e-6, f"mode 3 must substitute nothing in block B: got {got_B}"
+else:
+    assert abs(got_B - raw_B) < 1e-6, "an ALREADY-ORDERED block must pool to its own raw value"
 print("MODE_OK")
 """
 
 
 def main():
     ok = True
-    for mode in ("2", "1"):
+    for mode in ("2", "1", "3"):
         env = dict(os.environ, PYTHONPATH=REPO, RWKV_EVAL_PAVA=mode)
         p = subprocess.run([sys.executable, "-c", CHILD], cwd=REPO, env=env,
                            capture_output=True, text=True)

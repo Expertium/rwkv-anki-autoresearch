@@ -282,9 +282,27 @@ class SrsRWKV(ModuleType):
         #     mode1 - mode0 = the total, i.e. what a rect-vs-unrect run reports
         # All three land on `ahead` only: `imm` comes from the rating head, and query rows have
         # always carried duration 0, so nothing about it changes.
+        #                 3 = insert probes but substitute NOTHING     <- the noise control
+        #
+        # MODE 3 EXISTS BECAUSE PROBE INSERTION IS NOT NUMERICALLY FREE (measured 2026-07-26).
+        # Probes are skip rows and the token shift steps over them (prepare_batch only advances
+        # `last` on non-skip rows), so in EXACT arithmetic they change nothing. In bf16 they do:
+        # +4 rows per scored review inflates the batch ~30%, which re-buckets sequences by length
+        # and reorders the bf16 reductions. Measured on A18 (n=2500), `imm` -- which the rectifier
+        # never touches and which therefore isolates the effect -- moved by +0.000280, and the
+        # move scales with recurrence length (mean |d| 1.98e-4 at ~4.7k reviews/user -> 3.97e-4 at
+        # ~179k) and is one-signed (62% -> 78% of users worse) because LogLoss is CONVEX: zero-mean
+        # noise on a prediction raises it.
+        # So mode2 - mode0 would charge the duration change for that noise too. Mode 3 inserts the
+        # identical probes and then leaves `curve_probs` alone, giving the clean split:
+        #     mode3 - mode0 = probe-insertion NOISE (bf16 re-bucketing only)
+        #     mode2 - mode3 = cost of zeroing the current-row duration   <- what Andrew asked for
+        #     mode1 - mode2 = cost of the PAVA pooling itself
         _eval_pava_mode = os.environ.get("RWKV_EVAL_PAVA", "0")
-        self.eval_pava = _eval_pava_mode in ("1", "2")
+        self.eval_pava = _eval_pava_mode in ("1", "2", "3")
         self.eval_pava_rectify = _eval_pava_mode != "2"
+        # mode 3 keeps the probes but performs no substitution at all
+        self.eval_pava_substitute = _eval_pava_mode in ("1", "2")
         if self.eval_pava:
             print("[pava] RECTIFIED EVAL ON: scored ahead predictions come from the "
                   "rectified pressed-button probe"
@@ -502,6 +520,10 @@ class SrsRWKV(ModuleType):
         """
         from rwkv.model.pava import pava_rectify
         out = curve_probs.detach().clone()
+        if not self.eval_pava_substitute:
+            # RWKV_EVAL_PAVA=3: probes were inserted (so the batch is re-bucketed exactly as in
+            # modes 1/2) but the scored rows keep their OWN prediction. Isolates the bf16 noise.
+            return out
         flat = out.reshape(-1)
         v = flat[probe_rows]  # (M,4) Again..Easy
         if self.eval_pava_rectify:

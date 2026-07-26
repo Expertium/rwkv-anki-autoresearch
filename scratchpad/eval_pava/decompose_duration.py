@@ -75,6 +75,9 @@ def main():
     ap.add_argument("--mode0", required=True, help="ahead jsonl, RWKV_EVAL_PAVA=0")
     ap.add_argument("--mode1", required=True, help="ahead jsonl, RWKV_EVAL_PAVA=1 (rectified)")
     ap.add_argument("--mode2", required=True, help="ahead jsonl, RWKV_EVAL_PAVA=2 (raw probe)")
+    ap.add_argument("--mode3", help="ahead jsonl, RWKV_EVAL_PAVA=3 (probes inserted, nothing "
+                                    "substituted) -- the bf16 noise control; without it the "
+                                    "duration term is confounded by probe-insertion noise")
     ap.add_argument("--imm0")
     ap.add_argument("--imm1")
     ap.add_argument("--imm2")
@@ -97,10 +100,22 @@ def main():
     print(f"size identical across all three modes on all {len(users)} users "
           f"({sum(m0[u][1] for u in users):,} reviews)")
 
+    m3 = load(args.mode3) if args.mode3 else None
+    if m3 is not None:
+        users = sorted(set(users) & set(m3))
+
     print("\nahead (curve head) -- positive = WORSE:")
-    d_dur = report("duration zeroing  (m2 - m0)", paired(m0, m2, users))
+    if m3 is not None:
+        report("probe-insertion noise (m3 - m0)", paired(m0, m3, users))
+        report("duration zeroing      (m2 - m3)", paired(m3, m2, users))
+        print("     ^ the clean pair: both sides have the identical probes inserted, so bf16")
+        print("       re-bucketing cancels and only the zeroed duration differs.")
+    d_dur = report("duration+noise    (m2 - m0)", paired(m0, m2, users))
     d_pool = report("PAVA pooling      (m1 - m2)", paired(m2, m1, users))
     d_tot = report("total             (m1 - m0)", paired(m0, m1, users))
+    if m3 is None:
+        print("     ! m2 - m0 CONFOUNDS duration with probe-insertion noise "
+              "(~+3e-4 on imm at n=2500); pass --mode3 to separate them.")
     resid = abs(d_dur + d_pool - d_tot)
     print(f"  {'additivity check':<34} |{d_dur:+.6f} {d_pool:+.6f} - {d_tot:+.6f}| "
           f"= {resid:.2e}")
@@ -115,12 +130,21 @@ def main():
     if args.imm0 and args.imm1 and args.imm2:
         i0, i1, i2 = (load(p) for p in (args.imm0, args.imm1, args.imm2))
         iu = sorted(set(i0) & set(i1) & set(i2))
-        worst = max(max(abs(i1[u][0] - i0[u][0]), abs(i2[u][0] - i0[u][0])) for u in iu)
-        print(f"\nimm invariance check on {len(iu)} users: worst |diff vs mode0| = {worst:.3e}")
-        print("  " + ("IMM_IDENTICAL (probes do not perturb the recurrence)" if worst == 0.0
-                      else "IMM_DIFFERS -- probes ARE perturbing state; decomposition INVALID"))
-        if worst != 0.0:
-            sys.exit(1)
+        # NOT an equality assertion any more (corrected 2026-07-26). The rectifier never touches
+        # the rating head, so in EXACT arithmetic imm would be identical -- but probe insertion
+        # inflates the batch ~30%, which re-buckets sequences by length and reorders bf16
+        # reductions. Measured on A18: mean +0.000280, scaling with recurrence length (1.98e-4 at
+        # ~4.7k reviews/user -> 3.97e-4 at ~179k) and one-signed (62% -> 78% of users worse)
+        # because LogLoss is convex. So imm is the CLEANEST AVAILABLE MEASUREMENT of that noise --
+        # it is the channel the rectifier cannot reach -- not a tripwire.
+        d1 = [i1[u][0] - i0[u][0] for u in iu]
+        d2 = [i2[u][0] - i0[u][0] for u in iu]
+        print(f"\nimm (rating head -- the rectifier cannot reach it), {len(iu)} users:")
+        print("  this is the bf16 PROBE-INSERTION NOISE, not a correctness check:")
+        report("mode1 - mode0", d1)
+        report("mode2 - mode0", d2)
+        print("  => a mode3 run (probes inserted, nothing substituted) measures the same noise on")
+        print("     `ahead`, which is what makes `mode2 - mode3` the clean duration cost.")
 
 
 if __name__ == "__main__":
