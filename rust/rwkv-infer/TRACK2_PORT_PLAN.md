@@ -27,6 +27,36 @@ strips leave **1×1 dummy tensors** behind, which makes auto-detection trivial a
 | 3 | **stripped L0 v_lora** | `time_mixer.v_lora_simple.A.weight` is (1,1) | skip v0 mixing at that layer (`v0 = v`) |
 | 4 | **no ahead residual** | `ahead_linear.weight` is (1,1) | curve = pure mixture; skip the `interp(out_ahead_logits, t)` term |
 | 5 | **per-step state clamp** (τ=300, window 32768) | not in weights — recipe flag | apply the same clamp the training/eval path uses, else parity drifts on long histories |
+| 6 | **PAVA rectifier on the 4 button curves** (added 2026-07-26) | `pava_theta` present (3 floats) | the deploy-side operator, not a training detail — see below |
+
+### Gap 6 in detail — the rectifier is part of the model, not the loss
+
+Andrew, 2026-07-26: *"Eval should score the rectified model, of course"* and *"implement
+[it] everywhere: training+eval+CPU inference"*. Until that day the rectifier existed only
+inside the training loss, so **the Python eval and the Rust engine both computed a model we
+never intended to ship**. Python eval is fixed (`RWKV_EVAL_PAVA=1`); Rust is this gap.
+
+What the engine must do when Anki asks for the four button intervals:
+
+1. Build 4 counterfactual review rows — the current review with the grade one-hot swapped to
+   Again/Hard/Good/Easy and **`scaled_duration` set to 0.0**, identical in every other
+   respect. (0.0 is the pipeline's "no press yet" encoding, the same value query rows carry;
+   it implies ≈7.3 s given `scale_duration(x) = (log(10+x) − 8.9)/1.07`. The old
+   `duration_median.json` constant is retired.)
+2. Run each through the model to get 4 recall curves. **These are skip rows: they read the
+   state and must NOT advance it** (`rwkv7_cuda.cu`: `if (skip) state_xy = in_state_xy`).
+3. Apply PAVA pooling-to-tie with the learned junction powers `p = 2·tanh(θ)`, uniform
+   weights — port `rwkv/model/pava.py` (~40 lines; the scalar reference
+   `pava_rectify_scalar` is the one to translate, and it is trivially correct).
+4. Solve each rectified curve for its interval. Guaranteed ordered, because the curves are
+   monotone in t by construction (no ahead residual) and now ordered across buttons.
+5. The **real** duration enters only the state update after the press — so the displayed
+   interval is stable while the user reads it, and displayed == scheduled.
+
+The vendored fork does 1/2/4 and a PAVA at step 3 (`intervals_for_pava_adjusted_samples`,
+`simulated_answer_input` varies only the grade) — same design, Andrew's in both places, so
+it is a template rather than independent corroboration. Ours differs by having 3 *learned*
+powers instead of a fixed arithmetic mean.
 
 A15's exact strip map (auto-detected, for the parity test): card L0 v_lora, card L1 cmix;
 deck L0 v_lora, deck L1/L2 cmix; note L0 v_lora; preset L0 v_lora + L0/L1/L2 cmix;
