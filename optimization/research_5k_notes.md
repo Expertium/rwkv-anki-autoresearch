@@ -258,6 +258,44 @@ training so the student can SURPASS the teacher, not converge to it. Assessment 
 - **Interaction warning:** this and data-driven init (above) both target early training — test
   SEPARATELY, then compose if both pass. Order after the HP tune per methodology (d).
 
+## Queued idea — RETRY distillation on the A18 trunk, full-run rather than warmup-only (2026-07-26)
+
+Distillation stands at **0/1, not closed** — and the one attempt ran under conditions that no longer
+hold, so the conduct rule's "3-5 in-family variants before writing a family off" has barely started.
+
+**What was actually tried:** iter 10, warmup-only KD from a d=128 teacher onto the **d=32** trunk
+(193,724 params). Rejected, worse in both modes. It was filed under **early-training-intervention**
+(now 0/2), which is why the family scoreboard shows no distillation entry at all — a mis-filing that
+made the idea look untried and simultaneously look closed.
+
+**Why the conditions changed.** At d=32 on 100 users the model was **DATA-limited** — the lesson bank
+records that capacity adds (num_curves, channel_mixer width, more epochs) were all rejected there, and
+that "the path forward is MORE DATA". A teacher cannot fix a data limit; it only re-expresses labels
+the student already has. A18 is the opposite regime: the width ladder closed at a genuine accuracy
+floor, and the second LoRA halving **flipped sign** vs A14's first halving at d=128 (+0.00002/+0.00009
+for -27.5k, where the same lever had IMPROVED both modes on the wider trunk). That is the signature of
+a **capacity-limited** student, which is exactly where soft targets are supposed to pay: they carry
+per-example information that a 0/1 label cannot, letting a small net spend its limited capacity on
+the teacher's ranking rather than rediscovering it.
+
+**Untried variants, roughly in order of expected value:**
+1. **Full-run KD with a fixed weight** (the classic form) instead of warmup-only. Warmup-only is the
+   unusual variant, and it is the one that was tested.
+2. **Anneal the KD weight** from ~1 to 0 over the run — keeps the "student can surpass the teacher"
+   property that motivated warmup-only, without the hard cliff at step N.
+3. **Distill the CURVE, not just the scalar.** The teacher's whole forgetting curve at several
+   elapsed times is a far richer target than its prediction at the one observed time, and it is
+   free — the teacher dump already stores the curve parameters.
+4. **Teacher = `pretrain/RWKV_trained_on_101_4999.pth`** (2.76M, 4.96x the student). No eval leakage:
+   it never saw 5001-10000. Confirm which teacher iter 10 actually used before treating this as new.
+
+**Infrastructure already exists** — `RWKV_KD_TEACHER` / `RWKV_KD_DUMP_OUT` / `RWKV_KD_STEPS` in
+`train_rwkv.py`, with the arch-swap footgun already solved via `RWKV_ARCH_MODULE`. The dump path
+means the teacher runs ONCE, not every step, so KD is cheap in wall-clock.
+
+**Judge it as its own family.** Whatever the outcome, record it under *distillation*, not
+early-training-intervention, so the count is honest.
+
 ## Queued analysis — irreducible-entropy (LogLoss floor) estimate (Andrew 2026-07-03, task #18)
 How low can ANY algorithm go on this data? No assumption-free answer exists (single-draw Bernoulli
 mixtures are non-identifiable beyond their mean — p*'s dispersion is invisible without structure), so:
