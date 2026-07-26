@@ -48,7 +48,36 @@ and the depth profile matches; the `0` root sentinel became a per-user code that
 deck (that's the 5.8% "unresolvable" = top-level decks). **So deck-hierarchy features need
 NO new dataset export** — unlike everything else on this page. Our pipeline simply throws
 it away: `rwkv/data_processing.py:203` does `df_decks.drop(columns=["user_id", "parent_id"])`
-(inherited from upstream). Cost to use it = an LMDB rebuild, not a data rebuild.
+(inherited from upstream). ~~Cost to use it = an LMDB rebuild, not a data rebuild.~~
+
+### ★ CORRECTION 2026-07-26 — it needs NO LMDB REBUILD EITHER. Verified end-to-end.
+
+The "rebuild" estimate assumed the per-stream grouping is baked into the LMDB. It is not — the
+grouping is DERIVED from a per-review id array, and that array is the **raw `deck_id`**:
+
+1. `data_processing.py:459` stores `ids[submodule] = section_df[submodule]` — the dataset's own
+   `deck_id` column cast to int32, not a remapped index. Key
+   `{user}_{start}-{end}_{len}_deck_id_id_`.
+2. **Empirically confirmed** (user 1, first chunk, 15,191 reviews): 14 unique stored deck ids,
+   **14/14 resolve to real `deck_id` rows in that user's `decks` parquet**, and all 14 carry a
+   non-zero `parent_id`.
+3. `prepare_batch.insert_probes` ALREADY rebuilds a submodule's entire `ModuleData`
+   (`split_len` / `split_B` / `from_perm` / `to_perm`) from an id array in ~20 lines of numpy, at
+   batch time, on every probe-inserted sample. Ancestor levels are the same call on
+   `parent_of(...)` applied to the stored ids.
+
+**=> a per-user `deck_id -> parent_id` map (38 rows for user 1; a few MB across 10k users) plus
+the existing grouping code gives ancestor-level groupings with the LMDBs untouched.** What this
+removes is not small: the original build's ETA was **2-4 days of CPU**, and `train_db_5k_h1` is
+**372.5 GB against 229 GB free on C:** — a side-by-side rebuild was never actually possible; it
+would have meant deleting the only copy first, with no rollback.
+
+Cost moves to the fetch workers (CPU per batch), which have headroom — the speed notes record
+fetching as already fully hidden behind the GPU step, not a lever.
+
+⚠ Confirmed on ONE user. The 94.2% published-set resolve rate above (200-user sample) is the
+number to re-check at scale before building on it; the 5.8% miss is top-level decks, whose `0`
+root sentinel became a per-user code. Re-run that check across a few hundred users first.
 
 **Why it may matter more than a feature — the PRESET STREAM IS DEGENERATE FOR MOST USERS**
 (800-user sample, all owned decks): median user has **56 decks, 6 root decks, 1 preset**;
