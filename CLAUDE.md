@@ -826,11 +826,20 @@ Plain-era and QAT-era logloss are NOT comparable.
      **=> the 10x run costs ~4 DAYS of training, not 2.5** (WS 43 h -> ~73 h, decay 11 h -> ~19 h),
      and that is still at d=32 state sizes; iter 31's per-card state is **2,880 floats vs 576**, so
      the kernel share should be re-measured at d=80 (100-step A/B, plain vs q72u env, ~5 min GPU).
-   - **★ HIGH-VALUE, CHEAP: test whether QAT can run JIT-ON.** If the tax is mostly lost JIT rather
-     than kernel work, it is recoverable — CLAUDE.md already flags "JIT on the grafted q72u paths
-     unverified -- A/B once at champion-run launch", and the `torch.linalg.svd` that originally
-     broke TorchScript was fixed by `@torch.jit.ignore` on `quant_aware_rwkv7`. Worth **~1.38x, i.e.
-     roughly 1.5 days off a 4-day run**, for what is a smoke test. Do this BEFORE the long run.
+   - **★ QAT CAN RUN JIT-ON — the CPU half is DONE and GREEN (2026-07-27).** `RWKV_NO_JIT=1` is
+     **not structurally required** by quant-aware training. `scratchpad/parity3/smoke_qat_jit.py`
+     (CPU, seconds, no GPU) shows, under the full q72u QAT env on the A18/iter-31 trunk: (1) the
+     whole `SrsRWKV` **compiles as a ScriptModule** — PQ codebooks, low-rank scope and norm bits
+     included; (2) scripted code **does dispatch** at runtime to the `@torch.jit.ignore`'d
+     `quant_aware_rwkv7`; (3) eager and scripted give **bit-identical** CPU checksums
+     (-394.3387028575). The belief that it could not was an untested ASSUMPTION written into
+     `rwkv_ops.py:520-522` ("this path only runs under RWKV_NO_JIT") — that `jit.ignore` was added
+     to un-break JIT for NON-QAT runs, and nobody re-asked the question for QAT itself.
+     ⚠ **What is NOT yet shown, and needs a free GPU (~15 min):** bit-exactness of a real training
+     step vs the NO_JIT path (the CUDA `qat_lr_rank1` kernels, not the CPU reference), and the
+     actual steps/s A/B. Also note the dispatch test exercised the int4/rank-1 call variant, not
+     the PQ-codebook variant — the PQ config was covered only by the compile half. Do both BEFORE
+     the long run; worth **~1.38x, i.e. roughly 1.5 days off a 4-day run**.
    - **WHERE the QAT sits in the 10x is a real fork,** because `QAT from scratch = +0.0118` (iter
      40) — it MUST warm-start. Reading A: 10x plain -> warm-start QAT for the existing 2.0-ep
      fine-tune. Reading B: 10x budget with QAT active throughout, warm-started from the current
@@ -908,24 +917,45 @@ Plain-era and QAT-era logloss are NOT comparable.
   relative script path exits instantly, silently, and still returns a pid.
 
 #### QUEUE
-1. **Record iter 32 at verdict** (~06:00-11:00): `research_log.jsonl` + `research_5k.md` FIRST
+0. **★ ASK ANDREW — THE GATE AND THE DEPLOY METRIC ARE DIFFERENT NUMBERS (surfaced 2026-07-27).**
+   Candidates are gated on the **unrectified** logloss, but the rectifier is in the deploy contract,
+   so what a user gets is the **rectified** number. iter 31 happened to win both, so nothing is
+   wrong today — but the two are not the same quantity and can in principle diverge, which would
+   let an iteration be ACCEPTED while being worse for users. This is exactly the principle already
+   recorded in [[champion-logloss-deployed]] ("a champion's comparison logloss must be the DEPLOYED
+   model, not fp32"), applied to a transform that did not exist when that rule was written.
+   ⚠ **Do NOT switch the gate unilaterally** — it re-bases every comparison in the phase, and the
+   rect-vs-unrect delta is model-dependent (A18 +0.003588 vs iter 31 +0.001893), so old iterations
+   cannot be retro-scored without re-running them. Options to put to Andrew: (a) keep the
+   unrectified gate and treat rectified as a reported-alongside deploy number (status quo, cheapest);
+   (b) gate on rectified from iter 33 on, accepting that the pre-31 lineage is not comparable;
+   (c) require BOTH to pass, which is strictly safer and costs one extra eval per iteration.
+1. **Shrink the rectification residual — a cheap, well-posed iter 33 candidate.** iter 31 still pays
+   **+0.001893** on ahead to be rectified, and training under PAVA is what recovers such penalties
+   (it already halved A18's). Both levers are ONE flag on an existing recipe: raise
+   `RWKV_PAVA_LAMBDA` (0.1 today) and/or `RWKV_PROBE_DENSITY` (0.08). Expect a trade — more
+   monotonicity pressure should cost raw unrectified accuracy — which is precisely why item 0
+   matters: judged on the unrectified gate this family looks like a regression even when it is a
+   deploy win. Measure BOTH metrics for any run in it.
+2. **Record iter 32 at verdict** (~06:00-11:00): `research_log.jsonl` + `research_5k.md` FIRST
    table + `research_5k_verbose.md` + `python optimization/logbook.py rebuild`. File it under the
    **distillation** family (iter 10 was mis-filed under early-training-intervention, which is why
    the scoreboard shows distillation nowhere). Read the mode-2 decomposition out of
    `scratchpad/eval_pava/mode2_diag.log` at the same time.
-2. **If iter 32 lands well, the cheap follow-ups reuse the SAME dump** (the expensive part): the
+3. **If iter 32 lands well, the cheap follow-ups reuse the SAME dump** (the expensive part): the
    annealed-alpha variant (unset `RWKV_KD_ALPHA`, window = full run) and an alpha sweep are
    student-only re-runs. Curve-level distillation (variant 3) needs new dump code.
-3. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — the highest-value non-research work.
+4. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — the highest-value non-research work.
    Steps 1-4 DONE and `PARITY: PASS` for A18 (§11). Remaining: port the button API to `fast.rs`
    (model.rs has it; fast.rs is the DEFAULT runtime path, so deploy cannot serve intervals at
    speed until it lands), then **measure** — the experiment that says whether the ablations bought
    user-visible speed. First data point already in `CPU_INFERENCE.md`: 2.39x on the Rust path.
-4. **NEW INPUT FEATURES — now on the critical path** (Andrew 2026-07-26; see "THE ENDGAME,
-   ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **Needs an LMDB
-   rebuild**, which is the long-lead item in the whole plan, so scope it BEFORE the algorithmic
-   loop runs dry. Budget question CLOSED: the 10x run happens once, last, after this.
-5. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); permutation init (LOW).
+5. **NEW INPUT FEATURES — now on the critical path** (Andrew 2026-07-26; see "THE ENDGAME,
+   ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **SCOPED 2026-07-27** —
+   that doc now carries the four code sites, the F:-side-by-side disk plan (no delete needed), and
+   a 100-user de-risk build. Remaining unknowns are the STATISTICS constants and the rebuild
+   wall-clock, not the design. Budget question CLOSED: the 10x run happens once, last, after this.
+6. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); permutation init (LOW).
    `pava_loss_avg` / `pava_pool_frac` step-trace fields: DONE (train_rwkv.py, keyed on enablement).
 
 **⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
