@@ -476,7 +476,9 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
   (1e-3 vs 7e-4), warmup (200 vs 20,000) and MAX (32768 vs 66000).
   **Two consequences.** (1) The budget gap is SHARED by every iteration, so it cancels in every gate
   and no ranking is affected -- do not "fix" it mid-phase. (2) It is where ~0.004 lives, so the
-  research-close plan's *ONE 2-ep confirmation run* is undersized; flagged to Andrew, his call.
+  research-close plan's 2-ep confirmation run was undersized. **DECIDED (Andrew 2026-07-26): a
+  10x-epoch-budget run, ONCE, at the very end — after the algorithmic loop AND after new input
+  features. See "THE ENDGAME, ORDERED".** Do not run it earlier "just to see".
   ⚠ This check was DESIGNED IN and its answer was never promoted: `research_5k_verbose.md` planned
   "1-ep-budget check at d=128 rides along free: if A0 ~ the 12-ep upstream number...". It ran, came
   back 0.004 short, and the headline framing kept comparing a 1-epoch model to a 12-epoch one without
@@ -754,8 +756,38 @@ exactly what iter 31 grafts onto the A18 trunk: **PAVA** (iter 23), **GRU N=3** 
 
 **QAT deploy truth (FROZEN until research closes)** = champ5k_b1 (0.306629/0.277893
 quant-aware; `champion_5k.json` + its own codebooks). At research close the final champion gets
-ONE 2-ep confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family
-flags). Plain-era and QAT-era logloss are NOT comparable.
+the LONG RUN below + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family flags).
+Plain-era and QAT-era logloss are NOT comparable.
+
+### ★ THE ENDGAME, ORDERED (Andrew 2026-07-26 — this is a SEQUENCE, not a menu)
+> *"We'll do a run with 10x the current epoch budget, but only at the end, after algorithmic
+> improvements and adding new input features."*
+1. **Algorithmic improvements** — the current research loop, unchanged (gate, families, conduct
+   rules all as-is). iter 32 onward.
+2. **New input features** — previously filed LOW; this directive puts it ON the critical path.
+   Design in `optimization/FUTURE_FEATURES.md`; **needs an LMDB rebuild**, so it is the long-lead
+   item — start scoping it before the algorithmic loop runs dry, not after. ⚠ It also breaks
+   research-phase INVARIANT 2 ("same preprocessed 92-dim inputs / existing LMDBs") — that
+   invariant was for the shrink phase and Andrew has now superseded it; the hierarchy invariant
+   stands. Every candidate after the rebuild re-bases against a champion re-run on the new inputs.
+3. **THEN the 10x-budget run — ONCE, on the final champion only.** 1.25 ep -> ~12.5 ep, i.e.
+   parity with what upstream trained (~12), which is where the +0.0037/+0.0043 measured in
+   "Workbench + baselines" actually lives.
+   **Do NOT run this earlier "just to see".** Changing the shared budget re-bases every
+   iteration's comparison, and mid-phase it would cost days of GPU for a number that cannot be a
+   champion accept.
+   **Cost to plan for, at iter 31's measured 1.44 steps/s:** WS 223,460 steps ~= 43 h, decay at
+   the 0.25 ratio ~55,900 steps ~= 11 h, plus eval ~= **2.5 days of continuous GPU**. Use the
+   mid-epoch resume (`RWKV_RESUME_SKIP_GROUPS=1` + `make_resume.py`) — over that span a crash or
+   reboot is likely, and losing it whole is the only real failure mode.
+   **Three things that are tuned for 1 epoch and must be RECONSIDERED at 12.5 — write the answers
+   down before launching:** (a) **warmup 200 steps** is 0.9% of a 1-ep run but 0.09% of this one;
+   upstream used 20,000. (b) **augmentation is OFF** (`RWKV_AUGMENT_SEED=1234`) — a deliberate
+   workbench choice for ~0 run-to-run variance, but at 12.5 epochs over the SAME 5,000 users it is
+   repetition, not variety, and augmentation is exactly the regularizer that regime wants; the
+   variance argument no longer applies to a one-off final run. (c) **wd/dropout** were tuned where
+   overfitting was impossible; at 10x they are live levers. None of this is a reason to delay —
+   just do not assume the 1-ep recipe transfers.
 
 #### LIVE — a 3-job GPU chain, each parked on the previous one's `DONE_EXIT_`
 1. **RUNNING: rectified evals** — `scratchpad/eval_pava/run_rect_evals.cmd`, detached pid 33012.
@@ -813,13 +845,11 @@ flags). Plain-era and QAT-era logloss are NOT comparable.
    (model.rs has it; fast.rs is the DEFAULT runtime path, so deploy cannot serve intervals at
    speed until it lands), then **measure** — the experiment that says whether the ablations bought
    user-visible speed. First data point already in `CPU_INFERENCE.md`: 2.39x on the Rust path.
-4. **Budget question for Andrew (new 2026-07-26):** ~0.004 of accuracy sits in the 1.25-epoch
-   research budget vs upstream's ~12 (see "Workbench + baselines"). The research-close plan's ONE
-   2-ep confirmation run is undersized. Cheap probe = 2-3 epochs at d=80 (~9 h/extra epoch); it
-   cannot be a champion accept (changing the shared budget re-bases every future iteration), only
-   a calibration for the shipped model.
-5. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); deck-tree features
-   (`optimization/FUTURE_FEATURES.md`, needs an LMDB rebuild); permutation init (LOW).
+4. **NEW INPUT FEATURES — now on the critical path** (Andrew 2026-07-26; see "THE ENDGAME,
+   ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **Needs an LMDB
+   rebuild**, which is the long-lead item in the whole plan, so scope it BEFORE the algorithmic
+   loop runs dry. Budget question CLOSED: the 10x run happens once, last, after this.
+5. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); permutation init (LOW).
    `pava_loss_avg` / `pava_pool_frac` step-trace fields: DONE (train_rwkv.py, keyed on enablement).
 
 **⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
