@@ -58,6 +58,29 @@ The vendored fork does 1/2/4 and a PAVA at step 3 (`intervals_for_pava_adjusted_
 it is a template rather than independent corroboration. Ours differs by having 3 *learned*
 powers instead of a fixed arithmetic mean.
 
+**The Python reference now exists** (`11ab7e0`): `SrsRWKVRnn.button_heads` /
+`button_curves` / `button_intervals` implement exactly steps 1–5, and
+`scratchpad/eval_pava/smoke_rnn_buttons.py` is the property test to mirror in Rust. Port
+against that, not against the training path — it is the one place all five steps appear
+together. Two things it learned the hard way, both worth copying:
+
+- `pava_theta` must be **in the loaded state dict**, or a PAVA checkpoint cannot be opened
+  at all (Python's `load_state_dict` is strict; Rust's loader should likewise refuse a
+  model whose `pava_theta` it silently ignored).
+- The interval solver must apply the rectifier **at every bisection probe**, since
+  rectification couples the four buttons — evaluating a raw curve and rectifying afterwards
+  gives a different answer. Cheap regardless: the heads do not depend on `t`, so a probe is
+  closed-form arithmetic and the RWKV forward runs exactly 4 times per press.
+
+## ⚠ Gaps 2, 3 and 5 are PYTHON-RNN gaps too (found 2026-07-26)
+
+`rwkv/model/rwkv_rnn_model.py` implements **none** of `RWKV_STRIP_CMIX`,
+`RWKV_STRIP_L0_VLORA` or `RWKV_STATE_CLAMP_*` — those flags live only in `rwkv_model.py`
+(the training/eval form). So the Python RNN twin cannot run the merged A18-trunk champion
+either. This matters for sequencing: **`verify_rust.py` compares Rust against the Python
+RNN**, so the Python side of gaps 2/3/5 has to land *before* the Rust side can be gated.
+Doing it there first is also the cheaper place to get the semantics right.
+
 A15's exact strip map (auto-detected, for the parity test): card L0 v_lora, card L1 cmix;
 deck L0 v_lora, deck L1/L2 cmix; note L0 v_lora; preset L0 v_lora + L0/L1/L2 cmix;
 user L0 v_lora + L0/L1/L2 cmix.
@@ -88,6 +111,13 @@ user L0 v_lora + L0/L1/L2 cmix.
 
 ## Non-goals for this port
 
-Track-1 deploy extras (PAVA rectifier, GRU_HEAD=3, Muon — training-only) and the q72u
-quantization path already in the engine. Keep them untouched; the track-2 model is plain fp32
-for now, and quantization is a separate axis that already works.
+Muon is training-only — nothing ships. The q72u quantization path already in the engine
+stays untouched; the track-2 model is plain fp32 for now, and quantization is a separate
+axis that already works.
+
+⚠ **The PAVA rectifier and GRU_HEAD are NOT non-goals** (corrected 2026-07-26). An earlier
+version of this line listed them as "track-1 deploy extras, training-only", which was
+wrong twice over: the GRU head is gap 1 above, and the rectifier is the model's button
+ordering guarantee, not a training detail. Both ship. That misfiling is the same error
+that let PAVA go unevaluated from iter 23 to iter 30 — see the three-way parity rule in
+CLAUDE.md §9.
