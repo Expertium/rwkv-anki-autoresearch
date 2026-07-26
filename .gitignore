@@ -76,3 +76,6 @@ scratchpad/*/cb_shift_*.txt
 scratchpad/*/cb_wkv_*.txt
 !scratchpad/champ5k_b1/cb_shift_*.txt
 !scratchpad/champ5k_b1/cb_wkv_*.txt
+reference_iter31/*
+!reference_iter31/ref_metrics.json
+preds_iter31/

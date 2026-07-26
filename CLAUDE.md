@@ -436,6 +436,27 @@ to 3.5e-5. That is accumulated float divergence over a ~5,000-step recurrence in
 implementations, not a formula error -- the gate measures the mean and passes with wide margin. Do not
 expect the old d=32 port's "dpred ~3e-7"; that model was shallower and its chain shorter.
 
+**★ THE CHAMPION ITSELF IS NOW PARITY-VERIFIED TOO (iter 31, 2026-07-27): `PARITY: PASS`, imm
+0.000008 / ahead 0.000001 vs tol 0.0005** -- 62x and 500x inside, TIGHTER than A18's, and max
+per-review |rust-python| 1.59e-3 vs A18's 9.6e-3. This closed a real gap: every parity artifact
+until now was A18's, so the **deploy contract's two newest pieces had never run end-to-end** --
+**GRU N=3** (A18 is N=2) and **the PAVA rectifier with real learned powers** (the A18 run printed
+`pava=no`). The engine loaded both from the checkpoint unaided: `head=gru3
+pava=[-0.13663276, -1.517578, 0.00020639747]`. `gru_curves` and `pava_theta` are read from tensor
+shapes (`model.rs:142,173`), so neither was hardcoded to A18's values.
+Artifacts in `reference_iter31/` (same gitignore convention: only `ref_metrics.json` tracked).
+Procedure identical to A18's, with `RWKV_CHAMP_CKPT=scratchpad/iter31_algo/iter31d_5586.pth
+RWKV_CHAMP_SFT=iter31_algo.safetensors RWKV_REF_DIR=reference_iter31` on the export and
+`RWKV_GRU_HEAD=3 RWKV_PAVA_LAMBDA=0.1` added to A18's env.
+⚠ **`trace_selfcontained.py` HAD A BUG THAT MAKES IT LIE, FIXED 2026-07-27 -- if you used it before
+this date, distrust the verdict.** It honoured `RWKV_CHAMP_CKPT` but **hardcoded `reference/`** for
+the trace, so pointing it at a new trace compared the NEW checkpoint against the OLD June d=128
+trace and printed `TRACE_NOT_SELF_CONTAINED` for a directory it never opened. It failed exactly
+that way on BOTH fresh traces here (worst 1.0e-1 / 6.2e-2, plausible magnitudes, right shape) and
+the tell was that the "stored" values were IDENTICAL across two different models. Doubly nasty
+because this is the one tool whose entire job is detecting a stale reference. Post-fix both traces
+are self-contained at exactly 0.000e+00, A18 reproducing its recorded verdict.
+
 **Speed = batch throughput via simultaneous paired Wilcoxon (protocol point 7–8):**
 - **Lock CPU freq** (admin, once/session): `powercfg -attributes SUB_PROCESSOR
   75b0ae3f-bce0-45a7-8c89-c9611c25e100 -ATTRIB_HIDE` ; `powercfg /setacvalueindex SCHEME_CURRENT

@@ -26,6 +26,13 @@ from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG  # noqa: E402
 from rwkv.model.srs_model_rnn import SrsRWKVRnn  # noqa: E402
 
 CKPT = os.environ.get("RWKV_CHAMP_CKPT", "pretrain/rwkv/ref_100/rwkv_ref_558.pth")
+# ⚠ FIXED 2026-07-27: this was HARDCODED to "reference/" while CKPT was already env-driven, so
+# pointing it at a new trace silently compared a NEW checkpoint against the OLD June d=128 trace
+# and reported TRACE_NOT_SELF_CONTAINED for a trace it had never opened. The failure is convincing
+# (right shape, plausible magnitudes) and it lands on the one tool whose entire job is detecting a
+# stale reference -- so it read as a real finding about the new trace. Both `export_rnn_trace.py`
+# and `verify_rust.py` honour RWKV_REF_DIR; this was the odd one out.
+REF_DIR = os.environ.get("RWKV_REF_DIR", "reference")
 USERS = [107, 136, 156]
 
 
@@ -47,8 +54,8 @@ def main():
 
     worst = 0.0
     for u in USERS:
-        t = load_file(f"reference/trace_user_{u}.safetensors")
-        meta = json.load(open(f"reference/trace_user_{u}.json"))
+        t = load_file(f"{REF_DIR}/trace_user_{u}.safetensors")
+        meta = json.load(open(f"{REF_DIR}/trace_user_{u}.json"))
         th = int(t["review_th"][0].item())
         feats = t["feats_imm"][0:1].float()
 
