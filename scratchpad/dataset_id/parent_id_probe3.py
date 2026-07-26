@@ -11,7 +11,11 @@ import pandas as pd
 PUB = r"C:\Users\Andrew\anki-revlogs-10k"
 users = sorted(glob.glob(os.path.join(PUB, "decks", "user_id=*")),
                key=lambda p: int(p.rsplit("=", 1)[1]))
-sample = [users[i] for i in range(0, len(users), max(1, len(users) // 200))][:200]
+# N from argv (default 200). Andrew's ordering put deck-tree features on the critical path
+# 2026-07-26, so the 200-user resolve rate became load-bearing -- re-run at 2000 to confirm.
+import sys
+_N = int(sys.argv[1]) if len(sys.argv) > 1 else 200
+sample = [users[i] for i in range(0, len(users), max(1, len(users) // _N))][:_N]
 
 tot = res = 0
 selfp = 0

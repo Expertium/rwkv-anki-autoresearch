@@ -88,9 +88,18 @@ would have meant deleting the only copy first, with no rollback.
 Cost moves to the fetch workers (CPU per batch), which have headroom — the speed notes record
 fetching as already fully hidden behind the GPU step, not a lever.
 
-⚠ Confirmed on ONE user. The 94.2% published-set resolve rate above (200-user sample) is the
-number to re-check at scale before building on it; the 5.8% miss is top-level decks, whose `0`
-root sentinel became a per-user code. Re-run that check across a few hundred users first.
+**Resolve rate CONFIRMED AT SCALE 2026-07-26** (`parent_id_probe3.py 2000`, now takes N on argv):
+**2,000 users / 425,429 deck rows -> 94.5% of `parent_id`s resolve to a `deck_id` in the same
+user's table**, matching the 200-user 94.2% at 10x the sample. **0 self-parents, 0 cycles.** The
+5.5% miss is exactly the top-level decks, whose `0` root sentinel was factorized into a per-user
+code that is not a deck — i.e. "no parent", not a data error. Deck-weighted depth histogram:
+23,605 roots, then 45,760 / 81,449 / 116,058 / 85,627 / 42,359 at depths 1-5, tailing to 209 at
+depth 11 (deck-weighted; the REVIEW-weighted profile above is the one that sets the loop cost).
+
+So the deck tree is usable on the CURRENT LMDBs, unmodified. ⚠ Still spot-checked on one user for
+the LMDB-id -> parquet link itself (14/14); widen that if anything looks off when the gathers are
+built. Note the rebuild path would resolve at ~100% instead, since `-id` keeps real deck ids —
+so if the timestamp rebuild happens first, take the tree from `-id` and skip the 5.5% entirely.
 
 **Why it may matter more than a feature — the PRESET STREAM IS DEGENERATE FOR MOST USERS**
 (800-user sample, all owned decks): median user has **56 decks, 6 root decks, 1 preset**;
