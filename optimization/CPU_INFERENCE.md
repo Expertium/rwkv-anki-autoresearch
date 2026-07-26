@@ -66,3 +66,34 @@ compute-bound: the A15/A16 width cuts finally show up as real rev/s, roughly tra
 4.5× MAC reduction. If Rust turns out to be overhead-bound too, the honest conclusion is
 that further width cuts are for state and training only, and CPU speed needs op-fusion work
 instead — which is roadmap step 4 (speed) rather than step 5 (params).
+
+## Measurement 2 — RUST engine (`rust/rwkv-infer`, the deploy path), 2026-07-26
+
+**The missing number is no longer missing.** The engine could not run the track-2
+architecture at all until today's port steps 1-3 (shape detection, GRU curve head, per-layer
+cmix skip + state clamp — commits `1f22e11`, `1620c82`, and this one). Both models below are
+driven through the SAME engine, the SAME reference traces (users 107/136/156) and the same
+machine, via `./rust/rwkv-infer/target/release/rwkv-infer.exe` with `RWKV_WEIGHTS` set;
+default fast path (`fast.rs`), B=1, single-threaded, fp32, no state compression.
+
+| model | params | rev/s | vs baseline |
+|---|---|---|---|
+| `rwkv_ref_558` — the original 2.76M | 2,762,884 | ~714 | 1.00× |
+| **A18 champion** (d=80, GRU head, stripped mixers) | **557,246** | **~1,703** | **2.39×** |
+
+**A 4.96× param cut buys 2.39× throughput here, versus 1.24× and plateauing in the Python
+RNN path.** So the ablation programme does pay off for Anki users — but only in the engine
+that will actually ship, and still sublinearly (2.39× for 4.96×), consistent with a workload
+that is part per-op overhead and part real arithmetic. The Python-path plateau in
+Measurement 1 was an artefact of that path's ~0.08-0.30 GMAC/s overhead ceiling, NOT evidence
+that width had stopped mattering. Two lessons stand: measure the deploy engine, and do not
+generalize a scaling curve from a harness running 20-100× below the hardware's rate.
+
+⚠ **Caveats, stated plainly.** (1) **Parity is NOT established** — see the RED gate in
+`TRACK2_PORT_PLAN.md` §"Order of work" step 4; these predictions are unverified against
+Python, though all 5,229+4,215 of them are finite and in (0,1). Throughput is trustworthy
+regardless (the same work is done either way); the *correctness* of that work is not yet
+proven. (2) The two rows differ in more than width — architecture generation, curve head and
+stripped sublayers all move together. That is deliberate: it is the honest "what we shipped
+before vs what we would ship now" comparison, not a controlled width sweep. (3) Not yet
+measured with quantized state, nor with the PAVA button API (4 extra forwards per press).

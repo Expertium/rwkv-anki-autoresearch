@@ -1520,6 +1520,50 @@ impl Model {
     }
 
     /// Run one RWKV stream (n layers) over a single token. Returns (out, new_state).
+    /// Per-(batch,head) Frobenius clamp on the carried WKV state:
+    /// `S *= tau / max(tau, ||S||_F)`, with non-finite heads zeroed. Mirrors
+    /// `RWKV7RNNTimeMixer.clamp_state` in rwkv_rnn_model.py.
+    ///
+    /// ⚠ Deliberately NOT bit-identical to training. Training clamps between windows of
+    /// `state_clamp_window` steps, but a one-step-at-a-time engine cannot reconstruct those
+    /// boundaries -- they depend on how `prepare_batch` packed the batch -- so it clamps every
+    /// step. The two agree EXACTLY wherever ||S|| <= tau (the factor is then exactly 1.0 and
+    /// this returns the input untouched) and differ only on already-diverging states, where
+    /// per-step is the more conservative choice. See TRACK2_PORT_PLAN.md.
+    ///
+    /// The early return is what makes that guarantee real: in the overwhelmingly common case
+    /// nothing is allocated and no float is touched, so parity cannot drift through here.
+    fn clamp_state(&self, s: &Tensor) -> Result<Tensor> {
+        let tau = match self.arch.state_clamp_tau {
+            Some(t) => t as f64,
+            None => return Ok(s.clone()),
+        };
+        let dims = s.dims().to_vec();
+        let nd = dims.len();
+        let per = dims[nd - 1] * dims[nd - 2]; // K*K
+        let norms: Vec<f32> = s
+            .flatten_from(nd - 2)?
+            .sqr()?
+            .sum(D::Minus1)?
+            .sqrt()?
+            .flatten_all()?
+            .to_vec1()?;
+        if norms.iter().all(|n| n.is_finite() && (*n as f64) <= tau) {
+            return Ok(s.clone()); // inert -- bit-exact
+        }
+        let mut v: Vec<f32> = s.flatten_all()?.to_vec1()?;
+        for (i, &n) in norms.iter().enumerate() {
+            let sl = &mut v[i * per..(i + 1) * per];
+            if !n.is_finite() {
+                sl.iter_mut().for_each(|x| *x = 0.0);
+            } else if (n as f64) > tau {
+                let f = (tau / n as f64) as f32;
+                sl.iter_mut().for_each(|x| *x *= f);
+            }
+        }
+        Ok(Tensor::from_vec(v, dims, s.device())?)
+    }
+
     fn run_stream(
         &self,
         module_idx: usize,
@@ -1537,6 +1581,10 @@ impl Model {
             let t_st = ls.map(|s| (&s.t_xshift, &s.t_state));
             let (xt, v0_out, t_xshift, t_state) =
                 self.time_mixer(&tp, l, &x, v0.as_ref(), t_st)?;
+            // Bound the carried state before anything else sees it -- the clamp is part of the
+            // recurrence in training, not a storage step, so it goes ahead of the compression
+            // round-trip below.
+            let t_state = self.clamp_state(&t_state)?;
             // Simulate per-card STATE storage by round-tripping the recurrent WKV matrix each step
             // (worst-case accumulation == the deploy per-persist model). t_xshift/c_xshift are tiny ->
             // left fp32. Low-rank (the 0.15 KB path) takes precedence over full-matrix quant per stream.
@@ -1577,10 +1625,24 @@ impl Model {
             };
             v0 = Some(v0_out);
             let c_st = ls.map(|s| &s.c_xshift);
-            let (xc, c_xshift) = self.channel_mixer(&cp, &xt, c_st)?;
-            let c_xshift = match shift_qmax {
-                Some(q) => quant_roundtrip(&c_xshift, q)?,
-                None => c_xshift,
+            // A stripped channel mixer skips the sublayer AND its residual add, and its shift
+            // state is never written (mirrors RWKV7RNNLayer.forward: `return x_BC, v0_BC,
+            // (time_state, channel_state)`). We must still store SOMETHING in LayerState, so the
+            // incoming shift passes through untouched; it is never read again, and a stripped
+            // layer should be excluded from deploy state-size accounting.
+            let (xc, c_xshift) = if self.arch.has_cmix[module_idx][l] {
+                let (xc, cs) = self.channel_mixer(&cp, &xt, c_st)?;
+                let cs = match shift_qmax {
+                    Some(q) => quant_roundtrip(&cs, q)?,
+                    None => cs,
+                };
+                (xc, cs)
+            } else {
+                let carried = match c_st {
+                    Some(t) => t.clone(),
+                    None => Tensor::zeros_like(&xt)?,
+                };
+                (xt.clone(), carried)
             };
             x = xc;
             new_state.push(LayerState {
@@ -1918,13 +1980,25 @@ impl Model {
             let t_st = ls.map(|s| (&s.t_xshift, &s.t_state));
             let (xt, v0_out, t_xshift, t_state) =
                 self.time_mixer_batched(&tp, l, &x, v0.as_ref(), t_st)?;
+            // clamp_state is shape-generic: it reduces over the trailing (K,K) and iterates the
+            // flattened leading dims, so (B,H,K,K) works exactly as (H,K,K) does.
+            let t_state = self.clamp_state(&t_state)?;
             let t_state = match self.state_quant_qmax.get(&module_idx) {
                 Some(&qmax) => quant_roundtrip_batched(&t_state, qmax)?,
                 None => t_state,
             };
             v0 = Some(v0_out);
             let c_st = ls.map(|s| &s.c_xshift);
-            let (xc, c_xshift) = self.channel_mixer_batched(&cp, &xt, c_st)?;
+            // Stripped channel mixer: skip the sublayer and its residual (see run_stream).
+            let (xc, c_xshift) = if self.arch.has_cmix[module_idx][l] {
+                self.channel_mixer_batched(&cp, &xt, c_st)?
+            } else {
+                let carried = match c_st {
+                    Some(t) => t.clone(),
+                    None => Tensor::zeros_like(&xt)?,
+                };
+                (xt.clone(), carried)
+            };
             x = xc;
             new_state.push(BatchedLayerState { t_xshift, t_state, c_xshift });
         }

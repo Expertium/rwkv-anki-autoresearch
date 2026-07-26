@@ -354,6 +354,28 @@ impl FastModel {
         Ok((out, x))
     }
 
+    /// Per-(batch,head) Frobenius clamp on the carried WKV state, in place on the flat
+    /// [b][h][i][j] buffer. Twin of Model::clamp_state -- same early-out, so it is bit-inert
+    /// whenever every head is finite and within tau. See that doc for why this is deliberately
+    /// not bit-identical to the training clamp.
+    fn clamp_state(&self, t_state: &mut [f32], b: usize) {
+        let tau = match self.arch.state_clamp_tau {
+            Some(t) => t,
+            None => return,
+        };
+        let per = self.k * self.k;
+        for i in 0..(b * self.h) {
+            let sl = &mut t_state[i * per..(i + 1) * per];
+            let n = sl.iter().map(|v| v * v).sum::<f32>().sqrt();
+            if !n.is_finite() {
+                sl.iter_mut().for_each(|x| *x = 0.0);
+            } else if n > tau {
+                let f = tau / n;
+                sl.iter_mut().for_each(|x| *x *= f);
+            }
+        }
+    }
+
     fn run_stream(
         &self,
         m: usize,
@@ -372,9 +394,23 @@ impl FastModel {
             let t_st = ls.map(|s| (s.t_xshift.as_slice(), s.t_state.as_slice()));
             let (xt, v0_out, mut t_xshift, mut t_state) =
                 self.time_mixer(&tp, l, &x, b, v0.as_deref(), t_st)?;
+            // Bound the carried state before the compression round-trip below -- the clamp is
+            // part of the recurrence, not a storage step. Mirrors Model::clamp_state.
+            self.clamp_state(&mut t_state, b);
             v0 = Some(v0_out);
             let c_st = ls.map(|s| s.c_xshift.as_slice());
-            let (xc, mut c_xshift) = self.channel_mixer(&cp, &xt, b, c_st)?;
+            // Stripped channel mixer: skip the sublayer AND its residual add; the shift state is
+            // never written, so the incoming one passes through (mirrors Model::run_stream and
+            // RWKV7RNNLayer.forward).
+            let (xc, mut c_xshift) = if self.arch.has_cmix[m][l] {
+                self.channel_mixer(&cp, &xt, b, c_st)?
+            } else {
+                let carried = match c_st {
+                    Some(s) => s.to_vec(),
+                    None => vec![0f32; xt.len()],
+                };
+                (xt.clone(), carried)
+            };
             x = xc;
             // Per-step state compression on the PERSISTED state (matches candle forward_stream): the
             // current step's output (xt) was already computed from the pre-compression state, so this
