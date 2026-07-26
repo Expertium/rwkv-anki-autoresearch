@@ -75,7 +75,12 @@ history. It is materially more accurate than FSRS-7 (numbers in §5).
 
 - **Dataset:** `C:\Users\Andrew\anki-revlogs-10k` — 10 000 users, ~745 M reviews
   (sibling, **read-only — never write there**). `anki-revlogs-3k` is the first 3 000 users.
-  `user_order.jsonl` ranks user ids by size.
+  `user_order.jsonl` ranks user ids by size. **Everything built so far uses this set.**
+- **★ SECOND DATASET — `C:\Users\Andrew\anki-revlogs-10k-id` (REAL epoch-ms IDs + corrected
+  `review_time`), built by `scratchpad/dataset_id/`.** Same layout + same 1:1 user numbering, so it
+  is a drop-in source for a future preprocessing pass. This is what unblocks every timestamp
+  feature in `optimization/FUTURE_FEATURES.md`; full detail in the Ops section's DATA FACT bullets.
+  Also read-only. Staging copy: `anki-revlogs-10k-id-raw`.
 - The pipeline writes **LMDB** databases (`train_db`, `test_db`, `label_filter_db`):
   1. `python -m rwkv.find_equalize_test_reviews` — builds a ~7 GB helper db that precomputes
      RMSE(bins) bins and which reviews count in the benchmark (the "equalized" test set,
@@ -331,7 +336,15 @@ deltas so dead ends aren't re-run.
   reproducible by current Python? run this FIRST when a gate looks wrong), `buttons_py_vs_rust.py`
   (the 4 button intervals, Python vs Rust). **`eval_pava/`** = the rectified-eval pipeline +
   `check_imm_identical.py` (imm must be bit-identical rect vs unrect — proves the probes are
-  non-perturbative). Untracked on disk: ckpts (`*.pth`), logs, mid-run cb snapshots
+  non-perturbative) + `decompose_duration.py` (splits the rect-vs-unrect ahead delta into
+  duration-zeroing vs PAVA-pooling). **`dataset_id/`** (2026-07-15/16, was MISSING from this map —
+  Andrew flagged it 2026-07-26) = **the builder for the real-timestamp `anki-revlogs-10k-id`
+  dataset**: `run_build_id.cmd` (download -> extract -> build) + `download_from_hf.py` +
+  `extract_7z.py` + `build_parquet_id.py` (the real work; `build_parquet_upstream.py` is the
+  anonymizing original it was adapted from) + `stats.proto`/`stats_pb2.py` (locally compiled
+  protobuf) + `parent_id_probe{,2,3,4}.py` and `deck_depth_by_review.py` (the deck-tree evidence
+  quoted in `FUTURE_FEATURES.md`). **`iter32_kd/`** = the distillation run + `check_dump.py`.
+  Untracked on disk: ckpts (`*.pth`), logs, mid-run cb snapshots
   (gitignored since 2026-07-15). ⚠ Champion ckpts live here UNTRACKED (the champion jsons point
   at them) — single-machine artifacts; losing the disk loses the ckpts, not the record.
 - **`result/`** — eval outputs, untracked (`RWKV-<tag>.jsonl`, `RWKV-P-<tag>.jsonl`,
@@ -960,10 +973,30 @@ All hooks stay in-repo, env-gated, default off.
   ckpt mtime) -- detached runs give NO tool-completion event. A Bash watcher gives notifications but is itself
   Esc-killable (re-arm it each turn; the training survives). Beat the heartbeat each working turn
   (`claude-automation/beat.ps1`). **Do NOT kill the FSRS benchmark PIDs (the ~80000s-CPU python procs).**
-- **DATA FACT:** anki-revlogs-10k has NO absolute timestamp / review-id (anonymized; raw `revlogs` parquet =
-  card_id, day_offset [integer DAY counter], rating, state, duration, elapsed_days, elapsed_seconds). Time-of-
-  day is UNRECOVERABLE -> a time-of-day input feature is impossible here. elapsed_seconds (time-since-last) is
-  already an input. (Features that WOULD become possible with a real-timestamp dataset export:
-  `optimization/FUTURE_FEATURES.md`.)
+- **DATA FACT (SUPERSEDED 2026-07-26 -- read the next bullet before acting on it):** the PUBLISHED
+  `anki-revlogs-10k` has NO absolute timestamp / review-id (anonymized; raw `revlogs` parquet = card_id,
+  day_offset [integer DAY counter], rating, state, duration, elapsed_days, elapsed_seconds). Time-of-day is
+  unrecoverable **from that set**. elapsed_seconds (time-since-last) is already an input.
+- **★ THE REAL-TIMESTAMP DATASET EXISTS AND IS BUILT — `C:\Users\Andrew\anki-revlogs-10k-id`** (Andrew
+  2026-07-26: *"we should have code for making it, so idk why CLAUDE.md doesn't mention it"* — it didn't;
+  fixed). Built 2026-07-15/16 by **`scratchpad/dataset_id/`** (`run_build_id.cmd` -> `build_parquet_id.py`,
+  adapted from the upstream anki-revlogs-dataset-builder), staging copy `anki-revlogs-10k-id-raw` (38.7 GB,
+  keeps `revlogs.7z`). 15.8 GB; **10,000 user dirs in revlogs + decks, 9,934 in cards**; same layout and same
+  1:1 user numbering as the published set, so results are comparable.
+  - **IDs stay RAW Anki epoch-ms** = creation timestamps (`card_id`/`note_id`/`deck_id`/`parent_id`/
+    `preset_id`), instead of upstream's per-user factorized small ints.
+  - **`review_time` is CORRECTED to SHOW time** = `revlog.id - taken_millis` (the row is written on ANSWER),
+    which is the right base for elapsed/time-of-day. Everything downstream (day_offset, elapsed_days,
+    elapsed_seconds, sort order) is recomputed from it. Raw answer time = `review_time + duration`.
+    ⚠ So day_offset can differ by one from the published set for reviews spanning the day rollover.
+  - Spot-checked 2026-07-26 (user 1): `review_time` = 2021-05-22 15:31:47 UTC, `card_id` = 15:14:10 UTC —
+    the card was created 17 min before its first review, i.e. "first review - card creation" reads directly.
+  - **=> every HIGH-priority feature in `optimization/FUTURE_FEATURES.md` is derivable TODAY** (time-of-day
+    + circular-mean deviation, true calendar phase, creation->first-review, seconds-resolution
+    time-since-any-review, creation-batch size, tenure, note/deck/preset ages). No export is blocked.
+  - **What IS still needed for them:** they are per-review FEATURE COLUMNS, so they need a preprocessing
+    change + an **LMDB rebuild** sourced from `-id`. ⚠ Plan disk FIRST: `train_db_5k_h1` is 372.5 GB and C:
+    has 229 GB free, so a side-by-side rebuild does not fit (F: has 890 GB). **Unlike the DECK TREE**, which
+    needs NO rebuild at all — see the correction in `FUTURE_FEATURES.md`.
 - Quant papers: `scratchpad/{rwkvquant,rwkvedge}.txt` (poppler installed; the Read tool handles PDFs). Use the
   CURRENT session's scratchpad dir for transient logs (it rotates on teardown -- check task-output paths).

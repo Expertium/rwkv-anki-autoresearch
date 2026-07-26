@@ -1,10 +1,23 @@
-# Future input features from real timestamps (planning only — needs a new dataset export)
+# Input features from real timestamps — THE DATASET IS BUILT; this is now an implementation plan
+
+> **★ STATUS CORRECTION 2026-07-26.** This page was written as "planning only — needs a new
+> dataset export". **That export was built the very next day and this header was never updated**,
+> which made the whole family look blocked (it briefly did to Claude again on 2026-07-26 until
+> Andrew said *"there is `anki-revlogs-10k-id` ... we should have code for making it"*).
+> **`C:\Users\Andrew\anki-revlogs-10k-id` exists**, built by `scratchpad/dataset_id/`
+> (`run_build_id.cmd` -> `build_parquet_id.py`): 10,000 user dirs, raw Anki epoch-ms IDs, and
+> `review_time` corrected to SHOW time (`revlog.id - taken_millis`). Spot-checked on user 1:
+> `review_time` 2021-05-22 15:31:47 UTC, `card_id` 15:14:10 UTC.
+> **=> every "high" row below is derivable TODAY.** What remains is a preprocessing pass + an LMDB
+> rebuild sourced from `-id` (⚠ plan disk: `train_db_5k_h1` is 372.5 GB, C: has 229 GB free, F: has
+> 890 GB). The DECK TREE section needs no rebuild at all — see its own correction.
 
 **Context (Andrew + Claude, 2026-07-15).** anki-revlogs-10k is anonymized: `day_offset`
 integer days only, re-indexed IDs. In real Anki, `card_id` / `note_id` / `deck_id` /
 `review_id` are all **epoch-millisecond creation/review timestamps**, so a fresh export that
-preserves them unlocks the features below. This breaks the current 92-dim input invariant →
-a **future data-side phase**, not something to A/B on the current LMDBs. Deploy-side cost is
+preserves them unlocks the features below — **and that export now exists (see above)**. This
+breaks the current 92-dim input invariant → a **data-side phase**, not something to A/B on the
+current LMDBs. Deploy-side cost is
 ~zero (Anki has the real IDs at inference). Cross-checked against the existing 92-dim feature
 table — [`INPUT_FEATURES.md`](../INPUT_FEATURES.md) at the repo root — so we don't re-add what
 exists; the `#N` references below are its row numbers.
