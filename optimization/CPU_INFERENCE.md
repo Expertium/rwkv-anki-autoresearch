@@ -89,11 +89,45 @@ Measurement 1 was an artefact of that path's ~0.08-0.30 GMAC/s overhead ceiling,
 that width had stopped mattering. Two lessons stand: measure the deploy engine, and do not
 generalize a scaling curve from a harness running 20-100× below the hardware's rate.
 
-⚠ **Caveats, stated plainly.** (1) **Parity is NOT established** — see the RED gate in
-`TRACK2_PORT_PLAN.md` §"Order of work" step 4; these predictions are unverified against
-Python, though all 5,229+4,215 of them are finite and in (0,1). Throughput is trustworthy
-regardless (the same work is done either way); the *correctness* of that work is not yet
-proven. (2) The two rows differ in more than width — architecture generation, curve head and
+⚠ **Caveats, stated plainly.** (1) ~~**Parity is NOT established**~~ **RESOLVED LATER THE SAME
+DAY — parity PASSES.** This caveat was written before the gate was run and is kept only so the
+sequence is legible. The A18 port verified at **imm 0.000035 / ahead 0.000044 against a ±0.0005
+tolerance** (14x and 11x inside), once the *reference trace* was regenerated — the old June trace
+was not reproducible by current Python, so the gate had been scoring stale artifacts rather than
+the engine. Procedure and the `trace_selfcontained.py` diagnostic are in CLAUDE.md §11. So the
+throughput below is now backed by predictions that are also *correct*, not merely finite.
+(2) The two rows differ in more than width — architecture generation, curve head and
 stripped sublayers all move together. That is deliberate: it is the honest "what we shipped
 before vs what we would ship now" comparison, not a controlled width sweep. (3) Not yet
-measured with quantized state, nor with the PAVA button API (4 extra forwards per press).
+measured with quantized state; **the PAVA button API is now measured — Measurement 3 below.**
+
+## Measurement 3 — cost of serving the 4 PAVA button intervals, 2026-07-27
+
+The deploy contract serves four counterfactual button predictions per card, so Anki pays this on
+**every card it shows** — it sits on the interactive path in a way aggregate rev/s does not.
+`--bench-buttons` (A18 champion weights, `fast.rs`, single-threaded, fp32, B=1 randomized per-card
+state so the B=1 -> B=4 tiling is genuinely exercised):
+
+| call | ms/call | note |
+|---|---|---|
+| `review` B=1 | 0.283 | baseline: one plain prediction |
+| `review` B=4 | 0.711 | the probe forward alone — exactly `button_intervals`' forward component |
+| `button_intervals` | **0.762** | forward + the 50-step bisection |
+
+**Three things follow, and they close the question rather than open it.**
+1. **It is cheap in absolute terms: 0.76 ms per card, 2.69x a plain prediction.** At sub-millisecond
+   there is no user-visible cost to serving intervals; this is not a deploy risk.
+2. **93% of it is the forward and 7% is the solver** (0.711 vs 0.051 ms). So the bisection's step
+   count is NOT a lever — 50 steps buys ~1e-15 relative precision on the bracket, absurd overkill
+   for an interval in seconds, and cutting it to 25 would save ~0.025 ms of a 0.762 ms call. Don't
+   bother. Any real win has to come from the forward, i.e. the same width/SIMD levers as everything
+   else.
+3. **The 4 probes batched cost 2.5x a B=1 review, not 4x** — batching already recovers ~37% of the
+   naive cost, so the existing one-call-of-4 implementation is doing its job and there is no
+   cheap restructuring left.
+
+⚠ **Read the RATIOS, not the absolute rate.** This bench reuses pre-built synthetic states and
+times a single step, so its B=1 figure (~3,530 rev/s) runs well above Measurement 2's trace-driven
+~1,703 rev/s, which includes real state management across thousands of chained reviews. The two
+are not comparable and Measurement 2 is the honest throughput number; what Measurement 3 
+establishes is the *relative* cost of buttons, where both sides share the identical harness.

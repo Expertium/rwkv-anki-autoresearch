@@ -945,11 +945,24 @@ Plain-era and QAT-era logloss are NOT comparable.
 3. **If iter 32 lands well, the cheap follow-ups reuse the SAME dump** (the expensive part): the
    annealed-alpha variant (unset `RWKV_KD_ALPHA`, window = full run) and an alpha sweep are
    student-only re-runs. Curve-level distillation (variant 3) needs new dump code.
-4. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — the highest-value non-research work.
-   Steps 1-4 DONE and `PARITY: PASS` for A18 (§11). Remaining: port the button API to `fast.rs`
-   (model.rs has it; fast.rs is the DEFAULT runtime path, so deploy cannot serve intervals at
-   speed until it lands), then **measure** — the experiment that says whether the ablations bought
-   user-visible speed. First data point already in `CPU_INFERENCE.md`: 2.39x on the Rust path.
+4. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — ⚠ **THIS ENTRY WAS STALE; both of its
+   "remaining" items are DONE (verified 2026-07-27).** The button API landed in `fast.rs`
+   (`button_intervals` at `fast.rs:703`, plus `tile_states_b1` and the `--buttons-fast` /
+   `--buttons-fast-selfcheck` drivers), and the measurement it gated is recorded in
+   `CPU_INFERENCE.md` Measurement 2: **a 4.96x param cut buys 2.39x rev/s on the Rust path**
+   (714 -> ~1,703 rev/s), versus 1.24x and plateauing in the Python RNN path — i.e. **the ablation
+   programme DOES pay off for Anki users, in the engine that will actually ship**. That answers
+   Andrew's 2026-07-25 question directly. `PARITY: PASS` for A18 (§11), so those throughput
+   numbers are backed by verified-correct predictions.
+   **What is genuinely left**, in value order: ~~(a) cost of the button API~~ **(a) DONE 2026-07-27
+   — `--bench-buttons`, CPU_INFERENCE.md Measurement 3: serving all 4 intervals costs 0.76 ms/card
+   = 2.69x a plain prediction, of which 93% is the probe forward and only 7% the 50-step bisection.
+   Cheap in absolute terms, and NOT a lever — the solver is noise and the 4 probes already batch to
+   2.5x rather than 4x, so nothing cheap is left in it**; (b)
+   throughput with QUANTIZED state (the deploy config is q72u, all numbers above are fp32); (c)
+   the AVX2/FMA `dot_product` + `add_scaled_in_place` from `vendor/jschoreels_anki/x86_simd.patch`
+   — our engine has NO SIMD, and that is the most portable remaining speed win (⚠ AGPL: flag to
+   Andrew before copying, keep provenance comments).
 5. **NEW INPUT FEATURES — now on the critical path** (Andrew 2026-07-26; see "THE ENDGAME,
    ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **SCOPED 2026-07-27** —
    that doc now carries the four code sites, the F:-side-by-side disk plan (no delete needed), and

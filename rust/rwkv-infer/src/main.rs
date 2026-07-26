@@ -886,6 +886,96 @@ fn bench_synth_fast(model: &Model, secs: f64, b: usize) -> Result<()> {
     Ok(())
 }
 
+/// --bench-buttons <secs>: cost of serving the 4 PAVA button intervals for one card.
+///
+/// This is a DEPLOY number, not a research one: Anki calls this every time it shows a card, so it
+/// sits on the interactive path in a way raw rev/s does not. It was listed as unmeasured in
+/// `optimization/CPU_INFERENCE.md` (Measurement 2, caveat 3).
+///
+/// Three timings, because "buttons are Nx a review" would not say what to fix:
+///   1. review B=1     -- the baseline a plain prediction costs
+///   2. review B=4     -- the probe forward alone (button_intervals runs the 4 probes as ONE
+///                        batched call, so this is its forward component exactly)
+///   3. button_intervals -- forward + the bisection solver
+/// (3) - (2) is therefore the SOLVER cost, which is 50 bisection steps x 4 curve evaluations plus
+/// a PAVA rectify per step. The curve head is small next to five RWKV stacks, so the expectation is
+/// that (2) dominates; if it does not, the solver's step count is the cheap lever (50 steps of
+/// bisection is ~1e-15 relative precision on the bracket -- far past what an interval in SECONDS
+/// can use).
+///
+/// States are B=1 and randomized, matching `bench_synth_fast`: real per-card state, not the empty
+/// state `--buttons-fast` runs with, so the B=1 -> B=4 tiling is actually exercised here.
+fn bench_buttons(model: &Model, secs: f64) -> Result<()> {
+    let dev = Device::Cpu;
+    let (h, k, c) = model.dims();
+    let layers = model.stream_layers().to_vec();
+    let rv = |shape: (usize, usize, usize, usize)| -> Result<Vec<f32>> {
+        Ok(Tensor::rand(-1f32, 1f32, shape, &dev)?.flatten_all()?.to_vec1()?)
+    };
+    let mk = |b: usize| -> Result<[Option<fast::FastStreamState>; 5]> {
+        let mut states: Vec<Option<fast::FastStreamState>> = Vec::with_capacity(5);
+        for &nl in layers.iter() {
+            let mut st: fast::FastStreamState = Vec::with_capacity(nl);
+            for _ in 0..nl {
+                st.push(fast::FastLayerState {
+                    t_xshift: rv((b, c, 1, 1))?,
+                    t_state: rv((b, h, k, k))?,
+                    c_xshift: rv((b, c, 1, 1))?,
+                    e_state: Vec::new(),
+                    warm_wkv: Vec::new(),
+                    warm_shift: Vec::new(),
+                });
+            }
+            states.push(Some(st));
+        }
+        states.try_into().map_err(|_| anyhow::anyhow!("stream count"))
+    };
+    let s1 = mk(1)?;
+    let s4 = mk(4)?;
+    let f1: Vec<f32> = Tensor::rand(0f32, 1f32, (1, 92), &dev)?.flatten_all()?.to_vec1()?;
+    let f4: Vec<f32> = Tensor::rand(0f32, 1f32, (4, 92), &dev)?.flatten_all()?.to_vec1()?;
+
+    let timed = |label: &str, mut f: Box<dyn FnMut() -> Result<()> + '_>| -> Result<f64> {
+        f()?; // warm
+        let mut n: u64 = 0;
+        let t0 = Instant::now();
+        while t0.elapsed().as_secs_f64() < secs {
+            f()?;
+            n += 1;
+        }
+        let el = t0.elapsed().as_secs_f64();
+        let per = el * 1e3 / n as f64;
+        println!("{label:<26} {:>9.1} calls/s   {per:>8.3} ms/call   (n={n})", n as f64 / el);
+        Ok(per)
+    };
+
+    let ms1 = timed("review B=1", Box::new(|| {
+        let (_, _, out_p, _) = model.fast.review_batched(&f1, 1, &s1)?;
+        let _ = model.fast.imm_prob(&out_p, 1);
+        Ok(())
+    }))?;
+    let ms4 = timed("review B=4 (probe fwd)", Box::new(|| {
+        let (_, _, out_p, _) = model.fast.review_batched(&f4, 4, &s4)?;
+        let _ = model.fast.imm_prob(&out_p, 4);
+        Ok(())
+    }))?;
+    let msb = timed("button_intervals", Box::new(|| {
+        let _ = model.fast.button_intervals(&f1, &s1, 0.9)?;
+        Ok(())
+    }))?;
+
+    let solver = msb - ms4;
+    println!(
+        "\nbuttons/review  {:.2}x    forward {:.3} ms ({:.0}%)   solver {:.3} ms ({:.0}%)",
+        msb / ms1, ms4, 100.0 * ms4 / msb, solver, 100.0 * solver / msb
+    );
+    println!(
+        "interpretation: a card costs {:.2} ms to predict and {:.2} ms to also serve 4 intervals.",
+        ms1, msb
+    );
+    Ok(())
+}
+
 /// --bench-mt <secs> <B_per_thread> <threads>: thread-level batch parallelism. Each OS thread runs the
 /// candle batched query at B (single-thread gemm; set RAYON_NUM_THREADS=1) on shared read-only weights
 /// + states; sum the review counts -> aggregate rev/s. Models Anki splitting its due-card queue across
@@ -1006,6 +1096,15 @@ fn main() -> Result<()> {
         let secs: f64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(4.0);
         let b: usize = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(128);
         return bench_synth_fast(&model, secs, b);
+    }
+
+    // --bench-buttons <secs>: what does serving the 4 PAVA button intervals COST?
+    // Anki pays this on every card it shows, and it had never been timed (CPU_INFERENCE.md
+    // Measurement 2 caveat 3). Decomposed into forward vs solver so the answer says what to
+    // optimize, not just how slow it is.
+    if argv.first().map(|s| s.as_str()) == Some("--bench-buttons") {
+        let secs: f64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(4.0);
+        return bench_buttons(&model, secs);
     }
 
     // --bench-mt <secs> <B_per_thread> <threads>: aggregate multithread throughput (candle, B-parallel)
