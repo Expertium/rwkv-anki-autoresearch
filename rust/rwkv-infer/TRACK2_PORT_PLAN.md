@@ -27,7 +27,7 @@ strips leave **1×1 dummy tensors** behind, which makes auto-detection trivial a
 | 3 | **stripped L0 v_lora** | `time_mixer.v_lora_simple.A.weight` is (1,1) | skip v0 mixing at that layer (`v0 = v`) |
 | 4 | **no ahead residual** | `ahead_linear.weight` is (1,1) | curve = pure mixture; skip the `interp(out_ahead_logits, t)` term |
 | 5 | **per-step state clamp** (τ=300, window 32768) | not in weights — recipe flag | apply the same clamp the training/eval path uses, else parity drifts on long histories |
-| 6 | **PAVA rectifier on the 4 button curves** (added 2026-07-26) | `pava_theta` present (3 floats) | the deploy-side operator, not a training detail — see below |
+| 6 | **PAVA rectifier on the 4 button curves** (added 2026-07-26) | `pava_theta` present (3 floats) | **DONE** — `src/pava.rs` + `Model::button_intervals`; `BUTTONS_MATCH` at 2.3e-5 rel vs the Python twin |
 
 ### Gap 6 in detail — the rectifier is part of the model, not the loss
 

@@ -22,7 +22,14 @@ _COL_R1 = CARD_FEATURE_COLUMNS.index("rating_1")
 assert [CARD_FEATURE_COLUMNS[_COL_R1 + k] for k in range(4)] == [
     "rating_1", "rating_2", "rating_3", "rating_4"
 ], "grade one-hot columns not contiguous"
-_PROBE_DUR_SCALED = float(os.environ.get("RWKV_PROBE_DUR", "-0.12079481388911952"))
+# Duration encoding for the four counterfactual button probes. DEFAULT 0.0 = the pipeline's own
+# "no press yet" encoding, the value every query row already carries (verified on the reference
+# traces). ⚠ The default used to be -0.12079481388911952 = scale_duration(6433), the retired
+# train-set median, while every actual run overrode it with RWKV_PROBE_DUR=0.0 -- so a caller who
+# just imported this module got a DIFFERENT model than training and eval scored. That cost 15-20%
+# on the button intervals and is exactly the divergence CLAUDE.md sec 9 case 2 records as already
+# unified on 0.0. The env var remains, for experiments only.
+_PROBE_DUR_SCALED = float(os.environ.get("RWKV_PROBE_DUR", "0.0"))
 
 
 def __nop(ob):

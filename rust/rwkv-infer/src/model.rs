@@ -11,6 +11,13 @@ use std::collections::HashMap;
 // Model dims (H heads, K head-dim, C d_model) and per-stream layer counts are DERIVED from
 // the weight shapes at load time (see Model::load) so the engine auto-adapts to any arch.
 const LN_EPS: f64 = 1e-5;
+/// Input width and the two card-feature columns the button probes rewrite. These are the CARD
+/// block's own indices (rwkv/model/srs_model_rnn.py: `CARD_FEATURE_COLUMNS.index(...)` = 8 and 9),
+/// and the card block is the PREFIX of the 92-dim input -- verified empirically on the reference
+/// traces: feats_proc[.,9..13] is a valid one-hot on every row and feats_imm has 0.0 at both.
+const FEATURE_DIM: usize = 92;
+const COL_DUR: usize = 8;
+const COL_R1: usize = 9;
 const GN_EPS: f64 = 64e-5;
 const L2_EPS: f64 = 1e-12;
 
@@ -1723,6 +1730,90 @@ impl Model {
     }
 
     /// imm probability = 1 - softmax(out_p_logits)[again]
+    /// The four button intervals for the review Anki is about to show.
+    ///
+    /// Port of `SrsRWKVRnn.button_heads` / `button_curves` / `button_intervals`
+    /// (rwkv/model/srs_model_rnn.py) — gap 6 of TRACK2_PORT_PLAN.md. Steps:
+    ///
+    /// 1. build 4 counterfactual rows = this review with the grade one-hot swapped to
+    ///    Again/Hard/Good/Easy and `scaled_duration` ZEROED on all four;
+    /// 2. run each read-only against the current states (they are probes: they read state and
+    ///    must never advance it — hence `states` is borrowed and the new states are dropped);
+    /// 3. rectify the four curves with PAVA at every probe;
+    /// 4. solve each rectified curve for `desired_retention`.
+    ///
+    /// The probe construction lives HERE rather than in the caller on purpose: if a caller built
+    /// the four rows itself it could feed them inconsistent inputs, and the button comparison
+    /// would silently stop being a comparison. Duration is zeroed because the real press duration
+    /// is not known until after the press — using it would make the displayed interval depend on
+    /// how long the user stared at the card, and displayed would stop equalling scheduled.
+    /// 0.0 is the pipeline's own "no press yet" encoding, the value every query row already
+    /// carries (verified on the reference traces: feats_imm has 0.0 at COL_DUR on every row).
+    pub fn button_intervals(
+        &self,
+        feats: &Tensor,
+        states: &[Option<StreamState>; 5],
+        desired_retention: f32,
+    ) -> Result<[f32; 4]> {
+        // one forward per button, state discarded -- 4 forwards per press, not per probe
+        let mut heads: Vec<(Option<Tensor>, CurveOut, Tensor)> = Vec::with_capacity(4);
+        for k in 0..4 {
+            let row = self.probe_row(feats, k)?;
+            let (ahead, curve, p_logits, _dropped_states) = self.review(&row, states)?;
+            heads.push((ahead, curve, p_logits));
+        }
+        let powers = crate::pava::junction_powers(self.arch.pava_theta.as_ref());
+        // Closure is called once per bisection probe; it re-rectifies every time, because pooling
+        // couples the buttons (rectifying after solving gives a different answer). Cheap: the
+        // heads do not depend on t, so this is closed-form arithmetic on cached head outputs.
+        let mut err: Option<anyhow::Error> = None;
+        let curves_at = |t: f32| -> [f32; 4] {
+            let mut raw = [0f32; 4];
+            for k in 0..4 {
+                match self.predict_ahead(heads[k].0.as_ref(), &heads[k].1, t) {
+                    Ok(p) => raw[k] = p,
+                    Err(e) => {
+                        if err.is_none() {
+                            err = Some(e);
+                        }
+                        raw[k] = 0.5;
+                    }
+                }
+            }
+            crate::pava::pava_rectify(raw, [1.0; 4], powers)
+        };
+        let out = crate::pava::solve_intervals(
+            curves_at,
+            desired_retention,
+            1.0,
+            self.s_max_seconds(),
+            50,
+        );
+        if let Some(e) = err {
+            return Err(e);
+        }
+        Ok(out)
+    }
+
+    /// Upper bracket for the interval solver: e^22 s (~113 years), the largest time constant the
+    /// curve head can represent. Matches `SrsRWKVRnn.button_intervals`' `math.exp(self.s_max)`.
+    fn s_max_seconds(&self) -> f32 {
+        22.0f32.exp()
+    }
+
+    /// One counterfactual probe row: `scaled_duration` zeroed, grade one-hot set to `button`.
+    fn probe_row(&self, feats: &Tensor, button: usize) -> Result<Tensor> {
+        let mut v: Vec<f32> = feats.flatten_all()?.to_vec1()?;
+        if v.len() != FEATURE_DIM {
+            return Err(anyhow!("probe_row: expected {FEATURE_DIM} features, got {}", v.len()));
+        }
+        v[COL_DUR] = 0.0;
+        for k in 0..4 {
+            v[COL_R1 + k] = if k == button { 1.0 } else { 0.0 };
+        }
+        Ok(Tensor::from_vec(v, (1, FEATURE_DIM), &self.dev)?)
+    }
+
     pub fn imm_prob(&self, out_p_logits: &Tensor) -> Result<f32> {
         let p = candle_nn::ops::softmax(out_p_logits, D::Minus1)?; // (1,4)
         let again: f32 = p.narrow(1, 0, 1)?.reshape(())?.to_scalar()?;

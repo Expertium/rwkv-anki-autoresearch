@@ -1,5 +1,6 @@
 mod fast;
 mod model;
+mod pava;
 
 use anyhow::Result;
 use candle_core::{Device, Tensor};
@@ -1013,6 +1014,24 @@ fn main() -> Result<()> {
         let b: usize = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(128);
         let threads: usize = argv.get(3).map(|s| s.parse().unwrap()).unwrap_or(8);
         return bench_mt(&model, secs, b, threads);
+    }
+
+    // --buttons [user] [retention]: the four button intervals for review 0 with EMPTY state, so
+    // the answer depends only on the forward pass. Exists to be diffed against the Python twin
+    // (SrsRWKVRnn.button_intervals) -- see scratchpad/parity3/buttons_py_vs_rust.py.
+    if argv.first().map(|s| s.as_str()) == Some("--buttons") {
+        let user: i64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(107);
+        let dr: f32 = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(0.9);
+        let dev = Device::Cpu;
+        let t = candle_core::safetensors::load(
+            &format!("{}/trace_user_{user}.safetensors", ref_dir()),
+            &dev,
+        )?;
+        let fi = t.get("feats_imm").unwrap().narrow(0, 0, 1)?;
+        let states: [Option<StreamState>; 5] = [None, None, None, None, None];
+        let iv = model.button_intervals(&fi, &states, dr)?;
+        println!("user {user} R={dr} intervals_s {:.6} {:.6} {:.6} {:.6}", iv[0], iv[1], iv[2], iv[3]);
+        return Ok(());
     }
 
     if std::env::var("RWKV_DEBUG").is_ok() {
