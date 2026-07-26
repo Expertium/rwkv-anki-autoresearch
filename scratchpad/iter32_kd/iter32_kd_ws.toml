@@ -1,0 +1,56 @@
+# RESEARCH ITER 32 -- full-run distillation from the d=128 2.76M teacher onto the iter-31 champion.
+#
+# WHY, in one line: on the identical 2500 val-half users with identical `size`, the teacher scores
+# 0.294612 ahead / 0.263561 imm and the iter-31 champion scores 0.298909 / 0.267637 -- we are still
+# +0.0043 / +0.0041 BEHIND the model we are shrinking, which is ~10x a single iteration's gate. A
+# teacher that much stronger is exactly the setting KD is for.
+#
+# WHY IT IS NOT A RE-RUN OF ITER 10: that attempt was warmup-ONLY KD onto the d=32 trunk, which the
+# lesson bank records as DATA-limited -- soft targets cannot fix a data limit, they only re-express
+# labels the student already has. A18 closed the width ladder at a genuine accuracy floor and the
+# second LoRA halving flipped sign, which is the signature of a CAPACITY-limited student: the regime
+# where soft targets are supposed to pay. Iter 10 was also mis-filed under early-training-
+# intervention, which is why the family scoreboard shows distillation nowhere. It is 0/1, not closed.
+#
+# THE VARIANT: classic full-run KD at a FIXED alpha (RWKV_KD_ALPHA=0.5) across all 22,346 WS steps,
+# rather than iter 10's ramp. Warmup-only is the unusual form and it is the one that was tested.
+# The DECAY phase runs on hard labels only (RWKV_KD_MIX cleared) -- both because the decay phase
+# re-seeds and reproduces the epoch-0 batch stream, so the dump cannot be trusted to align there,
+# and because ending on the true objective is what lets the student surpass the teacher.
+#
+# Everything else is byte-identical to iter 31 so the comparison is clean: the ONLY deltas vs the
+# champion recipe are the two KD env flags.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter32_kd"
+SAVE_MODEL_PREFIX = "iter32ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

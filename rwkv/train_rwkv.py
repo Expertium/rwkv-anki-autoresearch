@@ -622,11 +622,19 @@ def main_loop(config, task_queue, batch_queue):
     _kd_mix_dir = ""
     _kd_mix_steps = 0
     _kd_mix_spec = os.environ.get("RWKV_KD_MIX", "")
+    # RWKV_KD_ALPHA (2026-07-26): hold alpha FIXED instead of annealing it. Unset = the original
+    # linear 1 -> 0 warmup ramp (iter 10's shape, kept byte-identical). Set = the CLASSIC form of
+    # KD, which is the variant research_5k_notes lists first and the one iter 10 never tested:
+    # its warmup-only ramp is the unusual variant, so "distillation 0/1" was never a test of KD
+    # proper. With a fixed alpha the window is the whole WS phase rather than a prefix.
+    _kd_alpha_fixed = os.environ.get("RWKV_KD_ALPHA", "")
     if _kd_mix_spec:
         _kd_mix_dir, _kd_mix_steps_s = _kd_mix_spec.rsplit(":", 1)
         _kd_mix_steps = int(_kd_mix_steps_s)
-        print(f"[kd-mix] warmup KD ON: dump {_kd_mix_dir}, window {_kd_mix_steps} steps "
-              f"(target = alpha*teacher + (1-alpha)*hard, alpha linear 1 -> 0)")
+        _shape = (f"alpha FIXED at {float(_kd_alpha_fixed)}" if _kd_alpha_fixed
+                  else "alpha linear 1 -> 0")
+        print(f"[kd-mix] KD ON: dump {_kd_mix_dir}, window {_kd_mix_steps} steps "
+              f"(target = alpha*teacher + (1-alpha)*hard, {_shape})")
 
     model.copy_downcast_(master_model, dtype=config.DTYPE)
 
@@ -1130,7 +1138,8 @@ def main_loop(config, task_queue, batch_queue):
                               f"vs dumped {_km_rec['labels_sum']}, shape_ok={_km_shape_ok} "
                               f"-- batch stream diverged, ABORT")
                         sys.exit(43)
-                    _km_alpha = (_kd_mix_steps - step + 1) / _kd_mix_steps
+                    _km_alpha = (float(_kd_alpha_fixed) if _kd_alpha_fixed
+                                 else (_kd_mix_steps - step + 1) / _kd_mix_steps)
                     kd_mix_args = (
                         _km_rec["p_curve"].to(config.DEVICE).float(),
                         _km_rec["p_imm_all"].to(config.DEVICE).float(),

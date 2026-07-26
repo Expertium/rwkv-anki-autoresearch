@@ -1,0 +1,47 @@
+# KD TEACHER DUMP for research iter 32 -- the d=128 2.76M leaderboard model walking the SAME
+# batch stream the iter-32 student will walk, saving its soft targets per step.
+#
+# EVERY data-affecting field here is copied verbatim from scratchpad/iter31_algo/iter31_algo_ws.toml.
+# That is not tidiness, it is the correctness condition: the student verifies alignment with a
+# labels checksum + shape test per step and hard-exits 43 on a mismatch, so any drift in db, MAX,
+# epochs or fetch config turns into an abort, not a silent misalignment. Do not "improve" these.
+#
+# The run loads the teacher itself (LOAD_MODEL must stay false -- train_rwkv asserts it), does an
+# eval-mode no_grad forward, writes step_<n>.pt, and exits 0 after RWKV_KD_STEPS steps. No
+# optimizer, scheduler, checkpoint or validation side effects: the dump block `continue`s before
+# all of them, so SAVE_MODEL_* and VALIDATE_* below are inert and kept only because Config requires
+# them.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+LOAD_MODEL_FOLDER = "reference"
+LOAD_MODEL_NAME = "unused"
+SAVE_MODEL_FOLDER = "scratchpad/iter32_kd"
+SAVE_MODEL_PREFIX = "dump_unused"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

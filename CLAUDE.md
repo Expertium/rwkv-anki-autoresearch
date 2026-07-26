@@ -460,7 +460,31 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 ### Workbench + baselines
 - **5k phase (CURRENT):** train 1-5000, eval 5001-10000, budget 2 WS ep + tuned-ratio decay,
   MAX_TRAIN_GLOBAL_LEN=110000 (swept), quant-aware logloss. Baseline-to-beat = the old d=128 model
-  (`pretrain/RWKV_trained_on_101_4999.pth`, unquantized) eval'd on 5001-10000 (PENDING, needs eval data).
+  (`pretrain/RWKV_trained_on_101_4999.pth`, unquantized) eval'd on 5001-10000 = **ahead 0.296385 /
+  imm 0.264905 (n=5000)**, measured 2026-07-03 by `scratchpad/run_base5k_eval.cmd`; restricted to the
+  VAL half 5001-7500 (the only set candidates are scored on) it is **0.294612 / 0.263561**, `size`
+  identical to ours on all 2500. (This line read "PENDING, needs eval data" until 2026-07-26 -- it was
+  stale by three weeks. `result/RWKV-base5k.jsonl` had the answer all along.)
+- **★ THE GAP TO THAT BASELINE IS THE TRAINING BUDGET, NOT THE ABLATIONS (decomposed 2026-07-26,
+  after Andrew asked "how did this happen? We were doing much more efficient ablations").** At
+  IDENTICAL architecture and IDENTICAL 2,762,884 params, our own retrain **A0** scores 0.298342 /
+  0.267858 -- so **+0.00373 / +0.00430 was already spent before a single parameter was cut**. The
+  entire 2.76M -> 558k ladder (A0 -> A18) cost only **+0.00096 / +0.00053**, and iter 31 handed back
+  -0.00039 / -0.00075: the net price of being **4.95x smaller is +0.00057 ahead and -0.00022 imm**
+  (i.e. on imm the small model BEATS the same-recipe d=128 anchor). Fair label for the remainder is
+  "our 1.25-epoch recipe vs upstream's ~12", since A0 also differs in augmentation (off), peak LR
+  (1e-3 vs 7e-4), warmup (200 vs 20,000) and MAX (32768 vs 66000).
+  **Two consequences.** (1) The budget gap is SHARED by every iteration, so it cancels in every gate
+  and no ranking is affected -- do not "fix" it mid-phase. (2) It is where ~0.004 lives, so the
+  research-close plan's *ONE 2-ep confirmation run* is undersized; flagged to Andrew, his call.
+  ⚠ This check was DESIGNED IN and its answer was never promoted: `research_5k_verbose.md` planned
+  "1-ep-budget check at d=128 rides along free: if A0 ~ the 12-ep upstream number...". It ran, came
+  back 0.004 short, and the headline framing kept comparing a 1-epoch model to a 12-epoch one without
+  saying so -- which is what makes the gap read as an ablation regression. It is not one.
+  **NOT a data-drop bug (checked, dead end):** `get_groups` silently skips any chunk with
+  `size > MAX_TRAIN_GLOBAL_LEN` (train_rwkv.py:247-250, the old MAX=20000 incident), but the largest
+  chunk in `train_db_5k_h1` is 16,384, so MAX=32768 drops **0 of 46,062 chunks / 0 of 667,525,912
+  rows**. MAX only controls how many chunks batch together here.
   Front table `optimization/research_5k.md`; full methodology + status `optimization/research_5k_notes.md`.
 - **Run env (all phases):** **augmentation OFF** (RWKV_AUGMENT_SEED=1234) + RWKV_DETERMINISTIC=1 +
   RWKV_EMPTY_CACHE_EVERY=0 -> run-to-run variance ~0. Eval `python -m rwkv.get_result` (CUDA, JIT-on ->
@@ -733,38 +757,70 @@ quant-aware; `champion_5k.json` + its own codebooks). At research close the fina
 ONE 2-ep confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family
 flags). Plain-era and QAT-era logloss are NOT comparable.
 
-#### LIVE
-- **iter 31 RUNNING** — detached pid 3136 (cmd wrapper), `scratchpad/iter31_algo/`, launched
-  12:42. = A18 + PAVA + GRU N=3 + Muon, 558,212 params. ~1.44 steps/s; WS 22,346 steps ends
-  ~17:00, decay 5,586 steps, verdict ~19:30. Gate = ordinary accuracy iter vs A18 (both modes
-  >=0.0001 after 4-dp rounding + p<0.0001), NOT the ratio gate.
-  Its val TRAILS A18 slightly at matched steps (step 4000: 0.33287/0.31385 vs 0.33265/0.31356)
-  — **record it, do NOT act on it**: the val-lag lesson is BIDIRECTIONAL (Muon/iter 29 trailed
-  val all WS and won eval; iters 25/27 led val and lost).
-  ⚠ Treat the bundle as a hypothesis: all three were tuned at d=32 and the transfer ledger
-  (iter 28; A13's opposite-sign state price) says d=32 wins need re-earning.
-- **Parked + armed:** `scratchpad/eval_pava/run_rect_evals.cmd` (detached pid 33012, parent
-  WmiPrvSE) waits on iter 31's DONE_EXIT, then runs BOTH rectified evals (A18 = classic p=1, it
-  has no `pava_theta`; iter 31 = learned powers), an imm bit-identity sanity check, and BOTH
-  gates. Log `scratchpad/eval_pava/rect_evals.log`.
-  **WHY TWO METRICS:** iter 31's own eval leg is UNRECTIFIED (its `.cmd` predates
-  `RWKV_EVAL_PAVA`, and a RUNNING `.cmd` must never be edited — cmd.exe re-reads it at a saved
-  byte offset). That is fine and is the **PRIMARY gate**, being directly comparable to A18's
-  existing jsonls; the rectified pair is the **deploy metric**. **If the two disagree, report
-  both to Andrew — do not pick.**
+#### LIVE — a 3-job GPU chain, each parked on the previous one's `DONE_EXIT_`
+1. **RUNNING: rectified evals** — `scratchpad/eval_pava/run_rect_evals.cmd`, detached pid 33012.
+   Started 19:22 after iter 31 finished; A18 leg ~2.4 h then the iter-31 leg, so the pair lands
+   ~00:10. Log `scratchpad/eval_pava/rect_evals.log`.
+   **WHY TWO METRICS:** iter 31's own eval leg is UNRECTIFIED (its `.cmd` predates
+   `RWKV_EVAL_PAVA`, and a RUNNING `.cmd` must never be edited — cmd.exe re-reads it at a saved
+   byte offset). That is fine and is the **PRIMARY gate**, being directly comparable to A18's
+   existing jsonls; the rectified pair is the **deploy metric**. **If the two disagree, report
+   both to Andrew — do not pick.**
+2. **PARKED: mode-2 duration diagnostic** — `scratchpad/eval_pava/run_mode2_diag.cmd`, pid 17928,
+   log `scratchpad/eval_pava/mode2_diag.log`. Answers Andrew's question about zeroing the current
+   review's duration. `RWKV_EVAL_PAVA=2` substitutes the pressed probe WITHOUT pooling, so modes
+   0/1/2 give an additive split: `m2-m0` = duration zeroing, `m1-m2` = PAVA pooling, `m1-m0` = the
+   total a rect-vs-unrect run reports. 500 users (5001-5500, ~30 min) — a paired diagnostic on one
+   model with one flag moving, not a cross-training ranking, so the 200-user subset-overfit lesson
+   does not bite. `scratchpad/eval_pava/decompose_duration.py` (verified: it reproduces the
+   recorded iter31−A18 delta and p exactly).
+3. **PARKED: iter 32 = full-run DISTILLATION** — `scratchpad/iter32_kd/run_iter32_kd.cmd`, pid
+   25348, log `scratchpad/iter32_kd/iter32_kd.log`. ~10 h (teacher dump ~3 h + WS + decay + eval).
+   Teacher = `pretrain/RWKV_trained_on_101_4999.pth` under `scratchpad/architecture_old_d128.py`;
+   student = the iter-31 recipe unchanged plus `RWKV_KD_MIX` + **`RWKV_KD_ALPHA=0.5`** (new flag,
+   2026-07-26: holds alpha FIXED = the classic form; unset keeps iter 10's linear 1->0 ramp
+   byte-identical). Decay runs on hard labels. Gate = ordinary accuracy iter vs iter 31; the
+   `.cmd` also reports the candidate against the d=128 teacher, i.e. how much of the 0.004 closed.
+   **Three things to know if it misbehaves:** (a) **vprune is deliberately OFF** — the
+   decay_ratio_0p1 FALSE-KILL scope rule says prune only at MATCHED regularization, and KD
+   replaces the target wholesale while validation still scores HARD labels; (b) the teacher must
+   set `RWKV_PROBE_DENSITY=0.08` + `RWKV_PROBE_DUR=0.0` even though it has no PAVA, because probes
+   are a DATA-side row-layout change and teacher/student must agree or the per-step shape check
+   exit-43s; (c) a smoke dump of 5 steps gates the full one on `check_dump.py`, which tests that
+   p_curve is inside (0,1) and p_imm_all sums to 1 — the student's checksum proves ALIGNMENT but
+   nothing else proves the tensors are teacher outputs at all, and a wrong arch/flag yields
+   perfectly aligned garbage. It also projects the dump's disk footprint before committing.
+- ⚠ **WAITLOOP TRAP, cost one wrongly-started co-tenant eval (2026-07-26):** `findstr /C:"DONE_EXIT"`
+  matches a log line that merely MENTIONS the token — including the waiter's own
+  `=== WAIT for ... DONE_EXIT ===` message — so the loop fires instantly. **Anchor it:
+  `findstr /B /C:"DONE_EXIT_"`** (terminal lines start with the token; prose never does) and do not
+  write the token in non-terminal log lines. This is distinct from the known
+  `DONE_EXIT_WSFAIL`-satisfies-the-grep gotcha.
+- ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
+  relative script path exits instantly, silently, and still returns a pid.
 
 #### QUEUE
-1. **Record iter 31 at verdict:** `research_log.jsonl` + `research_5k.md` FIRST table +
-   `research_5k_verbose.md` + `python optimization/logbook.py rebuild`.
-2. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — the highest-value non-research work.
-   Steps 1 (shape detection) and 2 (GRU head) are DONE (commits `1f22e11`, `1620c82`).
-   Remaining: per-layer cmix/v_lora skips + state clamp, the PAVA button API, parity, then
-   measure. **⚠ BLOCKER: the parity gate is RED and was mis-documented — see §11.** Fix that
-   before treating "A15/A18 parity" as the definition of done.
-3. **Wire `pava_loss_avg` / `pava_pool_frac` into the step-trace writer** — blocked only until
-   iter 31 ends (editing `train_rwkv.py` now would affect its decay phase, a fresh process).
-4. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); deck-tree features
+1. **Record iter 32 at verdict** (~06:00-11:00): `research_log.jsonl` + `research_5k.md` FIRST
+   table + `research_5k_verbose.md` + `python optimization/logbook.py rebuild`. File it under the
+   **distillation** family (iter 10 was mis-filed under early-training-intervention, which is why
+   the scoreboard shows distillation nowhere). Read the mode-2 decomposition out of
+   `scratchpad/eval_pava/mode2_diag.log` at the same time.
+2. **If iter 32 lands well, the cheap follow-ups reuse the SAME dump** (the expensive part): the
+   annealed-alpha variant (unset `RWKV_KD_ALPHA`, window = full run) and an alpha sweep are
+   student-only re-runs. Curve-level distillation (variant 3) needs new dump code.
+3. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — the highest-value non-research work.
+   Steps 1-4 DONE and `PARITY: PASS` for A18 (§11). Remaining: port the button API to `fast.rs`
+   (model.rs has it; fast.rs is the DEFAULT runtime path, so deploy cannot serve intervals at
+   speed until it lands), then **measure** — the experiment that says whether the ablations bought
+   user-visible speed. First data point already in `CPU_INFERENCE.md`: 2.39x on the Rust path.
+4. **Budget question for Andrew (new 2026-07-26):** ~0.004 of accuracy sits in the 1.25-epoch
+   research budget vs upstream's ~12 (see "Workbench + baselines"). The research-close plan's ONE
+   2-ep confirmation run is undersized. Cheap probe = 2-3 epochs at d=80 (~9 h/extra epoch); it
+   cannot be a champion accept (changing the shared budget re-bases every future iteration), only
+   a calibration for the shipped model.
+5. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); deck-tree features
    (`optimization/FUTURE_FEATURES.md`, needs an LMDB rebuild); permutation init (LOW).
+   `pava_loss_avg` / `pava_pool_frac` step-trace fields: DONE (train_rwkv.py, keyed on enablement).
 
 **⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
 fewer params -> faster CPU inference in Anki").** Measured in `optimization/CPU_INFERENCE.md`:

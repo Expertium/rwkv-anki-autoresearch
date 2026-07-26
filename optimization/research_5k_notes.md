@@ -296,6 +296,26 @@ means the teacher runs ONCE, not every step, so KD is cheap in wall-clock.
 **Judge it as its own family.** Whatever the outcome, record it under *distillation*, not
 early-training-intervention, so the count is honest.
 
+### LAUNCHED 2026-07-26 as **iter 32** — variant 1 (fixed alpha), and why the case got stronger
+
+`scratchpad/iter32_kd/` (dump toml + student toml + `run_iter32_kd.cmd` + `check_dump.py`), parked
+behind the mode-2 diagnostic. New flag **`RWKV_KD_ALPHA`**: set = alpha held FIXED (the classic
+form, variant 1); unset = iter 10's linear 1->0 ramp, byte-identical. Run at 0.5 over all 22,346 WS
+steps; decay on hard labels.
+
+**The teacher's edge was quantified the same day and it is mostly BUDGET, which makes KD the right
+tool rather than a weaker one.** On the val half the teacher scores 0.294612 / 0.263561 vs iter 31's
+0.298909 / 0.267637. Decomposing that +0.0043 / +0.0041 against the record: A0 — the *same d=128
+architecture at the same 2,762,884 params*, retrained on our 1.25-epoch recipe — already sat at
+0.298342 / 0.267858. So **+0.00373 / +0.00430 is the training recipe, and the whole 4.95x ablation
+ladder cost only +0.00096 / +0.00053.** The teacher is not a better *architecture*, it is the same
+architecture trained ~10x longer. Distillation is therefore **budget transfer**: the student runs one
+epoch while its targets carry twelve. That is a different and better-founded bet than "copy a bigger
+model", and it is the reason to expect more here than iter 10's d=32 attempt returned.
+
+Confirm at verdict against `result/RWKV-base5k.jsonl` (the `.cmd` prints it) — the interesting number
+is not only "did it beat iter 31" but "how much of the 0.004 did it import".
+
 ## Queued analysis — irreducible-entropy (LogLoss floor) estimate (Andrew 2026-07-03, task #18)
 How low can ANY algorithm go on this data? No assumption-free answer exists (single-draw Bernoulli
 mixtures are non-identifiable beyond their mean — p*'s dispersion is invisible without structure), so:
