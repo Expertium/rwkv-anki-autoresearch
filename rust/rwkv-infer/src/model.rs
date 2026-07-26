@@ -15,9 +15,9 @@ const LN_EPS: f64 = 1e-5;
 /// block's own indices (rwkv/model/srs_model_rnn.py: `CARD_FEATURE_COLUMNS.index(...)` = 8 and 9),
 /// and the card block is the PREFIX of the 92-dim input -- verified empirically on the reference
 /// traces: feats_proc[.,9..13] is a valid one-hot on every row and feats_imm has 0.0 at both.
-const FEATURE_DIM: usize = 92;
-const COL_DUR: usize = 8;
-const COL_R1: usize = 9;
+pub(crate) const FEATURE_DIM: usize = 92;
+pub(crate) const COL_DUR: usize = 8;
+pub(crate) const COL_R1: usize = 9;
 const GN_EPS: f64 = 64e-5;
 const L2_EPS: f64 = 1e-12;
 

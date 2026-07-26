@@ -682,6 +682,147 @@ impl FastModel {
         1e-5 + (1.0 - 2e-5) * r
     }
 
+    /// The four button intervals, fast-path twin of [`crate::model::Model::button_intervals`].
+    ///
+    /// That method documents the contract and the reasons behind it; this one must not drift from
+    /// it. Same five steps: build four counterfactual rows (duration zeroed, grade one-hot swapped),
+    /// run them as PROBES that read the state and never advance it, PAVA-rectify at every bisection
+    /// probe because pooling couples the buttons, and solve each rectified curve for the desired
+    /// retention.
+    ///
+    /// The one deliberate difference is mechanical, not numerical: the candle path runs four
+    /// separate forwards, this one runs a SINGLE batch of four. That is the whole reason the fast
+    /// path exists, and it is exactly the shape the batching was built for — four rows that share
+    /// all five states.
+    ///
+    /// PRECONDITION: `states` must be single-entity (B = 1). This is a per-press API — one card,
+    /// its deck, its note, its preset, the user — so B = 1 is the only meaningful input, and
+    /// `tile_b1` is only correct for a B = 1 source. Violating it is caught below rather than
+    /// producing a plausible wrong answer, because a mis-tiled state still yields four numbers in
+    /// the right order and would pass a casual eyeball.
+    pub fn button_intervals(
+        &self,
+        feats: &[f32],
+        states: &[Option<FastStreamState>; 5],
+        desired_retention: f32,
+    ) -> Result<[f32; 4]> {
+        use crate::model::{COL_DUR, COL_R1, FEATURE_DIM};
+        if feats.len() != FEATURE_DIM {
+            return Err(anyhow!(
+                "button_intervals: expected {FEATURE_DIM} features, got {}",
+                feats.len()
+            ));
+        }
+        const NB: usize = 4;
+
+        // 4 probe rows, row-major (NB, FEATURE_DIM).
+        let mut probe = Vec::with_capacity(NB * FEATURE_DIM);
+        for k in 0..NB {
+            probe.extend_from_slice(feats);
+            let row = &mut probe[k * FEATURE_DIM..(k + 1) * FEATURE_DIM];
+            row[COL_DUR] = 0.0;
+            for j in 0..4 {
+                row[COL_R1 + j] = if j == k { 1.0 } else { 0.0 };
+            }
+        }
+
+        let tiled = self.tile_states_b1(states, NB)?;
+
+        // The returned states are DROPPED: probes read state, they never advance it.
+        let (out_ahead, curve, _out_p, _dropped) = self.review_batched(&probe, NB, &tiled)?;
+
+        // Per-row views. predict_ahead/interp index from 0, so each button gets its own slice.
+        let nc = self.num_curves;
+        let np = self.num_points;
+        let rows: Vec<(Vec<f32>, FastCurve)> = (0..NB)
+            .map(|k| {
+                let ahead = if self.arch.ahead_residual {
+                    out_ahead[k * np..(k + 1) * np].to_vec()
+                } else {
+                    Vec::new()
+                };
+                let c = FastCurve {
+                    w: curve.w[k * nc..(k + 1) * nc].to_vec(),
+                    s_raw: if curve.s_raw.is_empty() {
+                        Vec::new()
+                    } else {
+                        curve.s_raw[k * nc..(k + 1) * nc].to_vec()
+                    },
+                    d_raw: if curve.d_raw.is_empty() {
+                        Vec::new()
+                    } else {
+                        curve.d_raw[k * nc..(k + 1) * nc].to_vec()
+                    },
+                };
+                (ahead, c)
+            })
+            .collect();
+
+        let powers = crate::pava::junction_powers(self.arch.pava_theta.as_ref());
+        let curves_at = |t: f32| -> [f32; 4] {
+            let mut raw = [0f32; 4];
+            for (k, item) in raw.iter_mut().enumerate() {
+                *item = self.predict_ahead(&rows[k].0, &rows[k].1, t);
+            }
+            crate::pava::pava_rectify(raw, [1.0; 4], powers)
+        };
+        // e^22 s (~113 years) upper bracket, matching Model::s_max_seconds and the Python twin.
+        Ok(crate::pava::solve_intervals(
+            curves_at,
+            desired_retention,
+            1.0,
+            22.0f32.exp(),
+            50,
+        ))
+    }
+
+    /// Replicate single-entity (B=1) stream states to B=`n`, the layout `review_batched` expects.
+    ///
+    /// Every buffer in `FastLayerState` is row-major with the batch as the OUTERMOST axis, so for a
+    /// B=1 source "tile the whole vector n times" is the correct layout for every field regardless
+    /// of its unit size -- which is why this needs no per-field shape arithmetic, and equally why
+    /// it is WRONG for a B>1 source. The B=1 precondition is therefore checked, not assumed: a
+    /// mis-tiled state still yields four numbers in the right order and would pass an eyeball.
+    ///
+    /// `pub(crate)` so the self-check exercises THIS function rather than a second copy of it.
+    pub(crate) fn tile_states_b1(
+        &self,
+        states: &[Option<FastStreamState>; 5],
+        n: usize,
+    ) -> Result<[Option<FastStreamState>; 5]> {
+        let mut v: Vec<Option<FastStreamState>> = Vec::with_capacity(5);
+        for (m, s) in states.iter().enumerate() {
+            v.push(match s {
+                None => None,
+                Some(st) => {
+                    let mut out: FastStreamState = Vec::with_capacity(st.len());
+                    for (li, ls) in st.iter().enumerate() {
+                        // t_xshift is exactly B*C, so it is the cheapest place to test B.
+                        if ls.t_xshift.len() != self.c {
+                            return Err(anyhow!(
+                                "tile_states_b1: stream {m} layer {li} has t_xshift {} for C={} \
+                                 (B={}); this API takes single-entity state",
+                                ls.t_xshift.len(),
+                                self.c,
+                                ls.t_xshift.len() as f32 / self.c as f32
+                            ));
+                        }
+                        out.push(FastLayerState {
+                            t_xshift: tile_b1(&ls.t_xshift, n),
+                            t_state: tile_b1(&ls.t_state, n),
+                            c_xshift: tile_b1(&ls.c_xshift, n),
+                            e_state: tile_b1(&ls.e_state, n),
+                            warm_wkv: tile_b1_i32(&ls.warm_wkv, n),
+                            warm_shift: tile_b1_i32(&ls.warm_shift, n),
+                        });
+                    }
+                    Some(out)
+                }
+            });
+        }
+        v.try_into().map_err(|_| anyhow!("stream count mismatch"))
+    }
+
     /// Combined ahead prediction from a stored curve at elapsed. Mirrors model.rs::predict_ahead.
     pub fn predict_ahead(&self, out_ahead_logits: &[f32], curve: &FastCurve, elapsed: f32) -> f32 {
         let p_raw = match self.arch.gru_curves {
@@ -699,6 +840,20 @@ impl FastModel {
         let logit = logit_raw + residual;
         1.0 / (1.0 + (-logit).exp())
     }
+}
+
+/// Repeat a B=1 buffer `n` times, giving the B=`n` layout of the same quantity.
+///
+/// Correct ONLY when the source holds a single batch entry. Every `FastLayerState` buffer is
+/// row-major with the batch as the outermost axis, so concatenating the whole slice `n` times
+/// reproduces `(n, unit)` for any unit size — which is what lets `button_intervals` tile all six
+/// fields without knowing any of their shapes. An empty source stays empty, so buffers that are
+/// off (error feedback, warm-start indices) stay off.
+fn tile_b1(v: &[f32], n: usize) -> Vec<f32> {
+    v.repeat(n)
+}
+fn tile_b1_i32(v: &[i32], n: usize) -> Vec<i32> {
+    v.repeat(n)
 }
 
 // ---- elementwise helpers (in-place) ----

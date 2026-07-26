@@ -127,9 +127,27 @@ user L0 v_lora + L0/L1/L2 cmix.
    0.0005 tolerance. **Unresolved:** whether that residual is wrong weights, a stale trace, the
    per-user id-encoding seed scheme, or a genuine engine regression since June. `preds/` and
    `reference/rust_pred_*` are untracked, so nothing was lost by regenerating them.
+4b. **Button API in `fast.rs`** — **DONE 2026-07-26.** Gap 6 landed in `model.rs` first, but
+   `fast.rs` is the DEFAULT runtime path, so until this the deploy path could not serve intervals
+   at speed. `FastModel::button_intervals` + `--buttons-fast` (prints candle alongside and the
+   worst relative gap): **BUTTONS_FAST_MATCH at 1.1e-5 / 2.0e-5 / 2.6e-5** on users 107/136/156
+   against a 1e-4 tolerance.
+   One deliberate difference from the candle twin, mechanical not numerical: the four probes run
+   as a **single batch of 4** rather than four forwards — the shape the batching exists for, since
+   all four rows share all five states. That needs single-entity states tiled B=1 -> B=4
+   (`tile_states_b1`, checked rather than assumed, because a mis-tiled state still returns four
+   ordered-looking numbers).
+   ⚠ **`--buttons-fast` alone cannot verify that tiling: it runs with EMPTY states.** Hence
+   `--buttons-fast-selfcheck`, which asserts (A) four IDENTICAL probe rows over a tiled state give
+   four BIT-IDENTICAL outputs, and (B) row 0 of that B=4 run equals a B=1 run against the
+   ORIGINAL untiled state. **Both are needed and this was verified by injecting the bug:** with
+   `tile_b1` zeroing the state, A still PASSES (all rows stay identical) and only B fires, at
+   2.694. Restored, both read 0.000e0 exactly.
 5. **THEN measure** — `optimization/measure_throughput.py` on A0/A14/A15 and compare against
    the Python-path curve in `CPU_INFERENCE.md`. This is the experiment that finally answers
-   whether the ablations bought user-visible speed.
+   whether the ablations bought user-visible speed. First data point is already in
+   `CPU_INFERENCE.md`: **2.39x** (rwkv_ref_558 2.76M ~714 rev/s vs A18 557k ~1,703 rev/s), i.e.
+   the Rust path does convert the param cut into wall-clock, unlike the Python RNN's 1.24x plateau.
 6. **Then optimize** (roadmap step 4), in this order of expected value:
    - **AVX2/FMA `dot_product` + `add_scaled_in_place`** — we have none; the reference
      implementation is `vendor/jschoreels_anki/rust/x86_simd.patch` (⚠ AGPL — see that

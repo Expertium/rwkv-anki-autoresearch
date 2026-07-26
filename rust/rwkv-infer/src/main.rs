@@ -1034,6 +1034,120 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
+    // --buttons-fast [user] [retention]: the same four intervals through the FAST path, which is
+    // the DEFAULT runtime path -- so until this agreed with `--buttons`, deploy could not actually
+    // serve intervals at speed. Prints the candle numbers alongside and the worst relative gap,
+    // because fast.rs is an independent hand-transcription of the same math and every change to
+    // one side has to be shown to land on the other.
+    if argv.first().map(|s| s.as_str()) == Some("--buttons-fast") {
+        let user: i64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(107);
+        let dr: f32 = argv.get(2).map(|s| s.parse().unwrap()).unwrap_or(0.9);
+        let dev = Device::Cpu;
+        let t = candle_core::safetensors::load(
+            &format!("{}/trace_user_{user}.safetensors", ref_dir()),
+            &dev,
+        )?;
+        let fi = t.get("feats_imm").unwrap().narrow(0, 0, 1)?;
+        let fv: Vec<f32> = fi.flatten_all()?.to_vec1()?;
+        let fstates: [Option<fast::FastStreamState>; 5] = [None, None, None, None, None];
+        let iv = model.fast.button_intervals(&fv, &fstates, dr)?;
+        println!("user {user} R={dr} intervals_s {:.6} {:.6} {:.6} {:.6}", iv[0], iv[1], iv[2], iv[3]);
+
+        let cstates: [Option<StreamState>; 5] = [None, None, None, None, None];
+        let cv = model.button_intervals(&fi, &cstates, dr)?;
+        println!("  candle       {:.6} {:.6} {:.6} {:.6}", cv[0], cv[1], cv[2], cv[3]);
+        let worst = (0..4)
+            .map(|i| (iv[i] - cv[i]).abs() / cv[i].abs().max(1e-6))
+            .fold(0f32, f32::max);
+        // Intervals come out of a 50-step bisection on a curve the two paths compute in f32 with
+        // different orderings, so they are compared RELATIVELY and against the crate's existing
+        // fast-vs-candle tolerance, not for bit-equality.
+        println!(
+            "  max rel diff {worst:.3e}  {}",
+            if worst < 1e-4 { "BUTTONS_FAST_MATCH" } else { "BUTTONS_FAST_MISMATCH" }
+        );
+        return Ok(());
+    }
+
+    // --buttons-fast-selfcheck [user]: prove the B=1 -> B=4 state tiling inside the fast button
+    // path. `--buttons-fast` alone canNOT: it runs with EMPTY states, so the tiling never executes,
+    // and a broken tiling would still return four ordered-looking numbers.
+    //
+    // Two assertions pin it without needing a second implementation:
+    //   A. Four IDENTICAL probe rows over a tiled state must give four BIT-IDENTICAL outputs.
+    //      Any misalignment across batch rows breaks this immediately.
+    //   B. Row 0 of that B=4 run must equal a B=1 run against the ORIGINAL, untiled state.
+    //      A alone would pass if tiling zeroed or corrupted every row the same way; B catches that.
+    if argv.first().map(|s| s.as_str()) == Some("--buttons-fast-selfcheck") {
+        let user: i64 = argv.get(1).map(|s| s.parse().unwrap()).unwrap_or(107);
+        let dev = Device::Cpu;
+        let t = candle_core::safetensors::load(
+            &format!("{}/trace_user_{user}.safetensors", ref_dir()),
+            &dev,
+        )?;
+        let fi = t.get("feats_imm").unwrap().narrow(0, 0, 1)?;
+        let row: Vec<f32> = fi.flatten_all()?.to_vec1()?;
+        let (h, k, c) = model.dims();
+        let layers = model.stream_layers().to_vec();
+
+        // Deterministic, non-zero, non-constant synthetic state -- a zero state would make the
+        // tiling trivially "correct" and the check vacuous.
+        let fill = |n: usize, seed: usize| -> Vec<f32> {
+            (0..n).map(|i| ((i * 37 + seed * 11) % 23) as f32 * 0.01 - 0.11).collect()
+        };
+        let mut states: Vec<Option<fast::FastStreamState>> = Vec::with_capacity(5);
+        for (m, &nl) in layers.iter().enumerate() {
+            let mut st: fast::FastStreamState = Vec::with_capacity(nl);
+            for li in 0..nl {
+                st.push(fast::FastLayerState {
+                    t_xshift: fill(c, m * 7 + li),
+                    t_state: fill(h * k * k, m * 13 + li + 1),
+                    c_xshift: fill(c, m * 5 + li + 2),
+                    e_state: Vec::new(),
+                    warm_wkv: Vec::new(),
+                    warm_shift: Vec::new(),
+                });
+            }
+            states.push(Some(st));
+        }
+        let states: [Option<fast::FastStreamState>; 5] =
+            states.try_into().map_err(|_| anyhow::anyhow!("stream count"))?;
+
+        let nb = 4usize;
+        let tiled = model.fast.tile_states_b1(&states, nb)?;
+        let mut feats4 = Vec::with_capacity(nb * row.len());
+        for _ in 0..nb {
+            feats4.extend_from_slice(&row); // four IDENTICAL rows on purpose
+        }
+        let (_a4, c4, p4, _) = model.fast.review_batched(&feats4, nb, &tiled)?;
+        let nc = model.fast.num_curves;
+        let mut worst_rows = 0f32;
+        for bi in 1..nb {
+            for j in 0..4 {
+                worst_rows = worst_rows.max((p4[bi * 4 + j] - p4[j]).abs());
+            }
+            for j in 0..nc {
+                worst_rows = worst_rows.max((c4.w[bi * nc + j] - c4.w[j]).abs());
+            }
+        }
+        let (_a1, c1, p1, _) = model.fast.review_batched(&row, 1, &states)?;
+        let mut worst_b1 = 0f32;
+        for j in 0..4 {
+            worst_b1 = worst_b1.max((p4[j] - p1[j]).abs());
+        }
+        for j in 0..nc {
+            worst_b1 = worst_b1.max((c4.w[j] - c1.w[j]).abs());
+        }
+        println!("A identical-rows  max|row_i - row_0| = {worst_rows:.3e}  (must be 0)");
+        println!("B tiled-vs-B1     max|b4_row0 - b1|  = {worst_b1:.3e}");
+        let ok = worst_rows == 0.0 && worst_b1 < 1e-5;
+        println!("{}", if ok { "TILING_OK" } else { "TILING_BROKEN" });
+        if !ok {
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+
     if std::env::var("RWKV_DEBUG").is_ok() {
         // one-shot: review 0 of user 107 with zero state, dump intermediates
         let dev = Device::Cpu;
