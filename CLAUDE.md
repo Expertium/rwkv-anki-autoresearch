@@ -918,13 +918,27 @@ the query rows and the imm predictions MUST move). Eval-side fixes banked from t
 work: `RWKV_EVAL_EMPTY_CACHE_EVERY` (default 20 = unchanged) and
 `RWKV_RNN_PROBE_CHUNK`/lean no-grad path in rnn_baseline.py (a 2,087,967-row eval batch
 made one cuDNN call ask for 20.93 GiB).
-**A15 DONE/ACCEPTED 2026-07-25 17:08 (see the champion block above): d_model 128→96 =
-−41.4% params, 3.41× below 2.76M. NEXT = A16, the goal-line cut: d_model 96→64
-(N_HEADS=2, K=32) ≈ 520k params ≈ 5.3× below 2.76M. Rebuild the arch from
-`scratchpad/track2_a15/architecture_d96_lora8.py` with N_HEADS=2; full A15 env; gate
-allowance tightens to ~0.00029/mode (Δ≈289k params), so it is NOT a formality — if it
-misses, the fallback rungs are d_model 80 (N_HEADS=? — needs K≠32, e.g. 5 heads × 16)
-or trimming the SRS heads/input FC, which A15 leaves untouched.**
+**★ THE WIDTH LADDER IS CLOSED (2026-07-26). A15 (d=96, 808,762 params, 3.41×) is the
+final width champion.** A16 (d=64, 7.11×) REJECTED at ~1.8× the bar in both modes; A17
+(d=80 via 5 heads × K=16, 4.72×) missed by 26 millionths (ahead 112%, imm 83% — inside
+cross-seed noise, so it got the in-family retry); A18 (= A17 + LoRA 8→4, 557,246 params,
+**4.95×**) REJECTED at 108%/111%. **Two independent draws at d=80 both ~110% ⇒ genuine
+floor.** Side-finding: the second LoRA halving is NOT free at d=80 (+0.00002/+0.00009 for
+−27.5k) whereas A14's first halving IMPROVED both modes at d=128 — the lever flips sign as
+the trunk narrows, i.e. the model is now truly capacity-limited.
+**⚠ DECISION FOR ANDREW — the ≥5× goal and the ratio gate now conflict.** The gate scores a
+marginal RATE, not an absolute budget, and in absolute terms A18 is cheap: cumulative vs A0
+it is +0.000960 ahead / +0.000532 imm at 4.95× (about a third of what the GRU baseline lost
+while being larger, and ~half of one accepted track-1 iteration's gain). Options: **(a)**
+keep A15 (3.41×, gate-clean, cumulative +0.000689/+0.000253) or **(b)** take A18 (4.95×) as
+a deliberate goal-driven exception (precedent: his verdict changes on iters 23/25/26).
+Artifacts for (b) are complete and kept: `scratchpad/track2_a18/t2a18d_5586.pth` +
+`architecture_d80_lora4.py`.
+**NEXT WORK = THE RUST PORT, not more param cuts.** `optimization/CPU_INFERENCE.md` shows
+param count has already decoupled from the metric users feel (4.5× fewer MACs bought 1.24×
+wall-clock, plateauing after A14) and `rust/rwkv-infer` cannot run the track-2 arch at all
+(needs parameterized d_model/H/layers, the GRU head, STRIP_CMIX, no-ahead-residual).
+Reference implementation + an AVX2/FMA patch to crib from: `vendor/jschoreels_anki/`.
 Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
 sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS
 MAPPED: card=2, deck=4, note=1, preset=3, user=3; depth ladder EXHAUSTED. Also

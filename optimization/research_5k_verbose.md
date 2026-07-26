@@ -841,6 +841,47 @@ candidates on** (iter 29's parked cmd already re-pointed). Artifacts
 scratchpad/track2_a8/ (t2a8d_5586.pth kept), result/RWKV[-P]-track2_a8.jsonl;
 champion_5k_track2.json = A8 (24 val points, the track-2 vprune ref).
 
+### Track-2 A18 — d=80 + LoRA 8→4 (REJECTED 2026-07-26 10:30): the second draw at d=80 ⇒ THE WIDTH LADDER IS DONE
+
+The in-family retry A17 earned. Same width (5 heads × K=16) plus the second LoRA halving,
+**557,246 params = 4.95× below the original 2.76M** — effectively Andrew's target — with the
+allowance rising to 0.000252/mode, enough that A17's *measured* cost would have cleared it
+at 99%/74%.
+
+**Val half n=2500, 0 nanskips: ahead 0.299302 (+0.000271 = 108% of bar), imm 0.268390
+(+0.000279 = 111%). REJECTED in both modes.**
+
+**Two draws now agree, so d=80 is a genuine floor, not the unlucky draw A17 alone could not
+rule out:** A17 landed 112%/83%, A18 108%/111% — both ~110% of their (different) allowances,
+from independently trained models. The width ladder for track 2 is therefore **closed at
+A15's d=96 / 808,762 params / 3.41×**.
+
+**Secondary finding worth keeping: the second LoRA halving is NOT free at this width.** It
+cost +0.00002 ahead / +0.00009 imm relative to A17 for 27,520 fewer params — break-even at
+best — whereas A14's *first* halving at d=128 actually IMPROVED both modes. The same lever
+flipping sign as the trunk narrows is direct evidence that at d=80 even the LoRA ranks are
+load-bearing, i.e. the model is genuinely capacity-limited rather than merely trimmed.
+
+### ⚠ The ≥5× goal and the ratio gate are now in direct conflict — Andrew's call
+
+Width and LoRA cuts cannot reach ≥5× inside the gate. But note *what the gate measures*: it
+is a marginal **rate** (logloss per 100k params removed), not an absolute budget. In
+absolute terms A18 is cheap — **cumulative vs A0 it costs +0.000960 ahead / +0.000532 imm at
+4.95×**, which is about a third of what the GRU baseline gave up (SE-2: +0.0019/+0.0027 while
+being *larger*) and roughly half of one accepted track-1 iteration's gain. So the two live
+options are:
+
+- **(a) Keep A15** — 808,762 params (3.41×), cumulative +0.000689/+0.000253, gate-clean.
+- **(b) Take A18 as a deliberate goal-driven exception** — 557,246 params (4.95×), cumulative
+  +0.000960/+0.000532, gate-violating on the margin but tiny in total. Precedent exists:
+  Andrew has overridden auto-verdicts before (iters 23, 25, 26) when the framing was wrong.
+
+⚠ **Whichever he picks, it does not reach users yet.** Per `CPU_INFERENCE.md`, param count
+has already decoupled from CPU rev/s in the only engine we can measure (a 4.5× arithmetic cut
+bought 1.24× wall-clock and plateaued), and `rust/rwkv-infer` cannot run the track-2 arch at
+all. **The Rust port is now the highest-value work in this track** — it is what converts any
+of these cuts into something an Anki user feels.
+
 ### Track-2 A17 — d_model 96→80 via 5×K=16 (REJECTED 2026-07-26 05:03 by 26 millionths): noise-limited, retry launched
 
 The intermediate rung between A15's passing 96 and A16's failing 64, taken as **5 heads ×
