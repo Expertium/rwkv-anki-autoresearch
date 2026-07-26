@@ -438,7 +438,7 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
   for cheap sanity checks). d=128-on-1-100 baseline = 0.320295/0.281913 (arch-swap
   `scratchpad/architecture_old_d128.py`); iteration-0 floor = 0.374046/0.319475.
 
-### CHAMPION = H=2/K=16 on the 1500-user data-variety recipe  (d=32, 2 heads x K=16; 193,724 params)
+### HISTORICAL CHAMPION (SUPERSEDED -- the live champion is A18, see CURRENT STATE) = H=2/K=16 on the 1500-user data-variety recipe  (d=32, 2 heads x K=16; 193,724 params)
 - arch `[1,4,3,3,3]` (card,deck,note,preset,user), d_model=32 split as **2 heads x 16 (K=16)** via the NEW
   K<32 CUDA kernel -- this HALVES the per-card WKV state (1088->576 floats; model_stats confirmed) at ~same
   params, ~half the WKV-kernel work, and **~1.16x faster GPU training (WS 1.182 vs 1.020 steps/s)**. Trained on
@@ -644,539 +644,145 @@ Pairing needs identical db/MAX/seeds.
   over plain. BIT-EXACT verified** (32-tensor golden fwd+bwd, int-N + PQ paths, both shapes) + deploy
   parity re-run (max REL 3.2e-07). Goldens: `scratchpad/qat_speed/golden_gen.py gen|check`.
 
-### CURRENT STATE (updated 2026-07-15 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology moves to optimization/HISTORY.md "5k-era LIVE STATE archive"; per-iter detail lives in research_5k_verbose.md)
+### CURRENT STATE (trimmed 2026-07-26 — KEEP THIS SECTION SHORT: champions, live run, queue, live rules. Superseded chronology is in `optimization/HISTORY.md` "5k-era LIVE STATE archive"; per-iteration detail in `research_5k_verbose.md`; numbers in `research_5k.md` + `log.md`)
 
-**Champions / anchors:**
-- **Track 1 (d=32 plain) CHAMPION = iter 29 `iter29_muon` (accepted 2026-07-21 16:05):
-  ahead 0.302033 / imm 0.271440 ON THE VAL HALF (5001–7500, n=2500, 0 nanskips — the
-  FIRST val-split verdict; val-half absolutes are NOT comparable to full-range iters
-  ≤28), 171,453 params** (`champion_5k_plain.json` = ckpt
-  `scratchpad/iter29_muon/iter29d_1638.pth` + WS/val traces = the track-1 vprune ref).
-  **= iter 26 + hybrid Muon+AdamW (rwkv/muon.py) — the first OPTIMIZER-family win:
-  matrix wd-groups on Muon (lr 0.02, momentum 0.95 nesterov, NS5, aspect-scaled,
-  decoupled wd at the AdamW-equivalent rate), rest bit-exact functional AdamW. vs
-  iter 26 same-users: ahead +0.000143 (p=2.5e-06), imm +0.000485 (p=6.5e-71, the
-  phase's largest imm gain).** Champion recipe env (set ALL in every future track-1 run
-  + the final QAT run): RWKV_NO_AHEAD_RESIDUAL=1, RWKV_ZERO_FEATURES=22,
-  RWKV_PAVA_LAMBDA=0.1, RWKV_PROBE_DENSITY=0.08, **RWKV_GRU_HEAD=3**,
-  RWKV_STRIP_L0_VLORA=1, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
-  **RWKV_MUON=1, RWKV_MUON_LR=0.02, RWKV_MUON_MOMENTUM=0.95** +
-  H=2/K=16 + HP {peak_lr 1e-3, warmup 200, wd 0.01, clip 0.25} + MAX=110000.
-  Optimizer is train-time only — nothing ships to Rust. Val-lag lesson now
-  BIDIRECTIONAL (Muon trailed the 10-user val all WS tail, won eval decisively).
-  PAVA middle-junction power strongly negative in ALL GRU/PAVA iters (−1.44/−1.44/−1.59).
-  **Deploy contract:** learned-power PAVA rectifier on the 4 counterfactual button
-  predictions (duration imputed to the frozen train median `scratchpad/iter23_pava/
-  duration_median.json`) + per-step state clamp — Rust ports queued. Lineage kept:
-  iter 26 (0.303942/0.273353 full-range, GRU N=3) → iter 25 (0.304427/0.273441, N=2,
-  size-exception accept) → iter 23 (0.304220/0.273423, PAVA champion, 64-basis head) →
-  iter 22 (0.304497/0.273539, no-residual re-baseline) → iter 15 (0.303663/0.273227,
-  last with-residual); iter 14 = QAT tax ref (+0.0029/+0.0044).
-- **★ Track 2 CHAMPION = A18 `track2_a18` (ACCEPTED 2026-07-26 by Andrew's directed verdict
-  change; the auto-verdict was reject-on-ratio at 108%/111% of bar): ahead 0.299302 / imm
-  0.268390 ON THE VAL HALF (n=2500, 0 nanskips), 557,246 params = 4.95× below the original
-  2.76M (79.8% cut); per-card state 2,880 floats (−56% vs A15)** (`champion_5k_track2.json`
-  = ckpt `scratchpad/track2_a18/t2a18d_5586.pth` + WS/val traces = the track-2 vprune ref).
-  **= d_model 80 (5 heads × K=16) + LoRA decay/a/gate 4, v0-mix 2; arch
-  `scratchpad/track2_a18/architecture_d80_lora4.py`.** Andrew's call: *"Let's accept A18 and
-  continue track 1 with it"* — **the ≥5× product goal outranks a marginal-RATE gate missed
-  by ~10%**; in absolute terms A18 costs only +0.000960 ahead / +0.000532 imm cumulative vs
-  A0 (≈1/3 of what the matched-param GRU baseline gave up). Precedent = iters 23/25/26.
-  **THE WIDTH LADDER IS CLOSED: two independent draws at d=80 (A17 112%/83%, A18 108%/111%)
-  ⇒ genuine accuracy floor; d=64 (A16) is ~180% of bar. 4.95× is the end of the width road.**
-  Side-finding: the second LoRA halving is NOT free at d=80 (+0.00002/+0.00009 for −27.5k)
-  whereas A14's first halving IMPROVED both modes at d=128 — the lever flips sign as the
-  trunk narrows ⇒ **the model is now genuinely capacity-limited**, so further gains must come
-  from ALGORITHMS, not shape. Prior champion A15 (0.299031/0.268111, 808,762 params, 3.41×,
-  ckpt `scratchpad/track2_a15/t2a15d_5586.pth` — kept as the gate-clean fallback).
-  **⚠ CPU-INFERENCE REALITY CHECK (Andrew
-  2026-07-25: "I told you to do ablations hoping that fewer params → faster CPU inference
-  in Anki"; state size is quantization's job, training speed serves only us): measured
-  today in `optimization/CPU_INFERENCE.md` — in the PYTHON RNN path a 4.5× arithmetic cut
-  buys only 1.24× wall-clock and PLATEAUS after A14 (A15/A16 width cuts buy ~nothing),
-  because that path runs at 0.08–0.30 GMAC/s vs a core's 5–20 = OVERHEAD-bound: cost
-  tracks op count (layers × streams), not width. 1 thread beats 3 and 6 → deploy
-  single-threaded. The deploy path is Rust (~10× faster, far less per-op overhead) where
-  width SHOULD pay off, but `rust/rwkv-infer` does not yet support the track-2 arch (GRU
-  head, STRIP_CMIX, parameterized d_model/H) — PORTING IT IS NOW THE GATING WORK for
-  answering whether the ablations bought user-visible speed.** Bench:
-  `python optimization/cpu_infer_bench.py`. **TRAINING SPEED IS MONOTONE IN WIDTH
-  (measured 2026-07-25 on Andrew's question; an earlier "speed did NOT improve" note here
-  was WRONG — it anchored on a startup-inclusive first print): median steps/s A0 0.933 →
-  A7 1.022 → A9 1.203 → A14 1.200 → A15 1.434 → A16 1.746 = 1.87× faster than A0 at 7.11×
-  fewer params — sublinear in params, as the elementwise-dominated profile predicts.**
-  **NEXT = ITER 31 (Andrew 2026-07-26, second half of the same message + his naming
-  correction "it shouldn't be called A19, it should be iter 31, first table in research
-  5k"): carry the three track-1 ALGORITHMIC wins onto the A18 trunk as one bundle — PAVA
-  (iter 23) + GRU N=3 (iter 26) + Muon (iter 29), i.e. exactly the iter-29 champion
-  recipe's extra flags. Env deltas vs A18: RWKV_PAVA_LAMBDA=0.1 + RWKV_PROBE_DENSITY=0.08,
-  RWKV_GRU_HEAD 2→3, RWKV_MUON=1 + RWKV_MUON_LR=0.02 + RWKV_MUON_MOMENTUM=0.95. 558,212
-  params (+966). Gate = ordinary ACCURACY iter vs A18 (both modes ≥0.0001 after 4-dp
-  rounding + p<0.0001), not the ratio gate. De-bundle precedent if it regresses =
-  A10→A11.** Prior anchor A13
-  (0.298837/0.267805, 1,468,724 params, the ZERO_FEATURES=22 re-anchor) and A14
-  (0.298798/0.267746, 1,380,660, LoRA halving — better both modes).
-- Superseded track-2 detail: A13 `track2_a13` (promoted 2026-07-23 10:50, DIRECTED
-  re-anchor): ahead 0.298837 / imm 0.267805 val half, 1,468,724 params, ckpt
-  `scratchpad/track2_a13/t2a13d_5586.pth`.
-  **= A9 arch/recipe + RWKV_ZERO_FEATURES=22 (Anki card-state input removed, Andrew's
-  2026-07-22 both-tracks directive; fixes the track-recipe divergence — track 1 has
-  zeroed it since iter 15). THE MEASURED PRICE at d=128: ahead +0.000212 / imm
-  +0.000190 worse than A9 (both p≈1.0) — OPPOSITE SIGN vs d=32 (iter 15: ~free);
-  recorded, directive stands (revert = re-point the json to A9). Full track-2 env now:
-  RWKV_ARCH_MODULE=<champion arch>, RWKV_GRU_HEAD=2, RWKV_STRIP_L0_VLORA=1,
-  RWKV_ZERO_FEATURES=22, RWKV_STATE_CLAMP_TAU=300, RWKV_STATE_CLAMP_WINDOW=32768,
-  RWKV_NO_AHEAD_RESIDUAL=1, RWKV_STRIP_CMIX=user_id:0,user_id:1,user_id:2,preset_id:0,
-  preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1.** Prior champion A9
-  (0.298625/0.267615 val half, note 2L→1L + L0 strips, BETTER both modes vs A8,
-  cleanest run of the chain). Saliency pruning 5/5 since A6.
-  **Stability: cleanest run of the chain — ZERO training NaN activity (A8's watch item
-  did NOT recur; shallow note appears to have helped).** Lineage: A8 (0.300380/0.269006
-  full-range, card 3L→2L + card.L1 strip, per-card state −1/3, the NaN-transients run) →
-  A7 (0.300365/0.268966, user 4L→3L + note.L1/deck.L2 strips, imm p=9.1e-118 the
-  strongest of the phase) → A0 (d=128 1-ep retrain, 0.299857/0.269030, n=4993, 7
-  nanskips — 1-ep budget tax +0.0037/+0.0044 vs the upstream 12-ep .pth) → A1
-  (mixers→1.0) → A4 = A1 + NO_AHEAD_RESIDUAL. The d=128 residual price = ahead
-  +0.000495 (p=1.0) but imm 0.000062 BETTER — cheaper + more asymmetric than d=32's.
-- **QAT deploy truth (FROZEN until research closes) = champ5k_b1** (0.306629/0.277893 quant-aware;
-  `champion_5k.json` + its own cbs). At research close the final champion gets ONE 2-ep
-  confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family flags;
-  plain-era vs QAT-era logloss are NOT comparable).
+**★ THE TWO TRACKS HAVE MERGED (Andrew 2026-07-26).** The track-2 A-series is CLOSED at A18.
+Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations in
+**research_5k.md's FIRST table**. ⚠ The old track-1 `params <= 225,000` cap is RETIRED — it
+belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
+Andrew, not silently dropped).
 
-**Iters 17+19 REJECTED: the pbin lever (binary-recall loss term) is CLOSED by dose-response.**
-Scale 0.5 (iter 17): imm +0.000387 / ahead −0.000222; scale 0.25 (iter 19, n=4999): imm
-+0.000258 (p=1.6e-70, under the bar) / ahead −0.000101 (p=1.0). The trade is ~linear through
-zero → NO scale can make both modes improve ≥0.0003. Real, reproducible effect; pure trade.
-⚠ Iter 19 also produced the FIRST-EVER d=32 NaN-skip (user 8902, 2.0M-token mega user, on its
-1M–2M-token chunk; finite in all prior track-1 runs) — fp32-probe verdict in
-research_5k_verbose.md; watch future track-1 evals for nanskips (gate needs --intersect then).
+#### CHAMPION = A18 `track2_a18`
+Accepted 2026-07-26 by Andrew's directed verdict change over an auto-reject at 108%/111% of
+the ratio bar: *the >=5x product goal outranks a marginal RATE missed by ~10%*, costing only
++0.000960 ahead / +0.000532 imm cumulative vs A0 (~1/3 of what the matched-param GRU baseline
+gave up). Precedent = iters 23/25/26.
+- **ahead 0.299302 / imm 0.268390** on the VAL half (5001-7500, n=2500, 0 nanskips);
+  **557,246 params = 4.95x below the original 2.76M** (79.8% cut); per-card state 2,880 floats.
+- ckpt `scratchpad/track2_a18/t2a18d_5586.pth`; `champion_5k_track2.json` = the vprune ref.
+- arch `scratchpad/track2_a18/architecture_d80_lora4.py`: d_model 80 (5 heads x K=16), LoRA
+  decay/a/gate 4, v0-mix 2.
+- **FULL ENV (set all of these in every run on this trunk):** `RWKV_ARCH_MODULE=<that file>`,
+  `RWKV_GRU_HEAD=2`, `RWKV_STRIP_L0_VLORA=1`, `RWKV_ZERO_FEATURES=22`,
+  `RWKV_STATE_CLAMP_TAU=300`, `RWKV_STATE_CLAMP_WINDOW=32768`, `RWKV_NO_AHEAD_RESIDUAL=1`,
+  `RWKV_STRIP_CMIX=user_id:0,user_id:1,user_id:2,preset_id:0,preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1`.
+- Fallback = A15 (0.299031/0.268111, 808,762 params, 3.41x — the gate-clean one).
+- **THE WIDTH LADDER IS CLOSED:** two independent draws at d=80 (A17 112%/83%, A18 108%/111%)
+  = a genuine accuracy floor; d=64 (A16) is ~1.8x the bar. 4.95x is the end of the width road.
+  All depth floors are mapped too (card=2, deck=4, note=1, preset=3, user=3) — ladder exhausted.
+  **Side-finding that sets the agenda:** the second LoRA halving is NOT free at d=80
+  (+0.00002/+0.00009 for -27.5k) whereas A14's first halving IMPROVED both modes at d=128 —
+  the lever flips sign as the trunk narrows, so the model is now genuinely capacity-limited and
+  further gains must come from **ALGORITHMS, not shape**.
 
-**Iter 18 REJECTED (directed, 2026-07-15 23:45): duration ablation (ZERO_FEATURES=8,22) =
-+0.0018 ahead / +0.0024 imm worse — 6-8x the ≤0.0003 tolerance. Review duration is REAL signal
-(historical answer times predict retention; nothing else recovers it); deploy keeps feeding it.
-Champion recipe stays RWKV_ZERO_FEATURES=22 only.** The honest persistent val deficit predicted
-this one (consistent-all-run val gaps mean something; oscillating ones don't).
+**Track-1 (d=32) lineage — closed, but its wins carry over.** Last champion iter 29
+`iter29_muon` (0.302033/0.271440 val half, 171,453 params). Its three algorithmic wins are
+exactly what iter 31 grafts onto the A18 trunk: **PAVA** (iter 23), **GRU N=3** (iter 26),
+**hybrid Muon+AdamW** (iter 29, `rwkv/muon.py` — train-time only, nothing ships to Rust).
+**Deploy contract:** learned-power PAVA rectifier on the 4 counterfactual button predictions
+(current-row duration zeroed on all four) + per-step state clamp.
 
-**Family scoreboard (track 1, plain+QAT eras; conduct rule 5 — 1-2 rejects = deprioritized, NOT
-closed):** early-training-intervention 0/2 (shrink-perturb, warmup-KD — both led early val then
-washed out; mid-WS val leads do NOT predict verdicts); grade-representation 0/1; capacity-at-5k
-0/2 (head resolution 64→128, mixer 1.5 — the d=32 trunk is not capacity-limited at 5k);
-state-size ladder 0/5 CLOSED (no stream is state-capacity-limited at d=32/H=2; iter 6's near-miss
-died on the seed pair); readout 0/3 WITH SIGNAL (prehead gate null; iter 20's 64-param cross-head
-mix improved BOTH modes at p 2e-10/2e-25 but ~2/3 of the bar; iter 21's KxK 16x-capacity variant
-ERASED the gain, ahead −0.0009 — the channel is real but capacity-starved is the WRONG diagnosis;
-v3 queued = v1 with the delta EXCLUDED from wd);
-loss-reweighting 0/2 (pbin 0.5 + 0.25 = linear imm/ahead trade, the SCALE lever is closed by
-interpolation — other reweighting ideas like recency/per-rating weights would be new family
-members); HP tuning CLOSED (champion HPs confirmed
-vs 19 alternatives at full eval); **optimizer 1/2 — Muon ACCEPTED iter 29 (the strongest
-family start of the phase: imm +0.000485 p=6.5e-71); cautious wd REJECTED iter 30 (pure
-trade: imm +0.00014 / ahead −0.00038 — the pbin shape again); micro-tuning NOT auto-queued;
-NorMuon/Polar-Express = deprioritized in-family variants.**
-All hooks stay in-repo env-gated, default off: RWKV_KD_DUMP_OUT/
-RWKV_KD_MIX, RWKV_INIT_BLEND, RWKV_GRADE_EMB, RWKV_STREAM_HEADS/RWKV_STREAM_LAYERS,
-RWKV_PREHEAD_GATE, RWKV_PBIN_SCALE, RWKV_ZERO_FEATURES, RWKV_ARCH_MODULE, RWKV_EVAL_CAST_FP32,
-RWKV_MUON (now ON in the champion recipe).
+**QAT deploy truth (FROZEN until research closes)** = champ5k_b1 (0.306629/0.277893
+quant-aware; `champion_5k.json` + its own codebooks). At research close the final champion gets
+ONE 2-ep confirmation run + ONE quant-aware run (q72u deploy env + the frozen NO_JIT family
+flags). Plain-era and QAT-era logloss are NOT comparable.
 
-**Live rules (5k phase, both tracks):**
-- **⚠ VAL/TEST SPLIT (Andrew 2026-07-21, effective from iter 29 / post-A8): candidates eval
-  ONLY the VAL half = users 5001–7500 (n=2500); all verdicts + p-gates run there, pairing vs
-  the champion's existing jsonls via `paired_pvalue --intersect`. TEST = 7501–10000 is touched
-  ONLY at each track's close (final champion + the 2-ep confirmation + QAT runs) for honest
-  numbers — NEVER for decisions.** Delta bars/p-thresholds unchanged (expect ~1.4× noisier SEs
-  at n=2500). Training-val 5001–5010 + tuner 5001–6000 already ⊂ val (vprune refs stay valid).
-  Eval tomls: `write_eval_toml ... 5001 7500`. Bonus: eval wall-clock halves. Full text:
-  research_5k_notes.md methodology amendment.
-- **RWKV_NO_AHEAD_RESIDUAL=1 in EVERY future run, both tracks (Andrew 2026-07-16: the
-  piecewise-linear curve correction is DISABLED)** — track-1 iters and track-2 A3+ alike;
-  A2 grandfathered (mid-flight). Iter 22 measures the cost; re-baseline is Andrew's call.
-- **Track-2 (d=128) runs: RWKV_EMPTY_CACHE_EVERY=1 + RWKV_EMPTY_CACHE_WINDOW=0** (whole-run
-  per-step clears — allocator-envelope creep → WDDM paging → 4x slowdown otherwise; ~free under
-  the ~1 s step). **MAX=32768 EVERYWHERE incl. `write_decay_setup.py` arg 10** (its 110000
-  default THRASHED A0's decay; pairing needs MAX identical across all track-2 runs). d=128 evals
-  UNSHARDED (`--shards 1 --solo-threshold 0`; one alone ~9 GB). Coverage fact: max single batch
-  in train_db_5k_h1 = 16,384 tokens → zero data drop at any MAX ≥ 16,384.
-- d=32 evals: phased `eval_sharded.py` (solo mega-users → 2 LPT shards → merge; ~1.9x over
-  sequential, wedge-safe; completeness gate = merged+skipped == rostered or exit 3).
-  Elevated-VRAM rungs (e.g. K=32 streams) → sequential shards.
-- **MID-EPOCH RESUME NOW SUPPORTED (2026-07-23, Andrew's directive after the reboot ate
-  A14's 18k steps): RWKV_RESUME_SKIP_GROUPS=1** + the existing ckpt machinery = crash
-  recovery losing ≤1000 steps (~15 min). train_rwkv skips the already-trained prefix of
-  the deterministically-shuffled group sequence (epoch e skips min(max(done−e·E,0),E);
-  shuffles still consumed → order replays exactly). Procedure: `python
-  scratchpad/make_resume.py <run_dir> <prefix> <ws_toml>` (finds newest ckpt pair, copies
-  optim to the loader name, writes the resume toml), then rerun the WS phase with the
-  run's FULL env + RWKV_RESUME_SKIP_GROUPS=1, WITHOUT deleting step-trace files;
-  decay/eval phases unchanged. VALIDATED: smoke B1 (mid-epoch-0, 587 keys) + B2
-  (whole-epoch-0+partial-1 skip, 258 keys) both EXACT vs the uninterrupted reference.
-  Caveats: the resumed tail's dropout draws differ (weights/optim exact — statistically
-  equivalent, ≪ cross-seed spread; NOT bit-identical to uninterrupted); a resumed WS's
-  grad-stats json covers only the tail. Vals are only comparable at the SAME step.
-- **⚠ NO co-tenant GPU work during gate-critical runs (2026-07-23, learned twice in one
-  evening):** a d=32 smoke sharing the GPU with A14 first caused ~1e-4 val drift (cuBLAS
-  algo selection under memory pressure breaks bit-replay), then a second smoke leg pushed
-  VRAM to 11.6/12 GB and BOTH processes froze in a WDDM paging deadlock for 2.7 h (log
-  mtimes stuck at the same second; killing the smoke instantly unstuck A14, zero steps
-  lost). Smokes needing GPU wait for a free GPU or run tiny/CPU.
-- **Seed-pair doctrine (research phase):** any single-run margin < ~0.0005 needs the exact recipe
-  re-run at RWKV_AUGMENT_SEED=4321 before acting — cross-seed spread on the same recipe is
-  ~0.0004 both modes; in-seed Wilcoxon p (even 1e-29) measures per-user consistency, NOT
-  cross-seed robustness.
-- **TorchScript hook rules (cost 2 hollow/dead launches in iter 16):** @torch.jit.ignore bodies
-  must NOT call submodules (through scripted code they see the raw C++ ScriptModule → 'not
-  callable' → the NaN-except turns the run HOLLOW) — use root Parameters + F.linear, names
-  containing weight/bias for the wd groups; root-level Parameters are INVISIBLE to
-  selective_cast's module walk (cast them explicitly); ScriptModule forbids persistent=False
-  buffers (use plain tensor attrs). Smoke tests MUST exercise the SCRIPTED forward +
-  selective_cast/copy_downcast_ chain, not direct Python calls. Gate every .cmd phase on exit
-  codes AND artifacts (train_rwkv can swallow fatal errors to exit 0).
-- FETCH WORKERS = 4 in every training/eval toml (Andrew 2026-07-08, RAM). Live loss plot:
-  `detach.ps1 -Script scratchpad/liveplot/run_liveplot.cmd` (auto-discovers the newest
-  `*_ws_trace.jsonl`, champion ref from champion json).
+#### LIVE
+- **iter 31 RUNNING** — detached pid 3136 (cmd wrapper), `scratchpad/iter31_algo/`, launched
+  12:42. = A18 + PAVA + GRU N=3 + Muon, 558,212 params. ~1.44 steps/s; WS 22,346 steps ends
+  ~17:00, decay 5,586 steps, verdict ~19:30. Gate = ordinary accuracy iter vs A18 (both modes
+  >=0.0001 after 4-dp rounding + p<0.0001), NOT the ratio gate.
+  Its val TRAILS A18 slightly at matched steps (step 4000: 0.33287/0.31385 vs 0.33265/0.31356)
+  — **record it, do NOT act on it**: the val-lag lesson is BIDIRECTIONAL (Muon/iter 29 trailed
+  val all WS and won eval; iters 25/27 led val and lost).
+  ⚠ Treat the bundle as a hypothesis: all three were tuned at d=32 and the transfer ledger
+  (iter 28; A13's opposite-sign state price) says d=32 wins need re-earning.
+- **Parked + armed:** `scratchpad/eval_pava/run_rect_evals.cmd` (detached pid 33012, parent
+  WmiPrvSE) waits on iter 31's DONE_EXIT, then runs BOTH rectified evals (A18 = classic p=1, it
+  has no `pava_theta`; iter 31 = learned powers), an imm bit-identity sanity check, and BOTH
+  gates. Log `scratchpad/eval_pava/rect_evals.log`.
+  **WHY TWO METRICS:** iter 31's own eval leg is UNRECTIFIED (its `.cmd` predates
+  `RWKV_EVAL_PAVA`, and a RUNNING `.cmd` must never be edited — cmd.exe re-reads it at a saved
+  byte offset). That is fine and is the **PRIMARY gate**, being directly comparable to A18's
+  existing jsonls; the rectified pair is the **deploy metric**. **If the two disagree, report
+  both to Andrew — do not pick.**
 
-**★ anki-revlogs-10k-id DATASET DONE (2026-07-16 00:07, 16.2 GB at
-`C:/Users/Andrew/anki-revlogs-10k-id`):** the 10k dataset rebuilt from the raw HF release with
-**REAL Anki epoch-ms IDs** (card/note/deck/parent/preset — no factorize) **+ corrected
-`review_time = revlog id − taken_millis`** (show time, Andrew's directive; raw answer id =
-review_time + duration; day_offset/elapsed_*/sort all use the corrected time). User numbering
-== published set (file stems). VERIFIED vs published: user 70 row set identical (720,110 rows,
-ratings 1:1 aligned by answer time), day_offset differs on exactly 1 row (show-time crossed the
-day rollover — the intended effect); 10,000/10,000 revlog+deck tables, 9,934 card tables (==
-published exactly). Builder `scratchpad/dataset_id/build_parquet_id.py` (resumable). Staging
-`...-10k-id-raw` (archive + extracted protobufs ~40 GB — deletable once the parquets are
-trusted). Follow-on work: a NEW preprocessing pipeline deriving FUTURE_FEATURES.md features
-from the real timestamps.
+#### QUEUE
+1. **Record iter 31 at verdict:** `research_log.jsonl` + `research_5k.md` FIRST table +
+   `research_5k_verbose.md` + `python optimization/logbook.py rebuild`.
+2. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — the highest-value non-research work.
+   Steps 1 (shape detection) and 2 (GRU head) are DONE (commits `1f22e11`, `1620c82`).
+   Remaining: per-layer cmix/v_lora skips + state clamp, the PAVA button API, parity, then
+   measure. **⚠ BLOCKER: the parity gate is RED and was mis-documented — see §11.** Fix that
+   before treating "A15/A18 parity" as the definition of done.
+3. **Wire `pava_loss_avg` / `pava_pool_frac` into the step-trace writer** — blocked only until
+   iter 31 ends (editing `train_rwkv.py` now would affect its decay phase, a fresh process).
+4. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); deck-tree features
+   (`optimization/FUTURE_FEATURES.md`, needs an LMDB rebuild); permutation init (LOW).
 
-**★ TRACK-2 A1 ACCEPTED (2026-07-16 10:57) = NEW TRACK-2 CHAMPION: all channel mixers → 1.0.**
-**2,320,516 params (−442,368 vs A0); intersection (n=4993) ahead 0.299768 = +0.000089 BETTER
-(p=2e-4), imm 0.269070 = +0.000040 worse (p=1.0) ⇒ per-100k ratios −0.0000201 / +0.0000090 —
-~50× inside the ≤0.0001 gate.** Full-5000 finals 0.300009/0.269324 with **ZERO NaN-skips** (A0
-needed 7 — the instability is gone; future track-2 gates can pair on full n=5000).
-`champion_5k_track2.json` = A1 (ckpt `scratchpad/track2_a1/t2a1d_5586.pth`, 24 val points = the
-track-2 vprune ref). d=32's mixer lesson transfers to d=128; decay-end val was IDENTICAL to A0.
-Detail: research_5k_verbose.md. **Track-2 A2 queue (next track-2 block):** user 4L→3L / deck
-4L→3L (~149k each), LoRA-dim cuts, d_model 128→96. **A2+ runs must set
-RWKV_GRAD_STATS=<out.json> (Andrew's directive 2026-07-16):** records per-param mean|grad| +
-mean|grad·w| (SNIP saliency) across all steps + final near-0/near-1 no-op weight stats, to
-rank ablation targets; recorder `rwkv/grad_stats.py` (unit-tested), report
-`python optimization/grad_stats_report.py <json>` (layer ranking + type-aware no-op suspects).
+**⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
+fewer params -> faster CPU inference in Anki").** Measured in `optimization/CPU_INFERENCE.md`:
+in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and PLATEAUS after
+A14 — that path runs at 0.08-0.30 GMAC/s vs a core's 5-20, so it is OVERHEAD-bound and cost
+tracks op count (layers x streams), not width. **1 thread beats 3 and 6 → deploy
+single-threaded.** The deploy path is Rust (~10x faster, far less per-op overhead) where width
+SHOULD pay off — which is why the port is the gating work for whether the ablations bought
+user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
+(Training speed IS monotone in width — median steps/s A0 0.933 -> A16 1.746 = 1.87x faster at
+7.11x fewer params, sublinear as the elementwise-dominated profile predicts.)
 
-**Iter 20 REJECTED (2026-07-16 17:55) but = the plain era's strongest positive signal:
-cross-head readout mix v1 (RWKV_XHEAD_MIX=1, zero-init (H,H,K) delta on the WKV output
-pre-GroupNorm, 194,620 params) improved BOTH modes — ahead +0.000178 (p=2.0e-10), imm
-+0.000107 (p=2.0e-25), n=5000, 0 nanskips — first p-gate PASS since iter 15, but both
-magnitudes miss the 0.0003 bar.** Smoke lesson: W_o is zero-init → nothing upstream of it is
-observable at fresh init (randomize W_o before perturb/grad smoke checks).
+#### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+curve-shape constraints **1/1** (PAVA) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
+largest imm gain; cautious wd REJECTED iter 30 — a pure trade) · GRU-head N-sweep **peaks at
+N=3** (N=4 worse, closed) · readout/xhead **0/3** with real signal but negative under the GRU
+head (iter 28), closed pending new ideas · loss-reweighting **0/2** (pbin scale lever closed by
+dose-response — a linear imm/ahead trade through zero) · early-training-intervention **0/2** ·
+grade-representation **0/1** · capacity-at-5k **0/2** · state-size ladder **0/5 CLOSED** · HP
+tuning **CLOSED** (champion HPs confirmed vs 19 alternatives at full eval).
+All hooks stay in-repo, env-gated, default off.
 
-**Iter 21 REJECTED (2026-07-16 21:12): cross-head mix v2 (full K×K, 208,060 params) —
-ahead −0.000859 worse (p=1.0), imm tied. The 16× capacity erased v1's both-modes gain;
-the readout channel is information-poor + regularization-hungry, not capacity-limited.**
-
-**TRACK-2 A2 REJECTED (2026-07-17 07:25): deck 4L→3L = ahead +0.000180 worse (p=1.0) =
-per-100k ratio +0.000155 = 1.55× the ≤0.0001 bar (imm +0.000020 = +0.0000172, passes).**
-Full n=5000, 0 nanskips (2nd consecutive clean d=128 run). Deck DEPTH is load-bearing for
-the ahead/curve pathway; d128-single-layer-cut family 0/1, deprioritized for BUNDLES (the
-cut was exactly 5.0% and still failed the price check). ⚠ A2's grad-stats jsons are DEAD
-(whole-step-skip bug: layer-0 v_lora_simple.A never receives grads → every step skipped;
-FIXED `dcf11f5` — per-param subset accumulation, report refuses dead jsons + lists
-never-grad tensors as FREE prune candidates (5×1,024 params at d=128); A3 records
-correctly on the same A1 trunk). Detail: research_5k_verbose.md.
-**ITER 22 ACCEPTED (Andrew 2026-07-17 ~10:50, directed re-baseline): no-residual cost
-ahead +0.000834 / imm +0.000312 vs iter 15 = the price of monotone-in-t. NEW track-1
-champion/reference = 0.304497/0.273539; champion_5k_plain.json re-pointed (promote
---val-trace done).**
-**A3 (GRU curve head) COMPLETE 2026-07-17 21:12 — REJECTED on the drafted vs-A1 gate,
-VERDICT DEFERRED to the no-residual re-anchor.** n=4871 intersection: **imm 0.268403 =
-+0.000105 BETTER (p=1.6e-21, FIRST significant track-2 accuracy win)**; ahead 0.299964 =
-+0.000443 worse → ratio +0.000228 (2.28× bar) — but CONFOUNDED (A1 is residual-ON; iter 22
-priced residual removal alone at +0.000834 ahead at d=32; A3's deficit is ~half that).
-**⚠ 129/5000 eval NaN-skips** (instability oscillates through training; deploy-side
-state-norm clamp now load-bearing for d=128). Grad-stats (fixed recorder): 10,886
-never-grad params (layer-0 v_lora ×5 = free strip); saliency bottom = ALL non-L0 channel
-mixers + user.L3.time_mixer = A4 bundle shortlist. Detail research_5k_verbose.md.
-**ITER 23 ACCEPTED (VERDICT CHANGED by Andrew 2026-07-18 ~12:55; auto-verdict 01:15 had
-been reject-on-magnitude): learnable power-mean PAVA rectifier = NEW TRACK-1 CHAMPION —
-adopted for the monotonicity constraint itself (ordered button intervals = product UX),
-with accuracy ~free-to-mildly-positive: BOTH modes improved (+0.000278 p=1.3e-33 /
-+0.000116 p=8.1e-15 vs iter 22), n=5000, 0 nanskips, 193,727 params. Curve-shape-
-constraints family 1/1. Detail research_5k_verbose.md (incl. the changed-verdict
-addendum).**
-**TRACK-2 A4 RE-ANCHOR DONE + PROMOTED (2026-07-18 12:02): 0.300504/0.269262, n=5000,
-0 nanskips, ZERO NaN val windows (the GRU head, not d=128/no-residual, was A3's
-destabilizer). A3 DEFERRED VERDICT = ratio gate PASS both modes (−0.0000288/−0.0000221
-vs ≤0.0001; A3 BETTER than the fair anchor: ahead +0.000056 p=0.107, imm +0.000043
-p=7.6e-05) — but promotion stays BLOCKED by A3's 129-NaN instability (recorded
-gate-PASS-unstable); the GRU head (−194,292 params) is VALIDATED as an A5-bundle
-component once the state-norm clamp / train-time fix lands. Re-anchor grad-stats:
-never-grad 142,592 (dead ahead head 131,712 + 5×L0 v_lora 10,880 = free strip);
-saliency bottom = 8 non-L0 channel mixers (~265k = 11.4% of A1) then card.L1/user
-time-mixers — consistent with A3's report = robust A5 menu. ⚠ NAMING: "A4 bundle" in
-older notes = A5 now (A4 = the re-anchor). Detail research_5k_verbose.md.**
-**ITER 24 REJECTED (2026-07-18 15:32): p-head-weighted PAVA pooling = NULL vs iter 23
-(ahead +0.000035 p=0.54, imm +0.000002 p=0.03; n=5000, 0 nanskips) — uniform pooling
-suffices, iter 23 stays champion, deploy keeps the simpler rectifier. CONFIRMATION
-BONUS: vs iter 22 it scored +0.000312 (p=6e-35) / +0.000118 (p=7e-21) — the PAVA gain
-reproduced across two independent trainings (~+0.0003 ahead / +0.0001 imm real).
-Weighting sub-lever closed. Detail research_5k_verbose.md.**
-**ITER 25 ACCEPTED (VERDICT CHANGED by Andrew 2026-07-19 ~10:35; auto-verdict 07:24 had
-been reject-on-logloss): GRU power-curve head at d=32 = NEW TRACK-1 CHAMPION on the
-SIZE/SPEED exception — parity inside the budget (ahead −0.000207 p=1.0, imm −0.000018
-p=0.38 vs iter 23) at 171,066 params (−11.7%); n=5000, 0 nanskips. The d=128 imm win did
-NOT transfer (the d=32 trunk is the binding constraint) but both tracks now share the
-GRU head. Val-lead lesson strongest instance: led vals nearly all run, lost eval. PAVA
-Hard–Good power −1.44 IDENTICAL to iter 23 under a different head. Detail
-research_5k_verbose.md (incl. changed-verdict addendum).**
-**MEME RUN DONE (2026-07-19 10:53, recorded in optimization/side_experiments.md SE-1):
-BLIND RWKV LOSES to FSRS-7 decisively — ahead 0.351922 (+0.034, wins only 7.5% of
-users), imm 0.341322 (+0.023, wins 25%); n=5000, 0 nanskips. Intervals+grades are worth
-~0.048 ahead LogLoss (~3.5× the full model's margin over FSRS-7). NOT in
-research_log.jsonl by design.**
-**ITER 26 (GRU N=3) ACCEPTED (VERDICT CHANGED 2026-07-19 ~21:00 — Andrew LOOSENED the
-gate to rounded-4dp ≥0.0001 both modes; auto-verdict 20:18 had been reject on the old
-0.0003 imm bar): ahead +0.000485 (p=4.4e-42, largest ahead gain of the phase), imm
-+0.000088→0.0001 (p=4.8e-09); n=5000, 0 nanskips, 171,453 params = NEW TRACK-1
-CHAMPION (recipe now GRU_HEAD=3). Under the new bar iter 20 (xhead v1,
-+0.000178/+0.000107, both p≪1e-9) would also have passed → xhead-mix v3 gains queue
-priority. PAVA middle junction −1.59 (3rd straight strongly-negative). Detail
-research_5k_verbose.md.**
-**ITER 27 REJECTED (2026-07-20 00:01): GRU N=4 = ahead −0.000411 / imm −0.000172 worse
-than N=3 (p=1.0 both); n=5000, 0 nanskips. THE N-SWEEP PEAKS AT 3 — closed, no N=5;
-iter 26 stands. Val-parity lost eval again. Detail research_5k_verbose.md.**
-**ITER 28 REJECTED (2026-07-20 14:38): xhead v1 on the iter-26 recipe = ahead −0.000114
-/ imm −0.000160 worse (p=1.0 both); n=5000, 0 nanskips. Iter 20's old-recipe gain did
-NOT transfer — the readout channel measures NEGATIVE under the GRU head. V3 (wd
-exclusion) DEPRIORITIZED with inverted rationale; readout/xhead family 0/3 on current
-lineages, closed pending new ideas. Transfer-failure ledger: never graft, re-measure.**
-**→ GPU plan (updated 2026-07-22 19:50): A10 + A11 DONE/REJECTED — the de-bundle
-SPLIT the damage: user depth FLOORS AT 3L (ahead damage identical ±note strip,
-+0.00029, owns the ahead cost — long-recurrence depth serves ahead, cf. A2) and
-note.L0's mixer was the imm poison (~+0.00018; last-transform strips are costly).
-**A14 DONE/ACCEPTED (2026-07-24 03:30) = NEW TRACK-2 CHAMPION: LoRA dims halved
-(decay/a/gate 16→8, v0 8→4, all streams — the first structural cut), 1,380,660
-params (−6.0% vs A13, **−50.03% vs 2.76M — halfway mark crossed**), BETTER both
-modes (+0.000039 p=0.045 / +0.000059 p=0.0069) — the LoRA ranks were oversized;
-a further 8→4 halving is a queue candidate. champion_5k_track2.json = A14 (ckpt
-scratchpad/track2_a14/t2a14d_5586.pth; full env = A13's + the lora8 arch module).
-**SE-2 BASELINES DONE + CLOSED 2026-07-25 (Andrew's "is RWKV needed?" experiment;
-informational, never champion candidates): RWKV-7 WINS by ~0.002 ahead / ~0.003 imm at
-matched params — real (4-9× the acceptance bar) but ~1/10 of the ~0.019 margin over
-FSRS-7; the other ~0.017 is the shared features/heads/pipeline, which the classic cells
-inherit.** Val half n=2500, 0 nanskips: GRU v3 0.300778/0.270525 (1,559,824 p) and LSTM
-v3 0.301103/0.270973 (1,488,688 p) vs A13 0.298837/0.267805 (1,468,724 p) — two
-independent cell families reproducing the same deficit ⇒ property of the recurrence
-CLASS. A14 beats both while 7-11% smaller ⇒ no plan changes. Speed: LSTM 1.74 steps/s >
-RWKV 1.24 > GRU 1.18 (RWKV's win is accuracy-per-param, not step rate). ⚠ Two bug
-generations are recorded in side_experiments.md SE-2 and are the lasting lessons: v1 had
-no query probe (interval-blind, 0.415/0.415); v2 probed correctly but had NO residuals,
-so the signal attenuated 3-10×/layer and imm stayed blind — caught only because Andrew
-asked "are you sure there are no other bugs?", proven by
-`scratchpad/baseline_gru/probe_sensitivity_check.py` (now a reusable post-run gate: zero
-the query rows and the imm predictions MUST move). Eval-side fixes banked from the same
-work: `RWKV_EVAL_EMPTY_CACHE_EVERY` (default 20 = unchanged) and
-`RWKV_RNN_PROBE_CHUNK`/lean no-grad path in rnn_baseline.py (a 2,087,967-row eval batch
-made one cuDNN call ask for 20.93 GiB).
-**★ THE WIDTH LADDER IS CLOSED (2026-07-26) AND ANDREW TOOK OPTION (b): A18 (d=80 via 5
-heads × K=16 + LoRA 4, 557,246 params, 4.95×) IS THE TRACK-2 CHAMPION** — accepted by his
-directed verdict change over an auto-reject at 108%/111% of the ratio bar, because the ≥5×
-product goal outranks a marginal RATE the run missed by ~10% while costing only
-+0.000960/+0.000532 cumulative vs A0. A16 (d=64, 7.11×) REJECTED at ~1.8× the bar; A17
-(d=80, 4.72×) missed by 26 millionths (112%/83%). **Two independent draws at d=80 both
-~110% ⇒ genuine floor — 4.95× is the end of the width road.** Side-finding: the second LoRA
-halving is NOT free at d=80 (+0.00002/+0.00009 for −27.5k) whereas A14's first halving
-IMPROVED both modes at d=128 — the lever flips sign as the trunk narrows, i.e. the model is
-now truly capacity-limited. A15 kept as the gate-clean fallback.
-**★ THE TWO TRACKS HAVE MERGED (Andrew 2026-07-26: "continue track 1 with it" + "it
-shouldn't be called A19, it should be iter 31 (first table in research 5k)"). From here
-there is ONE lineage: the A18 trunk, numbered as track-1 iterations in research_5k.md's
-FIRST table.** The track-2 A-series is closed at A18. ⚠ The old track-1 `params ≤ 225,000`
-cap does NOT carry over — it belonged to the d=32 track; this lineage's size story is the
-4.95× reduction (558,212 params). Flagged to Andrew rather than silently dropped.
-**→ ITER 31 (RUNNING, relaunched 2026-07-26 12:42 on the corrected duration convention,
-pid 3136, `scratchpad/iter31_algo/`) = A18 + PAVA + GRU N=3 + Muon**, the three track-1 wins
-track 2 never received, bundled (all independently validated; together = the iter-29 recipe;
-1 run ≈ 10 h vs ~30 h for three).
-Ordinary accuracy gate vs A18 (0.299302/0.268390 val half). **SPEED: measured ~1.1–1.4
-steps/s** (4,657 steps in the first 68 min) vs A18's 1.86 — probes add ~30% rows, PAVA runs
-eager, Muon adds Newton-Schulz; WS ~4.5 h, verdict ~20:45. 8.8 GB peak reserved. (The 40-step
-`BENCH_RESULT` said 0.29 — it understates steady state ~3×, NEVER schedule off it.)
-**⚠ ITS EVAL LEG IS UNRECTIFIED** — the `.cmd` was written before `RWKV_EVAL_PAVA` existed
-and a RUNNING batch file must not be edited (cmd.exe re-reads it at a saved byte offset).
-That is fine and arguably better: the unrectified number is directly comparable to A18's
-existing jsonls, so it is the primary gate; the rectified pair (A18 falls back to classic
-p=1, having no `pava_theta`) then follows as two separate ~1.25 h evals for the DEPLOY
-metric. If the two metrics disagree on the verdict, report both to Andrew rather than
-picking one.
-⚠ Treat as a hypothesis, not a deposit — they were tuned at d=32 and the
-transfer ledger (iter 28, A13's opposite-sign state price) says d=32 wins need re-earning;
-the encouraging prior is that A18's own LoRA finding shows the trunk is capacity-limited,
-and PAVA/GRU-N add head-side capacity.
-**★ DEPLOY-PATH WORK DONE 2026-07-26 (the "implement everywhere" directive + its fallout),
-commits `11ab7e0` / `921ac76` / `db85154`:** (1) the Python RNN got the 4-BUTTON API it never
-had — `SrsRWKVRnn.button_heads` / `button_curves` / `button_intervals`, plus `pava_theta` in
-the state dict (without it `load_state_dict`, which is strict, could not even OPEN a
-PAVA-trained checkpoint); probes read the state and never advance it, duration is zeroed on
-all four inside the API so a caller cannot get the contract wrong, and the interval solver
-bisects on the RECTIFIED curve (the rectifier couples the buttons, so rectifying after
-solving gives a different answer). Smoke `scratchpad/eval_pava/smoke_rnn_buttons.py`.
-(2) **Gaps 2/3/5 turned out to be PYTHON-RNN gaps, not just Rust ones** —
-`RWKV_STRIP_CMIX` / `RWKV_STRIP_L0_VLORA` / `RWKV_STATE_CLAMP_*` lived only in
-`rwkv_model.py`, so the deploy twin could not run the merged champion; now ported, with
-`stream_name` stamped in `srs_model_rnn.py` (unstamped, STRIP_CMIX matches `":<layer>"` and
-strips NOTHING while appearing to comply). ⚠ The state clamp is per-step at deploy vs
-per-window in training — equal wherever ‖S‖ ≤ τ (factor exactly 1.0, bit-inert), different
-only on already-diverging states; that belongs in the parity gate's tolerance story, not
-chased as a bug. (3) New harness `scratchpad/parity3/parity_train_vs_rnn.py`, 7/7 at ~1e-6
-— see §9.
-**RUST PORT still the highest-value NON-research work** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`,
-committed 1a86f04): `optimization/CPU_INFERENCE.md` shows param count has already decoupled
-from the metric users feel (4.5× fewer MACs bought 1.24× wall-clock, plateauing after A14)
-and the engine cannot run the track-2 arch at all — but `model.rs` IS already dim-agnostic,
-so the 5 gaps are shape-detectable (1×1 dummies): GRU head, stripped cmix, stripped L0
-v_lora, no ahead residual, state clamp. ⚠ Iter 31 changes the parity target (GRU N=2→3), so
-port against A18/iter31 whichever is champion when the port lands.
-Reference implementation + an AVX2/FMA patch to crib from: `vendor/jschoreels_anki/`.
-Earlier: A13 promoted (state-feature re-anchor, price +0.00021/+0.00019, opposite
-sign vs d=32); A12 REJECTED (preset 3L→2L, imm ratio 1.23× bar) — ALL DEPTH FLOORS
-MAPPED: card=2, deck=4, note=1, preset=3, user=3; depth ladder EXHAUSTED. Also
-2026-07-23 night: MID-EPOCH RESUME landed (RWKV_RESUME_SKIP_GROUPS=1 +
-scratchpad/make_resume.py, smoke-validated EXACT; crashes now lose ≤1000 steps) +
-the NO-CO-TENANT-GPU hard rule (see Live rules).**
-⚠ EVAL-PATH FETCH-WORKER LEAK IS SYSTEMATIC (A11's run left none — intermittent): every
-eval/rerun leaves 1–2 orphan pythons, some spinning a FULL CORE (iter-29's for 14 h,
-the A9-rerun's for 8.5 h) — the trainer kills its workers ("Killed processes.") but
-the eval path doesn't; CHECK + KILL ORPHAN PYTHONS after every run (spare pythonw =
-bridge/controller, ~80000s-CPU = FSRS, and Andrew's liveplot); fix candidate: worker
-cleanup in eval_sharded/get_result. Track-1 queue: permutation init (LOW),
-fresh-family planning (LIT_REVIEW + FUTURE_FEATURES). 2026-07-21: A8 + iter 29 (Muon)
-ACCEPTED, iter 30 (cautious wd) REJECTED; A8's first launch died in the ~02:35
-black-screen hang (zero telemetry precursor, driver 610.62; crash combo REMAPPED to
-RIGHT Ctrl + SPACE ×2, registry armed + rebooted); A9's first eval WEDGED on user
-5747 (transient fetch race; eval_sharded RESUME recovered it). **ITER 28 QUEUED (Andrew 2026-07-19 ~20:50: re-benchmark iter 20 on the new recipe):
-xhead-mix v1 EXACT (RWKV_XHEAD_MIX=1, +896 params) on the iter-26 champion recipe —
-the old +0.000178/+0.000107 (p 2e-10/2e-25, would pass the NEW gate) was measured vs
-the stale iter-15 recipe and must be re-earned (transfer failures are precedented).
-Parked pid 21048 on A6's DONE_EXIT (~12:00 tomorrow → verdict ~15:30); tail prints
-paired vs BOTH iter 26 and iter 27. If it passes → v3 (wd exclusion) as a follow-up
-lever; if it fails → v3 is the in-family retry.** Track-1 queue after: permutation
-init (LOW).
-⚠ ERRATUM (2026-07-19): module index 1 = the DECK stream (arch order card,deck,note,
-preset,user — NOT the RWKV_SUBMODULES order); the A3/A5 "note.L2 diverges" narrative
-should read **deck.L2** (CLAMP_NOTES.md corrected; grad reports were always right).
-New env for the strip: RWKV_STRIP_CMIX (rwkv_model.py, name:layer list, dummy-mixer
-pattern, default off = byte-identical; RWKV7Config gains stream_name, stamped in
-SrsRWKV.__init__).
-⚠ OPS (cost 2 launches 03:22): PowerShell Set-Content -Encoding utf8 writes a BOM →
-tomli dies line 1 col 1 — write tomls via the Write tool or UTF8Encoding($false); and a
-crashed run's DONE_EXIT_WSFAIL satisfies downstream waitloop greps → relaunch upstream
-first (its cmd truncates its own log), THEN re-park dependents.**
-**MEME RUN "BLIND RWKV" QUEUED (Andrew 2026-07-19 ~02:30, recorded SEPARATELY — new
-`optimization/side_experiments.md` at verdict, NOT research_log.jsonl): train d=32
-WITHOUT interval features and WITHOUT grades (RWKV_ZERO_FEATURES=0-7,9-12,22; duration
-kept) — can blind RWKV still beat FSRS-7? TARGET = FSRS-7-sched_penalties-short-secs-
-recency on users 5001-10000: by-user mean LogLoss 0.317933 (vs AHEAD mode; our champion
-0.304220 → 0.0137 of margin). Parked pid 4460 on iter 25's DONE_EXIT (scratchpad/
-meme_blind/, ~3.5h). Recipe deviations (forced): vprune OFF (champion val ref would
-false-kill), PAVA OFF (grade probes meaningless), clamp ON (full-n insurance), standard
-64-basis head. Cmd tail prints paired-vs-iter23 (the cost of blindness). Interpretation
-caveat: day-resolution intervals remain PARTIALLY reconstructible from the cycle
-features (rows 22-28 share a per-batch phase → day gaps recoverable) + rows 12/13
-(activity since card's last review) — grades are truly gone (duration correlates only).
-Andrew's queue order: meme BEFORE further experiments → if iter 25 passes, iter 26
-(GRU N=3) parks on the MEME's DONE_EXIT, not iter 25's.**
-**ITER 25 QUEUED (Andrew 2026-07-18 ~23:30: "Let's try power curves first, to see if they
-improve log loss of the small model"): GRU-faithful power-curve head at d=32
-(RWKV_GRU_HEAD=2 + RWKV_STRIP_L0_VLORA=1 + state clamp τ=300 as insurance; full iter-23
-champion recipe incl. PAVA; 171,066 params = −11.7%; MIN_STEP=6000). Parked pid 36720,
-waitloop on A5's DONE_EXIT (~03:00) → verdict ~06:30. Gate: ≥0.0003 both modes vs iter 23
-+ p<0.0001. **If iter 25 PASSES: iter 26 = RWKV_GRU_HEAD=3 (Andrew 2026-07-18 ~23:55 —
-"If iter 25 succeeds, try 3"); sweep upward while it keeps winning (ordered-S
-cumsum-softplus anti-collapse insurance available if higher N label-switches).** If it
-misses: variant A (fixed log-spaced S-grid, weights-only, N≈8–16) is the family sibling. By-construction button-ordering ideas (FOSD/CDF-power head,
-shared-shape ordered-S) discussed with Andrew 2026-07-18 — candidate follow-ups in the
-curve-shape-constraints family after the power-curve verdicts.**
-**Iter 22 REDEFINED (Andrew 2026-07-16 ~23:00) = DISABLE THE PIECEWISE-LINEAR CURVE
-CORRECTION, queued behind A2 (detached pid 20584, waitloop on A2's DONE_EXIT → self-starts
-~08:30, verdict ~11:45; run dir `scratchpad/iter22_nores`).** Andrew's directive: "check if
-RWKV-Curve is using a linear piecewise correction, and if so — disable it for both tracks."
-Confirmed: `curve_logits = logit(mixture) + interp(out_ahead_logits, t)` — a learned
-64/128-point residual linearly interpolated between log-spaced time points. New flag
-**RWKV_NO_AHEAD_RESIDUAL=1** (srs_model + srs_model_rnn) zeroes the residual outside
-autograd → curve = pure mixture-of-exponentials, monotone in t BY CONSTRUCTION (supersedes
-the cummin variant, which never trained; the raw-mixture BCE term AHEAD_RAW_SCALE=0.5
-already supervises the mixture directly). NaN probe moved to out_p_logits under the flag
-(zeros can't NaN — eval nanskip + train guard key off that probe). Params unchanged 193,724
-(~12.5k now dead at d=32; ~131.7k dead at d=128 — strippable at deploy/in a track-2 bundle).
-Smoke ALL_PASS (zero-residual, grad isolation, off-path byte-identity, JIT + NO_JIT).
-**MANDATORY RECIPE both tracks from now on: RWKV_NO_AHEAD_RESIDUAL=1 in every future run
-(track-1 iters AND track-2 A3+); A2 grandfathered (mid-flight, residual-on — its gate vs A1
-is within-family valid).** **Iter 22 gate = ANDREW DECIDES: report both modes' finals,
-deltas vs iter 15, p-values, and nan_users to him and WAIT — no auto-accept/reject, no
-promotion. Likely outcome: iter 22 becomes the new track-1 REFERENCE (directed re-baseline
-à la iter 14/15) since with-residual champions aren't fair gates for no-residual candidates;
-track 2 similarly needs a no-residual re-anchor decision at the A2 verdict.**
-**Track-1 queue (Andrew 2026-07-16 late, FIXED ORDER — iter 23 DONE/rejected-near-miss):
-iter 24 = learnable PAVA + pooling weights from the p-head's button-press probabilities
-(Instant mode, RWKV_PAVA_PWEIGHT=1; λ/density unchanged — validated by iter 23).** Then:
-xhead-mix v3 (v1 delta excluded from wd), permutation init (LOW). **Duration imputation for the counterfactual probes (Andrew
-delegated): ONE shared value across all 4 buttons (causally correct — duration is spent
-before the press, independent of which button), = a GLOBAL CONSTANT (train-set median)
-frozen into the deploy contract; only duration is imputed (elapsed/etc. are real at both
-train and deploy); upgrade path if the audit shows sensitivity = per-user EMA carried
-next to the state. Build-time checklist: enumerate ALL outcome-dependent dims of the 92
-(INPUT_FEATURES.md) — rating one-hot + duration + any derived — and swap/impute them
-consistently in the probe rows.**
-**Track-2 sizing recommendation (Andrew 2026-07-16, soft rule): aim for ≥5% param reduction
-per iteration, ideally more** — single ~116k layer cuts are borderline (A2 = exactly 5.0%);
-future candidates should BUNDLE cuts (e.g. deck+user layers together, LoRA-dim cuts folded
-into a bigger ablation) or go structural (d_model 128→96 ≈ 40%+). Track-2 queue after A3:
-grad-stats-ranked BUNDLES (single ~116k layer cuts are now proven under-priced — A2's deck
-cut failed at exactly 5.0%): user-layer + LoRA-dim bundles, d_model 128→96, head_w squeeze
-(~83k, once the GRU head proves N=2 suffices) — re-ranked per A3's (fixed-recorder) report;
-now confirmed by A4's report (same bottom tier) — this bundle = **A5** (A4 = the re-anchor).
-**+ POWER-CURVE BASIS (Andrew 2026-07-16 late, for A3 bundling): replace the 128 exponential
-bases with a handful (N≈8–16) of FSRS-7-style power curves** `R_i(t) = (1 + f_i·t/S_i)^(−c_i)`,
-`f_i = 0.9^(−1/c_i) − 1` (pins R_i(S_i)=0.9; form = srs-benchmark `models/fsrs_v7.py`
-forgetting_curve), S_i = fixed log-spaced grid, c_i = N learnable decays sigmoid-clamped to
-[0.01, 0.95] (init ~0.5). Why few can replace 128: a power curve IS an infinite Gamma-mixture
-of exponentials — one basis covers the heavy-tail region that needed dozens of exponentials.
-Monotone in t by construction (keeps the no-residual guarantee). **Params at d=128:
-w_linear 512→N cuts 65,664 → ~4.1k (−61.5k); + stripping the DEAD ahead head (−131.7k,
-zero-risk, residual already disabled) ≈ −193k ≈ 8.3% of A1 before any head_w shrink**
-(head_w 82.8k is a further optional squeeze once N is tiny). d=32 port later if it works
-(w_linear 64→8 saves ~7.2k ≈ 3.7%). Note for the future hard-ordering option: per-basis c_i
-breaks total pointwise order of the basis (curves with different decays cross); a single
-SHARED learnable c + S-grid keeps the basis totally ordered (FOSD trick compatible) —
-measure both if cheap. **VARIANT B = GRU-FAITHFUL (Andrew 2026-07-17, srs-benchmark models/gru.py — his call,
-A3 ANCHOR): predict w, S, AND decay per curve.** ⚠ NAMING (Andrew 2026-07-17): the
-benchmark model is called **GRU** — the old GRU-P entry was REMOVED from srs-benchmark
-(training-data remnant; never write "GRU-P"). Our env flag = RWKV_GRU_HEAD=N, params
-gru_*. GRU uses n_curves=2 and THREE tiny
-linears off the trunk feature — w_fc (N logits→softmax), s_fc (exp(clamp(·,−25,25))
-stabilities), d_fc (same-form decays) — into R(t) = Σ wᵢ·(1 + t/(1e−7+Sᵢ))^(−dᵢ). Plain
-form, no R(S)=0.9 factor pinning. exp ⇒ dᵢ>0 ⇒ EACH curve monotone in t even with
-per-curve decays (time-axis monotonicity does NOT need a shared decay — shared d is only
-for the future FOSD hard rating-ordering, where the basis must be totally
-pointwise-ordered; keep as later variant). Plan: N=2 faithful first (proven on the
-leaderboard, label-switching moot at N=2); if it holds, sweep N with ordered-S
-(cumsum-softplus) as anti-collapse insurance. Init: zero-init the three head WEIGHTS
-(input-independent start, like the current zero-init w_linear) + set BIASES to a sane
-prior curve (spread log-S, moderate d). Reuse the head_w trunk; replaces w_linear
-(65,664 → ~3.1k at N=2, d=128). NB the current head does NOT predict S at all — fixed
-log-spaced S grid (0.1 s→~e^22 s), model predicts only the 128 softmax weights (a
-distribution over grid stabilities); grid-power-basis (variant A) = fallback.** ⚠ TorchScript trap (cost smoke_mono v1): old-style ScriptModule bakes
-the FIRST construction's env-flag into the compiled class — never two flag values in one
-process; ahead_linear is zero-init (like W_o) — randomize before head perturb/grad smokes.
-
-**Queued:** entropy-floor analysis (irreducible-LogLoss estimate from the two disjoint d=128
-.pths on users 1-100; design in research_5k_notes.md; ~30 min GPU); future-input-features plan =
-`optimization/FUTURE_FEATURES.md` (real-timestamp features; needs a new dataset export — Andrew
-2026-07-15); **scheduling-monotonicity plan = `optimization/MONOTONICITY_PLAN.md`** (Andrew
-2026-07-16: button intervals can invert, e.g. Again > Hard — constraint must live IN the model;
-time-axis stage RESOLVED BY REMOVAL — the piecewise residual is disabled per Andrew's directive,
-curve now monotone in t by construction; remaining: audit → counterfactual button-consistency
-loss at segment-end states via the shelved stateful kernel → isotonic projection as part of the
-model at deploy; = the "curve-shape constraints" track-1 family); `optimization/LIT_REVIEW.md` queue;
-deploy-side state-norm clamp (NaN guard, MONOTONICITY_PLAN-adjacent ship-time work).
+#### LIVE RULES (both tracks)
+- **⚠ VAL/TEST SPLIT (from iter 29 / post-A8):** candidates eval ONLY the VAL half = users
+  **5001-7500** (n=2500); all verdicts + p-gates run there, pairing vs the champion's jsonls via
+  `paired_pvalue --intersect`. **TEST = 7501-10000 is touched ONLY at each track's close** —
+  never for decisions. Eval tomls: `write_eval_toml ... 5001 7500`.
+- **`RWKV_NO_AHEAD_RESIDUAL=1` in EVERY run** (Andrew 2026-07-16): the piecewise-linear curve
+  correction is disabled, so the curve is monotone in t by construction.
+- **d=128/d=80 runs:** `RWKV_EMPTY_CACHE_EVERY=1` + `RWKV_EMPTY_CACHE_WINDOW=0` (allocator creep
+  -> WDDM paging -> 4x slowdown otherwise). **MAX=32768 EVERYWHERE** incl. `write_decay_setup.py`
+  arg 10 — pairing needs MAX identical across runs. Evals UNSHARDED (`--shards 1
+  --solo-threshold 0`). d=32 evals use phased `eval_sharded.py`.
+- **MID-EPOCH RESUME:** `RWKV_RESUME_SKIP_GROUPS=1` + `python scratchpad/make_resume.py
+  <run_dir> <prefix> <ws_toml>`, then rerun the WS phase with the run's FULL env, WITHOUT
+  deleting step-trace files. Crash recovery loses <=1000 steps. The resumed tail's dropout draws
+  differ (weights/optim exact) — statistically equivalent, not bit-identical.
+- **⚠ NO co-tenant GPU work during gate-critical runs** — cuBLAS algo selection under memory
+  pressure breaks bit-replay (~1e-4 val drift), and at 11.6/12 GB two processes deadlocked in
+  WDDM paging for 2.7 h. Smokes wait for a free GPU or run tiny/CPU.
+- **Seed-pair doctrine:** any single-run margin < ~0.0005 needs the exact recipe re-run at
+  `RWKV_AUGMENT_SEED=4321` first — cross-seed spread on the same recipe is ~0.0004 both modes;
+  in-seed Wilcoxon p (even 1e-29) measures per-user consistency, NOT cross-seed robustness.
+- **TorchScript hook rules** (cost 2 dead launches): `@torch.jit.ignore` bodies must NOT call
+  submodules (scripted code sees the raw C++ ScriptModule -> 'not callable' -> the NaN-except
+  turns the run HOLLOW) — use root Parameters + `F.linear`, names containing weight/bias for the
+  wd groups; root-level Parameters are INVISIBLE to `selective_cast`'s module walk (cast them
+  explicitly); ScriptModule forbids `persistent=False` buffers. Old-style ScriptModule bakes the
+  FIRST construction's env flags into the compiled class — never two flag values in one process.
+  Smoke tests MUST exercise the SCRIPTED forward. Gate every `.cmd` phase on exit codes AND
+  artifacts (train_rwkv can swallow fatal errors to exit 0).
+- **`RWKV_GRAD_STATS=<out.json>` on every ablation run** (Andrew 2026-07-16) — per-param
+  mean|grad| + SNIP saliency, to rank targets. Report: `python
+  optimization/grad_stats_report.py <json>`.
+- FETCH WORKERS = 4 in every toml (RAM). Live loss plot: `detach.ps1 -Script
+  scratchpad/liveplot/run_liveplot.cmd`.
+- **⚠ Eval-path fetch-worker leak is SYSTEMATIC:** every eval leaves 1-2 orphan pythons, some
+  spinning a full core for hours. **CHECK + KILL orphan pythons after every run** — but inspect
+  command lines first: the spare `pythonw` are the bridge/controller, the ~80000s-CPU python is
+  Andrew's FSRS benchmark, and he also runs a Reddit bot + liveplot. **Do not kill those.**
+- **OPS gotcha:** PowerShell `Set-Content -Encoding utf8` writes a BOM -> `tomli` dies at line 1
+  col 1. Write tomls with the Write tool or `UTF8Encoding($false)`. A crashed run's
+  `DONE_EXIT_WSFAIL` satisfies downstream waitloop greps — relaunch upstream FIRST, then re-park
+  dependents.
 
 ### Ops
 - **Compaction (ONLY sanctioned way):** run `claude-automation/request_compact.ps1 -Focus "<carry-through>"`
