@@ -291,7 +291,11 @@ deltas so dead ends aren't re-run.
   AI-only) · `research_log.jsonl` (5k source of truth) · `log.md`/`log.jsonl` (regenerated
   canonical table — `python optimization/logbook.py rebuild`) · `research_log.md` (CLOSED
   100/100-era log) · `HISTORY.md` (superseded plans + archived CLAUDE.md live-state) ·
-  `FUTURE_FEATURES.md` · `LIT_REVIEW.md` · **`CPU_INFERENCE.md`** (the deploy-speed
+  `FUTURE_FEATURES.md` · `LIT_REVIEW.md` · **`DATASETS.md`** (which review dataset to train on:
+  the four sets on this machine, the FSRS-Anki-20k VERDICT = do NOT train on it (disk 1.5 TB,
+  no note/deck/preset, 4.3% leakage), the card-id-is-not-a-fingerprint lesson, the
+  augmentation-off/byte-identical-epochs finding, and the 2-line users-vs-epochs ablation that
+  settles data-limited-or-not) · **`CPU_INFERENCE.md`** (the deploy-speed
   scoreboard: why param cuts have NOT yet bought CPU rev/s, and the Rust port that gates
   the real answer; bench `cpu_infer_bench.py`) · `PROTOCOL.md` (iter0-era mirror of §11) ·
   `STATEFUL_BPTT_PLAN.md` (shelved). Champions: `champion_5k.json` (QAT deploy truth, FROZEN) ·
@@ -887,7 +891,16 @@ Plain-era and QAT-era logloss are NOT comparable.
    upstream used 20,000. (b) **augmentation is OFF** (`RWKV_AUGMENT_SEED=1234`) — a deliberate
    workbench choice for ~0 run-to-run variance, but at 12.5 epochs over the SAME 5,000 users it is
    repetition, not variety, and augmentation is exactly the regularizer that regime wants; the
-   variance argument no longer applies to a one-off final run. (c) **wd/dropout** were tuned where
+   variance argument no longer applies to a one-off final run.
+   **★ CONFIRMED IN CODE 2026-07-27, and it is stronger than "repetition": epochs are BYTE-IDENTICAL
+   replays.** `prepare()` calls `torch.manual_seed(seed)` per batch (`prepare_batch.py:210-211`) and
+   `prepare_data_train_test` passes the SAME constant every batch (`:655`) — so the two augmentations
+   (per-batch random ID codes, per-batch random cycle phase) are drawn identically in every epoch;
+   only dropout differs. **=> the `champ5k_b1` budget A/B that fixed WS at 1 epoch ("2nd epoch adds
+   nothing", ahead -0.00006 p=0.31) was measured in the one configuration where extra epochs CANNOT
+   help. It says "more IDENTICAL epochs don't help" — never quote it as "more epochs don't help".**
+   Turn augmentation ON for the 10x run, or it risks reproducing that null at 40x the cost.
+   (c) **wd/dropout** were tuned where
    overfitting was impossible; at 10x they are live levers. None of this is a reason to delay —
    just do not assume the 1-ep recipe transfers.
 
