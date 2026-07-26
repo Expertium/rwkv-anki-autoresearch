@@ -43,7 +43,7 @@ _COL_DUR = CARD_FEATURE_COLUMNS.index("scaled_duration")
 # and the WKV kernel restores the pre-step state on a skip (rwkv7_cuda.cu: `if (skip)
 # state_xy = in_state_xy`), so inserting them changes NO other prediction. Default 0 =
 # eval is byte-identical to every stored result.
-_EVAL_PAVA = os.environ.get("RWKV_EVAL_PAVA", "0") == "1"
+_EVAL_PAVA = os.environ.get("RWKV_EVAL_PAVA", "0") in ("1", "2")  # 2 = probes, no pooling
 _COL_R1 = CARD_FEATURE_COLUMNS.index("rating_1")
 assert [CARD_FEATURE_COLUMNS[_COL_R1 + k] for k in range(4)] == [
     "rating_1", "rating_2", "rating_3", "rating_4"

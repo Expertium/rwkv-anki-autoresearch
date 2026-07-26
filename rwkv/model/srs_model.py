@@ -268,7 +268,23 @@ class SrsRWKV(ModuleType):
         # theta; they fall back to powers = 1 = classic arithmetic-mean PAVA, which is
         # exactly the theta init, so it is the honest parameter-free default rather than a
         # fudge. Default 0 = byte-identical to every stored result.
-        self.eval_pava = os.environ.get("RWKV_EVAL_PAVA", "0") == "1"
+        # RWKV_EVAL_PAVA: 0 = off (the scored row's own curve, at its REAL duration)
+        #                 1 = substitute the RECTIFIED pressed probe  <- the deploy metric
+        #                 2 = substitute the UNRECTIFIED pressed probe <- diagnostic only
+        #
+        # Mode 2 exists because modes 0 and 1 differ in TWO ways at once, which makes the
+        # rect-vs-unrect comparison unable to attribute its own result (Andrew, 2026-07-26).
+        # A probe row is the scored row with the grade one-hot swapped AND the current-row
+        # duration zeroed, so switching 0 -> 1 changes both the pooling AND the duration the
+        # prediction is computed at. Mode 2 moves only the duration, giving an additive split:
+        #     mode2 - mode0 = cost of zeroing the current-row duration
+        #     mode1 - mode2 = cost of the PAVA pooling itself
+        #     mode1 - mode0 = the total, i.e. what a rect-vs-unrect run reports
+        # All three land on `ahead` only: `imm` comes from the rating head, and query rows have
+        # always carried duration 0, so nothing about it changes.
+        _eval_pava_mode = os.environ.get("RWKV_EVAL_PAVA", "0")
+        self.eval_pava = _eval_pava_mode in ("1", "2")
+        self.eval_pava_rectify = _eval_pava_mode != "2"
         if self.eval_pava:
             print("[pava] RECTIFIED EVAL ON: scored ahead predictions come from the "
                   "rectified pressed-button probe"
@@ -488,10 +504,15 @@ class SrsRWKV(ModuleType):
         out = curve_probs.detach().clone()
         flat = out.reshape(-1)
         v = flat[probe_rows]  # (M,4) Again..Easy
-        powers = (2.0 * torch.tanh(self.pava_theta) if self.pava_lambda != 0.0
-                  else torch.ones(3, device=v.device, dtype=torch.float32))
-        rect = pava_rectify(v.float(), torch.ones_like(v, dtype=torch.float32), powers)
-        pressed = rect.gather(1, probe_pressed.unsqueeze(1)).squeeze(1)
+        if self.eval_pava_rectify:
+            powers = (2.0 * torch.tanh(self.pava_theta) if self.pava_lambda != 0.0
+                      else torch.ones(3, device=v.device, dtype=torch.float32))
+            src = pava_rectify(v.float(), torch.ones_like(v, dtype=torch.float32), powers)
+        else:
+            # RWKV_EVAL_PAVA=2: substitute the probe WITHOUT pooling, so the only thing that
+            # differs from mode 0 is the zeroed current-row duration.
+            src = v.float()
+        pressed = src.gather(1, probe_pressed.unsqueeze(1)).squeeze(1)
         flat[probe_target] = pressed.to(flat.dtype)
         return out
 
