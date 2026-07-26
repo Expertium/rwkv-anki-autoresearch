@@ -300,9 +300,18 @@ deltas so dead ends aren't re-run.
   (100/100 era).
 - **`reference/`** — deploy + parity artifacts: `pq_cb_{wkv,shift}_q72u.txt` (the q72u deploy
   codebooks), `pq_cb_m2b8.txt`, `ref_metrics.json`, `weight_names.json`, `rpv_*.json`
-  (Rust-parity vectors); `.safetensors` untracked by design.
-- **`rust/rwkv-infer/`** — the Rust CPU inference engine (`src/{main,model,fast}.rs`,
-  `BATCHING_PLAN.md`); K-dynamic + full PQ/joint-cb/norm-quant engine since `1d3b5b8`.
+  (Rust-parity vectors); `.safetensors` untracked by design. ⚠ Its June trace is for the OLD
+  d=128 `rwkv_ref_558` and is NOT reproducible by current Python — see §11.
+- **`reference_a18/`** (NEW 2026-07-26) — the self-consistent track-2 parity trace: A18's
+  weights + traces + `ref_metrics.json` (which now records the checkpoint AND arch module
+  actually exported). Self-contained at exactly 0.000e+00; this is what `PARITY: PASS` was
+  measured against. Regenerate with `RWKV_REF_DIR=<dir> python export_rnn_trace.py`; only
+  `ref_metrics.json` is tracked, the bulk artifacts are gitignored like `reference/`'s.
+- **`rust/rwkv-infer/`** — the Rust CPU inference engine (`src/{main,model,fast,pava}.rs`,
+  `BATCHING_PLAN.md`, `TRACK2_PORT_PLAN.md`); K-dynamic + full PQ/joint-cb/norm-quant engine
+  since `1d3b5b8`; track-2 arch (GRU head, per-layer cmix skips, state clamp) + the PAVA
+  button API since 2026-07-26, parity-verified. `pava.rs` = the rectifier + interval solver
+  and the crate's only unit tests.
 - **`vendor/jschoreels_anki/`** (NEW 2026-07-25, Andrew's directive) — READ-ONLY reference
   copy of the RWKV code from `github.com/JSchoreels/anki`, an Anki fork shipping the OLD
   2.76M RWKV as a live scheduler: `rust/` (mod.rs = the whole engine incl. the 5-stream
@@ -316,7 +325,13 @@ deltas so dead ends aren't re-run.
 - **`scratchpad/`** — per-run pipelines + shared helpers. Tracked per run: `.cmd` + tomls +
   `*_ws_trace.jsonl` (+ champions' final cbs `cb_{wkv,shift}_final.txt`). Shared:
   `write_decay_setup.py`, `write_eval_toml.py`, `detach.ps1`, `liveplot/`,
-  `architecture_old_d128.py`. Untracked on disk: ckpts (`*.pth`), logs, mid-run cb snapshots
+  `architecture_old_d128.py`. **`parity3/`** (2026-07-26) = the three-way-parity harnesses §9
+  requires: `parity_train_vs_rnn.py` (RWKV7 parallel vs RWKV7RNN recurrent on identical
+  weights — ADD A CASE PER NEW ARCH ENV FLAG), `trace_selfcontained.py` (is a parity trace
+  reproducible by current Python? run this FIRST when a gate looks wrong), `buttons_py_vs_rust.py`
+  (the 4 button intervals, Python vs Rust). **`eval_pava/`** = the rectified-eval pipeline +
+  `check_imm_identical.py` (imm must be bit-identical rect vs unrect — proves the probes are
+  non-perturbative). Untracked on disk: ckpts (`*.pth`), logs, mid-run cb snapshots
   (gitignored since 2026-07-15). ⚠ Champion ckpts live here UNTRACKED (the champion jsons point
   at them) — single-machine artifacts; losing the disk loses the ckpts, not the record.
 - **`result/`** — eval outputs, untracked (`RWKV-<tag>.jsonl`, `RWKV-P-<tag>.jsonl`,
