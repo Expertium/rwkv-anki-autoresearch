@@ -1,3 +1,4 @@
+import math
 import os
 
 import numpy as np
@@ -10,6 +11,18 @@ from rwkv.model.srs_model import is_excluded
 import torch
 
 # An RNN implementation of srs_model.
+
+# Deploy-side counterfactual button probes (2026-07-26). Same construction as the training
+# probes (rwkv/prepare_batch.py insert_probes) and the rectified eval path: the current
+# review with the grade one-hot swapped and the current row's duration zeroed. Keeping the
+# constants here rather than importing prepare_batch keeps the deploy path free of the
+# LMDB/data-pipeline import chain.
+_COL_DUR = CARD_FEATURE_COLUMNS.index("scaled_duration")
+_COL_R1 = CARD_FEATURE_COLUMNS.index("rating_1")
+assert [CARD_FEATURE_COLUMNS[_COL_R1 + k] for k in range(4)] == [
+    "rating_1", "rating_2", "rating_3", "rating_4"
+], "grade one-hot columns not contiguous"
+_PROBE_DUR_SCALED = float(os.environ.get("RWKV_PROBE_DUR", "-0.12079481388911952"))
 
 
 def __nop(ob):
@@ -122,6 +135,16 @@ class SrsRWKVRnn(ModuleType):
 
         self.p_linear = torch.nn.Linear(self.p_head_dim, 4)
 
+        # RWKV_PAVA_LAMBDA: the rectifier's 3 junction thetas are MODEL parameters, not a
+        # loss detail (Andrew 2026-07-26). They must exist here or load_state_dict (strict)
+        # rejects any checkpoint trained with PAVA -- the deploy path could not even open
+        # the champion. p_j = 2*tanh(theta_j); init p = 1 = classic PAVA.
+        self.pava_lambda = float(os.environ.get("RWKV_PAVA_LAMBDA", "0"))
+        if self.pava_lambda != 0.0:
+            from rwkv.model.pava import theta_init
+            self.pava_theta = torch.nn.Parameter(theta_init())
+            print(f"[pava] (rnn) rectifier params present, lambda={self.pava_lambda}")
+
     def forgetting_curve(self, w, label_elapsed_seconds):
         s_space_raw = torch.exp(
             torch.linspace(0, self.s_point_spread, self.num_curves, device=w.device)
@@ -159,6 +182,144 @@ class SrsRWKVRnn(ModuleType):
             yl + (yr - yl) * (label_elapsed_seconds - xl) / (xr - xl)
         )
         return res.squeeze(-1)
+
+    def ahead_residual(self, out_ahead_logits, t):
+        """The piecewise-linear correction term, or its exact constant when disabled.
+
+        With RWKV_NO_AHEAD_RESIDUAL the logits are all zeros, and interp then returns
+        1e-5 + (1 - 2e-5) * 0 = 1e-5 for EVERY t -- bit-identical to the short-circuit
+        below. Taking the short-circuit also keeps the interval solver away from interp's
+        searchsorted, whose right index runs off the end of point_space past ~1.3e9 s
+        (the solver probes out to e^22 s).
+        """
+        if self.no_ahead_residual:
+            return torch.full(
+                (t.shape[0],), 1e-5, dtype=torch.float32, device=out_ahead_logits.device
+            )
+        return self.interp(out_ahead_logits.expand(t.shape[0], -1).contiguous(), t)
+
+    def curve_p(self, out_ahead_logits, out_w, out_s_raw, out_d_raw, t):
+        """Recall probability at each elapsed time in t (T, 1) -> (T,).
+
+        The single curve formula for this file: run() and the deploy button API both go
+        through it, so the two can never drift apart.
+        """
+        if self.gru_on:
+            curve_probs_raw = self.gru_forgetting_curve(out_w, out_s_raw, out_d_raw, t)
+        else:
+            curve_probs_raw = self.forgetting_curve(out_w, t)
+        curve_logits_raw = torch.log(curve_probs_raw / (1 - curve_probs_raw))
+        return torch.sigmoid(curve_logits_raw + self.ahead_residual(out_ahead_logits, t))
+
+    @torch.inference_mode()
+    def button_heads(
+        self,
+        card_features,
+        card_state,
+        note_state,
+        deck_state,
+        preset_state,
+        global_state,
+    ):
+        """Head outputs for the 4 counterfactual button presses of the CURRENT review.
+
+        THE STATES ARE NOT ADVANCED. These are the deploy-side twins of the training probe
+        rows, which are skip rows -- the WKV kernel restores the pre-step state on a skip
+        (rwkv7_cuda.cu: `if (skip) state_xy = in_state_xy`), so asking for the four
+        predictions perturbs nothing. Feed the real answer through review() afterwards, with
+        its REAL duration, to advance the state.
+
+        card_features: (92,) or (1, 92) -- the current review's row. The grade one-hot is
+        overwritten per button and scaled_duration is zeroed here (RWKV_PROBE_DUR), so the
+        caller cannot get the contract wrong: the four curves differ ONLY by the button.
+        Duration is not yet observable at prediction time, and holding it fixed across the
+        four is what makes the ordering comparison meaningful (Andrew 2026-07-26: "assume
+        if the user presses Good and spent 7 seconds on reviewing, he would spend 7 seconds
+        either way").
+
+        Returns (ahead_logits, w, s_raw, d_raw, p_logits), each stacked over the 4 buttons
+        in slot order Again, Hard, Good, Easy. The heads do not depend on the horizon t, so
+        the curve can then be evaluated at any number of times for free.
+        """
+        if card_features.dim() == 1:
+            card_features = card_features.unsqueeze(0)
+        assert card_features.shape == (1, self.card_features_dim), card_features.shape
+
+        base = card_features.clone()
+        base[:, _COL_DUR] = _PROBE_DUR_SCALED
+        base[:, _COL_R1:_COL_R1 + 4] = 0
+
+        outs = []
+        for k in range(4):
+            row = base.clone()
+            row[:, _COL_R1 + k] = 1
+            # every button reads the SAME incoming state; next_* deliberately dropped
+            out_ahead_logits, out_w, out_s_raw, out_d_raw, out_p_logits = self.review(
+                row, card_state, note_state, deck_state, preset_state, global_state
+            )[:5]
+            outs.append((out_ahead_logits, out_w, out_s_raw, out_d_raw, out_p_logits))
+        return tuple(torch.cat([o[j] for o in outs], dim=0) for j in range(5))
+
+    def button_curves(self, heads, elapsed_seconds):
+        """PAVA-rectified recall curves: (4, T) for T horizons, ordered Again<=..<=Easy.
+
+        The rectifier is part of the MODEL, not the loss (Andrew 2026-07-26) -- training,
+        eval and this path all apply it. Uniform pooling weights: iter 24 measured p-head
+        weighting as null, so deploy keeps the simpler rectifier.
+        """
+        from rwkv.model.pava import pava_rectify
+
+        ahead_logits, w, s_raw, d_raw, _ = heads
+        t = torch.as_tensor(
+            elapsed_seconds, dtype=torch.float32, device=w.device
+        ).reshape(-1, 1)
+        # (4, T): each button's curve over all horizons
+        raw = torch.stack(
+            [
+                self.curve_p(ahead_logits[k:k + 1], w[k:k + 1], s_raw[k:k + 1],
+                             d_raw[k:k + 1], t)
+                for k in range(4)
+            ]
+        )
+        powers = (
+            2.0 * torch.tanh(self.pava_theta)
+            if hasattr(self, "pava_theta")
+            else torch.ones(3, device=w.device, dtype=torch.float32)
+        )
+        v = raw.t().float().contiguous()  # (T, 4) -- pava_rectify pools across buttons
+        rect = pava_rectify(v, torch.ones_like(v), powers)
+        return rect.t()
+
+    def button_intervals(self, heads, desired_retention=0.9, max_seconds=None, iters=50):
+        """Next-review interval per button (seconds), from the RECTIFIED curves.
+
+        Geometric bisection on each button's rectified curve for R(t) = desired_retention.
+        Cheap: the heads are already computed, so each step is closed-form arithmetic, and
+        rectification is applied at every probe so the coupling between buttons is never
+        skipped. Ordered by construction -- the curves are ordered at every t and each is
+        decreasing in t -- and asserted, since a violated order is exactly the deploy bug
+        the rectifier exists to prevent.
+        """
+        dev = heads[1].device
+        hi_default = math.exp(self.s_max)
+        lo = torch.ones(4, dtype=torch.float32, device=dev)
+        hi = torch.full(
+            (4,), hi_default if max_seconds is None else float(max_seconds),
+            dtype=torch.float32, device=dev,
+        )
+        for _ in range(iters):
+            mid = torch.sqrt(lo * hi)
+            # button k evaluated at ITS OWN midpoint -> the diagonal of the (4 t, 4 button)
+            # rectified matrix
+            r = self.button_curves(heads, mid).diagonal()
+            keep_going = r > desired_retention  # still above target -> interval can grow
+            lo = torch.where(keep_going, mid, lo)
+            hi = torch.where(keep_going, hi, mid)
+        out = torch.sqrt(lo * hi)
+        assert bool((out[1:] >= out[:-1] * (1 - 1e-4)).all()), (
+            f"button intervals not ordered: {out.tolist()}"
+        )
+        return out
 
     def review(
         self,
@@ -297,23 +458,13 @@ class SrsRWKVRnn(ModuleType):
                     preset_states[preset_id] = next_preset_state
                     global_state = next_global_state
 
-                if self.gru_on:
-                    curve_probs_raw = self.gru_forgetting_curve(
-                        out_w, out_s_raw, out_d_raw,
-                        label_elapsed_seconds_all[:, i].unsqueeze(0),
-                    )
-                else:
-                    curve_probs_raw = self.forgetting_curve(
-                        out_w, label_elapsed_seconds_all[:, i].unsqueeze(0)
-                    )
-                curve_logits_raw = torch.log(
-                    curve_probs_raw / (1 - curve_probs_raw)
-                )  # inverse sigmoid
-                ahead_logit_residual = self.interp(
-                    out_ahead_logits, label_elapsed_seconds_all[:, i].unsqueeze(0)
+                curve_prob = self.curve_p(
+                    out_ahead_logits,
+                    out_w,
+                    out_s_raw,
+                    out_d_raw,
+                    label_elapsed_seconds_all[:, i].unsqueeze(0),
                 )
-                curve_logits = curve_logits_raw + ahead_logit_residual
-                curve_p = torch.sigmoid(curve_logits)
 
                 if row["has_label"]:
                     if row["is_query"]:
@@ -326,7 +477,7 @@ class SrsRWKVRnn(ModuleType):
                         )
                         imm_ps[row["label_review_th"]] = out_p_binary.item()
                     else:
-                        ahead_ps[row["label_review_th"]] = curve_p.item()
+                        ahead_ps[row["label_review_th"]] = curve_prob.item()
 
         return ahead_ps, imm_ps
 
