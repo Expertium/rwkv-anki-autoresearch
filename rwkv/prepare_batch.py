@@ -24,8 +24,26 @@ _PROBE_DENSITY = float(os.environ.get("RWKV_PROBE_DENSITY", "0"))
 # scale_duration(6433 ms) -- the train-set (users 1-5000) median review duration, frozen
 # into the deploy contract (scratchpad/iter23_pava/duration_median.json). One shared value
 # for all four probes: duration is spent BEFORE the press, so it cannot depend on the button.
+#
+# ⚠ 2026-07-26 (Andrew): the DEPLOY convention is 0.0, NOT this median. At deploy Anki must
+# draw the four button intervals BEFORE the press, so the current review's duration does not
+# exist yet; recomputing live as it accrues would churn the displayed numbers and feed back
+# into the user's dwell time. 0.0 is the pipeline's own "no press yet" encoding (query rows
+# zero scaled_duration -- data_processing.reject_columns), so the model has seen it on every
+# query row. Because scale_duration(x) = (log(10+x) - 8.9)/1.07, a literal 0.0 implies
+# ~7.3 s, close to the 6,433 ms median it replaces. Runs from iter 31 on set
+# RWKV_PROBE_DUR=0.0; the default below is kept only so iters 23-30 stay reproducible.
 _PROBE_DUR_SCALED = float(os.environ.get("RWKV_PROBE_DUR", "-0.12079481388911952"))
 _COL_DUR = CARD_FEATURE_COLUMNS.index("scaled_duration")
+# Rectified EVAL (2026-07-26, Andrew: "Eval should score the rectified model, of course").
+# RWKV_EVAL_PAVA=1 makes the eval workers insert the same 4 counterfactual button probes at
+# density 1.0 -- restricted to rows the benchmark actually SCORES (label_is_equalize), which
+# keeps the row inflation to the scored subset -- so srs_model can replace each scored ahead
+# prediction with the PAVA-rectified value at the pressed button. Probe rows are skip rows
+# and the WKV kernel restores the pre-step state on a skip (rwkv7_cuda.cu: `if (skip)
+# state_xy = in_state_xy`), so inserting them changes NO other prediction. Default 0 =
+# eval is byte-identical to every stored result.
+_EVAL_PAVA = os.environ.get("RWKV_EVAL_PAVA", "0") == "1"
 _COL_R1 = CARD_FEATURE_COLUMNS.index("rating_1")
 assert [CARD_FEATURE_COLUMNS[_COL_R1 + k] for k in range(4)] == [
     "rating_1", "rating_2", "rating_3", "rating_4"
@@ -33,6 +51,7 @@ assert [CARD_FEATURE_COLUMNS[_COL_R1 + k] for k in range(4)] == [
 # global_labels column layout (create_sample): les, led, label_y, label_rating,
 # has_label, label_is_equalize, is_query
 _LBL_HAS_LABEL = 4
+_LBL_IS_EQUALIZE = 5
 _LBL_IS_QUERY = 6
 
 
@@ -46,7 +65,8 @@ class ProbeMeta:
         self.query = query      # (m,) paired imm query row's new position
 
 
-def insert_probes(data: RWKVSample, density: float, base_seed) -> tuple:
+def insert_probes(data: RWKVSample, density: float, base_seed,
+                  equalize_only: bool = False) -> tuple:
     """Insert 4 counterfactual button-probe skip rows before selected real rows.
 
     Selection is deterministic per (seed, user, chunk). Probes copy the target row's
@@ -67,6 +87,9 @@ def insert_probes(data: RWKVSample, density: float, base_seed) -> tuple:
     first_mask = np.zeros(n, dtype=bool)
     first_mask[real_idx[first_pos]] = True  # in-chunk first REAL occurrence of the card
     elig = real & has_lab & ~first_mask
+    if equalize_only:
+        # rectified eval: only rows the benchmark scores need a rectified prediction
+        elig = elig & (lab[:, _LBL_IS_EQUALIZE] > 0.5)
     elig_rows = np.nonzero(elig)[0]
     if elig_rows.size == 0:
         return data, None
@@ -181,7 +204,7 @@ def insert_probes(data: RWKVSample, density: float, base_seed) -> tuple:
 
 
 def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
-            probe_density: float = 0.0) -> PreparedBatch:
+            probe_density: float = 0.0, probe_equalize_only: bool = False) -> PreparedBatch:
     if seed is not None:
         torch.manual_seed(seed)
 
@@ -191,7 +214,8 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
         new_list = []
         probe_metas = []
         for data in data_list:
-            data2, meta = insert_probes(data, probe_density, base_seed)
+            data2, meta = insert_probes(data, probe_density, base_seed,
+                                        equalize_only=probe_equalize_only)
             new_list.append(data2)
             probe_metas.append(meta)
         data_list = new_list
@@ -592,6 +616,12 @@ def prepare_data(
                 [get_data(txn, key, device="cpu") for key in group],
                 target_len=target_len,
                 seed=fixed_seed,
+                # RWKV_EVAL_PAVA: probe EVERY scored row so srs_model can replace its ahead
+                # prediction with the rectified pressed-button value. Density 1.0 (not the
+                # training 0.08) because scoring needs a rectified value for every row the
+                # benchmark counts, not a random sample.
+                probe_density=1.0 if _EVAL_PAVA else 0.0,
+                probe_equalize_only=True,
             )
             batch_queue.put((group_i, result))
 

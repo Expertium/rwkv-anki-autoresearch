@@ -257,6 +257,22 @@ class SrsRWKV(ModuleType):
         # Optional tuple arg (kd precedent). Default 0 = params absent = byte-identical.
         self.pava_lambda = float(os.environ.get("RWKV_PAVA_LAMBDA", "0"))
         self.pava_pweight = os.environ.get("RWKV_PAVA_PWEIGHT", "0") == "1"
+        # RECTIFIED EVAL (2026-07-26, Andrew: "Eval should score the rectified model, of
+        # course"). Until now the rectifier existed ONLY inside the loss -- curve_probs was
+        # returned unrectified -- so every reported `ahead` number from iters 23-30 scored a
+        # model that differed from the one intended to ship. RWKV_EVAL_PAVA=1 makes the eval
+        # path substitute, at each scored row, the rectified value at the button the user
+        # actually pressed (prepare_batch inserts the 4 probes at density 1.0). Affects
+        # `ahead` ONLY -- `imm` reads out_p_binary off the rating head, which the rectifier
+        # never touches. Models trained without PAVA (e.g. the A18 champion) have no learned
+        # theta; they fall back to powers = 1 = classic arithmetic-mean PAVA, which is
+        # exactly the theta init, so it is the honest parameter-free default rather than a
+        # fudge. Default 0 = byte-identical to every stored result.
+        self.eval_pava = os.environ.get("RWKV_EVAL_PAVA", "0") == "1"
+        if self.eval_pava:
+            print("[pava] RECTIFIED EVAL ON: scored ahead predictions come from the "
+                  "rectified pressed-button probe"
+                  + ("" if self.pava_lambda != 0.0 else " (no trained theta -> classic p=1)"))
         if self.pava_lambda != 0.0:
             print(f"[pava] learnable power-mean rectifier ON, lambda={self.pava_lambda}, "
                   f"p-head weighting={'ON' if self.pava_pweight else 'off'}")
@@ -451,6 +467,33 @@ class SrsRWKV(ModuleType):
         s = torch.nn.functional.linear(x_w, self.gru_s_weight, self.gru_s_bias)
         d = torch.nn.functional.linear(x_w, self.gru_d_weight, self.gru_d_bias)
         return w, s, d
+
+    @torch.jit.ignore
+    def _pava_rectify_eval(
+        self,
+        curve_probs: torch.Tensor,
+        probe_rows: torch.Tensor,
+        probe_target: torch.Tensor,
+        probe_pressed: torch.Tensor,
+    ) -> torch.Tensor:
+        """Replace each scored row's ahead prediction with its rectified pressed value.
+
+        Returns a DETACHED copy of curve_probs (eval-only; never on the loss path). The
+        four probe rows of a scored review are that review with the grade one-hot swapped
+        and the current-row duration zeroed -- identical inputs apart from the button, which
+        is what makes the ordering comparison meaningful. Uniform pooling weights: iter 24
+        measured p-head weighting as null, so deploy keeps the simpler rectifier.
+        """
+        from rwkv.model.pava import pava_rectify
+        out = curve_probs.detach().clone()
+        flat = out.reshape(-1)
+        v = flat[probe_rows]  # (M,4) Again..Easy
+        powers = (2.0 * torch.tanh(self.pava_theta) if self.pava_lambda != 0.0
+                  else torch.ones(3, device=v.device, dtype=torch.float32))
+        rect = pava_rectify(v.float(), torch.ones_like(v, dtype=torch.float32), powers)
+        pressed = rect.gather(1, probe_pressed.unsqueeze(1)).squeeze(1)
+        flat[probe_target] = pressed.to(flat.dtype)
+        return out
 
     @torch.jit.ignore
     def _pava_probe_loss(
@@ -832,9 +875,19 @@ class SrsRWKV(ModuleType):
             p_binary_loss * immediate_equalize_mask
         ).sum() / (1e-8 + immediate_equalize_mask.sum())
 
+        # Rectified eval: the reported ahead prediction becomes the rectified pressed-button
+        # value. Done here, on the OUTPUT only, so losses/gradients are untouched and every
+        # downstream consumer (extract_p -> ahead_ps -> get_stats) needs no change.
+        p_curve_out = curve_probs.detach()
+        if self.eval_pava and probes is not None:
+            probe_rows_e, probe_target_e, probe_pressed_e, _pq = probes
+            p_curve_out = self._pava_rectify_eval(
+                curve_probs, probe_rows_e, probe_target_e, probe_pressed_e
+            )
+
         return SrsRWKVIterStatistics(
             average_loss=loss_avg,
-            p_curve=curve_probs.detach(),
+            p_curve=p_curve_out,
             p_imm=out_p_binary.detach(),
             p_imm_all=out_p_probs.detach(),
             loss_tensor=loss_tensor.detach(),
