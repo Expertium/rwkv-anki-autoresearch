@@ -257,6 +257,13 @@ class SrsRWKV(ModuleType):
         # Optional tuple arg (kd precedent). Default 0 = params absent = byte-identical.
         self.pava_lambda = float(os.environ.get("RWKV_PAVA_LAMBDA", "0"))
         self.pava_pweight = os.environ.get("RWKV_PAVA_PWEIGHT", "0") == "1"
+        # RWKV_AHEAD_PROBE_ONLY=1 (iter 33, Andrew 2026-07-27): take the `ahead` objective ONLY
+        # from the duration-zeroed probe path, dropping probed real rows from the ordinary ahead
+        # term. Fixes a train/deploy mismatch worth +0.001451 ahead (mode-2 diagnostic): training
+        # scored the real row, which carries the review's own duration, while deploy must predict
+        # BEFORE the press and therefore never has it. Pair with RWKV_PROBE_DENSITY=1.0 so every
+        # eligible review is covered (measured cost: 2.54x rows). Default 0 = byte-identical.
+        self.ahead_probe_only = os.environ.get("RWKV_AHEAD_PROBE_ONLY", "0") == "1"
         # RECTIFIED EVAL (2026-07-26, Andrew: "Eval should score the rectified model, of
         # course"). Until now the rectifier existed ONLY inside the loss -- curve_probs was
         # returned unrectified -- so every reported `ahead` number from iters 23-30 scored a
@@ -796,6 +803,21 @@ class SrsRWKV(ModuleType):
             reduction="none",
         ).mean(dim=-1)
         ahead_mask = (1 - is_query) * has_label
+        # iter 33 (Andrew 2026-07-27, "everywhere: duration of the most recent review zeroed out").
+        # The ahead loss normally lands on the REAL row, which carries that review's OWN duration --
+        # a feature deploy can never have, because Anki must show intervals BEFORE the press. The
+        # probe rows are the same review with the duration zeroed, and _pava_probe_loss already
+        # scores the pressed probe's RECTIFIED value against the real row's ahead label, which is
+        # exactly the quantity deploy serves. So with RWKV_AHEAD_PROBE_ONLY=1 the probed rows drop
+        # out of the real-row ahead term and the ahead objective is carried entirely by the probe
+        # path -- train, eval and CPU inference then compute one quantity.
+        # Measured cost of the duration mismatch this removes: +0.001451 ahead (mode-2 diagnostic).
+        # Rows NOT eligible for probes (a card's first in-chunk review) keep the real-row term;
+        # they are the honest residual, not an oversight.
+        if probes is not None and self.ahead_probe_only:
+            _pt = probes[1]  # (M,) flat indices of the probed real rows
+            ahead_mask = ahead_mask.clone()
+            ahead_mask.reshape(-1)[_pt] = 0
         immediate_mask = is_query * has_label
         assert ahead_mask.shape == label_is_equalize.shape
         ahead_equalize_mask = ahead_mask * label_is_equalize
