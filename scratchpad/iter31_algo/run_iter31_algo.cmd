@@ -39,6 +39,18 @@ set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4.py
 set RWKV_GRU_HEAD=3
 set RWKV_PAVA_LAMBDA=0.1
 set RWKV_PROBE_DENSITY=0.08
+REM Andrew 2026-07-26: the counterfactual probes carry ZEROED current-row duration,
+REM not the train-median constant. Rationale: at deploy Anki must draw the four
+REM intervals BEFORE the press, so the current review's duration does not exist yet;
+REM recomputing live as it accrues would make the displayed numbers churn while the
+REM user reads them AND feed back into their dwell time. Freezing it also makes
+REM displayed == scheduled. 0.0 is the pipeline's OWN unknown-encoding (query rows
+REM zero scaled_duration, data_processing reject_columns), so the model has seen it
+REM on every query row; note scale_duration(x)=(log(10+x)-8.9)/1.07 means a literal
+REM 0.0 implies ~7.3 s, very close to the 6,433 ms median it replaces. Real duration
+REM still enters the state update via the real row -- only the CURRENT row's duration
+REM is withheld from the prediction. Retires duration_median.json from the contract.
+set RWKV_PROBE_DUR=0.0
 set RWKV_MUON=1
 set RWKV_MUON_LR=0.02
 set RWKV_MUON_MOMENTUM=0.95

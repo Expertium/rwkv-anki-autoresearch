@@ -208,6 +208,27 @@ deltas so dead ends aren't re-run.
   large + some random, seeded) so checks are fast and comparable. The numeric gates live in
   §5: **±0.0005** for Rust-port parity (step 3), **+0.0015** regression budget for
   efficiency changes (steps 4/5/7) — and **both** scoring modes (`ahead` and `P`) must pass.
+- **★ THREE-WAY PARITY — ALWAYS CHECK TRAIN vs EVAL vs CPU INFERENCE (Andrew's standing
+  directive, 2026-07-26).** Whenever you add or change anything that touches the model's
+  inputs, outputs, or objective, explicitly ask: *what does training optimize, what does
+  eval score, and what will CPU inference (Python RNN + Rust) actually compute?* All three
+  must be the same quantity. Write the answer down in the iteration's notes; a mismatch is
+  a silent correctness bug that no gate catches, because each path looks self-consistent in
+  isolation. The three real cases that motivated the rule:
+  1. **PAVA was trained but never evaluated** (found 2026-07-26). The rectifier lived only
+     inside the loss — `curve_probs` was returned unrectified — so every reported ahead
+     number scored a model that differed from the one we intended to ship. It survived from
+     iter 23 to iter 30 unnoticed.
+  2. **The probe duration disagreed with the pipeline's own convention.** Probes imputed
+     the train-set median (`scale_duration(6433)` = −0.121) while query rows — the
+     pipeline's existing "no press yet" encoding — carry a literal 0.0. Now unified on 0.0.
+  3. **The rectifier does not exist in `rust/rwkv-infer` at all**, so the deploy path could
+     not have reproduced either version. On the port plan.
+  Practical prompts: does the eval path apply every train-time transform that belongs to
+  the model (rather than to the loss)? Do train/eval/deploy feed the same value for inputs
+  that are unavailable at deploy time? Does the Rust engine implement it? Note that `imm`
+  comes from the rating head and `ahead` from the curve head, so a curve-side change moves
+  only one of the two gate modes.
 - **Git:** commit/push only when asked; for non-trivial pushes branch off `main`; end commit
   messages with the `Co-Authored-By` trailer. GitHub comments start "Written by Claude".
 - When a step is ambiguous (exact split, quant target, candle vs other Rust ML lib), state
