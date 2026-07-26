@@ -205,12 +205,35 @@ def export_weights():
     sd = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
     model.load_state_dict(sd)
     flat = {k: v.detach().cpu().contiguous().float() for k, v in model.state_dict().items()}
+
+    # BAKE the RWKV_ZERO_FEATURES mask into the exported weights (Andrew, 2026-07-27).
+    # The mask is applied INSIDE the Python model at its own input, so it is invisible to anyone
+    # holding only the checkpoint -- which is how the Rust engine came to consume columns Python
+    # throws away (a live parity bug: max per-review |rust-python| 1.59e-3 vs 2.28e-6 once masked).
+    # Zeroing input column j of the first linear is exactly equivalent to zeroing feature j
+    # (y = Wx+b is linear in x), so baking it here makes the DEPLOY ARTIFACT correct for any
+    # consumer without that consumer having to know the flag exists. Anki will not be setting
+    # environment variables. The Rust env path stays supported and is idempotent with this (it
+    # would re-zero already-zero columns), so a run with both set is still correct.
+    _zero_feats = sorted({int(t) for t in os.environ.get("RWKV_ZERO_FEATURES", "").split(",")
+                          if t.strip()})
+    if _zero_feats:
+        key = "features2card.0.weight"
+        w = flat[key]
+        assert w.shape[1] == 92, f"{key} has {w.shape[1]} inputs, expected 92 -- refusing to bake"
+        assert all(0 <= i < 92 for i in _zero_feats), f"out of range: {_zero_feats}"
+        before = [float(w[:, i].norm()) for i in _zero_feats]
+        w[:, _zero_feats] = 0.0
+        flat[key] = w.contiguous()
+        print(f"weights: BAKED zero-features {_zero_feats} into {key} "
+              f"(column L2 was {[f'{b:.4f}' for b in before]}, now 0)")
+
     save_pt(flat, str(OUT_DIR / WEIGHTS_SFT))
     names = sorted(flat.keys())
     with open(OUT_DIR / "weight_names.json", "w") as f:
-        json.dump({"n": len(names), "names": names,
+        json.dump({"n": len(names), "names": names, "zero_features": _zero_feats,
                    "shapes": {k: list(flat[k].shape) for k in names}}, f, indent=1)
-    print(f"weights: {len(names)} tensors -> reference/{WEIGHTS_SFT}")
+    print(f"weights: {len(names)} tensors -> {OUT_DIR}/{WEIGHTS_SFT}")
 
 
 def main():
