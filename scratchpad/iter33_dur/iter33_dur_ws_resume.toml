@@ -1,0 +1,70 @@
+# RESEARCH ITER 33 -- "duration of the most recent review zeroed out, everywhere"
+# (Andrew 2026-07-27: "Everywhere (train+eval+CPU inference): duration of the most recent review
+# zeroed out + PAVA + no piecewise correction. And yes, train with zeroing as iter 33." Asked
+# which implementation, he chose the faithful one over cheap global feature-zeroing.)
+#
+# THE MISMATCH, located exactly: ahead_mask = (1 - is_query) * has_label (srs_model.py:798), so
+# the ahead loss lands on the REAL row, which carries that review's OWN duration. Deploy can
+# never have it -- Anki must draw the intervals BEFORE the press. Measured cost of the mismatch:
+# +0.001451 ahead (mode-2 diagnostic, n=500, additive to 0.00e+00, noise control confirms the
+# ahead-side probe noise is exactly 0.000000). imm is unaffected: it sits on query rows, which
+# already encode duration 0.
+#
+# THE FIX is one knob, because _pava_probe_loss ALREADY scores the pressed probe's RECTIFIED
+# value against the real row's ahead label -- exactly the quantity deploy serves. So
+# RWKV_AHEAD_PROBE_ONLY=1 drops probed real rows from the ordinary ahead term and the objective
+# is carried entirely by the duration-zeroed probe path. RWKV_PROBE_DENSITY=1.0 so every
+# eligible review is covered.
+#
+# GATE = the RECTIFIED metric (Andrew's directive collapses gate and deploy metric into one
+# quantity), paired vs iter 31 RECTIFIED on VAL 5001-7500: ahead 0.300802 / imm 0.267691.
+# NOT the unrectified 0.298909/0.267637 in the front table -- those are a different quantity.
+#
+# COVERAGE, measured on real chunks: probes reach 76.5% of ahead rows. The 23.5% residual is a
+# card's FIRST in-chunk review, which has no paired query row so probes are excluded by design;
+# those rows keep the old real-row term. Honest limitation, not an oversight.
+#
+# *** MAX_TRAIN_GLOBAL_LEN LOWERED 32768 -> 16384, AND THIS IS LOAD-BEARING. ***
+# Probes are inserted per-sample AFTER grouping, so density 1.0 does NOT add steps -- it makes
+# each batch ~2.54x LONGER (measured: 1.123x at density 0.08, 2.542x at 1.0). At MAX=32768 that
+# is ~83k rows per batch on a 12 GB card. 16384 keeps post-probe rows near iter 31's effective
+# ~36.7k and roughly doubles the step count instead.
+# 16384 is the FLOOR, not a free parameter: the largest chunk in train_db_5k_h1 is 16,384 and
+# get_groups SILENTLY DROPS any chunk larger than MAX (train_rwkv.py:247-250, the old MAX=20000
+# data-loss incident). Going below 16384 would quietly train on less data.
+# Step pairing against the champion trace is therefore broken by design -- which is fine because
+# vprune is OFF (see the .cmd) and the gate is eval-based.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 16384
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 14001
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "scratchpad/iter33_dur"
+LOAD_MODEL_NAME = "iter33ws_14000"
+SAVE_MODEL_FOLDER = "scratchpad/iter33_dur"
+SAVE_MODEL_PREFIX = "iter33ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
