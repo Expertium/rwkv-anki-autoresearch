@@ -1246,6 +1246,34 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    ~1 ms waits confirmed again on iter 32 and 33). Already banked and not repeatable: deterministic
    indexing 1.5x, JIT 1.38x, EMPTY_CACHE_EVERY=0 1.12x, the QAT kernel 6.3x, the WKV scratch
    allocator.
+   **★ ANDREW 2026-07-27: "Make sure it also profiles PAVA rectification and anything else that
+   could be slow." THE EXISTING PROFILE CANNOT — that is a real gap, not a tuning detail.**
+   `_print_kernel_profile` buckets by **CUDA kernel NAME**, which works for the WKV kernels and
+   gemms but not for PAVA / the GRU head / Muon / the state clamp: those emit only generic
+   elementwise/reduce/gather/where kernels, so all of them land in the catch-all "other" bucket that
+   was already 78% of the step. **Worse, the summary reports GPU self-time only, so a region that is
+   LAUNCH- or SYNC-bound looks nearly free in it while being expensive in wall clock** — and the
+   iter-33 finding (cost tracks parallelism, not rows) says that is exactly the regime we are in.
+   **BUILT 2026-07-27, ready to wire: `rwkv/profile_regions.py`** — `region("name")` emits a
+   `record_function` scope (a shared `nullcontext` when `RWKV_PROFILE_REGIONS` is unset, so
+   annotated code stays byte-identical), and `region_report()` prints **CPU and DEVICE time
+   side by side per region**, flagging `cpu/device > 3` as OVERHEAD-BOUND. Wire call sites at:
+   `pava_rectify` (`model/pava.py:57`), `_pava_probe_loss` / `_pava_rectify_eval`
+   (`srs_model.py:549,513`), the GRU curve head, the state clamp (`rwkv_model.py:633`), Muon's
+   `zeropower_via_newtonschulz5` (`muon.py:27`) and its optimizer step, plus feature FC / curve head
+   / rating head / loss. ⚠ Those are all files iter 33's DECAY phase re-imports, so **apply the
+   call-site edits only after iter 33 finishes**; the helper is a new file and touches nothing.
+   **★ PAVA MEASURED STRUCTURALLY ALREADY (CPU-only, `scratchpad/profile_prep/bench_pava.py`):
+   443 aten ops per call and the count is INDEPENDENT of M** (443 at M=1,000 and at M=100,000)
+   = ~2.7 ms of pure launch overhead per call at ~6 us/launch, forward, plus the backward.
+   **And the early `break` at `pava.py:92` is DEAD CODE: 6/6 back-merge iterations ran at every
+   pooling rate tested (0.10 / 0.50 / 0.98)**, because `merge.any()` reduces over the WHOLE batch
+   and with tens of thousands of rows some row always violates. So every call pays **6 device->host
+   syncs** for a branch that never fires, and each sync drains the GPU queue and kills CPU run-ahead.
+   **=> FIRST CANDIDATE FIX, likely free and bit-exact: delete the `break`.** With `merge` all-False
+   the loop body's `torch.where(upd, ...)` is already a no-op, so running it changes nothing
+   numerically; the NaN-through-`where`-backward hazard is unchanged (it already applies to
+   non-merging rows in iterations that do run). Size it with the region profile before claiming a win.
 
 **⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
 fewer params -> faster CPU inference in Anki").** Measured in `optimization/CPU_INFERENCE.md`:
