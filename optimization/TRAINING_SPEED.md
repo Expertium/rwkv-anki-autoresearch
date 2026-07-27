@@ -133,3 +133,34 @@ cannot see that failure. If it is ever wanted, clear every N steps rather than n
   `_pava_rectify_eval` are `@torch.jit.ignore`, Muon is never scripted), but **anything inside the
   scripted `SrsRWKV.forward` is not**: TorchScript barely supports `with`, and the project's
   history is that such a failure gets swallowed and turns the run HOLLOW rather than crashing.
+
+## Round 1 of A/B results (2026-07-27 23:38) — everything inside the noise, and WHY
+
+4-arm round-robin, 3 rounds, `scratchpad/profile_prep/run_speed_arms.cmd`:
+
+| arm | n | median steps/s | within-arm spread |
+|---|---|---|---|
+| base (today's config) | 3 | 0.5639 | 3.5% |
+| muon (`RWKV_MUON_BATCHED=1`) | 3 | 0.5848 | 5.5% |
+| nojit | 3 | 0.5656 | 4.2% |
+| compile (`RWKV_QAT_COMPILE=1`) | 3 | 0.5922 | 3.4% |
+
+**Noise floor (widest within-arm spread) = 5.5%**, so: muon 1.037x, compile 1.050x (1.047x vs its
+own nojit baseline), nojit 1.003x — **NONE established.** Each arm's flag was verified from its
+banner, so these are genuinely different configurations, not a silently-ignored env var.
+
+⚠ **The benchmark was measuring the wrong regime.** Every arm peaked at **12.83 GB reserved on a
+12 GB card**, i.e. in WDDM paging. Two consequences: (a) paging variance is the likeliest source
+of a 5.5% spread between *identical* configs — group order is NOT the culprit, `random.seed(12345)`
+at `train_rwkv.py:33` makes `get_groups`' shuffle deterministic, so all arms see the same batch
+sequence; (b) if paging dominates the step, removing 8,700 CPU dispatches cannot show up.
+
+**=> `MAX_TRAIN_GLOBAL_LEN` is the suspect, and it was never swept for this trunk.** 32768 was
+inherited from A18 so that step counts would pair with its trace; the only real sweep (to 110000)
+was done at **d=32**, where peak was 9.44 GB. The model is now 2.5x wider. If 32768 is past the
+VRAM cliff at d=80 then a SMALLER MAX is faster despite doing less work per step — the opposite of
+the usual intuition, and a config change rather than a code change.
+
+**Metric note:** compare MAX arms on **reviews/s**, never steps/s. Changing MAX changes both the
+step count and the rows per step (this is exactly the trap that made iter 33's 16 h projection come
+out at 31 h), so steps/s is not comparable across arms.
