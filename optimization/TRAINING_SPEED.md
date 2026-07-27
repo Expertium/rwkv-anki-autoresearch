@@ -164,3 +164,32 @@ the usual intuition, and a config change rather than a code change.
 **Metric note:** compare MAX arms on **reviews/s**, never steps/s. Changing MAX changes both the
 step count and the rows per step (this is exactly the trap that made iter 33's 16 h projection come
 out at 31 h), so steps/s is not comparable across arms.
+
+## ★ MAX sweep at d=80 (2026-07-27 23:52) — and the speed arms were INVALID
+
+`scratchpad/profile_prep/run_max_sweep.cmd`, 2 rounds, density 0.08, batched Muon on.
+**Metric is reviews/s** (steps/s is not comparable across MAX).
+
+| MAX | groups (= steps/epoch) | steps/s | **reviews/s** | peak GB |
+|---|---|---|---|---|
+| 16384 | 43,354 | 0.68 | **4,807** | 8.798 |
+| 24576 | 43,064 | 0.66 | **4,769** | 8.741 |
+| 32768 | 22,346 | 0.59 | **8,868** | 8.860 |
+
+**MAX=32768 is ~1.84x better than 16384 on throughput** — bigger batches win decisively, so the
+inherited setting is right, and iter 33's forced MAX=16384 really does cost ~half the throughput
+(that, not row count, is why its 16 h projection came out at 31 h).
+
+### ⚠ THE SPEED ARMS ABOVE WERE MEASURED ON A CONTAMINATED GPU — treat them as void
+
+Same MAX=32768 config, half an hour apart: **12.83 GB peak in the arms vs 8.86 GB in the sweep.**
+The arms launched at 23:14:41, **one minute after** the 2.5 h rectified eval finished at 23:13, so
+they inherited its GPU memory state and ran in WDDM paging; the sweep ran on a settled card. That
+is the 5.5% noise floor, and it means "muon/compile/nojit all inside noise" is an artifact of the
+measurement, not a finding about those arms. **Re-run them on a clean card before concluding
+anything.**
+
+**METHOD RULE (new): do not start a GPU benchmark immediately after a long GPU job.** Wait for
+`nvidia-smi` memory.used to settle near idle (~1 GB here) and assert peak_reserved is in the
+expected band; a benchmark whose peak is 45% above the same config's clean value is measuring
+paging, not the change under test.
