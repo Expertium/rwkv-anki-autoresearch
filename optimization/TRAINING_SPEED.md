@@ -193,3 +193,42 @@ anything.**
 `nvidia-smi` memory.used to settle near idle (~1 GB here) and assert peak_reserved is in the
 expected band; a benchmark whose peak is 45% above the same config's clean value is measuring
 paging, not the change under test.
+
+## ★★ THE BIG ONE: MAX=65536 is 1.61x the current throughput (2026-07-28 00:15)
+
+Full sweep, clean card, 2 rounds each, density 0.08, batched Muon on:
+
+| MAX | groups (steps/epoch) | **reviews/s** | peak GB | |
+|---|---|---|---|---|
+| 16384 | 43,354 | 4,807 | 8.798 | iter 33's forced value |
+| 24576 | 43,064 | 4,769 | 8.741 | |
+| 32768 | 22,346 | 8,607 | 8.860 | **current** |
+| 40960 | 21,318 | 8,568 | 8.833 | |
+| 49152 | 14,687 | 11,354 | 8.907 | |
+| **65536** | **10,935** | **13,899** | **9.951** | **★ optimum** |
+| 81920 | 8,696 | 13,477 | 12.382 | over the ceiling -> slower |
+
+**1.61x vs the current MAX=32768**, for a config value. The curve reproduces the d=32 sweep's shape
+exactly — throughput climbs to just under the VRAM ceiling then falls off a cliff (there: 110000 at
+9.44 GB, 132k thrashing at -25%). This is literally the protocol's own step (methodology (f): "fix
+the largest batch that ALMOST maxes the 12 GB VRAM"); it was simply never re-run after the trunk
+moved from d=32 to d=80, because 32768 was inherited from A18 for step-pairing.
+
+Within-arm spread on the clean card is 0.2-3.9%, vs the 5.5% seen on the contaminated one — so
+these differences are far outside noise, unlike the four-arm result above.
+
+### ⚠ IT IS NOT A FREE SPEEDUP — it halves the optimizer steps per epoch
+
+Groups fall **22,346 -> 10,935 (-51%)**. Same data per epoch, half as many (twice as large) gradient
+updates: the classic large-batch trade. Consequences before adopting:
+- **LR and warmup must be re-tuned** — the protocol says batch size is structural and LR/warmup are
+  tuned after it. `WARMUP_STEPS=200` is 0.9% of a 22,346-step epoch but 1.8% of a 10,935-step one.
+- **It needs an ACCURACY check**, not just a stopwatch. A 1.61x that costs logloss is not a win, and
+  by the research gate it would have to clear the champion in both modes.
+- It re-bases step-pairing (vprune, champion traces). vprune is currently off, so no live blocker.
+
+**Recommended next step:** one candidate run at MAX=65536 vs the iter-32 champion on the standard
+gate. If accuracy holds, every subsequent experiment is 1.61x cheaper — which is exactly the
+"speed up training so we can do more experiments" goal.
+⚠ **iter 33 cannot use it**: its design needs `RWKV_PROBE_DENSITY=1.0`, which inflates rows ~2.54x,
+so MAX=16384 is already near the VRAM envelope there. It stays at 16384.
