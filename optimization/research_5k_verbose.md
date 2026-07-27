@@ -1469,3 +1469,82 @@ channel the rectifier cannot reach — is **+0.000054**, so the ahead penalty is
 flagging separately: that floor is **5x smaller than A18's +0.000280** on identical probe
 machinery and identical data, i.e. the two models differ in how much bf16 batch re-bucketing
 perturbs them. Candidate causes are the state clamp and PAVA training itself; untested.
+
+## iter 32 — full-run distillation from the d=128 teacher (ACCEPTED, 2026-07-27)
+
+**Family: DISTILLATION.** Note that iter 10 was mis-filed under early-training-intervention,
+which is why the family scoreboard showed distillation nowhere; with this run the family is
+**1/1 at full-run scale**.
+
+**The design.** Teacher = the original 2.76M `pretrain/RWKV_trained_on_101_4999.pth` under
+`scratchpad/architecture_old_d128.py`. Student = the iter-31 recipe *unchanged*, plus
+`RWKV_KD_MIX` and the new **`RWKV_KD_ALPHA=0.5`** flag (holds alpha FIXED — the classic KD form;
+leaving it unset preserves iter 10's linear 1->0 ramp byte-identically). The teacher's
+`p_curve`/`p_again` were pre-dumped for all 22,346 WS steps rather than run live; the decay phase
+trains on hard labels.
+
+### Result (VAL half 5001-7500, n=2500, unrectified = the primary gate)
+
+| metric | iter 31 | iter 32 | delta | p |
+|---|---|---|---|---|
+| ahead | 0.298909 | **0.298333** | +0.000577 | 2.28e-66 |
+| imm | 0.267637 | **0.267207** | +0.000430 | 3.12e-143 |
+
+`size` identical (0/2500 mismatches), nan_users 0, params **558,212** and per-card / note state
+**2,880 / 1,440** floats — all unchanged, as they must be: KD is a training-time-only change and
+nothing about it ships to Rust.
+
+### What the run was actually for: how much of the teacher gap is transferable
+
+The +0.0037/+0.0043 deficit to the old d=128 model is, per the decomposition in "Workbench +
+baselines", mostly **training budget** (our 1.25 epochs vs upstream's ~12) rather than ablation
+damage. A soft target from a model that *had* that budget is the cheapest way to test whether a
+budget deficit is transferable at all. Against the d=128 model on the same VAL half
+(0.294612 / 0.263561):
+
+| | ahead gap | imm gap |
+|---|---|---|
+| iter 31 | -0.004297 | -0.004076 |
+| iter 32 | -0.003721 | -0.003645 |
+| **closed** | **13.4%** | **10.6%** |
+
+So roughly an eighth of the gap moves across as a soft target. That is a real, positive answer to
+a question that had never been tested here — and it also bounds the win: distillation alone will
+not close the remaining ~0.0037, which is consistent with the budget story rather than against it.
+
+### Cost — KD is nearly free
+
+WS ran at **1.30-1.42 steps/s vs iter 31's 1.44 (~9% slower)**. The per-step read of the teacher
+dump is not a bottleneck. The dump itself was 22,346 files / **6.96 GB** on C: and took **1h36m**
+against a ~3h projection. Whole run 1:30:32 -> 9:49:36 (dump 1h36m, sanity 2m, WS 4h23m, decay
+1h04m, eval 1h15m).
+
+`pava_pool_frac` fell from 0.92 at step 1 to **0.075** at the final WS step — under KD the curve
+head becomes nearly monotone on its own, so the rectifier barely has to pool anything.
+
+### Two caveats, both deliberately unresolved
+
+**1. The imm margin is inside the seed band.** +0.000430 is BELOW the ~0.0005 seed-pair
+threshold (cross-seed spread on an identical recipe is ~0.0004 in both modes), so the imm win is
+not resolved by one run; ahead at +0.000577 is above it. Precedent is mixed — iter 31 was
+accepted with ahead +0.000393, also below the threshold, without a seed-pair run. Flagged to
+Andrew rather than resolved unilaterally, since the doctrine's own wording is "needs".
+
+**2. NOT promoted to champion yet.** Two independent reasons: (a) iter 32's eval is
+**unrectified** — its `.cmd` predates `RWKV_EVAL_PAVA` — and from iter 33 on the gate basis is
+the RECTIFIED metric, so iter 32 needs a rectified eval before it can serve as anyone's baseline;
+(b) iter 33 was already running against iter 31's rectified jsonls when this landed, and
+promoting mid-flight would invalidate that comparison. The rectified eval is a GPU job and the
+GPU is busy until iter 33 finishes.
+
+**Throughput** is likewise unmeasured — the no-co-tenant-GPU rule applies while iter 33 is
+gate-critical. KD changes no architecture, params or ops, so the deployed model is shape-identical
+to iter 31 and its throughput is iter 31's *by construction*. That is a derivation, not a
+measurement; a real `measure_throughput.py` run is queued for when the GPU frees.
+
+### Cheap follow-ups that reuse the same dump
+
+The dump is the expensive part and it is on disk at `C:\rwkv_kd_dump\t128_iter32`. The
+**annealed-alpha** variant (unset `RWKV_KD_ALPHA`, ramp over the full run) and an **alpha sweep**
+are student-only re-runs. Curve-level distillation (matching the teacher's full 128-point curve
+rather than its scalar outputs) needs new dump code.

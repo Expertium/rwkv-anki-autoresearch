@@ -970,10 +970,39 @@ Plain-era and QAT-era logloss are NOT comparable.
    to six decimals and the duration number above was never confounded. That is the point of the
    control: measured, not assumed. It also refutes the blanket "probe insertion costs ~3x the gate"
    generalization — see the ★★ refinement in the probe-insertion bullet above.
-4. **RUNNING since 01:30: iter 32 = full-run DISTILLATION, RELAUNCHED as v2** —
-   `scratchpad/iter32_kd/run_iter32_kd_v2.cmd`, **pid 7192**, log
-   `scratchpad/iter32_kd/iter32_kd_v2.log`. Smoke gate passed 01:30 (`DUMP_CHECK_OK` / `SMOKE OK`);
-   full 22,346-step teacher dump started 01:30:32. **Verdict ~11:30.**
+4. **★ DONE 09:49 (2026-07-27): iter 32 = full-run DISTILLATION — ACCEPTED on the primary
+   (unrectified) gate, both modes.** VAL half, n=2500, 0 nanskips, `size` identical (0/2500),
+   params **558,212** and card/note state **2,880/1,440** all UNCHANGED (KD is train-time only —
+   nothing ships to Rust).
+
+   | metric | iter 31 | iter 32 | delta | p |
+   |---|---|---|---|---|
+   | ahead | 0.298909 | **0.298333** | +0.000577 | 2.28e-66 |
+   | imm | 0.267637 | **0.267207** | +0.000430 | 3.12e-143 |
+
+   **★ THE ANSWER IT WAS RUN FOR — a training-budget deficit IS partly transferable as a soft
+   target.** Against the d=128 teacher on the same VAL half (0.294612/0.263561), iter 31 trailed by
+   -0.004297/-0.004076 and iter 32 trails by -0.003721/-0.003645: **KD closed 13.4% of the ahead gap
+   and 10.6% of imm.** First direct evidence here — and it also bounds the lever, since distillation
+   alone plainly will not close the remaining ~0.0037.
+   **KD is nearly FREE:** WS 1.30-1.42 steps/s vs iter 31's 1.44 (~9%); dump 22,346 files / 6.96 GB
+   in 1h36m (vs ~3h projected); whole run 1:30:32 -> 9:49:36. `pava_pool_frac` fell 0.92 -> **0.075**
+   over WS, i.e. under KD the curve head goes nearly monotone unaided.
+   ⚠ **NOT PROMOTED TO CHAMPION, deliberately — `champion_5k_track2.json` still points at iter 31.**
+   Two reasons: (a) iter 32's eval is **UNRECTIFIED** (its `.cmd` predates `RWKV_EVAL_PAVA`) and from
+   iter 33 the gate basis is the RECTIFIED metric, so iter 32 needs a rectified eval before it can be
+   anyone's baseline; (b) iter 33 was already running against iter 31's rectified jsonls when this
+   landed, and promoting mid-flight would invalidate that comparison. The rectified eval is a GPU job;
+   the GPU is busy until iter 33 finishes. **Throughput unmeasured for the same reason** — KD changes
+   no architecture/params/ops so it is iter 31's by construction, recorded as a DERIVATION not a
+   measurement; queue the real run when the GPU frees.
+   ⚠ **ASK ANDREW — the imm margin +0.000430 is BELOW the ~0.0005 seed-pair threshold** (cross-seed
+   spread on an identical recipe is ~0.0004 both modes), so the imm win is unresolved by this single
+   run; ahead at +0.000577 is above it. Precedent is mixed: **iter 31 was accepted with ahead
+   +0.000393, also below**, without a seed-pair run. Not resolved unilaterally — the doctrine says
+   "needs".
+   Historical detail of the run below (kept: the v1 false-failure and the deadlock guard are
+   reusable lessons).
    ⚠ **v1 (pid 25348) DIED at its smoke gate on a FALSE FAILURE — the check was wrong, not the
    dump.** `DUMP_CHECK_FAIL 5/5, "p_curve outside (0,1): [.., 1.000000]"`. `p_curve` is stored
    **fp16** (`train_rwkv.py:1090`) and fp16 spacing below 1.0 is 4.88e-4, so every teacher output
@@ -1074,8 +1103,13 @@ Recommendation: run **(A) first** — it is the cheap upper bound on the parity 
 result tells us whether past-duration signal is worth (B)'s 2x. If (A) wins the rectified gate,
 take it; if it loses by less than the +0.001451 duration penalty it removes, (B) is justified.
 
-5. **PARKED behind iter 32: iter 33 = the duration fix** — `scratchpad/iter33_dur/run_iter33_dur.cmd`,
-   **pid 15496**, log `scratchpad/iter33_dur/iter33_dur.log`. `RWKV_PROBE_DENSITY=1.0` +
+5. **RUNNING since 09:51 (2026-07-27): iter 33 = the duration fix** — the waitloop fired 5 min
+   after iter 32's `DONE_EXIT_0`, as designed. `scratchpad/iter33_dur/run_iter33_dur.cmd`,
+   **pid 15496**, log `scratchpad/iter33_dur/iter33_dur.log`. **Verdict ~01:50 (2026-07-28).**
+   ⚠ Its gate still pairs against **iter 31's** rectified jsonls, which is correct and deliberate —
+   iter 32 has no rectified eval yet (see item 4). If iter 32 gets one before iter 33's gate runs,
+   the baseline can be re-pointed for free; do NOT re-point it to iter 32's UNRECTIFIED numbers.
+   `RWKV_PROBE_DENSITY=1.0` +
    **`RWKV_AHEAD_PROBE_ONLY=1`** (new flag): the ahead objective moves entirely onto the
    duration-zeroed probe path, which is the quantity deploy serves. Eval is **RECTIFIED**
    (`RWKV_EVAL_PAVA=1`) and the gate pairs against `RWKV-iter31_algo_rect.jsonl`.
@@ -1112,14 +1146,18 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    monotonicity pressure should cost raw unrectified accuracy — which is precisely why item 0
    matters: judged on the unrectified gate this family looks like a regression even when it is a
    deploy win. Measure BOTH metrics for any run in it.
-2. **Record iter 32 at verdict** (~06:00-11:00): `research_log.jsonl` + `research_5k.md` FIRST
-   table + `research_5k_verbose.md` + `python optimization/logbook.py rebuild`. File it under the
-   **distillation** family (iter 10 was mis-filed under early-training-intervention, which is why
-   the scoreboard shows distillation nowhere). Read the mode-2 decomposition out of
-   `scratchpad/eval_pava/mode2_diag.log` at the same time.
-3. **If iter 32 lands well, the cheap follow-ups reuse the SAME dump** (the expensive part): the
+2. **DONE 2026-07-27 — iter 32 recorded** in `research_log.jsonl` (60 entries) + `research_5k.md`
+   first table + `research_5k_verbose.md` + `logbook.py rebuild`, filed under **distillation**.
+   **Two GPU jobs it left owing, both queued behind iter 33:** (a) a **RECTIFIED eval** of iter 32
+   — without it iter 32 cannot become anyone's gate baseline, and it is what promotion waits on;
+   (b) `measure_throughput.py` on `scratchpad/iter32_kd/iter32d_5586.pth` (currently a derivation,
+   not a measurement). Also open for Andrew: the seed-pair question on the +0.000430 imm margin.
+3. **★ iter 32 LANDED WELL, so these are now live and CHEAP — the dump is already on disk** at
+   `C:\rwkv_kd_dump\t128_iter32` (22,346 files / 6.96 GB) and it is the expensive part: the
    annealed-alpha variant (unset `RWKV_KD_ALPHA`, window = full run) and an alpha sweep are
-   student-only re-runs. Curve-level distillation (variant 3) needs new dump code.
+   **student-only re-runs** (~6 h each, no dump). Curve-level distillation (variant 3) needs new
+   dump code. ⚠ **Do not delete that dump directory** without deciding these are done — regenerating
+   it is 1h36m of GPU.
 4. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — ⚠ **THIS ENTRY WAS STALE; both of its
    "remaining" items are DONE (verified 2026-07-27).** The button API landed in `fast.rs`
    (`button_intervals` at `fast.rs:703`, plus `tile_states_b1` and the `--buttons-fast` /
@@ -1174,6 +1212,8 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 7.11x fewer params, sublinear as the elementwise-dominated profile predicts.)
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+**distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
+⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
 curve-shape constraints **1/1** (PAVA) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
 largest imm gain; cautious wd REJECTED iter 30 — a pure trade) · GRU-head N-sweep **peaks at
 N=3** (N=4 worse, closed) · readout/xhead **0/3** with real signal but negative under the GRU
