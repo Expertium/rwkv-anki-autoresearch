@@ -1117,6 +1117,23 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    line as evidence the run was prunable.
    `SANITY OK` at 09:53:49 — the 40-step VRAM check passed at MAX=16384 with density 1.0, so the
    post-probe row count fits the 12 GB card. WS started 09:53:49.
+   ⚠ **★ IT IS A ~31 h RUN, NOT ~16 h — the projection modelled ROWS but not BATCHING (measured
+   2026-07-27, 5-min window at steady state: 0.527 steps/s).** WS **43,354 steps -> 22.9 h**, decay
+   10,838 -> 5.7 h, rectified eval ~2.5 h; **verdict ~17:00 on 2026-07-28**.
+   **Why:** `max_batch = floor(MAX/size)` and the largest chunks in `train_db_5k_h1` are exactly
+   16,384 rows, so at MAX=16384 they get `max_batch = 1` — **no batching at all**, where MAX=32768
+   gave them 2. Step count rose 1.94x as modelled (43,354 vs iter 32's 22,346) but **per-step cost
+   rose 2.83x while rows/step rose only 1.13x** (41.6k post-probe vs iter 32's 36.8k). Fetch waits
+   are ~1 ms in both runs, so it is not the loader — it is lost GPU parallelism. (Inference from the
+   group counts plus the known elementwise/B x T-shaped profile, not a direct kernel measurement.)
+   **No cheap rescue:** raising MAX leaves those 16,384-row chunks at `max_batch = 1` until MAX
+   doubles back to 32768, which is the VRAM ceiling that forced 16384; and density 1.0 is
+   load-bearing (`RWKV_AHEAD_PROBE_ONLY=1` needs it to cover the ahead rows).
+   **=> LESSON for any future MAX change: cost is NOT linear in rows. Halving MAX cost 5.2x WS
+   wall-clock here (4h23m -> 22.9 h), because it also halves batching. Estimate from `Number of
+   groups` x a measured steps/s, never from row counts alone.**
+   ⚠ **It also BLOCKS the queue for ~31 h** — iter 32's rectified eval and throughput both need the
+   GPU and the no-co-tenant rule applies, so the champion question stays open until this finishes.
    `RWKV_PROBE_DENSITY=1.0` +
    **`RWKV_AHEAD_PROBE_ONLY=1`** (new flag): the ahead objective moves entirely onto the
    duration-zeroed probe path, which is the quantity deploy serves. Eval is **RECTIFIED**
