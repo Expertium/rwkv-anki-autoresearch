@@ -1,6 +1,6 @@
-FILE_AHEAD = "RWKV-iter32_kd-s0"
-FILE_IMM = "RWKV-P-iter32_kd-s0"
-MODEL_PATH = "scratchpad/iter32_kd/iter32d_5586.pth"
+FILE_AHEAD = "RWKV-iter31_algo_noise"
+FILE_IMM = "RWKV-P-iter31_algo_noise"
+MODEL_PATH = "scratchpad/iter31_algo/iter31d_5586.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
 DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
@@ -11,6 +11,5 @@ RAW = false
 RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
-USER_END = 7500
+USER_END = 5500
 NUM_FETCH_PROCESSES = 4
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s0.json"

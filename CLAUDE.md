@@ -1103,9 +1103,26 @@ Recommendation: run **(A) first** — it is the cheap upper bound on the parity 
 result tells us whether past-duration signal is worth (B)'s 2x. If (A) wins the rectified gate,
 take it; if it loses by less than the +0.001451 duration penalty it removes, (B) is justified.
 
-5. **RUNNING since 09:51 (2026-07-27): iter 33 = the duration fix** — the waitloop fired 5 min
-   after iter 32's `DONE_EXIT_0`, as designed. `scratchpad/iter33_dur/run_iter33_dur.cmd`,
-   **pid 15496**, log `scratchpad/iter33_dur/iter33_dur.log`. **Verdict ~01:50 (2026-07-28).**
+5. **⏸ STOPPED 17:38 (2026-07-27) at Andrew's request — he is powering the PC down for cable
+   management. NOT a failure; RESUME IT when the machine is back.** iter 33 = the duration fix.
+   **RESUME POINT: WS step 14,000 of 43,354 (32%)** — ckpts `scratchpad/iter33_dur/iter33ws_14000.pth`
+   + `iter33ws_optim_14000.pth` (17:33:59). The step trace had 14,934 lines, so a resume re-does
+   ~934 steps, inside the documented <=1000-step loss.
+   **HOW (the documented mid-epoch resume, LIVE RULES section):** `RWKV_RESUME_SKIP_GROUPS=1` +
+   `python scratchpad/make_resume.py scratchpad/iter33_dur iter33ws scratchpad/iter33_dur/iter33_dur_ws.toml`,
+   then rerun the WS phase with the run's **FULL env** and **WITHOUT deleting the step-trace files**.
+   The resumed tail's dropout draws differ (weights/optim exact) — statistically equivalent, not
+   bit-identical. ⚠ The `.cmd` runs WS -> decay -> eval as one chain, so a plain relaunch would redo
+   WS from zero; resume the WS phase, then let the remaining phases run.
+   **REMAINING: ~16 h WS + 5.7 h decay + 2.5 h eval = ~24 h** at the measured 0.527 steps/s.
+   ⚠ While it is stopped the GPU is FREE, so the jobs it was blocking can run first — in value
+   order: **iter 32's rectified eval** (unblocks the champion question), `measure_throughput.py` on
+   `iter32d_5586.pth`, the **QAT-JIT GPU half** (~15 min, ~1.38x), and the **d=80 re-profile +
+   region wiring** (queue item 8, Andrew's speed directive). Several of those are short enough to
+   finish before a resumed iter 33 would need the card.
+   Original launch record: the waitloop fired 5 min after iter 32's `DONE_EXIT_0`, as designed.
+   `scratchpad/iter33_dur/run_iter33_dur.cmd`, **pid 15496**, log
+   `scratchpad/iter33_dur/iter33_dur.log`.
    ⚠ Its gate still pairs against **iter 31's** rectified jsonls, which is correct and deliberate —
    iter 32 has no rectified eval yet (see item 4). If iter 32 gets one before iter 33's gate runs,
    the baseline can be re-pointed for free; do NOT re-point it to iter 32's UNRECTIFIED numbers.
