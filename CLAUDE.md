@@ -789,7 +789,21 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 31 `iter31_algo` (A18 trunk + PAVA + GRU N=3 + Muon)
+#### CHAMPION = iter 32 `iter32_kd` (iter-31 trunk + full-run distillation) -- promoted 2026-07-27 23:13
+**RECTIFIED (deploy, and the gate basis from iter 33 on): ahead 0.300268 / imm 0.267262** on the VAL
+half (5001-7500, n=2500) = +0.000534 / +0.000429 vs iter 31 at p=3.4e-54 / 2.9e-144. Unrectified
+0.298333 / 0.267207. **Both metrics agree**, so the gate-vs-deploy divergence risk did not bite.
+**558,212 params, card/note state 2,880/1,440 -- all IDENTICAL to iter 31** (KD is train-time only;
+nothing new ships to Rust). Throughput **1857.4 rev/s** (measured). ckpt
+`scratchpad/iter32_kd/iter32d_5586.pth`; `champion_5k_track2.json` points at it.
+Env = iter 31's env plus `RWKV_KD_MIX` + `RWKV_KD_ALPHA=0.5`; teacher dump at
+`C:
+wkv_kd_dump	128_iter32` (22,346 files / 6.96 GB -- do NOT delete, the cheap follow-ups reuse it).
+⚠ **Seed-pair caveat OPEN:** imm +0.000429 is below the ~0.0005 threshold and the rectified eval
+re-scores the SAME run, so it confirms the metric, not the seed. Precedent (iter 31 accepted at
+ahead +0.000393) supports the promotion; an `RWKV_AUGMENT_SEED=4321` re-run would settle it.
+
+#### PREVIOUS CHAMPION = iter 31 `iter31_algo` (A18 trunk + PAVA + GRU N=3 + Muon)
 Accepted 2026-07-26, the FIRST merged-lineage iteration. **ahead 0.298909 / imm 0.267637** on the
 VAL half (5001-7500, n=2500, 0 nanskips) = +0.000393 / +0.000753 vs A18 at p=6.0e-26 / 1.5e-209;
 `size` identical (0/2500 mismatches). **558,212 params** (+966 vs A18 = GRU N=2->3 + `pava_theta`);
@@ -1103,8 +1117,19 @@ Recommendation: run **(A) first** — it is the cheap upper bound on the parity 
 result tells us whether past-duration signal is worth (B)'s 2x. If (A) wins the rectified gate,
 take it; if it loses by less than the +0.001451 duration penalty it removes, (B) is justified.
 
-5. **⏸ STOPPED 17:38 (2026-07-27) at Andrew's request — he is powering the PC down for cable
-   management. NOT a failure; RESUME IT when the machine is back.** iter 33 = the duration fix.
+5. **▶ RESUMED 00:23 (2026-07-28) and RUNNING — iter 33 = the duration fix.**
+   `scratchpad/iter33_dur/run_iter33_resume.cmd`, **pid 5088**. Verified from the log:
+   `[resume-skip] epoch 0: skipping the first 14000 already-trained groups (resume at global step
+   14001)`. ~29,354 WS steps remain + decay + rectified eval.
+   **Its GATE now pairs against iter 32 RECTIFIED** (the new champion), not iter 31 — that is the
+   one substantive change vs the original runner, and it is free because iter 32's rectified jsonls
+   now exist. The resume runner also drops the waitloop and the 40-step sanity phase (already
+   passed) and fixes the stale "vprune ON min6000" banner.
+   ⚠ **`RWKV_MUON_BATCHED` is deliberately NOT set** — the batched Newton-Schulz (13fd1b1) perturbs
+   optimizer numerics on GPU and steps 1-14,000 were trained without it; the speedup goes to the
+   NEXT run rather than splitting this one across two implementations.
+   Stop/resume history: STOPPED 17:38 2026-07-27 at Andrew's request (cable management, not a
+   failure) at WS step 14,000 of 43,354.
    **RESUME POINT: WS step 14,000 of 43,354 (32%)** — ckpts `scratchpad/iter33_dur/iter33ws_14000.pth`
    + `iter33ws_optim_14000.pth` (17:33:59). The step trace had 14,934 lines, so a resume re-does
    ~934 steps, inside the documented <=1000-step loss.
