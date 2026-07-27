@@ -1224,6 +1224,28 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    ~4-day 10x-budget endgame run, whose whole premise is that more epochs buy the +0.0037/+0.0043.
    Same doc's VERDICT: **do not train on FSRS-Anki-20k** (1.5 TB LMDB vs 1.13 TB free; no
    note/deck/preset = a regime that is 0% of deployment; 4.3% of its users leak into our eval half).
+8. **★ ANDREW 2026-07-27: "After iter 33 see if you can speed up training."** DO THIS WHEN ITER 33
+   FINISHES (~17:00 2026-07-28), not before — it needs the GPU and iter 33 is gate-critical.
+   **Start with measurement, not ideas: the last profile was at d=32/MAX=110000 and is two
+   architectures stale.** Re-profile the CURRENT d=80 trunk with the existing hook —
+   `RWKV_PROFILE_STEP=N` + `RWKV_PROFILE_COUNT` (train_rwkv.py:790-795) wraps N steps in
+   torch.profiler, prints bucketed self-GPU-time (QAT / wkv scan / wkv recurrence / gemm /
+   elementwise) and exits; off by default so training stays byte-identical. ~5 min GPU.
+   **The one KNOWN-AVAILABLE win, already scoped: the QAT-JIT GPU half (~15 min).** The CPU half is
+   green (`smoke_qat_jit.py`) — `RWKV_NO_JIT=1` is NOT structurally required by QAT — and JIT is
+   worth **~1.38x**. What is left is bit-exactness of a real training step vs the NO_JIT path (the
+   CUDA `qat_lr_rank1` kernels, not the CPU reference), the steps/s A/B, and the PQ-codebook call
+   variant. **The endgame 10x run IS quant-aware, so this alone is worth ~1.5 days of that run.**
+   **A NEW lead from iter 33 (2026-07-27):** per-step cost is far more sensitive to `max_batch`
+   (GPU parallelism) than to rows — halving MAX cost 2.83x per step on only 1.13x more rows. That
+   says the step is parallelism/launch-bound at small B, which points back at the elementwise mass
+   (78% of the step at the d=32 profile) rather than the WKV kernel.
+   **DO NOT RE-RUN THE KNOWN DEAD ENDS** (all in the SPEED and LESSON BANK sections above): tensor
+   cores (Amdahl <1%), `torch.compile` (honest 1.05x, shelved), CUDA graphs (variable shapes,
+   1.1-1.3x), the chunked-matmul/fla rewrite (addresses <=18%), and fetch-side work (already hidden,
+   ~1 ms waits confirmed again on iter 32 and 33). Already banked and not repeatable: deterministic
+   indexing 1.5x, JIT 1.38x, EMPTY_CACHE_EVERY=0 1.12x, the QAT kernel 6.3x, the WKV scratch
+   allocator.
 
 **⚠ CPU-INFERENCE REALITY CHECK (Andrew 2026-07-25: "I told you to do ablations hoping that
 fewer params -> faster CPU inference in Anki").** Measured in `optimization/CPU_INFERENCE.md`:
