@@ -1109,6 +1109,14 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    ⚠ Its gate still pairs against **iter 31's** rectified jsonls, which is correct and deliberate —
    iter 32 has no rectified eval yet (see item 4). If iter 32 gets one before iter 33's gate runs,
    the baseline can be re-pointed for free; do NOT re-point it to iter 32's UNRECTIFIED numbers.
+   ⚠ **ITS WS BANNER LIES: it prints "vprune ON min6000" but vprune is OFF, as designed.** Verified
+   two ways — no `RWKV_VPRUNE_*` env is set anywhere in the `.cmd` (only a REM line), and
+   `train_rwkv.py:910` arms vprune only when `RWKV_VPRUNE_REF` is non-empty. A stale echo string
+   copied from a template; the `.cmd` could not be corrected once running (editing a live `.cmd`
+   corrupts cmd.exe's saved read offset). **Fix the string after the run**, and do not read that log
+   line as evidence the run was prunable.
+   `SANITY OK` at 09:53:49 — the 40-step VRAM check passed at MAX=16384 with density 1.0, so the
+   post-probe row count fits the 12 GB card. WS started 09:53:49.
    `RWKV_PROBE_DENSITY=1.0` +
    **`RWKV_AHEAD_PROBE_ONLY=1`** (new flag): the ahead objective moves entirely onto the
    duration-zeroed probe path, which is the quantity deploy serves. Eval is **RECTIFIED**
