@@ -87,6 +87,11 @@ class MuonAdamW(torch.optim.Optimizer):
                         muon_momentum=muon_momentum, ns_steps=ns_steps,
                         cautious_wd=cautious_wd)
         super().__init__(param_groups, defaults)
+        if _MUON_BATCHED:
+            # Printed so a benchmark arm can be VERIFIED to have taken the flag, rather than
+            # assumed -- a silently-ignored env var makes two arms compare noise to noise.
+            print("[muon] BATCHED Newton-Schulz ON (one bmm per shape group, "
+                  "torch._foreach_ momentum)")
 
     @torch.no_grad()
     def step(self, closure=None):
