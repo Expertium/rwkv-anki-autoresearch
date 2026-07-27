@@ -475,6 +475,45 @@ def _dump_kernel_profile(profiler, n_steps):
     print("PROFILE_DONE")
 
 
+def _dump_cpu_profile(profiler, n_steps):
+    """Where the WALL CLOCK goes: top CPU-side ops, and the launch/sync tax.
+
+    Added 2026-07-27. The CUDA-only summary above accounts for GPU EXECUTION; at d=80 that is
+    only ~237 ms of a ~1450 ms step, so it explains a sixth of training time. This pass reports
+    self CPU time (op dispatch + launch overhead + anything that blocks on the device), which is
+    what the remainder is made of. Plain ASCII.
+    """
+    def cpu_us(e):
+        return getattr(e, "self_cpu_time_total", 0.0) or 0.0
+
+    def dev_us(e):
+        for attr in ("self_device_time_total", "self_cuda_time_total"):
+            v = getattr(e, attr, None)
+            if v:
+                return v
+        return 0.0
+
+    evs = [e for e in profiler.key_averages() if cpu_us(e) > 0]
+    if not evs:
+        print("(no CPU events recorded)")
+        return
+    grand = sum(cpu_us(e) for e in evs)
+    print(f"\n===== CPU / WALL-CLOCK PROFILE ({n_steps} steps) =====")
+    print(f"total self CPU time: {grand / 1e3:.2f} ms  ({grand / 1e3 / n_steps:.2f} ms/step)")
+    print(f"{'self cpu ms/step':>17s} {'self dev ms/step':>17s} {'calls/step':>11s}  op")
+    for e in sorted(evs, key=lambda x: -cpu_us(x))[:25]:
+        c, d = cpu_us(e) / 1e3 / n_steps, dev_us(e) / 1e3 / n_steps
+        nm = e.key if len(e.key) < 62 else e.key[:59] + "..."
+        flag = ""
+        if c > 5.0 and d == 0.0:
+            flag = "  <-- no device work (pure CPU / sync)"
+        print(f"{c:17.2f} {d:17.2f} {e.count / n_steps:11.1f}  {nm}{flag}")
+    # A launch-bound step is one with a very large number of small dispatches.
+    total_calls = sum(e.count for e in evs)
+    print(f"\ntotal op dispatches: {total_calls} = {total_calls / n_steps:.0f} per step")
+    print("CPU_PROFILE_DONE")
+
+
 def main_loop(config, task_queue, batch_queue):
     data_fetcher = DataFetcher(task_queue=task_queue, out_queue=batch_queue)
 
@@ -1021,12 +1060,17 @@ def main_loop(config, task_queue, batch_queue):
             if prof_start > 0 and profiler is None and step == prof_start:
                 torch.cuda.synchronize()
                 from torch.profiler import profile as _tprof, ProfilerActivity as _PA
-                profiler = _tprof(activities=[_PA.CUDA])
+                # CPU activity is included (2026-07-27) because CUDA-only cannot see where the
+                # time actually goes at d=80: measured 237 ms of GPU kernel time inside a ~1450 ms
+                # step, with fetch at 2 ms. The missing ~1200 ms is launch gaps, CPU work and sync
+                # stalls -- all invisible to a CUDA-only trace. Costs nothing outside profile mode.
+                profiler = _tprof(activities=[_PA.CPU, _PA.CUDA])
                 profiler.__enter__()
             elif profiler is not None and step == prof_start + prof_count:
                 torch.cuda.synchronize()
                 profiler.__exit__(None, None, None)
                 _dump_kernel_profile(profiler, prof_count)
+                _dump_cpu_profile(profiler, prof_count)
                 raise SystemExit(0)
 
             if bench_max_steps > 0 and step == config.STEP_OFFSET + bench_warmup:

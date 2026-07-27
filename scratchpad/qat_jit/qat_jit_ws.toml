@@ -1,0 +1,40 @@
+# QAT-JIT A/B: 80 WS steps of the iter-31 trunk under the FULL q72u quant-aware env, run twice
+# (RWKV_NO_JIT=1 vs JIT on) in SEPARATE processes -- old-style ScriptModule bakes the first
+# construction's env flags into the compiled class, so two flag values must never share a process.
+# Purpose: (1) are the two paths bit-identical on a REAL training step (the CUDA qat_lr_rank1
+# kernels, not the CPU reference smoke_qat_jit.py already covered), (2) what is the steps/s gap.
+# Warm-started from the iter-31 champion so the QAT paths see realistic weights.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 4
+MAX_TRAIN_GLOBAL_LEN = 32768
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 200
+EPOCHS = 1
+VALIDATE_EVERY = 100000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "scratchpad/iter31_algo"
+LOAD_MODEL_NAME = "iter31d_5586"
+SAVE_MODEL_FOLDER = "scratchpad/qat_jit"
+SAVE_MODEL_PREFIX = "qatjit"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

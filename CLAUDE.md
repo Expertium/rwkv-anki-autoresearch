@@ -1241,8 +1241,27 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    ~4-day 10x-budget endgame run, whose whole premise is that more epochs buy the +0.0037/+0.0043.
    Same doc's VERDICT: **do not train on FSRS-Anki-20k** (1.5 TB LMDB vs 1.13 TB free; no
    note/deck/preset = a regime that is 0% of deployment; 4.3% of its users leak into our eval half).
-8. **★ ANDREW 2026-07-27: "After iter 33 see if you can speed up training."** DO THIS WHEN ITER 33
-   FINISHES (~17:00 2026-07-28), not before — it needs the GPU and iter 33 is gate-critical.
+8. **★ ANDREW 2026-07-27: "After iter 33 see if you can speed up training." → MEASURED, and the
+   answer is in `optimization/TRAINING_SPEED.md`. READ THAT FIRST; the notes below are the older
+   plan that led to it.**
+   **THE HEADLINE: the step is CPU-DISPATCH-BOUND, not kernel-bound.** At d=80: wall clock
+   ~1,450-1,540 ms/step, GPU kernel time only **237 ms (~16%)**, self CPU **915 ms**, and
+   **90,576 op dispatches per step** (`cudaLaunchKernel` alone = 17,346 calls / 199 ms). Fetch is
+   2.3 ms, re-confirmed as a non-lever. **=> faster kernels are near-pointless; the wins are
+   FEWER, BIGGER ops.** This also explains iter 33's 2.83x-per-step cost on 1.13x rows, and
+   retro-justifies the tensor-core / chunked-matmul dead ends (both attack the 16%).
+   **★ PAVA IS EXONERATED** — 443 dispatches/call is ~1% of 90,576, and ALL stream syncs in the
+   whole step total 17 ms. The dead `break` at `pava.py:92` is still worth deleting (bit-exact)
+   but it is a tidy-up, not a speedup. **Do not spend effort optimizing PAVA.**
+   **`empty_cache` RULED OUT by direct A/B:** 0.6484 -> 0.6887 steps/s = **1.06x**; it guards a
+   documented 4x paging failure, so leave it.
+   **BEST CONCRETE TARGET = batch Muon's Newton-Schulz** (`muon.py:80` runs it per-parameter in a
+   Python loop: 2,658 `aten::mm`/step, 92 ms CPU to do 21.6 ms of GPU work). Group by shape +
+   `torch.bmm` => ~10x fewer matmul dispatches, **~6-7% expected**. ⚠ NOT bit-exact (bmm changes
+   reduction order), so it needs an accuracy check and the seed-pair doctrine applies.
+   Also open: `indexing_backward_kernel` 32 ms/step = a THIRD deterministic-indexing site the
+   PermGather work missed (bit-exact if fixed the same way), and `aten::fill_` 7,227 calls/step.
+   (Original plan follows — the GPU-needed parts are done; QAT-JIT is staged at `scratchpad/qat_jit/`.)
    **Start with measurement, not ideas: the last profile was at d=32/MAX=110000 and is two
    architectures stale.** Re-profile the CURRENT d=80 trunk with the existing hook —
    `RWKV_PROFILE_STEP=N` + `RWKV_PROFILE_COUNT` (train_rwkv.py:790-795) wraps N steps in
