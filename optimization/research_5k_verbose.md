@@ -1548,3 +1548,30 @@ The dump is the expensive part and it is on disk at `C:\rwkv_kd_dump\t128_iter32
 **annealed-alpha** variant (unset `RWKV_KD_ALPHA`, ramp over the full run) and an **alpha sweep**
 are student-only re-runs. Curve-level distillation (matching the teacher's full 128-point curve
 rather than its scalar outputs) needs new dump code.
+
+### iter 32 addendum — rectified (deploy) eval + throughput, 2026-07-27 23:12
+
+| metric | iter 31 | iter 32 | delta | p |
+|---|---|---|---|---|
+| ahead RECT (deploy) | 0.300802 | **0.300268** | +0.000534 | 3.39e-54 |
+| imm RECT (deploy) | 0.267691 | **0.267262** | +0.000429 | 2.90e-144 |
+
+**Both metrics agree**, which is the point of running it: unrectified was +0.000577/+0.000430 and
+rectified is +0.000534/+0.000429. The gate-vs-deploy divergence that QUEUE item 0 worried about
+does not bite here — KD's gain is real for users, not an artifact of which metric is scored.
+
+**Throughput MEASURED: 1857.4 rev/s** (per-user samples 1823.9-1861.9). It had been recorded as a
+derivation from iter 31 on the grounds that KD changes no architecture; that reasoning was sound
+but it is now an actual measurement.
+
+⚠ **Distillation does NOT shrink the rectification residual.** iter 32 pays +0.001935 on ahead to
+be rectified (0.298333 -> 0.300268) vs iter 31's +0.001893 — statistically indistinguishable. So
+the residual remains exactly where it was as a research target (QUEUE item 1: raise
+`RWKV_PAVA_LAMBDA` and/or `RWKV_PROBE_DENSITY`), and KD is not a route to it.
+
+**PROMOTED** to `champion_5k_track2.json` on the RECTIFIED numbers, since those are the gate basis
+from iter 33 onward.
+⚠ **The seed-pair caveat stands and is NOT closed by this run.** imm +0.000429 is still under the
+~0.0005 threshold, and the rectified eval re-scores the *same training run* — it confirms the
+metric, not the seed. Precedent (iter 31 accepted at ahead +0.000393 without a seed pair) supports
+promoting; an independent `RWKV_AUGMENT_SEED=4321` run would settle it.
