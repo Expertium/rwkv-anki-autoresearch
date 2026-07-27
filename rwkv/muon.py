@@ -19,8 +19,14 @@ Design constraints honored:
 - Default OFF at the call site (RWKV_MUON unset -> plain torch.optim.AdamW, byte-identical).
 """
 
+import os
+
 import torch
 from torch.optim.adamw import adamw as _functional_adamw
+
+# RWKV_MUON_BATCHED=1 -> orthogonalize all same-shaped matrices in one batched Newton-Schulz
+# and drive momentum with torch._foreach_*. Default OFF, i.e. byte-identical to iter 29-33.
+_MUON_BATCHED = os.environ.get("RWKV_MUON_BATCHED", "0") == "1"
 
 
 @torch.no_grad()
@@ -33,6 +39,37 @@ def zeropower_via_newtonschulz5(G, steps: int = 5):
     if transposed:
         X = X.mT
     X = X / (X.norm() + 1e-7)
+    for _ in range(steps):
+        A = X @ X.mT
+        B = b * A + c * (A @ A)
+        X = a * X + B @ X
+    if transposed:
+        X = X.mT
+    return X.to(G.dtype)
+
+
+@torch.no_grad()
+def zeropower_via_newtonschulz5_batched(G, steps: int = 5):
+    """Same iteration, over a STACK of equally-shaped matrices: G is (B, M, N).
+
+    Item-for-item mathematically identical to calling the 2D version B times -- `@` on 3D
+    tensors is bmm, which is independent per batch element, and the normalizer is taken
+    per item. What changes is that B matrices are orthogonalized in ONE dispatch instead of B.
+
+    Motivation (2026-07-27 profile, optimization/TRAINING_SPEED.md): the per-parameter loop
+    issued 2,658 `aten::mm` per step costing 92 ms of CPU dispatch to do 21.6 ms of GPU work,
+    on a step that is dispatch-bound overall.
+
+    ⚠ NOT bit-exact vs the 2D path: cuBLAS may choose a different algorithm/reduction order
+    for bmm than for mm. Equivalent in exact arithmetic, not in float.
+    """
+    assert G.ndim == 3
+    a, b, c = (3.4445, -4.7750, 2.0315)
+    X = G.to(torch.bfloat16)
+    transposed = G.size(1) > G.size(2)
+    if transposed:
+        X = X.mT
+    X = X / (X.norm(dim=(1, 2), keepdim=True) + 1e-7)
     for _ in range(steps):
         A = X @ X.mT
         B = b * A + c * (A @ A)
@@ -65,19 +102,51 @@ class MuonAdamW(torch.optim.Optimizer):
                 wd_eff = lr * group["wd_lr_scale"] * wd  # AdamW-equivalent decay rate
                 momentum = group["muon_momentum"]
                 ns_steps = group["ns_steps"]
+                live = [p for p in group["params"] if p.grad is not None]
+                # ---- batched path (RWKV_MUON_BATCHED=1): one Newton-Schulz per SHAPE ----
+                # The loop below is unchanged; it just consumes a precomputed O per param.
+                # See zeropower_via_newtonschulz5_batched for why this is not bit-exact.
+                precomputed = {}
+                if _MUON_BATCHED and len(live) > 1:
+                    by_shape = {}
+                    for p in live:
+                        g2d = p.grad.reshape(p.grad.size(0), -1)
+                        st = self.state[p]
+                        if "momentum_buffer" not in st:
+                            st["momentum_buffer"] = torch.zeros_like(g2d)
+                        by_shape.setdefault(tuple(g2d.shape), []).append((p, g2d, st))
+                    for shp, items in by_shape.items():
+                        bufs = [st["momentum_buffer"] for (_, _, st) in items]
+                        g2ds = [g2d for (_, g2d, _) in items]
+                        # momentum + nesterov for the whole shape group in 3 dispatches
+                        torch._foreach_mul_(bufs, momentum)
+                        torch._foreach_add_(bufs, g2ds)
+                        upds = torch._foreach_add(g2ds, bufs, alpha=momentum)
+                        if len(items) == 1:
+                            Os = [zeropower_via_newtonschulz5(upds[0], steps=ns_steps)]
+                        else:
+                            stacked = torch.stack(upds, dim=0)
+                            Ob = zeropower_via_newtonschulz5_batched(stacked, steps=ns_steps)
+                            Os = list(Ob.unbind(0))
+                        for (p, _, _), O in zip(items, Os):
+                            precomputed[p] = O
+
                 for p in group["params"]:
                     if p.grad is None:
                         continue
                     g = p.grad
                     assert g.ndim >= 2, "use_muon group must hold matrices"
                     g2d = g.reshape(g.size(0), -1)
-                    state = self.state[p]
-                    if "momentum_buffer" not in state:
-                        state["momentum_buffer"] = torch.zeros_like(g2d)
-                    buf = state["momentum_buffer"]
-                    buf.mul_(momentum).add_(g2d)
-                    upd = g2d.add(buf, alpha=momentum)  # nesterov
-                    O = zeropower_via_newtonschulz5(upd, steps=ns_steps)
+                    if p in precomputed:
+                        O = precomputed[p]  # momentum/nesterov already applied above
+                    else:
+                        state = self.state[p]
+                        if "momentum_buffer" not in state:
+                            state["momentum_buffer"] = torch.zeros_like(g2d)
+                        buf = state["momentum_buffer"]
+                        buf.mul_(momentum).add_(g2d)
+                        upd = g2d.add(buf, alpha=momentum)  # nesterov
+                        O = zeropower_via_newtonschulz5(upd, steps=ns_steps)
                     O_full = O.reshape(p.shape)
                     if wd_eff != 0.0:
                         if group["cautious_wd"]:
