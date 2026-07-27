@@ -59,14 +59,22 @@ def region_report(profiler, n_steps: int) -> None:
         print("\n(no rgn:: regions recorded -- set RWKV_PROFILE_REGIONS=1 to enable them)")
         return
     rows.sort(key=lambda r: -r[1])
+    # If NOTHING recorded device time, this is a CPU-only profile -- the device column is
+    # meaningless, so say so once rather than flagging every region as "no device work".
+    have_device = any(r[2] > 0 for r in rows)
     print(f"\n===== NAMED REGIONS ({n_steps} steps) =====")
+    if not have_device:
+        print("  (CPU-only profile -- no CUDA activity recorded, so the device column and the"
+              " overhead-bound flags are NOT meaningful. Profile with"
+              " ProfilerActivity.CUDA to get them.)")
     print(f"{'region':38s} {'cpu ms/step':>12s} {'dev ms/step':>12s} {'calls/step':>11s}  note")
     for name, cpu, dev, cnt in rows:
         c, d = cpu / 1e3 / n_steps, dev / 1e3 / n_steps
         note = ""
-        if c > 0.5 and d > 0 and c / max(d, 1e-9) > 3.0:
-            note = "<-- OVERHEAD-BOUND (launches/syncs, not kernel work)"
-        elif c > 0.5 and d == 0.0:
-            note = "<-- no device work at all (pure CPU / sync stall)"
+        if have_device and c > 0.5:
+            if d == 0.0:
+                note = "<-- NO device work at all (pure CPU / sync stall)"
+            elif c / d > 3.0:
+                note = "<-- OVERHEAD-BOUND (launches/syncs, not kernel work)"
         print(f"{name:38s} {c:12.3f} {d:12.3f} {cnt / n_steps:11.1f}  {note}")
     print("REGIONS_DONE")
