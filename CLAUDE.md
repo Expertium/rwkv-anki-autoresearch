@@ -337,8 +337,12 @@ deltas so dead ends aren't re-run.
   `architecture_old_d128.py`. **`parity3/`** (2026-07-26) = the three-way-parity harnesses §9
   requires: `parity_train_vs_rnn.py` (RWKV7 parallel vs RWKV7RNN recurrent on identical
   weights — ADD A CASE PER NEW ARCH ENV FLAG), `trace_selfcontained.py` (is a parity trace
-  reproducible by current Python? run this FIRST when a gate looks wrong), `buttons_py_vs_rust.py`
-  (the 4 button intervals, Python vs Rust). **`eval_pava/`** = the rectified-eval pipeline +
+  reproducible by current Python? run this FIRST when a gate looks wrong — ⚠ it honours
+  `RWKV_REF_DIR` only since the 2026-07-27 fix; before that it hardcoded `reference/`),
+  `buttons_py_vs_rust.py` (the 4 button intervals, Python vs Rust), `smoke_qat_jit.py` (CPU,
+  seconds: proves QAT compiles as a ScriptModule, dispatches to the jit-ignored kernel, and
+  matches eager bit-for-bit — i.e. `RWKV_NO_JIT=1` is not structurally required by QAT).
+  **`eval_pava/`** = the rectified-eval pipeline +
   `check_imm_identical.py` (⚠ its premise is WRONG in bf16 — see below) + `decompose_duration.py`
   (splits the rect-vs-unrect ahead delta) + `run_mode3_noise.cmd` (the noise control).
   **★★ REFINED 2026-07-27 BY THE MODE-3 CONTROL — THE NOISE IS CHANNEL- AND MODEL-DEPENDENT, AND
@@ -375,6 +379,12 @@ deltas so dead ends aren't re-run.
   anonymizing original it was adapted from) + `stats.proto`/`stats_pb2.py` (locally compiled
   protobuf) + `parent_id_probe{,2,3,4}.py` and `deck_depth_by_review.py` (the deck-tree evidence
   quoted in `FUTURE_FEATURES.md`). **`iter32_kd/`** = the distillation run + `check_dump.py`.
+  **`iter33_dur/`** = the duration-fix run (`RWKV_AHEAD_PROBE_ONLY=1` + `PROBE_DENSITY=1.0`,
+  MAX 16384, RECTIFIED eval). **`ds20k/`** (2026-07-27) = the FSRS-Anki-20k evaluation:
+  `scan20k.py` (hand-decodes each user's protobuf header, 64 B instead of ~2.7 MB) +
+  `overlap2.py` (review-timestamp fingerprint, the CORRECT one) + `overlap.py` (the card-id
+  version, kept only as the counter-example — shared decks propagate card ids, so it reports
+  64% overlap instead of 4.3%). Verdict + method: `optimization/DATASETS.md`.
   Untracked on disk: ckpts (`*.pth`), logs, mid-run cb snapshots
   (gitignored since 2026-07-15). ⚠ Champion ckpts live here UNTRACKED (the champion jsons point
   at them) — single-machine artifacts; losing the disk loses the ckpts, not the record.
