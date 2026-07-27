@@ -1267,11 +1267,16 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    `RWKV_PROFILE_STEP=N` + `RWKV_PROFILE_COUNT` (train_rwkv.py:790-795) wraps N steps in
    torch.profiler, prints bucketed self-GPU-time (QAT / wkv scan / wkv recurrence / gemm /
    elementwise) and exits; off by default so training stays byte-identical. ~5 min GPU.
-   **The one KNOWN-AVAILABLE win, already scoped: the QAT-JIT GPU half (~15 min).** The CPU half is
-   green (`smoke_qat_jit.py`) — `RWKV_NO_JIT=1` is NOT structurally required by QAT — and JIT is
-   worth **~1.38x**. What is left is bit-exactness of a real training step vs the NO_JIT path (the
-   CUDA `qat_lr_rank1` kernels, not the CPU reference), the steps/s A/B, and the PQ-codebook call
-   variant. **The endgame 10x run IS quant-aware, so this alone is worth ~1.5 days of that run.**
+   **★ QAT-JIT: DONE 2026-07-27, and the speed half is a NEGATIVE result — do not quote ~1.38x
+   for QAT.** NUMERICS SETTLED: with a null control (two identical-flag runs) clean at 0/160,
+   nojit-vs-jit is also **0/160 mismatches** over 80 real training steps on the CUDA
+   `qat_lr_rank1` kernels — **`RWKV_NO_JIT=1` is not required by QAT**. SPEED NOT ESTABLISHED:
+   identical-flag runs differ by **5.3%** and jit-vs-nojit is only **1.06x**, i.e. inside the
+   noise. The ~1.38x came from the NON-QAT body and does not transfer, which fits the dispatch
+   finding above: TorchScript removes Python overhead, not `cudaLaunchKernel` overhead.
+   **So the "worth ~1.5 days of the 10x run" claim is withdrawn.** ⚠ All three arms peaked at
+   **12.807 GB on a 12 GB card** (QAT at MAX=32768 is over the ceiling, into WDDM paging), so
+   re-measure at a lower MAX before concluding anything about QAT speed.
    **A NEW lead from iter 33 (2026-07-27):** per-step cost is far more sensitive to `max_batch`
    (GPU parallelism) than to rows — halving MAX cost 2.83x per step on only 1.13x more rows. That
    says the step is parallelism/launch-bound at small B, which points back at the elementwise mass

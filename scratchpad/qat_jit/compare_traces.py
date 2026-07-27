@@ -26,20 +26,9 @@ def load(p):
     return rows
 
 
-def main():
-    pa = os.path.join(HERE, "trace_nojit.jsonl")
-    pb = os.path.join(HERE, "trace_jit.jsonl")
-    for p in (pa, pb):
-        if not os.path.exists(p):
-            print(f"QATJIT_FAIL missing trace: {p}")
-            return
-    a, b = load(pa), load(pb)
+def diff(a, b):
+    """(n_mismatches, n_compared, first, worst) over the shared steps."""
     common = sorted(set(a) & set(b))
-    print(f"steps: nojit={len(a)} jit={len(b)} common={len(common)}")
-    if not common:
-        print("QATJIT_FAIL no common steps")
-        return
-
     bad = []
     for s in common:
         for k in ("ahead", "imm"):
@@ -48,17 +37,49 @@ def main():
                 continue
             if va != vb:
                 bad.append((s, k, va, vb, abs(va - vb)))
+    worst = max(bad, key=lambda r: r[4]) if bad else None
+    return len(bad), 2 * len(common), (bad[0] if bad else None), worst
 
-    if not bad:
-        print(f"QATJIT_BITEXACT OK -- all {len(common)} steps identical in both modes (0 ULP)")
+
+def main():
+    paths = {
+        "A  nojit": os.path.join(HERE, "trace_nojit.jsonl"),
+        "A2 nojit (null control)": os.path.join(HERE, "trace_nojit2.jsonl"),
+        "B  jit": os.path.join(HERE, "trace_jit.jsonl"),
+    }
+    tr = {}
+    for name, p in paths.items():
+        if not os.path.exists(p):
+            print(f"QATJIT_FAIL missing trace for {name}: {p}")
+            return
+        tr[name] = load(p)
+        print(f"{name}: {len(tr[name])} steps")
+
+    # The null control FIRST: if two identical-flag runs already differ, a JIT-vs-NO_JIT
+    # difference proves nothing about JIT.
+    n_null, tot_null, first_null, worst_null = diff(tr["A  nojit"], tr["A2 nojit (null control)"])
+    n_jit, tot_jit, first_jit, worst_jit = diff(tr["A  nojit"], tr["B  jit"])
+
+    print(f"\nNULL CONTROL  (nojit vs nojit): {n_null}/{tot_null} mismatches"
+          + (f", worst |d|={worst_null[4]:.3e}" if worst_null else ""))
+    print(f"TREATMENT     (nojit vs jit)  : {n_jit}/{tot_jit} mismatches"
+          + (f", worst |d|={worst_jit[4]:.3e}" if worst_jit else ""))
+
+    if n_null:
+        print("\nQATJIT_INCONCLUSIVE -- the run is not reproducible under identical flags, so "
+              "this harness cannot attribute any difference to JIT. Fix determinism first "
+              "(RWKV_DETERMINISTIC / augment seed / codebook init) before reading the treatment.")
+        return
+
+    if not n_jit:
+        print(f"\nQATJIT_BITEXACT OK -- null control clean AND all {tot_jit // 2} steps identical "
+              "with JIT on (0 ULP). RWKV_NO_JIT=1 is not required for numerics.")
     else:
-        worst = max(bad, key=lambda r: r[4])
-        print(f"QATJIT_DIVERGES on {len(bad)} (step,metric) pairs of {2*len(common)}")
-        print(f"  first: step {bad[0][0]} {bad[0][1]} nojit={bad[0][2]!r} jit={bad[0][3]!r}")
-        print(f"  worst: step {worst[0]} {worst[1]} |d|={worst[4]:.3e}")
-        print("  => JIT is NOT a pure speedup for QAT; it changes the numerics. Investigate "
-              "before adopting (a bf16 reduction-order change is the likely cause, but the "
-              "no-JIT path is the one every existing QAT number was measured on).")
+        print(f"\nQATJIT_DIVERGES -- null control is clean, so this IS attributable to JIT.")
+        print(f"  first: step {first_jit[0]} {first_jit[1]} nojit={first_jit[2]!r} jit={first_jit[3]!r}")
+        print(f"  worst: step {worst_jit[0]} {worst_jit[1]} |d|={worst_jit[4]:.3e}")
+        print("  => JIT is not a free speedup for QAT; it changes the numerics. Every existing "
+              "QAT number was measured on the no-JIT path, so adopting it re-bases them.")
 
 
 if __name__ == "__main__":

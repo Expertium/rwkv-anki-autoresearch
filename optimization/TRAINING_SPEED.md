@@ -97,9 +97,29 @@ cannot see that failure. If it is ever wanted, clear every N steps rather than n
    the way the previous two were.
 4. **`aten::fill_` 7,227 calls / 34 ms** — a lot of zeroing for a 558k-param model; worth finding
    out what allocates-and-zeros that often.
-5. **QAT-JIT (staged, not yet run):** `RWKV_NO_JIT=1` is not structurally required by QAT (CPU
-   half green, `scratchpad/parity3/smoke_qat_jit.py`), and JIT is worth ~1.38x. Harness ready at
-   `scratchpad/qat_jit/`. **The endgame 10x run is quant-aware, so this alone is ~1.5 days of it.**
+5. **QAT-JIT — RUN 2026-07-27. Numerics settled; the SPEEDUP IS NOT REAL. ⚠ corrects the
+   "~1.38x, worth ~1.5 days of the 10x run" claim in CLAUDE.md.**
+   `scratchpad/qat_jit/` — 3 arms x 90 steps, warm-started from the iter-31 champion under the
+   full q72u QAT env, with a NULL CONTROL (two runs at identical flags).
+
+   | arm | steps/s |
+   |---|---|
+   | A nojit | 0.5901 |
+   | A2 nojit (null control) | 0.6213 |
+   | B jit | 0.6433 |
+
+   * **NUMERICS: SETTLED.** Null control 0/160 mismatches (so the run IS reproducible and the
+     comparison is valid) AND nojit-vs-jit 0/160 mismatches. **`RWKV_NO_JIT=1` is not required
+     by QAT** — bit-identical over 80 real training steps on the CUDA `qat_lr_rank1` kernels,
+     not merely the CPU reference the earlier smoke test covered.
+   * **SPEED: NOT ESTABLISHED.** Two *identical-flag* runs differ by **5.3%**; jit vs the nojit
+     mean is **1.06x**. The effect is inside the noise floor. The ~1.38x figure was measured on
+     the NON-QAT body and does not transfer — consistent with the finding above, since
+     TorchScript removes Python interpreter overhead but NOT the `cudaLaunchKernel` overhead this
+     step is actually bound by. A real speed claim needs the 20-trial paired Wilcoxon protocol.
+   * ⚠ **peak reserved 12.807 GB on a 12 GB card** in all three arms — the QAT config at
+     MAX=32768 is over the ceiling and into WDDM paging, which may be depressing every arm. Worth
+     re-measuring at a lower MAX before drawing conclusions about QAT speed at all.
 
 ## Method notes
 

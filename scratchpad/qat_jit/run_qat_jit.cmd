@@ -44,6 +44,16 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo === ARM A2: RWKV_NO_JIT=1 AGAIN (NULL CONTROL, same flags as arm A) %TIME% === >> "%LOG%"
+del /q scratchpad\qat_jit\trace_nojit2.jsonl 2>nul
+set RWKV_NO_JIT=1
+set RWKV_STEP_TRACE=scratchpad/qat_jit/trace_nojit2.jsonl
+.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/qat_jit/qat_jit_ws.toml >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo DONE_EXIT_ARMA2FAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 1
+)
+
 echo === ARM B: JIT ON %TIME% === >> "%LOG%"
 del /q scratchpad\qat_jit\trace_jit.jsonl 2>nul
 set RWKV_NO_JIT=0
