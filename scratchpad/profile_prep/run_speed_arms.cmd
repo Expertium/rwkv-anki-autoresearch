@@ -8,7 +8,7 @@ REM   muon    = base + RWKV_MUON_BATCHED=1          <- directly adoptable
 REM   nojit   = RWKV_NO_JIT=1                        <- compile's required baseline
 REM   compile = nojit + RWKV_QAT_COMPILE=1           <- fuses the mixer elementwise soup
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
-set LOG=scratchpad\profile_prep\speed_arms.log
+set LOG=scratchpad\profile_prep\speed_arms2.log
 
 set PYTHONUNBUFFERED=1
 set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4.py
@@ -57,6 +57,11 @@ for %%R in (1 2 3) do (
   set RWKV_MUON_BATCHED=0
   set RWKV_QAT_COMPILE=1
   .venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/profile_prep/profile_d80_ws.toml 2>&1 | findstr /B /C:"BENCH_RESULT" /C:"[compile]" /C:"[muon]" /C:"[jit]" >> "%LOG%"
+  echo === round %%R arm fetch2 %TIME% === >> "%LOG%"
+  set RWKV_NO_JIT=0
+  set RWKV_MUON_BATCHED=0
+  set RWKV_QAT_COMPILE=
+  .venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/profile_prep/profile_d80_fetch2.toml 2>&1 | findstr /B /C:"BENCH_RESULT" /C:"[compile]" /C:"[muon]" /C:"[jit]" >> "%LOG%"
 )
 
 echo DONE_EXIT_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"

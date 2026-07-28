@@ -1,6 +1,6 @@
 """Summarize the round-robin speed arms: median steps/s per arm, plus the noise floor.
 
-Reads scratchpad/profile_prep/speed_arms.log, which interleaves
+Reads scratchpad/profile_prep/speed_arms2.log, which interleaves
     === round R arm NAME ...
     BENCH_RESULT ... steps_per_sec=X ...
 
@@ -13,7 +13,7 @@ import re
 import statistics as st
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOG = os.path.join(HERE, "speed_arms.log")
+LOG = os.path.join(HERE, "speed_arms2.log")
 
 ARM_RE = re.compile(r"=== round (\d+) arm (\w+)")
 SPS_RE = re.compile(r"steps_per_sec=([0-9.]+)")
