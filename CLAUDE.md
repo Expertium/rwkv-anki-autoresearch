@@ -1192,6 +1192,37 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    verdict without re-running anything.
 
 #### QUEUE
+**★★ ANDREW 2026-07-28: "Focus solely on speedups after iter 33, then continue with iter 34 once
+speedups are exhausted."** So the order is FIXED: (a) record iter 33's verdict (protocol-mandated,
+part of finishing it); (b) **speedups ONLY** until the list below is exhausted; (c) then iter 34.
+Do NOT interleave research iterations into (b). Full measurements + method rules live in
+`optimization/TRAINING_SPEED.md`; the ranked list, with the profile's sizing:
+
+  1. **Re-run the 4-arm speed A/B on a CLEAN GPU (~25 min).** MANDATORY and unfinished: the first
+     run was VOID (started 1 min after a 2.5 h eval, inherited its memory, all arms in WDDM paging
+     at 12.83 GB vs 8.86 GB clean). So **whether batched Muon actually helps in wall-clock is still
+     UNKNOWN** — it is implemented and numerically verified (35x fewer matmul dispatches, 0.000e+00
+     CPU difference) but unmeasured. `scratchpad/profile_prep/run_speed_arms.cmd` +
+     `parse_speed_arms.py`. Wait for `nvidia-smi` memory.used to settle near idle first.
+  2. **MAX=65536 = 1.61x, the biggest lever** (13,899 vs 8,607 reviews/s; 81920 is over the ceiling
+     and SLOWER). Config-only, no code risk, and it makes every later experiment 1.6x cheaper.
+     ⚠ NOT free: groups 22,346 -> 10,935, i.e. HALF the optimizer steps per epoch, so it needs an
+     accuracy run vs iter 32 and probably LR/warmup retuning (batch size is structural). Raise the
+     LR question with Andrew when you get here rather than silently retuning.
+  3. **`torch.compile`, re-argued.** Shelved at an honest 1.05x — but that was mixer-scoped at
+     d=32, BEFORE the 17,346 `cudaLaunchKernel`/step (199 ms) was known; fusion attacks the
+     dispatch count itself, which is the actual bottleneck. QAT-JIT also removed the objection to
+     its `RWKV_NO_JIT` requirement. Not a free retry (whole-graph compile hits Python 3.12's Dynamo
+     C-recursion cap) — mixer-scoped first.
+  4. **`indexing_backward_kernel` 32 ms/step** — a THIRD deterministic-indexing site PermGather
+     missed. Bit-exact if fixed the same way. ~2% of wall clock.
+  5. **`aten::fill_` 7,227 calls/step** — unexplained zeroing for a 558k-param model.
+  6. **`NUM_FETCH_PROCESSES` 4 -> 2** — stability, not speed: halves the 3.8 GB/h RAM climb that
+     put the box in the 56-63 GB hang band. Free (fetch is 2.3 ms of a 1,450 ms step). DO IT FIRST.
+  **SKIP anything targeting KERNEL efficiency** (tensor cores, chunked-matmul/fla, kernel-level CUDA
+  graphs): GPU kernels are only 16% of the step, so the ceiling is tiny. That is the profile's main
+  strategic message — the wins are FEWER, BIGGER ops, not faster ones.
+
 0. **RESOLVED by the directive above** — kept for the reasoning, since it explains WHY the gate
    moved. **★ ASK ANDREW — THE GATE AND THE DEPLOY METRIC ARE DIFFERENT NUMBERS (surfaced 2026-07-27).**
    Candidates are gated on the **unrectified** logloss, but the rectifier is in the deploy contract,
