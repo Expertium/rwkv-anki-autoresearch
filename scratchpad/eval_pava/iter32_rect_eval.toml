@@ -1,5 +1,5 @@
-FILE_AHEAD = "RWKV-iter32_kd_rect-s0"
-FILE_IMM = "RWKV-P-iter32_kd_rect-s0"
+FILE_AHEAD = "RWKV-iter32_kd_rect"
+FILE_IMM = "RWKV-P-iter32_kd_rect"
 MODEL_PATH = "scratchpad/iter32_kd/iter32d_5586.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -13,4 +13,3 @@ RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 7500
 NUM_FETCH_PROCESSES = 4
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s0.json"
