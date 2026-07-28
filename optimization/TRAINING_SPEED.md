@@ -273,3 +273,41 @@ workers were near zero at measurement time. That script does nonetheless have a 
 pattern worth fixing on its own: `script.py:639` submits every user at once and holds the entire
 `futures` list, so each completed future retains its result (including the pre-serialized `raw`
 JSON string) until the whole block exits. Read-only repo, reported not edited.
+
+## ★★ BANKED: 1.155x from three changes (2026-07-29, clean card)
+
+Re-ran the arms on a settled GPU after establishing the first attempt was void. **Noise floor
+1.8%** (vs 5.5% contaminated), 3 rounds each, every arm's flag verified from its own banner:
+
+| arm | median steps/s | spread | vs base | verdict |
+|---|---|---|---|---|
+| base | 0.5442 | 1.7% | — | |
+| **muon** (`RWKV_MUON_BATCHED=1`) | 0.5731 | 1.4% | **1.053x** | REAL |
+| nojit (`RWKV_NO_JIT=1`) | 0.5456 | 1.8% | 1.003x | not established |
+| **compile** (`RWKV_QAT_COMPILE=1`) | 0.5728 | 0.0% | **1.053x** | REAL (1.050x vs its own nojit base) |
+| **fetch2** (`NUM_FETCH_PROCESSES` 4->2) | 0.5773 | 0.7% | **1.061x** | REAL |
+
+**COMBO (all three), 4 rounds: 0.6259 vs base 0.5418 = 1.155x REAL.** Predicted multiplicatively
+1.177x, measured 1.155x — slightly sublinear, as expected when all three attack the same CPU time.
+
+**Three things this settles:**
+1. **Batched Muon is a genuine wall-clock win**, which the void run could not tell us — only that it
+   cut matmul dispatches 35x.
+2. **`torch.compile` deserved the retry.** It was shelved at 1.05x measured MIXER-SCOPED AT d=32,
+   before the dispatch profile existed; it reproduces ~1.05x here but now with a mechanism that
+   explains it. Note `nojit` alone is 1.003x, so compile's gain is NOT its `RWKV_NO_JIT` requirement.
+3. **`fetch2` was queued as a RAM fix and is the biggest single win.** On a dispatch-bound step,
+   two fewer worker processes mean less CPU contention with the main thread. It also halves the
+   3.8 GB/h RAM climb implicated in the hangs — the rare change that is both.
+
+### ⚠ Adoption is NOT uniform — one is free, two are not
+
+- **`fetch2`: ADOPT FREELY — numerics-neutral, VERIFIED not assumed.** `DataFetcher.get(key)`
+  (`data_fetcher.py:7-14`) blocks for the SPECIFIC group key and stashes out-of-order arrivals in
+  `self.storage`, so the consumption order is fixed regardless of worker count. Fewer workers change
+  throughput only.
+- **Batched Muon + `torch.compile`: measured real, but BOTH perturb the trajectory** (batched `bmm`
+  changes reduction order; inductor fusion changes it too). Adopting them silently would confound
+  every future gate at 0.0001 sensitivity. **They need ONE accuracy run before adoption.** A short
+  trace comparison cannot settle it — an optimizer perturbation compounds by design, so divergence
+  is expected and says nothing about final quality; only a full run vs the champion does.
