@@ -197,10 +197,14 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     df_len = len(df)
     df["user_id"] = user_id
     df["review_th"] = range(1, df.shape[0] + 1)
-    df_cards = pd.read_parquet(data_path / "cards", filters=[("user_id", "=", user_id)])
-    df_cards.drop(columns=["user_id"], inplace=True)
-    df_decks = pd.read_parquet(data_path / "decks", filters=[("user_id", "=", user_id)])
-    df_decks.drop(columns=["user_id", "parent_id"], inplace=True)
+    # Perf (2026-07-28): read the user's own partition directory directly, like revlogs
+    # above, instead of filters=[...] against the PARENT directory. filters= makes pyarrow
+    # discover ALL 10,000 user_id=* partitions before applying the filter -- ~280x slower
+    # than a direct path per call, and this runs once per user per table. Content verified
+    # identical (modulo the user_id column, which the old path immediately dropped anyway).
+    df_cards = pd.read_parquet(data_path / "cards" / f"{user_id=}")
+    df_decks = pd.read_parquet(data_path / "decks" / f"{user_id=}")
+    df_decks.drop(columns=["parent_id"], inplace=True)
     df = df.merge(df_cards, on="card_id", how="left", validate="many_to_one")
     df = df.merge(df_decks, on="deck_id", how="left", validate="many_to_one")
     assert len(df) == df_len
@@ -464,33 +468,37 @@ def create_sample(
         )
 
     for submodule in RWKV_SUBMODULES:
-        section_df_groupby = section_df.groupby(submodule, observed=True)
-        names = list(set(section_df[submodule].values))
-        submodule_dfs = {name: section_df_groupby.get_group(name) for name in names}
+        # Perf (2026-07-28): the old code called groupby(...).get_group(name) once PER
+        # GROUP (up to tens of thousands for card_id/note_id on a heavy user) -- each call
+        # re-resolves + materializes a full sub-DataFrame; profiled at ~75% of create_sample's
+        # time. .indices returns {group_key: ndarray of POSITIONAL indices} directly from the
+        # grouper with zero per-group DataFrame construction. section_df["index"] is exactly
+        # range(len(section_df)) (set in add_queries just above), i.e. row position == "index"
+        # value, so these positional arrays are exactly the old group_df["index"].values arrays
+        # -- no translation needed. ~60x faster on a 70k-review user; verified bit-identical
+        # card_features/global_labels/ids and identical split_len/split_B (from_perm/to_perm
+        # may reorder WITHIN same-length groups vs the old set()-ordered code, which is exactly
+        # as before -- an arbitrary batching order with zero effect on the round-tripped values;
+        # verify_fast_create_sample.py has the full correctness check).
+        indices = section_df.groupby(submodule, observed=True).indices
 
-        # Need to get subgroups by length and gather them
-        # keep track of their locations within section_df
         map_len_to_locs_list = {}
+        for group_locs in indices.values():
+            key = len(group_locs)
+            map_len_to_locs_list.setdefault(key, []).append(group_locs)
 
-        for submodule_i, group_df in submodule_dfs.items():
-            key = len(group_df)
-            if key not in map_len_to_locs_list:
-                map_len_to_locs_list[key] = []
-            map_len_to_locs_list[key].append(group_df["index"].values)
-
-        # create inverse map based on the flattened concat
-        locs = []
+        locs_chunks = []
         split_len = []
         split_B = []
         for l in sorted(map_len_to_locs_list.keys()):
-            if len(map_len_to_locs_list[l]) > 0:
-                split_len.append(l)
-                split_B.append(len(map_len_to_locs_list[l]))
-            for group_locs in map_len_to_locs_list[l]:
-                locs.extend(group_locs)
+            groups_at_len = map_len_to_locs_list[l]
+            split_len.append(l)
+            split_B.append(len(groups_at_len))
+            locs_chunks.extend(groups_at_len)
 
-        locs_dict = {locs[i]: i for i in range(len(locs))}
-        inv_locs = [locs_dict[i] for i in range(len(locs))]
+        locs = np.concatenate(locs_chunks) if locs_chunks else np.empty(0, dtype=np.int64)
+        inv_locs = np.empty(len(locs), dtype=np.int64)
+        inv_locs[locs] = np.arange(len(locs))
         split_len = np.array(split_len, dtype=np.int32)
         split_B = np.array(split_B, dtype=np.int32)
         from_perm = torch.tensor(locs, dtype=torch.int32, device=device)
