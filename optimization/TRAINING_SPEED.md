@@ -232,3 +232,44 @@ gate. If accuracy holds, every subsequent experiment is 1.61x cheaper — which 
 "speed up training so we can do more experiments" goal.
 ⚠ **iter 33 cannot use it**: its design needs `RWKV_PROBE_DENSITY=1.0`, which inflates rows ~2.54x,
 so MAX=16384 is already near the VRAM envelope there. It stays at 16384.
+
+## ★ THE RAM CLIMB IS OUR FETCH WORKERS (2026-07-28, after the hang)
+
+Andrew asked whether the Reddit bot or `srs-benchmark/script.py` was "clogging up RAM". Measured
+instead of argued — sampled every python/chrome working set 15 min apart:
+
+| pid | start MB | end MB | delta MB | what |
+|---|---|---|---|---|
+| 26768 | 3341 | 3585 | **+244** | iter 33 fetch worker |
+| 26988 | 3401 | 3640 | **+239** | iter 33 fetch worker |
+| 25680 | 3358 | 3595 | **+237** | iter 33 fetch worker |
+| 20100 | 3487 | 3720 | **+233** | iter 33 fetch worker |
+| 28376 | 93 | 149 | +56 | chrome renderer |
+| 18236 | 832 | 841 | +8 | **iter 33 MAIN process — flat** |
+
+**4 workers x ~238 MB / 15 min = 3.8 GB/h**, matching the overnight climb (3.4 GB/h) almost exactly.
+It is OUR run. The main process is flat, so it is not the model, optimizer or autograd — it is the
+data path.
+
+**Mechanism:** `prepare_batch.py:641` opens the LMDBs with default readahead on a **372 GB database
+with 64 GB of RAM**. The OS reads ahead and those mapped file pages accumulate in each worker's
+working set. The pages are clean and evictable, so this is not a leak in the classic sense — but it
+is what drives "RAM used" into the 56-63 GB band where all three hangs occurred.
+
+**⚠ `readahead=False` is NOT the fix on this platform.** The kwarg is accepted by py-lmdb 2.2.1, but
+LMDB documents `MDB_NORDAHEAD` as **"not implemented on Windows"**, so it is very likely a no-op
+here. Do not "fix" it that way and assume the problem is solved.
+
+**RECOMMENDED FIX — `NUM_FETCH_PROCESSES` 4 -> 2, a toml change with no code edit.** Halves the
+growth rate. It costs ~nothing because the same profiling run proved **fetching is not a lever**:
+fetch waits are 2.3 ms of a ~1,450 ms step (0.1%), i.e. the loader is over-provisioned by orders of
+magnitude. Secondary option if more is needed: periodically trim the worker working set via
+`SetProcessWorkingSetSize(handle, -1, -1)` / `EmptyWorkingSet` (the Windows-appropriate lever, since
+the pages are clean file-backed and cheap to drop).
+
+**Cleared as suspects:** the Reddit bot (`users_replied_to`/`ids_replied_to` are per-call locals, no
+module-level growth, live footprint 0.01 GB) and — for THIS climb — `srs-benchmark/script.py`, whose
+workers were near zero at measurement time. That script does nonetheless have a genuine accumulation
+pattern worth fixing on its own: `script.py:639` submits every user at once and holds the entire
+`futures` list, so each completed future retains its result (including the pre-serialized `raw`
+JSON string) until the whole block exits. Read-only repo, reported not edited.
