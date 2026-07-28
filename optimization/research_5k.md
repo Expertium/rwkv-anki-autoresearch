@@ -78,6 +78,8 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 31 | 1–5000 | 0.2989ᵛ | 0.2676ᵛ | exact | **accepted** | 6.0e-26 / 1.5e-209 (vs A18) | 558,212 | 0 | invented | Graft track-1's three wins (PAVA + GRU N=3 + Muon) onto the A18 trunk: ahead +0.00039, imm +0.00075, both clear. First merged-lineage iter. Bundle — does not attribute. |
 | 32 | 1–5000 | 0.2983ᵛ | 0.2672ᵛ | exact | **accepted** | 2.3e-66 / 3.1e-143 (vs iter 31) | 558,212 | 0 | lit review | Full-run distillation from the d=128 teacher: ahead +0.00058, imm +0.00043. Closes 13% of the ahead gap / 11% of imm to the teacher. KD costs ~9% wall-clock. Not yet promoted — needs a rectified eval. |
 
+| 33 | 1–5000 | 0.3031ᵛʳ | 0.2681ᵛʳ | exact | rejected | 1.0 / 1.0 (vs iter 32 RECT) | 558,212 | 0 | invented | Withhold the current row's duration from its own ahead prediction (deploy-contract). Both modes worse. ⚠ 3 changes bundled — cannot attribute. |
+
 ## Track 2 — ablate the old d=128 model
 
 Start = the upstream d=128 arch retrained through the CURRENT track-1 pipeline (plain, 1 ep WS +

@@ -1575,3 +1575,51 @@ from iter 33 onward.
 ~0.0005 threshold, and the rectified eval re-scores the *same training run* — it confirms the
 metric, not the seed. Precedent (iter 31 accepted at ahead +0.000393 without a seed pair) supports
 promoting; an independent `RWKV_AUGMENT_SEED=4321` run would settle it.
+
+## iter 33 — withhold the current review's duration (REJECTED, 2026-07-29)
+
+**Andrew's deploy-contract directive** (2026-07-27): train, eval and CPU inference must compute ONE
+quantity — current-review duration zeroed, PAVA applied, no piecewise correction. iter 33 is the
+training half of that: `RWKV_PROBE_DENSITY=1.0` + the new **`RWKV_AHEAD_PROBE_ONLY=1`**, moving the
+ahead objective entirely onto the duration-zeroed probe path. First iteration gated on the
+**RECTIFIED** metric.
+
+### Result (VAL 5001-7500, n=2500, RECTIFIED both sides)
+
+| metric | iter 32 (champ) | iter 33 | delta | p |
+|---|---|---|---|---|
+| ahead | 0.300268 | 0.303055 | **-0.002787** | 1.0 |
+| imm | 0.267262 | 0.268066 | **-0.000805** | 1.0 |
+
+`size` identical (0/2500), nan_users 0, params 558,212 unchanged. **REJECTED.**
+
+### What it does and does not tell us
+
+**Does:** the hypothesis as stated is not supported. Training without the current row's duration did
+not shrink the deploy penalty — it made the deploy number worse. The motivating decomposition
+(duration zeroing costs +0.001451 of iter 31's +0.002062 rect-vs-unrect gap) measured the cost of
+*removing the feature at eval time*; it did not follow that *training* without it would recover
+that cost, and it didn't.
+
+**Does not:** attribute. **Three changes shipped together** — this is the run's design fault and it
+should be named plainly:
+1. **duration withheld** — the hypothesis;
+2. **`RWKV_AHEAD_PROBE_ONLY=1` dropped ~23.5% of the ahead supervision.** Probes cover only 76.5%
+   of eligible reviews (a card's first in-chunk review has no paired query row, so probes are
+   excluded by design). Those rows previously carried a real-row ahead term and now carry none.
+   That is a big training-signal loss and has nothing to do with duration. It was flagged as an
+   open question at design time — "should the 23.5% keep the old real-row ahead term?" — and the
+   run shipped with them dropped;
+3. **MAX 32768 -> 16384**, forced by VRAM at density 1.0, which halves batching and doubles the
+   step count (43,354 vs 22,346). Structural, and worth ~1.84x throughput by itself.
+
+Any of the three could produce -0.0028.
+
+**If the family is retried:** keep the real-row ahead term for the 23.5% probes cannot cover, and
+hold MAX at 32768 by lowering probe density rather than raising it. Then only the duration changes.
+
+### Robustness note
+
+31 h wall clock. The run survived a hard black-screen hang at WS step 33,003 and two clean
+stop/resumes (Andrew's cable management), for a **total training loss of 3 steps** out of 43,354 —
+the checkpoint-every-1000 + `RWKV_RESUME_SKIP_GROUPS` discipline did its job.

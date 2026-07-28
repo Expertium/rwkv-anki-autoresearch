@@ -1117,7 +1117,24 @@ Recommendation: run **(A) first** — it is the cheap upper bound on the parity 
 result tells us whether past-duration signal is worth (B)'s 2x. If (A) wins the rectified gate,
 take it; if it loses by less than the +0.001451 duration penalty it removes, (B) is justified.
 
-5. **▶ RESUMED 00:23 (2026-07-28) and RUNNING — iter 33 = the duration fix.**
+5. **✗ DONE + REJECTED 01:42 (2026-07-29): iter 33 = the duration fix.** Rectified-vs-rectified vs
+   the iter-32 champion: **ahead 0.303055 (-0.002787), imm 0.268066 (-0.000805)**, p=1.0 both;
+   size identical (0/2500), nan_users 0, params unchanged. **The hypothesis as stated is NOT
+   supported** — training without the current row's duration did not shrink the deploy penalty, it
+   made the deploy number worse.
+   ⚠ **BUT IT CANNOT ATTRIBUTE — three changes shipped together**, and that is the run's design
+   fault: (1) the duration withholding (the hypothesis); (2) `RWKV_AHEAD_PROBE_ONLY=1` dropped the
+   ahead supervision on the **~23.5% of rows probes cannot cover** (a card's first in-chunk review
+   has no paired query row) — a large training-signal loss unrelated to duration, flagged as an
+   open question at design time and shipped with those rows dropped; (3) MAX 32768->16384, which
+   halves batching and doubles the step count. Any of the three could produce -0.0028.
+   **Retry design, if the family is revisited:** keep the real-row ahead term for the uncovered
+   23.5%, and hold MAX at 32768 by LOWERING probe density instead of raising it — then only the
+   duration changes. Full notes in `research_5k_verbose.md`.
+   ROBUSTNESS: 31 h, survived a hard hang at step 33,003 + two clean stop/resumes, **total loss 3
+   steps of 43,354**.
+   Historical detail of the run below.
+   **(superseded) ▶ RESUMED 00:23 (2026-07-28) — iter 33 = the duration fix.**
    `scratchpad/iter33_dur/run_iter33_resume.cmd`, **pid 5088**. Verified from the log:
    `[resume-skip] epoch 0: skipping the first 14000 already-trained groups (resume at global step
    14001)`. ~29,354 WS steps remain + decay + rectified eval.
