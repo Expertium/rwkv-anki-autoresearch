@@ -311,3 +311,45 @@ Re-ran the arms on a settled GPU after establishing the first attempt was void. 
   every future gate at 0.0001 sensitivity. **They need ONE accuracy run before adoption.** A short
   trace comparison cannot settle it — an optimizer perturbation compounds by design, so divergence
   is expected and says nothing about final quality; only a full run vs the champion does.
+
+## ★★★ ADOPTED: 1.27x faster training at no accuracy cost (validated 2026-07-29 09:28)
+
+The two trajectory-perturbing changes were validated by replicating the **iter-32 champion recipe
+exactly** (full-run KD, same MAX, same data, dump step-aligned) with only the flags under test
+changed, then gating rectified-vs-rectified against iter 32:
+
+| metric | iter 32 | speedval | delta | p |
+|---|---|---|---|---|
+| ahead RECT | 0.300268 | 0.300204 | **+0.000064** | 0.012 |
+| imm RECT | 0.267262 | 0.267309 | **-0.000047** | 0.9999 |
+
+**PASS.** Both deltas round to 0.0000 at 4 dp and are **6-8x below the ~0.0004 cross-seed spread**,
+with one mode marginally up and the other marginally down — the signature of an accuracy-NEUTRAL
+change. (The `paired_pvalue` FAIL line is the gate for ACCEPTING AN IMPROVEMENT; it is the wrong
+test for a speed change, where the question is whether there is systematic loss. There is not.)
+
+### Real-world speedup is BIGGER than the microbenchmark said
+
+| phase | iter 32 | speedval | ratio |
+|---|---|---|---|
+| WS (22,346 steps) | 4h23m (1.42 steps/s) | **3h27m (1.79 steps/s)** | **1.27x** |
+| decay (5,586 steps) | 63 min (1.48 steps/s) | **50 min (1.86 steps/s)** | **1.26x** |
+| train total | 5h27m | **4h17m** | **1.27x** |
+
+The 70-step bench said 1.155x. The gap is fetch2 compounding: a short bench cannot see that 2
+workers instead of 4 hold far less memory over hours. **Trust the long-run number.**
+
+### THE STANDARD RUN ENV — put these in every new training `.cmd`
+
+    set RWKV_MUON_BATCHED=1     REM batched Newton-Schulz (muon.py), 35x fewer matmul dispatches
+    set RWKV_NO_JIT=1           REM required by torch.compile; worth ~0 on its own (1.003x)
+    set RWKV_QAT_COMPILE=1      REM fuses the 26 mixer forwards
+
+plus `NUM_FETCH_PROCESSES = 2` in the toml (**also halves the 3.8 GB/h RAM climb behind the
+black-screen hangs** — the rare change that is both a speedup and a stability fix).
+
+Defaults stay OFF, per the project norm that hooks are env-gated — so old runs stay reproducible
+and these must be set explicitly.
+
+⚠ **`--fetch-per-shard` in `eval_sharded.py` is still 4**, and the EVAL is the RAM-hungriest phase
+(~26 GB/h measured, vs training's 3.8). The same lesson applies there and has not been applied yet.
