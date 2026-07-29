@@ -353,3 +353,28 @@ and these must be set explicitly.
 
 ⚠ **`--fetch-per-shard` in `eval_sharded.py` is still 4**, and the EVAL is the RAM-hungriest phase
 (~26 GB/h measured, vs training's 3.8). The same lesson applies there and has not been applied yet.
+
+## Items 4 and 5 CLOSED — stack attribution says they are not worth chasing (2026-07-29)
+
+`RWKV_PROFILE_STACK=1` (new, opt-in; `with_stack` skews timings so it is for ATTRIBUTION runs only)
+answered what grep could not:
+
+| op | calls/step | self CPU | source |
+|---|---|---|---|
+| `aten::fill_` | 3,909 | 20.20 ms | **autograd internals — no frame in rwkv/** |
+| `aten::fill_` | 511 | 2.31 ms | `rwkv_model.py:553` time_shift_gather |
+| `aten::fill_` | 499 | 2.13 ms | `srs_model.py:899` _get_loss |
+| `aten::fill_` | 429 | 1.96 ms | `srs_model.py:690` _get_loss |
+| `aten::index` | 46 | 1.13 ms | `srs_model.py:690` _get_loss |
+| `aten::index_select` | 43 | 2.17 ms | `rwkv_model.py:553` time_shift_gather |
+
+**Verdict: CLOSED, both.**
+- **`fill_` is ~68% autograd-internal gradient zeroing** — not ours to remove — and the whole op is
+  ~29 ms of 915 ms CPU (**3%**).
+- **The `indexing_backward` traffic comes from `time_shift_gather` and `perm_gather`, which ARE the
+  2026-07-03 deterministic-indexing fixes.** What remains is the irreducible remainder of an
+  optimization already applied, ~2% of wall clock.
+- Both sit at or below the **1.8% noise floor**, so a fix could not be measured even if written.
+
+This is the useful negative: the profile's ranked list looked like it had four items, and stack
+attribution showed two of them were already solved.

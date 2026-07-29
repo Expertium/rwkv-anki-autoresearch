@@ -514,6 +514,42 @@ def _dump_cpu_profile(profiler, n_steps):
     print("CPU_PROFILE_DONE")
 
 
+def _dump_stack_attribution(profiler, n_steps, want=("index", "fill_", "scatter", "zero_")):
+    """Which SOURCE LINES emit the ops kernel-name buckets cannot attribute? Plain ASCII.
+
+    Added 2026-07-29. `indexing_backward_kernel` is 13.5% of GPU time and `aten::fill_` fires
+    7,227x/step, but neither shows up in a bucket-by-kernel-name summary and a static search of
+    srs_model.py / rwkv_model.py found no candidate site. Python-stack attribution answers it
+    directly rather than by inference. Only runs under RWKV_PROFILE_STACK=1.
+    """
+    print("\n===== STACK ATTRIBUTION (%d steps) =====" % n_steps)
+    try:
+        avgs = profiler.key_averages(group_by_stack_n=8)
+    except Exception as exc:  # noqa: BLE001 - diagnostics must never kill the run
+        print("  (key_averages(group_by_stack_n) failed: %s)" % exc)
+        return
+    for token in want:
+        rows = [e for e in avgs if token in e.key]
+        if not rows:
+            print("\n  (no ops matching %r)" % token)
+            continue
+        rows.sort(key=lambda e: -e.count)
+        print("\n  --- ops matching %r ---" % token)
+        for e in rows[:5]:
+            cpu = (getattr(e, "self_cpu_time_total", 0) or 0) / 1e3 / n_steps
+            print("  %s  calls/step=%.1f  self_cpu=%.2f ms/step"
+                  % (e.key[:56], e.count / n_steps, cpu))
+            frames = list(getattr(e, "stack", None) or [])
+            ours = [f for f in frames
+                    if "rwkv" in f.replace("\\", "/").lower()
+                    and "site-packages" not in f.replace("\\", "/")]
+            for f in ours[:3]:
+                print("      %s" % f.strip()[:110])
+            if not ours:
+                print("      (no frame inside rwkv/ -- emitted by autograd or a torch internal)")
+    print("STACK_ATTRIBUTION_DONE")
+
+
 def main_loop(config, task_queue, batch_queue):
     data_fetcher = DataFetcher(task_queue=task_queue, out_queue=batch_queue)
 
@@ -1064,13 +1100,20 @@ def main_loop(config, task_queue, batch_queue):
                 # time actually goes at d=80: measured 237 ms of GPU kernel time inside a ~1450 ms
                 # step, with fetch at 2 ms. The missing ~1200 ms is launch gaps, CPU work and sync
                 # stalls -- all invisible to a CUDA-only trace. Costs nothing outside profile mode.
-                profiler = _tprof(activities=[_PA.CPU, _PA.CUDA])
+                # RWKV_PROFILE_STACK=1 adds Python-stack attribution -- what locates the SOURCE
+                # of generic ops (indexing_backward_kernel, aten::fill_) that bucket-by-name and
+                # a static grep both fail to find. Opt-in: with_stack has real overhead and skews
+                # the timings, so it is for ATTRIBUTION runs, not timing runs.
+                _stack = os.environ.get("RWKV_PROFILE_STACK") == "1"
+                profiler = _tprof(activities=[_PA.CPU, _PA.CUDA], with_stack=_stack)
                 profiler.__enter__()
             elif profiler is not None and step == prof_start + prof_count:
                 torch.cuda.synchronize()
                 profiler.__exit__(None, None, None)
                 _dump_kernel_profile(profiler, prof_count)
                 _dump_cpu_profile(profiler, prof_count)
+                if _stack:
+                    _dump_stack_attribution(profiler, prof_count)
                 raise SystemExit(0)
 
             if bench_max_steps > 0 and step == config.STEP_OFFSET + bench_warmup:

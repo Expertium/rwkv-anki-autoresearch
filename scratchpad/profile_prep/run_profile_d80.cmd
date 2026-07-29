@@ -1,6 +1,6 @@
 @echo off
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
-set LOG=scratchpad\profile_prep\profile_d80.log
+set LOG=scratchpad\profile_prep\attrib_d80.log
 
 set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4.py
 set RWKV_GRU_HEAD=3
@@ -20,6 +20,7 @@ set RWKV_EMPTY_CACHE_EVERY=1
 set RWKV_EMPTY_CACHE_WINDOW=0
 set OMP_NUM_THREADS=7
 
+set RWKV_PROFILE_STACK=1
 set RWKV_PROFILE_STEP=60
 set RWKV_PROFILE_COUNT=10
 
