@@ -1341,15 +1341,22 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    threshold; the rectified eval re-scores the SAME training run, so it confirms the metric, not
    the seed) is **DECIDED — Andrew 2026-07-30: re-run it at a different seed AFTER the HP tune.**
    Design + cost in item 3.
-3. **★ SEED-PAIR RE-RUN OF ITER 32 — APPROVED BY ANDREW 2026-07-30: "we can re-run iter 32 with a
-   different seed after HP tune."** Runs AFTER the tuner, on whatever recipe it leaves.
-   ⚠ **IT IS A TWO-ARM TEST, NOT ONE RUN, AND THE EXISTING KD DUMP CANNOT BE REUSED.** Two
-   independent reasons, both verified in code rather than assumed:
-   * The quantity in doubt is **iter32 − iter31 = +0.000429 imm**, a difference BETWEEN two runs.
-     Re-running only the KD arm at seed 4321 and diffing it against iter 31 at seed 1234 measures
-     seed noise plus KD, not KD. So the test is **the tuned recipe WITH and WITHOUT KD, both at
-     `RWKV_AUGMENT_SEED=4321`**. (Contrast the sibling's q72u seed pair, which was a WITHIN-run
-     penalty and so needed one run per seed.)
+3. **★ SEED-PAIR RE-RUN — SPECIFIED BY ANDREW 2026-07-30: "let's do iter 31 and iter 32 both with
+   the same seed after HP tune."** So it is a **TWO-ARM, SEED-MATCHED** test, run AFTER the tuner
+   on whatever recipe it leaves: the tuned recipe **WITHOUT KD (the iter-31 arm)** and **WITH KD
+   (the iter-32 arm)**, both at **`RWKV_AUGMENT_SEED=4321`**, and the margin taken WITHIN that seed.
+   * **Why both arms.** The quantity in doubt is **iter32 − iter31 = +0.000429 imm**, a difference
+     BETWEEN two runs. Re-running only the KD arm at 4321 and diffing it against iter 31 at 1234
+     would measure seed noise plus KD, not KD. (Contrast the sibling's q72u seed pair, which was a
+     WITHIN-run penalty and so needed only one run per seed.)
+   * **Why the tuned recipe rather than iter 31/32's original one.** Same cost either way, but this
+     version doubles as the KD re-confirmation under the HPs the lineage will actually use — and
+     re-confirming an obsolete recipe answers a question nobody will ask again. It does mean the
+     seed-4321 margin is compared against a seed-1234 margin measured at MAX=32768 with untuned
+     HPs, i.e. "does KD still win at a second seed" rather than a strict 2x2.
+     **OPTIONAL 2x2 if a strict one is wanted:** the tuner's winning trial already IS the
+     no-KD/seed-1234 arm for free, so only **KD/seed-1234-tuned** is missing (+1 run +1 dump,
+     ~5.5 h). Andrew's call; not part of what he specified.
    * **The dump at `C:\rwkv_kd_dump\t128_iter32` is bound to MAX=32768 AND seed 1234.**
      `train_rwkv.py:681-683` states the contract — *"batch-stream identity REQUIRED: same db/MAX/
      seeds; mismatch = hard exit 43, NOT a skipped batch"* — and the student re-checks a labels
