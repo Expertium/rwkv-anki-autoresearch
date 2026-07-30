@@ -1337,15 +1337,34 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    2026-07-30): the **rectified eval** ran and iter 32 was **promoted to champion** on it
    (0.300268/0.267262, the gate basis from iter 33 on), and **throughput was measured at
    1857.4 rev/s** — both recorded in the `research_log.jsonl` row's `ahead_rect`/`imm_rect`/
-   `throughput` fields. **Still open for Andrew:** the seed-pair question on the +0.000429 imm
-   margin — it is below the ~0.0005 threshold, and the rectified eval re-scores the SAME training
-   run, so it confirms the metric, not the seed.
-3. **★ iter 32 LANDED WELL, so these are now live and CHEAP — the dump is already on disk** at
-   `C:\rwkv_kd_dump\t128_iter32` (22,346 files / 6.96 GB) and it is the expensive part: the
-   annealed-alpha variant (unset `RWKV_KD_ALPHA`, window = full run) and an alpha sweep are
-   **student-only re-runs** (~6 h each, no dump). Curve-level distillation (variant 3) needs new
-   dump code. ⚠ **Do not delete that dump directory** without deciding these are done — regenerating
-   it is 1h36m of GPU.
+   `throughput` fields. The **seed-pair question** on the +0.000429 imm margin (below the ~0.0005
+   threshold; the rectified eval re-scores the SAME training run, so it confirms the metric, not
+   the seed) is **DECIDED — Andrew 2026-07-30: re-run it at a different seed AFTER the HP tune.**
+   Design + cost in item 3.
+3. **★ SEED-PAIR RE-RUN OF ITER 32 — APPROVED BY ANDREW 2026-07-30: "we can re-run iter 32 with a
+   different seed after HP tune."** Runs AFTER the tuner, on whatever recipe it leaves.
+   ⚠ **IT IS A TWO-ARM TEST, NOT ONE RUN, AND THE EXISTING KD DUMP CANNOT BE REUSED.** Two
+   independent reasons, both verified in code rather than assumed:
+   * The quantity in doubt is **iter32 − iter31 = +0.000429 imm**, a difference BETWEEN two runs.
+     Re-running only the KD arm at seed 4321 and diffing it against iter 31 at seed 1234 measures
+     seed noise plus KD, not KD. So the test is **the tuned recipe WITH and WITHOUT KD, both at
+     `RWKV_AUGMENT_SEED=4321`**. (Contrast the sibling's q72u seed pair, which was a WITHIN-run
+     penalty and so needed one run per seed.)
+   * **The dump at `C:\rwkv_kd_dump\t128_iter32` is bound to MAX=32768 AND seed 1234.**
+     `train_rwkv.py:681-683` states the contract — *"batch-stream identity REQUIRED: same db/MAX/
+     seeds; mismatch = hard exit 43, NOT a skipped batch"* — and the student re-checks a labels
+     checksum per step (`:1216-1224`). Changing the seed invalidates it, and so does the adopted
+     **MAX=65536**, which regroups 22,346 steps into 10,935. Failure is LOUD (exit 43), so this
+     cannot silently corrupt a run — but it does mean a fresh dump.
+   **=> cost ≈ 2 x ~4.0 h training + ~1.5 h teacher dump ≈ 9.5 h.**
+   ⚠ **THE SAME CORRECTION KILLS THIS ENTRY'S OLD CLAIM** that the annealed-alpha variant and the
+   alpha sweep are "student-only re-runs, no dump". That was true at MAX=32768; at the adopted
+   MAX=65536 they each need the fresh dump too (one dump serves all of them, so batch them with
+   the seed pair rather than paying for it repeatedly). Curve-level distillation (variant 3) still
+   needs new dump code on top.
+   ⚠ **Do not delete `C:\rwkv_kd_dump\t128_iter32` yet** — it is the only artifact that can
+   reproduce iter 32 EXACTLY as accepted (MAX=32768, seed 1234), which is what any re-audit of the
+   accepted result would need. It is dead weight for new work, not for verification.
 4. **RUST PORT** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) — ⚠ **THIS ENTRY WAS STALE; both of its
    "remaining" items are DONE (verified 2026-07-27).** The button API landed in `fast.rs`
    (`button_intervals` at `fast.rs:703`, plus `tile_states_b1` and the `--buttons-fast` /
