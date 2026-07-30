@@ -1154,8 +1154,13 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
     **three eval attempts with NO `del` between them** keep `eval_sharded`'s resume property for the
     giant-user OOM; (3) the WS exit-code guard, because `write_decay_setup` takes the LATEST ckpt and
     would silently decay+evaluate a half-trained one.
+  * **★ THE BAR, STATED CONCRETELY so trials are judged not eyeballed:** "recover what MAX=65536
+    cost" means reaching **iter 31's numbers ON THE SAME 1000-user subset = ahead 0.299137 /
+    imm 0.266026**. Against the seeded baseline (0.299250/0.266335) that is **+0.000113 ahead and
+    +0.000309 imm** — note the two are NOT equal, because MAX hurt imm ~2.7x more than ahead on
+    this subset. Anything beyond that bar is net new gain on top of the 1.68x speedup.
   * A sub-0.001 winner still needs **confirming on the full VAL half (5001-7500)** before it becomes
-    the recipe. Recovering >= +0.0003 in both modes makes the 1.68x free.
+    the recipe — the subset is a ranking proxy, not a gate.
 
 **Then iter 34**, on whatever the tuner leaves as the champion recipe.
 
