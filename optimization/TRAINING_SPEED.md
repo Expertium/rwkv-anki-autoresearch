@@ -260,12 +260,27 @@ is what drives "RAM used" into the 56-63 GB band where all three hangs occurred.
 LMDB documents `MDB_NORDAHEAD` as **"not implemented on Windows"**, so it is very likely a no-op
 here. Do not "fix" it that way and assume the problem is solved.
 
-**RECOMMENDED FIX — `NUM_FETCH_PROCESSES` 4 -> 2, a toml change with no code edit.** Halves the
-growth rate. It costs ~nothing because the same profiling run proved **fetching is not a lever**:
-fetch waits are 2.3 ms of a ~1,450 ms step (0.1%), i.e. the loader is over-provisioned by orders of
-magnitude. Secondary option if more is needed: periodically trim the worker working set via
-`SetProcessWorkingSetSize(handle, -1, -1)` / `EmptyWorkingSet` (the Windows-appropriate lever, since
-the pages are clean file-backed and cheap to drop).
+**PARTIAL FIX — `NUM_FETCH_PROCESSES` 4 -> 2, a toml change with no code edit.** Halves the number
+of growing processes. It costs ~nothing because the same profiling run proved **fetching is not a
+lever**: fetch waits are 2.3 ms of a ~1,450 ms step (0.1%), i.e. the loader is over-provisioned by
+orders of magnitude.
+
+**★★ BUT IT IS NOT SUFFICIENT AT MAX=65536 — MEASURED 2026-07-31 02:26, AND THE GUARD IS NOW
+MANDATORY FOR ANY LONG UNATTENDED RUN.** During HP-tuner trial 2, with `NUM_FETCH_PROCESSES = 2`
+already in effect, the two workers had reached **24.75 GB and 24.05 GB** after ~2.5 h of WS,
+leaving **0.7 GB free of 63.9 GB**. That is not merely inside the 56-63 GB band that preceded all
+three unexplained black-screen hangs — it is *deeper into it than any of them* (63.4 / 56.4 / 58.0
+GB used). Halving the worker count did not halve the ceiling; it only halved how many processes
+climb toward it.
+**Why the earlier 3.8 GB/h figure does not transfer:** that was measured at **MAX=16384** on a
+15-min mid-run window (4 workers x ~238 MB / 15 min). Here each worker holds the mmap pages for a
+**4x larger batch**, and the 48.8 GB total accumulated from process start. The two numbers measure
+different things, so treat "3.8 GB/h" as specific to iter 33's batch size, not as the platform rate.
+**One `EmptyWorkingSet` pass reclaimed 46.6 GB (1.0 -> 47.6 GB free) with zero effect on the run**
+— steps kept advancing, fetch waits stayed at 0.004 s — confirming the pages are clean, file-backed
+and cheap to drop, exactly as predicted.
+**=> `scratchpad/run_ram_guard.cmd` (detached, `-FloorGB 14 -IntervalSec 60`) should be armed
+alongside any multi-hour unattended training.** It was armed for the tuner at 02:29.
 
 **Cleared as suspects:** the Reddit bot (`users_replied_to`/`ids_replied_to` are per-call locals, no
 module-level growth, live footprint 0.01 GB) and — for THIS climb — `srs-benchmark/script.py`, whose

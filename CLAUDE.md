@@ -1196,7 +1196,16 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
   4. **`indexing_backward_kernel` 32 ms/step** — a THIRD deterministic-indexing site PermGather
      missed. Bit-exact if fixed the same way. ~2% of wall clock.
   5. **`aten::fill_` 7,227 calls/step** — unexplained zeroing for a 558k-param model.
-  6. **`NUM_FETCH_PROCESSES` 4 -> 2** — stability, not speed: halves the 3.8 GB/h RAM climb that
+  6. ⚠ **SUPERSEDED 2026-07-31 — 2 workers is NOT enough at MAX=65536; ARM THE RAM GUARD.** With
+     `NUM_FETCH_PROCESSES = 2` already in effect, tuner trial 2's two workers hit **24.75 + 24.05 GB
+     after ~2.5 h**, leaving **0.7 GB free of 63.9 GB** — deeper into the hang band than any of the
+     three recorded hangs. One `EmptyWorkingSet` pass reclaimed **46.6 GB (1.0 -> 47.6 GB free)**
+     with the run unaffected (steps advancing, fetch waits still 0.004 s). Each worker now holds the
+     mmap pages for a 4x larger batch, so the old "3.8 GB/h" figure is specific to iter 33's
+     MAX=16384 and must not be quoted here. **=> launch
+     `scratchpad/run_ram_guard.cmd` detached (`-FloorGB 14`) alongside ANY multi-hour unattended
+     training.** Original note follows.
+     **`NUM_FETCH_PROCESSES` 4 -> 2** — stability, not speed: halves the 3.8 GB/h RAM climb that
      put the box in the 56-63 GB hang band. Free (fetch is 2.3 ms of a 1,450 ms step). DO IT FIRST.
   **SKIP anything targeting KERNEL efficiency** (tensor cores, chunked-matmul/fla, kernel-level CUDA
   graphs): GPU kernels are only 16% of the step, so the ceiling is tiny. That is the profile's main
