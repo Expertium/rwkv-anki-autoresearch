@@ -1331,10 +1331,13 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    deploy win. Measure BOTH metrics for any run in it.
 2. **DONE 2026-07-27 — iter 32 recorded** in `research_log.jsonl` (60 entries) + `research_5k.md`
    first table + `research_5k_verbose.md` + `logbook.py rebuild`, filed under **distillation**.
-   **Two GPU jobs it left owing, both queued behind iter 33:** (a) a **RECTIFIED eval** of iter 32
-   — without it iter 32 cannot become anyone's gate baseline, and it is what promotion waits on;
-   (b) `measure_throughput.py` on `scratchpad/iter32_kd/iter32d_5586.pth` (currently a derivation,
-   not a measurement). Also open for Andrew: the seed-pair question on the +0.000430 imm margin.
+   **Both GPU jobs it owed are DONE** (2026-07-27 23:12/23:13, this entry was stale until
+   2026-07-30): the **rectified eval** ran and iter 32 was **promoted to champion** on it
+   (0.300268/0.267262, the gate basis from iter 33 on), and **throughput was measured at
+   1857.4 rev/s** — both recorded in the `research_log.jsonl` row's `ahead_rect`/`imm_rect`/
+   `throughput` fields. **Still open for Andrew:** the seed-pair question on the +0.000429 imm
+   margin — it is below the ~0.0005 threshold, and the rectified eval re-scores the SAME training
+   run, so it confirms the metric, not the seed.
 3. **★ iter 32 LANDED WELL, so these are now live and CHEAP — the dump is already on disk** at
    `C:\rwkv_kd_dump\t128_iter32` (22,346 files / 6.96 GB) and it is the expensive part: the
    annealed-alpha variant (unset `RWKV_KD_ALPHA`, window = full run) and an alpha sweep are
