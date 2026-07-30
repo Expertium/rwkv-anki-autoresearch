@@ -94,7 +94,11 @@ set RWKV_STEP_TRACE=scratchpad/iter33_dur/iter33_dur_ws_trace.jsonl
 set RWKV_GRAD_STATS=scratchpad/iter33_dur/iter33_grad_stats_ws.json
 del /Q scratchpad\iter33_dur\iter33_dur_ws_trace.jsonl scratchpad\iter33_dur\iter33_dur_ws_trace.jsonl.val.jsonl 2>nul
 
-echo === WS 1 epoch (1-5000, A18 trunk + PAVA + GRU3 + Muon, vprune ON min6000) %TIME% === >> "%LOG%"
+REM Banner corrected 2026-07-30 (post-run): it read "vprune ON min6000", copied from a template.
+REM vprune was OFF for the whole run, as designed and as the env above shows -- no RWKV_VPRUNE_*
+REM is set anywhere here, and train_rwkv.py arms vprune only when RWKV_VPRUNE_REF is non-empty.
+REM The .cmd could not be corrected while running (cmd.exe re-reads it at a saved byte offset).
+echo === WS 1 epoch (1-5000, A18 trunk + PAVA + GRU3 + Muon, vprune OFF) %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/iter33_dur/iter33_dur_ws.toml > "%DIR%\ws_%STAMP%.log" 2>&1
 if %ERRORLEVEL%==42 (
   echo DONE_EXIT_PRUNED_42 %DATE% %TIME% >> "%LOG%"
