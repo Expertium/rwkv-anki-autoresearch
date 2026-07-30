@@ -378,3 +378,44 @@ answered what grep could not:
 
 This is the useful negative: the profile's ranked list looked like it had four items, and stack
 attribution showed two of them were already solved.
+
+## MAX=65536 — 1.32x more speed, but it COSTS ~0.0003 at unchanged LR (2026-07-30)
+
+Champion trunk (iter-31 recipe, no KD) + the adopted combo, MAX 32768 -> 65536, gated
+rectified-vs-rectified against iter 31:
+
+| metric | iter 31 RECT | maxval | delta |
+|---|---|---|---|
+| ahead | 0.300802 | 0.301066 | **-0.000264** |
+| imm | 0.267691 | 0.267997 | **-0.000307** |
+
+**Read it as a small REAL loss, not noise.** Each delta alone is inside the ~0.0004 cross-seed
+band, but BOTH modes moved the same direction. Contrast the speedval validation that PASSED:
++0.000064 / -0.000047, one up one down — that is what noise looks like. Two same-signed ~0.0003
+deltas is the signature of a systematic effect near the resolution limit.
+
+Mechanism is exactly as predicted: groups 22,346 -> 10,935, so an epoch gets **half the optimizer
+steps** at the same LR and warmup. The large-batch literature's standard remedy is to scale LR
+(linear 2x, or sqrt ~1.41x) — untested here.
+
+**Speed it buys:** WS 3h27m -> 2h37m, decay 50 -> 40 min = **1.32x** on top of the adopted 1.27x,
+i.e. **1.68x** vs the iter-32 baseline.
+
+**DECISION IS ANDREW'S** (flagged when the sweep landed, not resolved unilaterally):
+- **(a) REJECT** — keep the validated-neutral 1.27x. Safe; costs nothing.
+- **(b) ACCEPT the loss** — 1.68x but every future champion carries ~-0.0003, which is 3x the
+  accept threshold in the wrong direction. Not recommended in a phase where iterations win by
+  +0.0005.
+- **(c) RETUNE LR for the larger batch and re-test** — the principled fix, ~5.5 h for one run
+  (2.7 h train at the new speed + 2.5 h eval). If it recovers the 0.0003, every subsequent
+  iteration is 1.32x cheaper, which compounds over the ~50-iteration research plan.
+
+### Ops note: the giant-user evals are VRAM-fragile, and it is environmental
+
+Three eval attempts died with no traceback — users 5995 (266k reviews), 5905 (367k), 5002 (290k).
+The flight recorder identifies it every time: **GPU OOM while the DESKTOP held several GB of VRAM**
+(4.6 GB during the failures vs ~0.5 GB overnight, when these same users cleared three evals in a
+row). The giant users need nearly the whole 12 GB card. The successful run started at 468 MiB used.
+- `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` did NOT help and was dropped.
+- **`scratchpad/maxval/run_maxval_eval3.cmd` is the resume runner: no `del`**, so `eval_sharded`
+  skips completed users and a relaunch only re-risks the remainder. Use it for any big eval.
