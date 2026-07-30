@@ -1732,3 +1732,133 @@ loss at segment-end states via the shelved stateful kernel → isotonic projecti
 model at deploy; = the "curve-shape constraints" track-1 family); `optimization/LIT_REVIEW.md` queue;
 deploy-side state-norm clamp (NaN guard, MONOTONICITY_PLAN-adjacent ship-time work).
 
+
+
+## 5k-era LIVE STATE archive (moved out of CLAUDE.md 2026-07-30)
+
+The "3-job GPU chain" block, verbatim. All five jobs COMPLETED; every finding in it is
+also recorded in `research_5k_verbose.md` (rectified evals + the PAVA/rectification
+result, the mode-2 duration decomposition, the mode-3 noise control, iter 32, iter 33)
+and in `research_log.jsonl` / `research_5k.md` for iters 32-33. Archived because
+CLAUDE.md's CURRENT STATE section is loaded every turn and its own header says KEEP
+THIS SECTION SHORT. The two REUSABLE ops lessons that lived at the end of the block
+(the `findstr /B` waitloop anchor and detach.ps1's absolute-path requirement) were NOT
+archived -- they moved into CLAUDE.md's LIVE RULES, where they belong.
+
+#### LIVE — a 3-job GPU chain, each parked on the previous one's `DONE_EXIT_`
+1. **★ DONE 00:28 (2026-07-27): rectified evals — BOTH METRICS AGREE, and the deploy metric is
+   5x MORE favourable to iter 31 than the gate it was accepted on.** n=2500, VAL half:
+
+   | metric | A18 | iter 31 | delta | p |
+   |---|---|---|---|---|
+   | ahead unrect (PRIMARY gate) | 0.299302 | 0.298909 | +0.000393 | 6.0e-26 |
+   | imm unrect (PRIMARY gate) | 0.268390 | 0.267637 | +0.000753 | 1.5e-209 |
+   | **ahead RECT (deploy)** | 0.302890 | **0.300802** | **+0.002088** | 2.4e-160 |
+   | **imm RECT (deploy)** | 0.268670 | **0.267691** | **+0.000979** | 6.0e-294 |
+
+   **★ TRAINING UNDER PAVA HALVES THE DEPLOY-TIME RECTIFICATION COST — the finding this pair was
+   run for.** Post-hoc rectification costs A18 (never trained under the constraint)
+   **+0.003588** on ahead; it costs iter 31 (trained at `RWKV_PAVA_LAMBDA=0.1`) only **+0.001893**.
+   So iter 31's real deploy gain is 5.3x what the unrectified gate reported, and the ahead
+   rectification penalty is a *training* problem, not an inherent cost of the rectifier.
+   ⚠ **Residual, stated honestly:** even the PAVA-trained model still pays +0.001893 ahead to be
+   rectified (0.298909 -> 0.300802), and the rectifier SHIPS, so **0.300802 is what a user gets**.
+   Driving that residual toward zero is a live research target (higher lambda? probe density?).
+   The +0.001893 is ~19x iter 31's own probe-insertion noise floor (its imm rect-vs-unrect delta is
+   only +0.000054), so it is a real effect. Note that noise floor is 5x SMALLER than A18's
+   +0.000280 on the identical probe machinery — a per-model sensitivity difference, worth a look
+   if the state clamp or PAVA training turns out to be what damps it.
+   **WHY TWO METRICS:** iter 31's own eval leg is UNRECTIFIED (its `.cmd` predates
+   `RWKV_EVAL_PAVA`, and a RUNNING `.cmd` must never be edited — cmd.exe re-reads it at a saved
+   byte offset). That is fine and is the **PRIMARY gate**, being directly comparable to A18's
+   existing jsonls; the rectified pair is the **deploy metric**. They agreed in both modes, so the
+   "report both, do not pick" instruction did not have to fire.
+2. **★ DONE 00:56 (2026-07-27): mode-2 duration diagnostic — ANDREW'S QUESTION IS ANSWERED, and
+   the rectifier turns out to be the SMALL half.** iter 31, users 5001-5500 (n=500), additive to
+   exactly 0.00e+00:
+
+   | component | ahead |
+   |---|---|
+   | **duration zeroing (m2 - m0)** | **+0.001451** |
+   | PAVA pooling itself (m1 - m2) | +0.000611 |
+   | total rect-vs-unrect (m1 - m0) | +0.002062 |
+
+   imm probe-insertion noise = +0.000056 (identical for modes 1 and 2, p=2.1e-8 — a good
+   consistency check, since imm depends on probe INSERTION, not on what is substituted), so the
+   duration term is ~+0.00140 net; mode 3 pins the ahead-side noise directly.
+   **~70% of the deploy penalty is the model losing the current review's duration; only ~30% is
+   the monotonicity pooling.** And the 70% is a **TRAIN/DEPLOY MISMATCH**, exactly the class §9's
+   three-way-parity directive exists to catch: training feeds the real `scaled_duration` for the
+   scored row, deploy CANNOT (Anki must show intervals *before* the press), so the model learns to
+   lean on a feature that vanishes at serving time. **=> the strongest iter-33 candidate is to zero
+   the current row's duration during TRAINING** (`RWKV_ZERO_FEATURES` already exists and is in use
+   for dim 22) so the two paths compute the same quantity. It should cost a little on the
+   unrectified gate — which is scored WITH a feature deploy will not have — while removing most of
+   the deploy penalty, so it must be judged on BOTH metrics (see QUEUE 0). A `RWKV_PAVA_LAMBDA`
+   sweep can only ever attack the 30%.
+3. **★ DONE 01:29: mode-3 noise control — the AHEAD noise is EXACTLY ZERO**
+   (+0.000000 +/- 0.000014, p=0.33, worse on 253/500 = a coin flip), so `m2-m3` and `m2-m0` agree
+   to six decimals and the duration number above was never confounded. That is the point of the
+   control: measured, not assumed. It also refutes the blanket "probe insertion costs ~3x the gate"
+   generalization — see the ★★ refinement in the probe-insertion bullet above.
+4. **★ DONE 09:49 (2026-07-27): iter 32 = full-run DISTILLATION — ACCEPTED on the primary
+   (unrectified) gate, both modes.** VAL half, n=2500, 0 nanskips, `size` identical (0/2500),
+   params **558,212** and card/note state **2,880/1,440** all UNCHANGED (KD is train-time only —
+   nothing ships to Rust).
+
+   | metric | iter 31 | iter 32 | delta | p |
+   |---|---|---|---|---|
+   | ahead | 0.298909 | **0.298333** | +0.000577 | 2.28e-66 |
+   | imm | 0.267637 | **0.267207** | +0.000430 | 3.12e-143 |
+
+   **★ THE ANSWER IT WAS RUN FOR — a training-budget deficit IS partly transferable as a soft
+   target.** Against the d=128 teacher on the same VAL half (0.294612/0.263561), iter 31 trailed by
+   -0.004297/-0.004076 and iter 32 trails by -0.003721/-0.003645: **KD closed 13.4% of the ahead gap
+   and 10.6% of imm.** First direct evidence here — and it also bounds the lever, since distillation
+   alone plainly will not close the remaining ~0.0037.
+   **KD is nearly FREE:** WS 1.30-1.42 steps/s vs iter 31's 1.44 (~9%); dump 22,346 files / 6.96 GB
+   in 1h36m (vs ~3h projected); whole run 1:30:32 -> 9:49:36. `pava_pool_frac` fell 0.92 -> **0.075**
+   over WS, i.e. under KD the curve head goes nearly monotone unaided.
+   ⚠ **NOT PROMOTED TO CHAMPION, deliberately — `champion_5k_track2.json` still points at iter 31.**
+   Two reasons: (a) iter 32's eval is **UNRECTIFIED** (its `.cmd` predates `RWKV_EVAL_PAVA`) and from
+   iter 33 the gate basis is the RECTIFIED metric, so iter 32 needs a rectified eval before it can be
+   anyone's baseline; (b) iter 33 was already running against iter 31's rectified jsonls when this
+   landed, and promoting mid-flight would invalidate that comparison. The rectified eval is a GPU job;
+   the GPU is busy until iter 33 finishes. **Throughput unmeasured for the same reason** — KD changes
+   no architecture/params/ops so it is iter 31's by construction, recorded as a DERIVATION not a
+   measurement; queue the real run when the GPU frees.
+   ⚠ **ASK ANDREW — the imm margin +0.000430 is BELOW the ~0.0005 seed-pair threshold** (cross-seed
+   spread on an identical recipe is ~0.0004 both modes), so the imm win is unresolved by this single
+   run; ahead at +0.000577 is above it. Precedent is mixed: **iter 31 was accepted with ahead
+   +0.000393, also below**, without a seed-pair run. Not resolved unilaterally — the doctrine says
+   "needs".
+   Historical detail of the run below (kept: the v1 false-failure and the deadlock guard are
+   reusable lessons).
+   ⚠ **v1 (pid 25348) DIED at its smoke gate on a FALSE FAILURE — the check was wrong, not the
+   dump.** `DUMP_CHECK_FAIL 5/5, "p_curve outside (0,1): [.., 1.000000]"`. `p_curve` is stored
+   **fp16** (`train_rwkv.py:1090`) and fp16 spacing below 1.0 is 4.88e-4, so every teacher output
+   above ~0.99951 becomes exactly 1.0 — 9.97% of values. Harmless: it is consumed as a soft **BCE
+   target** (`srs_model.py:772`) mixed with hard labels that are themselves exactly 0/1, so a 1.0
+   target gives `-log(p)`, finite; and saturation lands precisely where soft and hard targets
+   coincide, so almost no signal is lost. `check_dump.py` now tests `[0,1]` **plus an
+   ANTI-COLLAPSE condition** (>=10% strictly interior) — a dump degenerated to hard labels is the
+   failure that would actually waste the ten hours, and the old open-interval test would have
+   PASSED that. Re-verified `DUMP_CHECK_OK`, 7.6 GB projected.
+   ⚠ **v2 writes its OWN log, deliberately — a DEADLOCK guard.** mode 3 is still polling
+   `iter32_kd.log` for `DONE_EXIT_`, and the script opens its log with `>`, which TRUNCATES.
+   Sharing the file would have erased the token mode 3 waits for while v2 waited on mode 3.
+   Original v1 spec (unchanged otherwise): ~10 h (teacher dump ~3 h + WS + decay + eval).
+   Teacher = `pretrain/RWKV_trained_on_101_4999.pth` under `scratchpad/architecture_old_d128.py`;
+   student = the iter-31 recipe unchanged plus `RWKV_KD_MIX` + **`RWKV_KD_ALPHA=0.5`** (new flag,
+   2026-07-26: holds alpha FIXED = the classic form; unset keeps iter 10's linear 1->0 ramp
+   byte-identical). Decay runs on hard labels. Gate = ordinary accuracy iter vs iter 31; the
+   `.cmd` also reports the candidate against the d=128 teacher, i.e. how much of the 0.004 closed.
+   **Three things to know if it misbehaves:** (a) **vprune is deliberately OFF** — the
+   decay_ratio_0p1 FALSE-KILL scope rule says prune only at MATCHED regularization, and KD
+   replaces the target wholesale while validation still scores HARD labels; (b) the teacher must
+   set `RWKV_PROBE_DENSITY=0.08` + `RWKV_PROBE_DUR=0.0` even though it has no PAVA, because probes
+   are a DATA-side row-layout change and teacher/student must agree or the per-step shape check
+   exit-43s; (c) a smoke dump of 5 steps gates the full one on `check_dump.py` — the student's
+   checksum proves ALIGNMENT but nothing else proves the tensors are teacher outputs at all, and a
+   wrong arch/flag yields perfectly aligned garbage. It also projects the dump's disk footprint
+   before committing.
