@@ -1209,6 +1209,57 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    verdict without re-running anything.
 
 #### QUEUE
+**★★★ SPEEDUP PHASE CLOSED 2026-07-30 — ADOPTED STACK = 1.68x, and MAX=65536 IS ACCEPTED.**
+Andrew 2026-07-30: *"Accept it, do compaction and then run the HP tuner."* Full measurements in
+`optimization/TRAINING_SPEED.md`; the operative facts:
+
+**THE STANDARD TRAINING ENV — put ALL of these in every new run `.cmd` from now on:**
+
+    set RWKV_MUON_BATCHED=1     REM batched Newton-Schulz, 35x fewer matmul dispatches
+    set RWKV_NO_JIT=1           REM required by torch.compile (worth ~0 alone: 1.003x)
+    set RWKV_QAT_COMPILE=1      REM fuses the 26 mixer forwards
+
+plus **`MAX_TRAIN_GLOBAL_LEN = 65536`** and **`NUM_FETCH_PROCESSES = 2`** in the toml.
+Defaults stay OFF in code, so these must be set EXPLICITLY; old runs stay reproducible.
+Result: WS 4h23m -> **2h37m**, decay 63 -> **40 min** (1.68x). Eval: use `--fetch-per-shard 2`.
+
+⚠ **MAX=65536 COSTS ~0.0003 IN BOTH MODES at the OLD LR** (ahead -0.000264, imm -0.000307 vs
+iter 31 rectified). That is a real-but-small systematic loss, not noise: both modes moved the
+SAME direction, whereas the accuracy-neutral combo went +0.000064 / -0.000047 (one up, one down).
+Mechanism: groups 22,346 -> **10,935**, i.e. HALF the optimizer steps per epoch at unchanged LR.
+**Andrew accepted it ANYWAY and directed HP tuning to recover the 0.0003** — batch size is
+structural and LR/warmup are tuned after it (methodology (f)). Do NOT treat the -0.0003 as
+permanent; it is the tuner's target.
+
+**NEXT TASK = REBUILD AND RUN THE HP TUNER.** ⚠ `optimization/hp_tuner_5k.py` is STALE and must
+NOT be run as-is: its docstring/config target the d=32 **H=2/K=16** arch, **MAX=110000**,
+**QUANT-AWARE** throughout, **WS 2 epochs**, and an eval on 101-200. Update it to the current
+reality first:
+  * arch = the d=80 A18 trunk (`RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4.py`)
+    + the full iter-31 env (GRU_HEAD=3, PAVA_LAMBDA=0.1, PROBE_DENSITY=0.08, PROBE_DUR=0.0,
+    MUON=1, STRIP_L0_VLORA=1, ZERO_FEATURES=22, STATE_CLAMP_TAU=300/WINDOW=32768,
+    NO_AHEAD_RESIDUAL=1, STRIP_CMIX=..., WEIGHT_DECAY=0.01, CLIP=0.25);
+  * **PLAIN, not quant-aware** (QAT parked since iter 14);
+  * **WS 1 epoch** (fixed 2026-07-09), decay = WS x decay_ratio;
+  * **MAX=65536 + NUM_FETCH_PROCESSES=2 + the three speed flags above**;
+  * tune-eval on **5001-6000** (1000 users, the post-`champ5k_t1` remedy), NOT 101-200;
+  * eval RECTIFIED (`RWKV_EVAL_PAVA=1`) — the gate basis since iter 33.
+  **Lever priority for THIS tuning round is not the old order:** the batch doubled, so
+  **`peak_lr` and `warmup_steps` come first** (linear scaling suggests ~2x LR, sqrt ~1.41x;
+  `WARMUP_STEPS=200` is now 1.8% of a 10,935-step epoch instead of 0.9%). Then wd / clip /
+  decay_ratio. Re-record the tuner baseline at MAX=65536 before trialling — old journal rows
+  (`tuner_5k_log.jsonl`) are from a different arch AND batch size and are NOT comparable.
+  A tuned run that recovers >= +0.0003 in both modes makes the 1.68x free.
+
+**Then iter 34**, on whatever the tuner leaves as the champion recipe.
+
+**⚠ BIG-EVAL OPS RULE (learned the hard way 2026-07-29/30):** giant users (5002/5905/5995,
+266k-367k reviews) OOM the 12 GB card **iff the DESKTOP is holding several GB of VRAM** — 4.6 GB
+during three separate failures vs ~0.5 GB when the same users cleared three evals overnight.
+`expandable_segments` does NOT help. **Use `scratchpad/maxval/run_maxval_eval3.cmd` as the
+template: NO `del` of the result jsonls**, because `eval_sharded` skips completed users, so a
+relaunch only re-risks the remainder. Check `nvidia-smi` before starting a big eval.
+
 **★★ ANDREW 2026-07-28: "Focus solely on speedups after iter 33, then continue with iter 34 once
 speedups are exhausted."** So the order is FIXED: (a) record iter 33's verdict (protocol-mandated,
 part of finishing it); (b) **speedups ONLY** until the list below is exhausted; (c) then iter 34.
