@@ -1,6 +1,6 @@
 @echo off
 REM Keep free RAM above 14 GB for the duration of the HP tuner (~40 h remaining).
-REM WHY: 2026-07-31 02:26 the tuner's two fetch workers had grown to 24.75 + 24.05 GB of
+REM WHY: 2026-07-31 01:32 the tuner's two fetch workers had grown to 24.75 + 24.05 GB of
 REM LMDB mmap pages, leaving 0.7 GB free -- i.e. INSIDE the 56-63 GB band that preceded all
 REM three unexplained black-screen hangs, and deeper into it than any of them. A single
 REM EmptyWorkingSet pass reclaimed 46.6 GB (1.0 -> 47.6 GB free) with no effect on the run.
