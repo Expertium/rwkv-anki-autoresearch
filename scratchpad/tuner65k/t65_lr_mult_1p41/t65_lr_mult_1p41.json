@@ -1,0 +1,1 @@
+{"name": "t65_lr_mult_1p41", "param": "lr_mult", "config": {"lr_mult": 1.41, "warmup_steps": 200, "muon_lr_mult": 1.0, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}, "ws_steps": 10935, "peak_lr": 0.00141, "muon_lr": 0.0282}

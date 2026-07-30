@@ -1,30 +1,48 @@
-"""Greedy coordinate-descent HP tuner for the 5k phase -- FULL 5k: train users 1-5000
-(train_db_5k_h1, MAX=110000), tune-eval on the HELD-OUT subset 5001-6000 (test_db_5k; 200->1000
-users Andrew 2026-07-12 after the champ5k_t1 subset-overfit rejection), the H=2/K=16
-champion arch, QUANT-AWARE throughout (methodology a: WS + decay + eval all run with the fused
-card/note fake-quant env). The 1500-proxy era is over (proxy proved unfaithful, see notes 2026-06-30).
-PREREQ: build STEP3 finished + `python optimization/count_groups_5k.py` run once (writes
-optimization/groups_5k.json = the real GROUPS_PER_EPOCH for the 2-epoch WS budget).
+"""Greedy coordinate-descent HP tuner for the MAX=65536 era -- REBUILT 2026-07-30.
 
-Stateless POLICY over an append-only journal (optimization/tuner_5k_log.jsonl). The agent calls `next`
-to emit the next trial, detaches the generated self-recording .cmd, and repeats until DONE. Each .cmd
-runs the FULL champion recipe: WS (2 ep) -> write_decay_setup -> decay (0.5 ep) -> write_eval_toml ->
-eval (101-200) -> self-record. Mirrors scratchpad/run_h2k16.cmd.
+WHY IT WAS REBUILT: the previous version targeted the d=32 H=2/K=16 arch at MAX=110000, ran
+QUANT-AWARE throughout, used a 2-epoch WS budget and evaluated on users 101-200. Every one of
+those is now wrong. The trunk is the d=80 A18 lineage (iter 31/32), training is PLAIN (QAT has
+been parked since iter 14), WS is FIXED at 1 epoch (Andrew 2026-07-09) and the gate metric is
+the RECTIFIED logloss (Andrew 2026-07-27).
 
-Levers (coordinate order = high-impact/cheap first): peak_lr, warmup_steps, weight_decay, clip, decay_ratio.
-WS epochs FIXED at 2; decay epochs = WS x decay_ratio, a TUNED lever with ratio in [1/10, 1/2.5] -> decay
-0.2-0.8 epochs (Andrew 2026-07-01). Defaults = the H2K16 champion HPs (decay_ratio 0.25 -> 0.5 decay ep).
+WHAT IT IS FOR: the 2026-07-30 speedup phase adopted MAX_TRAIN_GLOBAL_LEN = 65536, which is
+1.61x faster but drops the group count 22,346 -> 10,935 -- i.e. HALF the optimizer steps per
+epoch at unchanged LR. That cost -0.000264 ahead / -0.000307 imm vs iter 31 rectified (both
+modes the same direction = a real systematic loss, not seed noise). Andrew accepted the speed
+and directed this tuner to recover the accuracy. Hence the lever order below is NOT the old one:
+the batch doubled, so the LEARNING RATES come first.
 
-WILCOXON EARLY-PRUNING (Andrew 2026-07-02, methodology pt 9): every trial writes a per-step WS trace and,
-when optimization/champion_5k.json exists (written by promote_champion_5k.py after the pre-tune champion
-run), runs with RWKV_PRUNE_REF -> the trainer aborts (exit 42) iff BOTH modes are worse at p<1e-4 on the
-growing 300n window. RWKV_PRUNE_MIN_STEP = 2x the TRIAL's warmup (a big-warmup trial is worse early by
-construction; delaying the first check avoids false prunes). A pruned trial records its ESTIMATED logloss
-(champ_final + cand@s - champ@s, from the .pruned.json marker) to the journal with "pruned": true --
-coordinate descent proceeds on the estimate (an abysmal trial never wins a coordinate anyway).
-Objective minimized = ahead + imm (fp32, by-user mean on 5001-6000). The strict accept gate is applied
-separately when declaring a champion. CLI matches hp_tuner.py: next / record <name> /
-record-baseline <ahead> <imm> / status / loop.
+RECIPE PER TRIAL (mirrors scratchpad/maxval/run_maxval.cmd, the validated MAX=65536 run):
+  40-step sanity (VRAM + proves the speed flags actually engaged)
+  -> WS 1 epoch, train users 1-5000, train_db_5k_h1, MAX=65536, NUM_FETCH_PROCESSES=2
+  -> write_decay_setup -> cosine decay (WS x decay_ratio epochs)
+  -> write_eval_toml -> RECTIFIED eval (RWKV_EVAL_PAVA=1) on the tune-eval subset 5001-6000
+  -> self-record to the journal.
+Cost ~4.3 h/trial (WS 2h37 + decay ~40 min + eval ~1 h; the subset is 51.0M of the VAL half's
+128.8M reviews).
+
+THE BASELINE IS FREE: the `maxval` run IS the default config, and its rectified jsonls already
+cover 5001-7500. Restricted to 5001-6000 it scores ahead 0.299250 / imm 0.266335, seeded into
+the journal as the baseline row -- so trial 1 is a real probe, not an anchor re-run.
+
+TUNE-EVAL SUBSET: 5001-6000 (1000 users), the post-champ5k_t1 remedy -- the old 200-user subset
+could not resolve sub-0.001 effects and inverted at n=5000. Sanity check on this subset: it
+ranks maxval vs iter 31 the same way the full VAL half does (subset +0.000113/+0.000309 vs full
++0.000264/+0.000306), so it is a usable proxy. Any sub-0.001 winner STILL needs confirming on
+the full VAL half (5001-7500) before it becomes the recipe.
+
+VALIDATION-BASED EARLY PRUNING is on, against optimization/tuner65k_vprune_ref.json (built from
+maxval's own val trajectory + its 5001-6000 finals -- a matched reference on this exact trunk
+and batch size). The trainer aborts (exit 42) iff BOTH modes' val loss exceed the reference by
+>= 0.004 ahead AND 0.006 imm at 2 consecutive checkpoints. min_step = max(1000, 2 x the trial's
+warmup) so a long-warmup trial is not killed for being slow by construction. This is the
+sign-correct rule for regularization levers (the train-loss rule is not -- see the
+decay_ratio_0p1 false-kill audit). It matters most for the LR grid, where a 2.8x LR probe can
+diverge and would otherwise burn 4.3 h.
+
+Objective minimized = ahead + imm (rectified, by-user mean on 5001-6000).
+CLI: next / record <name> / record-pruned <name> / record-baseline <ahead> <imm> / status / loop.
 """
 import json
 import os
@@ -33,93 +51,90 @@ import sys
 
 ROOT = "C:/Users/Andrew/rwkv-anki-autoresearch"
 JOURNAL = f"{ROOT}/optimization/tuner_5k_log.jsonl"
-TRIAL_DIR = f"{ROOT}/scratchpad/tuner5k"
-# GROUPS_PER_EPOCH depends on the finished train_db_5k_h1: run `python optimization/count_groups_5k.py`
-# once after build STEP3 -> it writes optimization/groups_5k.json, loaded here.
-_GROUPS_JSON = f"{ROOT}/optimization/groups_5k.json"
+TRIAL_DIR = f"{ROOT}/scratchpad/tuner65k"
+VPRUNE_REF = f"{ROOT}/optimization/tuner65k_vprune_ref.json"
 
-
-def _load_groups_per_epoch():
-    if not os.path.exists(_GROUPS_JSON):
-        raise SystemExit("groups_5k.json missing -- run `python optimization/count_groups_5k.py` "
-                         "after build STEP3 (train_db_5k_h1) completes")
-    with open(_GROUPS_JSON) as fh:
-        return int(json.load(fh)["groups_per_epoch"])
-
-
-GROUPS_PER_EPOCH = None  # resolved lazily via ws_steps()
-WS_EPOCHS = 1        # FIXED (5k budget; 2->1 Andrew 2026-07-09 -- the champ5k_b1 budget A/B showed
-                     # the 2nd epoch adds nothing: ahead -0.00006 p=0.31, imm +0.00043 BETTER p=6e-62)
-# Decay epochs are now a TUNED lever (Andrew 2026-07-01): decay_ep = WS_EPOCHS * decay_ratio,
-# ratio in [1/10, 1/2.5] -> decay in [0.2, 0.8] epochs. Default ratio 0.25 -> 0.5 decay ep (unchanged).
+# Verified from the maxval run: its WS final checkpoint is mvws_10935.pth, i.e. 1 epoch of
+# train_db_5k_h1 (users 1-5000) at MAX=65536 = 10,935 groups. (The old optimization/groups_5k.json
+# says 6554 -- that is MAX=110000 and is stale; it is not read any more.)
+GROUPS_PER_EPOCH = 10935
+WS_EPOCHS = 1                      # FIXED (Andrew 2026-07-09, the champ5k_b1 budget A/B)
 TRAIN_DB = "train_db_5k_h1"
 USTART, UEND = 1, 5000
-# Tune-eval subset 200->1000 users (Andrew 2026-07-12, after the champ5k_t1 subset-overfit
-# rejection: 200 users could not resolve sub-0.001 HP effects -- the descent winner's
-# +0.0008/+0.0010 subset margin INVERTED at n=5000. n=1000 cuts the by-user-mean SE ~sqrt(5)x
-# to ~0.0004-0.0006, resolving ~0.001 effects; eval cost rises only ~5x on a small phase).
-# NOTE when tuning reopens: re-record the tuner BASELINE on 5001-6000 first (old journal rows
-# are on 5001-5200 and NOT comparable), and full-eval-confirm any sub-0.001 verdict regardless.
-EVAL_USTART, EVAL_UEND = 5001, 6000   # tune-eval: held-out subset of 5001-10000
-# Methodology (a): every 5k run trains AND evaluates quant-aware (fused card/note fake-quant).
-# 2026-07-08: the sibling's FINAL locked recipe q72u (72 b/layer: joint-uv b10 WKV cb + m2b12 shift cb
-# + 1-bit norms + int3 shift scope), with CODEBOOK LEARNING ON (Andrew, tonight's direction #1): both
-# cbs init from the reference q72u catalogs and train per-run; the trial cmd repoints the env at each
-# phase seam (WS-final exports feed the decay, decay-final exports feed the eval — the cb Parameters
-# are process-globals initialized from these env files, NOT part of the ckpt; see resolve_run_cbs.py).
-# FROZEN 5k-FAMILY SPEED ENV (A/B/C verdict 2026-07-08, scratchpad/jitab): JIT vs NO_JIT is a wash
-# (1.643 vs 1.658 s/step); NO_JIT + the sibling's sanctioned round-4 flag set (COMPILE=student +
-# ROT_CACHE + FAST_EMB + EMA_FOREACH + NO_MEMFILL) = 1.207 s/step (1.37x) -> ADOPTED. Never flip
-# these inside the comparison family. ⚠ COMPILE needs MSVC cl.exe: every trial cmd calls vcvars64
-# (without it inductor dies as "cl is not found", the NaN-except swallows it, steps go hollow).
-QAT_ENV = ("set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4\n"
-           "set RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt\n"
-           "set RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt\n"
-           "set RWKV_QAT_PQ_LEARN=1\n"
-           "set RWKV_QAT_SHIFT_PQ_LEARN=1\n"
-           "set RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3\n"
-           "set RWKV_QAT_NORM_BITS=1\n"
-           "set RWKV_QAT_FUSED=1\n"
-           "set RWKV_NO_JIT=1\n"
-           "set RWKV_QAT_COMPILE=student\n"
-           "set RWKV_QAT_ROT_CACHE=1\n"
-           "set RWKV_QAT_FAST_EMB=1\n"
-           "set RWKV_QAT_EMA_FOREACH=1\n"
-           "set RWKV_QAT_NO_MEMFILL=1\n")
-NUM_FETCH = 4        # RAM-conscious cut 10->4 (Andrew 2026-07-08): each worker holds ~2.6 GB at
-# MAX=110000 and fetch runs far ahead of demand (~4 ms get() waits at 1.34 s/step with 7 workers on the
-# 5k champion run) -- 4 still fully hides prep. Worker count never affects batch content/order.
+EVAL_USTART, EVAL_UEND = 5001, 6000
+NUM_FETCH = 2                      # adopted 2026-07-30: halves the 3.8 GB/h RAM climb, fetch is
+                                   # 2.3 ms of a ~1,450 ms step so it costs nothing
+MAX_LEN = 65536                    # the adopted batch dim
+VALIDATE_EVERY = 1000              # MUST match the vprune ref's cadence (pairing is by exact step)
 
-# (param, grid). EPOCHS is NOT tuned (fixed budget). peak_lr around the champion 1e-3 (larger data may
-# want more); warmup over the 6554-step WS; wd/clip robust levers.
+# The iter-31/A18 trunk. Every run on this lineage sets all of these; a missing flag silently
+# trains a different model, so they live in one string used verbatim by every trial.
+TRUNK_ENV = (
+    "set RWKV_DETERMINISTIC=1\n"
+    "set RWKV_AUGMENT_SEED=1234\n"
+    "set RWKV_EMPTY_CACHE_EVERY=1\n"
+    "set RWKV_EMPTY_CACHE_WINDOW=0\n"
+    "set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4.py\n"
+    "set RWKV_GRU_HEAD=3\n"
+    "set RWKV_PAVA_LAMBDA=0.1\n"
+    "set RWKV_PROBE_DENSITY=0.08\n"
+    "set RWKV_PROBE_DUR=0.0\n"
+    "set RWKV_MUON=1\n"
+    "set RWKV_MUON_MOMENTUM=0.95\n"
+    "set RWKV_NO_AHEAD_RESIDUAL=1\n"
+    "set RWKV_STRIP_L0_VLORA=1\n"
+    "set RWKV_ZERO_FEATURES=22\n"
+    "set RWKV_STATE_CLAMP_TAU=300\n"
+    "set RWKV_STATE_CLAMP_WINDOW=32768\n"
+    "set RWKV_STRIP_CMIX=user_id:0,user_id:1,user_id:2,preset_id:0,preset_id:1,preset_id:2,"
+    "deck_id:1,deck_id:2,card_id:1\n"
+)
+# The speed stack adopted 2026-07-30 (1.68x, validated accuracy-neutral). Defaults are OFF in
+# code, so these must be set explicitly. Cleared before eval, exactly as run_maxval.cmd does.
+SPEED_ENV = ("set RWKV_MUON_BATCHED=1\n"
+             "set RWKV_NO_JIT=1\n"
+             "set RWKV_QAT_COMPILE=1\n")
+
+BASE_PEAK_LR = 1e-3      # the AdamW group's base LR (57,412 params)
+BASE_MUON_LR = 0.02      # the Muon groups' base LR (500,800 matrix params -- the bulk of the model)
+
+# (param, grid). ORDER IS THE COORDINATE ORDER and it is deliberate: MAX doubled the batch, so
+# the learning rates are the levers with a mechanistic reason to have moved. Everything after
+# them is the usual robustness sweep.
 SPACE = [
-    ("peak_lr",      [7e-4, 1.0e-3, 1.4e-3, 2.0e-3]),
-    ("warmup_steps", [200, 400, 800]),
-    ("weight_decay", [0.0, 0.01, 0.05, 0.1, 0.2, 0.4]),  # 0.2 appended 2026-07-09: 0.1 won ON THE GRID EDGE
-                                                     # with real paired signal (both modes, p 7e-4/2e-5).
-                                                     # 0.4 appended 2026-07-10: 0.2 won the edge AGAIN
-                                                     # (0.293799/0.269646, paired p 8e-3/5e-8 vs 0.1)
-    ("clip",         [0.1, 0.25, 0.5]),
-    ("decay_ratio",  [0.1, 0.2, 0.25, 0.4]),   # decay_ep = ratio in [0.1, 0.4]; ratio in [1/10, 1/2.5]
-    # Round-2 levers (Andrew 2026-07-09, "1 ep freed budget -- check what's high-impact left"):
-    ("adamw_beta2",  [0.98, 0.99, 0.999]),     # hardcoded 0.999 since forever; short noisy runs often prefer lower
-    ("dropout_scale", [0.0, 0.5, 1.0, 2.0]),   # x(0.02/0.05/0.01) hand-set in the 100u era; 50x data moved the reg optimum? (wd=0 hint)
-    ("cb_lr_mult",   [0.1, 1.0, 10.0]),        # learnable-cb groups ran at PEAK_LR untuned since cb learning landed
+    # Joint LR scale on BOTH optimizer families at once -- this is the batch-scaling question.
+    # sqrt-scaling of a 2x batch says 1.41x, linear says 2x; 2.8x probes the far edge so a win at
+    # 2.0 is not sitting on the grid boundary.
+    ("lr_mult",       [1.0, 1.41, 2.0, 2.8]),
+    # 200 steps was 0.9% of a 22,346-step epoch and is now 1.8% of a 10,935-step one. Bigger
+    # batches usually want proportionally MORE warmup, not less; upstream used 20,000.
+    ("warmup_steps",  [200, 400, 800]),
+    # Muon carries ~90% of the parameters, so after the joint move, re-balance its share against
+    # AdamW's. muon_lr = BASE_MUON_LR * lr_mult * muon_lr_mult.
+    ("muon_lr_mult",  [1.0, 0.5, 2.0]),
+    # Robustness levers. wd kept winning grid edges in the d=32 era (0.1, then 0.2), but that was
+    # a different arch and 4x the params -- start from the champion 0.01 and probe upward.
+    ("weight_decay",  [0.01, 0.05, 0.1]),
+    ("clip",          [0.25, 0.5]),
+    ("decay_ratio",   [0.25, 0.4]),
 ]
-DEFAULTS = {"peak_lr": 1e-3, "warmup_steps": 200, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25,
-            "adamw_beta2": 0.999, "dropout_scale": 1.0, "cb_lr_mult": 1.0}
+DEFAULTS = {"lr_mult": 1.0, "warmup_steps": 200, "muon_lr_mult": 1.0,
+            "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
 PARAMS = [p for p, _ in SPACE]
 
 
+def peak_lr(cfg):
+    return BASE_PEAK_LR * float(cfg["lr_mult"])
+
+
+def muon_lr(cfg):
+    return BASE_MUON_LR * float(cfg["lr_mult"]) * float(cfg["muon_lr_mult"])
+
+
 def canon(cfg):
-    # .get with the DEFAULT for every later-added lever: journal rows written before a lever existed
-    # ran with the (env-unset ==) default value, so they canon onto the same point in the new space.
-    return (round(float(cfg["peak_lr"]), 8), int(cfg["warmup_steps"]),
-            round(float(cfg["weight_decay"]), 6), round(float(cfg["clip"]), 6),
-            round(float(cfg.get("decay_ratio", 0.25)), 6),
-            round(float(cfg.get("adamw_beta2", 0.999)), 8),
-            round(float(cfg.get("dropout_scale", 1.0)), 6),
-            round(float(cfg.get("cb_lr_mult", 1.0)), 6))
+    # .get with the DEFAULT for every later-added lever: journal rows written before a lever
+    # existed ran with the (env-unset ==) default value, so they canon onto the same point.
+    return tuple(round(float(cfg.get(p, DEFAULTS[p])), 8) for p in PARAMS)
 
 
 def obj(rec):
@@ -163,17 +178,14 @@ def compute(recs):
 
 
 def trial_name(param, cfg):
-    if param == "baseline":  # the champion-HP anchor, RUN as the first trial (2WS+0.5decay is a new budget)
-        return "hp5k_baseline"
+    if param == "baseline":
+        return "t65_baseline"
     v = cfg[param]
     vs = f"{v:g}".replace(".", "p").replace("-", "m").replace("+", "")
-    return f"hp5k_{param}_{vs}"
+    return f"t65_{param}_{vs}"
 
 
 def ws_steps():
-    global GROUPS_PER_EPOCH
-    if GROUPS_PER_EPOCH is None:
-        GROUPS_PER_EPOCH = _load_groups_per_epoch()
     return WS_EPOCHS * GROUPS_PER_EPOCH
 
 
@@ -181,28 +193,28 @@ def write_trial_files(name, param, cfg):
     folder = f"{TRIAL_DIR}/{name}"
     os.makedirs(folder, exist_ok=True)
     ws_ts = ws_steps()
-    decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])  # tuned lever (ratio in [1/10, 1/2.5])
+    decay_ep = WS_EPOCHS * float(cfg["decay_ratio"])
+    plr, mlr = peak_lr(cfg), muon_lr(cfg)
     pval_str = f"{cfg[param]:g}" if param in cfg else "baseline"
-    # Step trace always on (liveplot + post-hoc). TRAIN-LOSS pruning DISABLED for tuner trials
-    # (2026-07-09, the decay_ratio_0p1 false-kill audit): (a) train-loss is SIGN-BIASED against
-    # regularization levers -- wd=0.1 ran persistently train-hot vs the wd=0.01 champion trace yet
-    # WON eval in both modes; its WS-identical twin decay_ratio_0p1 was killed by run-to-run drift
-    # (imm p 3e-45 between identical configs); (b) once the descent's base regularization differs
-    # from the reference run's, every trial carries a systematic train-loss offset.
-    # REPLACED by VALIDATION-based pruning (same audit, Andrew asked for a better rule): the trial
-    # validates every 500 steps (VALIDATE_USERS 5001-5010) and dies only if BOTH modes' val loss is
-    # worse than the champion's val trajectory at the same step by >= 0.004 ahead AND 0.006 imm at
-    # 2 consecutive val checkpoints, from step 1000 (Andrew's flat-curve catch: the val curves are
-    # ~flat past 2500, so disasters are only catchable EARLY where curves are steep; thresholds are
-    # 2-3x the early r1/b1 twin-null). Right-signed for regularization levers, magnitude-based,
-    # kills slow-convergence disasters by ~step 1500; late regressions run to an honest eval.
-    trace_rel = f"scratchpad/tuner5k/{name}/{name}_ws_trace.jsonl"
-    prune_lines = f"set RWKV_STEP_TRACE={trace_rel}\n"
-    champion_ref = f"{ROOT}/optimization/champion_5k.json"
-    if os.path.exists(champion_ref) and "val_step" in json.load(open(champion_ref)):
-        prune_lines += "set RWKV_VPRUNE_REF=optimization/champion_5k.json\n"
-    # --- WS training toml (H2K16 proxy recipe; tuned TOML fields = peak_lr, warmup, epochs=2) ---
-    ws_toml = f"""# HP5k trial {name}: param={param} -> {pval_str}.  Full config: {json.dumps(cfg)}
+
+    # Stale-result hygiene, done HERE rather than in the .cmd. The .cmd retries a failed eval
+    # WITHOUT deleting (eval_sharded skips users it already banked, which is what makes the
+    # giant-user OOM recoverable -- the 2026-07-30 big-eval ops rule). Deleting at generation
+    # time keeps that property while still guaranteeing a regenerated trial starts clean.
+    for f in (f"{ROOT}/result/RWKV-{name}.jsonl", f"{ROOT}/result/RWKV-P-{name}.jsonl",
+              f"{ROOT}/result/RWKV-{name}-s0.jsonl", f"{ROOT}/result/RWKV-P-{name}-s0.jsonl",
+              f"{folder}/{name}_ws_trace.jsonl", f"{folder}/{name}_ws_trace.jsonl.val.jsonl",
+              f"{folder}/{name}_ws_trace.jsonl.pruned.json"):
+        if os.path.exists(f):
+            os.remove(f)
+
+    # vprune min_step: never kill a trial before 2x its own warmup (a long-warmup trial is worse
+    # early BY CONSTRUCTION), and never before the documented floor of 1000.
+    vprune_min = max(1000, 2 * int(cfg["warmup_steps"]))
+
+    ws_toml = f"""# HP tuner (MAX=65536 era) trial {name}: param={param} -> {pval_str}
+# Full config: {json.dumps(cfg)}  ->  PEAK_LR {plr:g}, RWKV_MUON_LR {mlr:g}
+# Recipe = scratchpad/maxval/run_maxval.cmd (the validated MAX=65536 run) with the HPs swapped.
 TRAIN_USERS_START = {USTART}
 TRAIN_USERS_END = {UEND}
 VALIDATE_USERS_START = 5001
@@ -216,17 +228,17 @@ LABEL_FILTER_LMDB_PATH = "label_filter_db"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
 NUM_FETCH_PROCESSES = {NUM_FETCH}
-MAX_TRAIN_GLOBAL_LEN = 110000
+MAX_TRAIN_GLOBAL_LEN = {MAX_LEN}
 
 TRAIN_MODE = "WS"
 STEP_OFFSET = 1
 WARMUP_STEPS = {int(cfg["warmup_steps"])}
 EPOCHS = {WS_EPOCHS}
-VALIDATE_EVERY = 500
-PEAK_LR = {cfg["peak_lr"]:g}
+VALIDATE_EVERY = {VALIDATE_EVERY}
+PEAK_LR = {plr:g}
 
 LOAD_MODEL = false
-SAVE_MODEL_FOLDER = "scratchpad/tuner5k/{name}"
+SAVE_MODEL_FOLDER = "scratchpad/tuner65k/{name}"
 SAVE_MODEL_PREFIX = "{name}ws"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -239,81 +251,116 @@ WANDB_RESUME_ID = ""
     with open(f"{folder}/{name}_ws.toml", "w") as f:
         f.write(ws_toml)
 
-    # --- sidecar (config + param for `record`) ---
     with open(f"{folder}/{name}.json", "w") as f:
-        json.dump({"name": name, "param": param, "config": cfg, "ws_steps": ws_ts}, f)
+        json.dump({"name": name, "param": param, "config": cfg, "ws_steps": ws_ts,
+                   "peak_lr": plr, "muon_lr": mlr}, f)
 
-    # --- self-recording trial .cmd (detach this). The decay + eval tomls are written at RUNTIME by the
-    #     helpers (the WS-final and decay-final step counts are data-dependent). H2K16 env at the top
-    #     applies to WS, decay AND eval. Decay starts from this trial's peak_lr (passed to write_decay_setup). ---
     cmd = f"""@echo off
+REM Auto-generated by optimization/hp_tuner_5k.py -- do NOT edit while running (cmd.exe re-reads
+REM a running .cmd at a saved byte offset).
 cd /d C:\\Users\\Andrew\\rwkv-anki-autoresearch
-REM RWKV_QAT_COMPILE needs MSVC cl.exe on PATH or inductor fails into hollow skipped-batch steps
-call "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvars64.bat" > nul
-set LOG=C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\tuner5k\\{name}.log
-set OMP_NUM_THREADS={NUM_FETCH}
+set DIR=C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\tuner65k\\{name}
+set LOG=C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\tuner65k\\{name}.log
+set STAMP=%RANDOM%%RANDOM%
+
 set PYTHONUNBUFFERED=1
 set PYTHONPATH=C:\\Users\\Andrew\\rwkv-anki-autoresearch
-set RWKV_DETERMINISTIC=1
-set RWKV_AUGMENT_SEED=1234
-set RWKV_EMPTY_CACHE_EVERY=0
-set RWKV_N_HEADS=2
-set RWKV_HEAD_DIM=16
+set OMP_NUM_THREADS=7
+{TRUNK_ENV}REM ---- this trial's HPs ----
+set RWKV_MUON_LR={mlr:g}
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
 set RWKV_CLIP={cfg["clip"]:g}
-set RWKV_ADAMW_BETA2={cfg.get("adamw_beta2", 0.999):g}
-set RWKV_DROPOUT_SCALE={cfg.get("dropout_scale", 1.0):g}
-set RWKV_CB_LR_MULT={cfg.get("cb_lr_mult", 1.0):g}
-{QAT_ENV}{prune_lines}echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} START %DATE% %TIME% ===== > "%LOG%"
-REM re-run hygiene: STEP_TRACE (and its .val sidecar) open in APPEND mode -- a leftover trace/marker
-REM from a prior-era run of this same config would pollute this run's files (liveplot + post-hoc).
-del /Q scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl.pruned.json scratchpad\\tuner5k\\{name}\\{name}_ws_trace.jsonl.val.jsonl 2>nul
-echo === WS {WS_EPOCHS} epochs ({USTART}-{UEND}) %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_ws.toml >> "%LOG%" 2>&1
+REM ---- the adopted speed stack (cleared again before eval) ----
+{SPEED_ENV}
+echo ===== TRIAL {name} (param={param}={pval_str}) cfg={json.dumps(cfg)} peak_lr={plr:g} muon_lr={mlr:g} START %DATE% %TIME% ===== > "%LOG%"
+
+echo === SANITY 40 steps (VRAM + speed-flag proof) %TIME% === >> "%LOG%"
+set RWKV_MAX_STEPS=40
+.venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner65k/{name}/{name}_ws.toml > "%DIR%\\sanity_%STAMP%.log" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_SANITYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 13
+)
+set RWKV_MAX_STEPS=
+REM An env typo that silently disables a speed flag would cost ~2 extra hours PER TRIAL, so prove
+REM both engaged before committing to the run.
+findstr /C:"BATCHED Newton-Schulz" "%DIR%\\sanity_%STAMP%.log" >nul 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_MUONNOTBATCHED %DATE% %TIME% >> "%LOG%"
+  exit /b 16
+)
+findstr /C:"[compile] torch.compile" "%DIR%\\sanity_%STAMP%.log" >nul 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_NOCOMPILE %DATE% %TIME% >> "%LOG%"
+  exit /b 17
+)
+echo SANITY OK %TIME% >> "%LOG%"
+
+set RWKV_STEP_TRACE=scratchpad/tuner65k/{name}/{name}_ws_trace.jsonl
+set RWKV_VPRUNE_REF=optimization/tuner65k_vprune_ref.json
+set RWKV_VPRUNE_MIN_STEP={vprune_min}
+echo === WS {WS_EPOCHS} epoch ({USTART}-{UEND}, MAX={MAX_LEN} -^> ~{ws_ts} steps) %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner65k/{name}/{name}_ws.toml > "%DIR%\\ws_%STAMP%.log" 2>&1
 if %ERRORLEVEL%==42 (
-  echo === WILCOXON-PRUNED - recording estimated logloss %TIME% === >> "%LOG%"
+  echo === VAL-PRUNED - recording estimated logloss %TIME% === >> "%LOG%"
   .venv\\Scripts\\python.exe optimization/hp_tuner_5k.py record-pruned {name} >> "%LOG%" 2>&1
   echo DONE_EXIT_PRUNED %DATE% %TIME% >> "%LOG%"
   exit /b 0
 )
-REM a crashed WS must NOT cascade into decay/eval (hp5k_weight_decay_0p2 decayed a step-50 ckpt)
+REM A crashed WS must NOT cascade into decay/eval -- write_decay_setup takes the LATEST ckpt, so
+REM a half-trained one would be silently decayed and evaluated as if it were the real trial.
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_WSFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 4
 )
-echo === RESOLVE WS CODEBOOKS (feed decay) %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe scratchpad/resolve_run_cbs.py scratchpad/tuner5k/{name} {name}ws scratchpad/tuner5k/{name}/cb_wkv_ws.txt scratchpad/tuner5k/{name}/cb_shift_ws.txt >> "%LOG%" 2>&1
+echo WS OK %TIME% >> "%LOG%"
+set RWKV_STEP_TRACE=
+set RWKV_VPRUNE_REF=
+
+echo === DECAY SETUP ({decay_ep:g} ep, ratio {cfg["decay_ratio"]:g}) %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner65k/{name} {name}ws {name}d scratchpad/tuner65k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {decay_ep:g} {plr:g} {MAX_LEN} > "%DIR%\\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
-  echo DONE_EXIT_CBFAIL_WS %DATE% %TIME% >> "%LOG%"
-  exit /b 3
-)
-set RWKV_QAT_PQ=scratchpad/tuner5k/{name}/cb_wkv_ws.txt
-set RWKV_QAT_SHIFT_PQ=scratchpad/tuner5k/{name}/cb_shift_ws.txt
-echo === DECAY SETUP %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe scratchpad/write_decay_setup.py scratchpad/tuner5k/{name} {name}ws {name}d scratchpad/tuner5k/{name}/{name}_decay.toml {TRAIN_DB} {USTART} {UEND} {decay_ep:g} {cfg["peak_lr"]:g} >> "%LOG%" 2>&1
-echo === DECAY {decay_ep:g} epoch (ratio {cfg["decay_ratio"]:g}) %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner5k/{name}/{name}_decay.toml >> "%LOG%" 2>&1
-if not %ERRORLEVEL%==0 (
-  echo DONE_EXIT_DECAYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_DSETUPFAIL %DATE% %TIME% >> "%LOG%"
   exit /b 5
 )
-echo === RESOLVE DECAY CODEBOOKS (feed eval) %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe scratchpad/resolve_run_cbs.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/cb_wkv_final.txt scratchpad/tuner5k/{name}/cb_shift_final.txt >> "%LOG%" 2>&1
+echo === DECAY %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe -u -m rwkv.train_rwkv --config scratchpad/tuner65k/{name}/{name}_decay.toml > "%DIR%\\decay_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
-  echo DONE_EXIT_CBFAIL_DECAY %DATE% %TIME% >> "%LOG%"
-  exit /b 3
-)
-set RWKV_QAT_PQ=scratchpad/tuner5k/{name}/cb_wkv_final.txt
-set RWKV_QAT_SHIFT_PQ=scratchpad/tuner5k/{name}/cb_shift_final.txt
-del /Q result\\RWKV-{name}.jsonl result\\RWKV-P-{name}.jsonl 2>nul
-echo === WRITE EVAL TOML %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner5k/{name} {name}d scratchpad/tuner5k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} {EVAL_USTART} {EVAL_UEND} >> "%LOG%" 2>&1
-echo === EVAL {EVAL_USTART}-{EVAL_UEND} (quant-aware) %TIME% === >> "%LOG%"
-.venv\\Scripts\\python.exe -u -m rwkv.get_result --config scratchpad/tuner5k/{name}/{name}_eval.toml >> "%LOG%" 2>&1
-if not %ERRORLEVEL%==0 (
-  echo DONE_EXIT_EVALFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_DECAYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 6
 )
+echo DECAY OK %TIME% >> "%LOG%"
+
+echo === WRITE EVAL TOML %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe scratchpad/write_eval_toml.py scratchpad/tuner65k/{name} {name}d scratchpad/tuner65k/{name}/{name}_eval.toml RWKV-{name} RWKV-P-{name} {EVAL_USTART} {EVAL_UEND} > "%DIR%\\etoml_%STAMP%.log" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_TOMLFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 7
+)
+REM Eval runs WITHOUT the training speed flags, exactly as run_maxval.cmd does.
+set RWKV_MUON_BATCHED=
+set RWKV_QAT_COMPILE=
+set RWKV_NO_JIT=
+set RWKV_EVAL_PAVA=1
+REM Users 5002/5905/5995 (266k-367k reviews) OOM the 12 GB card iff the desktop is holding
+REM several GB of VRAM. eval_sharded SKIPS users already banked, so a retry costs only the
+REM remainder -- hence three attempts and NO del between them (the 2026-07-30 ops rule).
+echo === EVAL {EVAL_USTART}-{EVAL_UEND} RECTIFIED, attempt 1 %TIME% === >> "%LOG%"
+.venv\\Scripts\\python.exe -u optimization/eval_sharded.py --config scratchpad/tuner65k/{name}/{name}_eval.toml --shards 1 --solo-threshold 0 --fetch-per-shard 2 --threads-per-shard 7 > "%DIR%\\eval1_%STAMP%.log" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo EVAL attempt 1 failed - retrying from banked users %TIME% >> "%LOG%"
+  .venv\\Scripts\\python.exe -u optimization/eval_sharded.py --config scratchpad/tuner65k/{name}/{name}_eval.toml --shards 1 --solo-threshold 0 --fetch-per-shard 2 --threads-per-shard 7 > "%DIR%\\eval2_%STAMP%.log" 2>&1
+)
+if not %ERRORLEVEL%==0 (
+  echo EVAL attempt 2 failed - retrying from banked users %TIME% >> "%LOG%"
+  .venv\\Scripts\\python.exe -u optimization/eval_sharded.py --config scratchpad/tuner65k/{name}/{name}_eval.toml --shards 1 --solo-threshold 0 --fetch-per-shard 2 --threads-per-shard 7 > "%DIR%\\eval3_%STAMP%.log" 2>&1
+)
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_EVALFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  exit /b 8
+)
+echo EVAL OK %TIME% >> "%LOG%"
+
 echo === RECORD {name} %TIME% === >> "%LOG%"
 .venv\\Scripts\\python.exe optimization/hp_tuner_5k.py record {name} >> "%LOG%" 2>&1
 echo DONE_EXIT_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
@@ -346,10 +393,11 @@ def cmd_next():
     _, cfg, param = out
     name = trial_name(param, cfg)
     ts = write_trial_files(name, param, cfg)
-    pv = "(champion HPs)" if param == "baseline" else f"{cfg[param]:g}"
+    pv = "(baseline HPs)" if param == "baseline" else f"{cfg[param]:g}"
     print(f"NEXT {name}")
-    print(f"  param={param}  value={pv}  full={json.dumps(cfg)}  ws_steps={ts}")
-    print(f"  cmd=scratchpad/tuner5k/{name}/{name}.cmd")
+    print(f"  param={param}  value={pv}  full={json.dumps(cfg)}")
+    print(f"  peak_lr={peak_lr(cfg):g}  muon_lr={muon_lr(cfg):g}  ws_steps={ts}")
+    print(f"  cmd=scratchpad/tuner65k/{name}/{name}.cmd")
 
 
 def cmd_record(name):
@@ -357,7 +405,8 @@ def cmd_record(name):
     ahead, na = by_user_mean(f"{ROOT}/result/RWKV-{name}.jsonl")
     imm, ni = by_user_mean(f"{ROOT}/result/RWKV-P-{name}.jsonl")
     rec = {"name": name, "param": side["param"], "config": side["config"],
-           "ahead": round(ahead, 6), "imm": round(imm, 6), "users": na}
+           "ahead": round(ahead, 6), "imm": round(imm, 6), "users": na,
+           "peak_lr": side["peak_lr"], "muon_lr": side["muon_lr"]}
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(rec) + "\n")
     print(f"RECORDED {name}: ahead {ahead:.6f} imm {imm:.6f} (users {na}/{ni}) obj {ahead+imm:.6f}")
@@ -365,17 +414,16 @@ def cmd_record(name):
 
 def fit_vprune_alpha(recs):
     """Calibrate the val-delta -> final-tune-eval-delta shrinkage slope (per mode), from trials
-    that COMPLETED honestly and carry a val sidecar: x = (trial val - champion val) at each WS
+    that COMPLETED honestly and carry a val sidecar: x = (trial val - reference val) at each WS
     checkpoint >= 1000, y = (trial tune-eval - baseline tune-eval). Early val gaps compress as
     training converges AND val (review-pooled, 10 users) is a different scale from the recorded
-    metric (by-user mean, 200 users) -- a single through-origin slope absorbs both. Caveat: pairs
+    metric (by-user mean, 1000 users) -- a single through-origin slope absorbs both. Caveat: pairs
     within a trial share one y (effective n = #trials, not #pairs), and completed trials only
-    populate small |x| (~0.002), so kill-scale (>=0.004) estimates are linear extrapolation --
-    hence the clamp. Returns (alpha_ahead, alpha_imm, n_pairs, n_trials); alpha=1.0 fallback."""
-    champ_path = f"{ROOT}/optimization/champion_5k.json"
-    if not os.path.exists(champ_path):
+    populate small |x|, so kill-scale (>=0.004) estimates are linear extrapolation -- hence the
+    clamp. Returns (alpha_ahead, alpha_imm, n_pairs, n_trials); alpha=1.0 fallback."""
+    if not os.path.exists(VPRUNE_REF):
         return 1.0, 1.0, 0, 0
-    champ = json.load(open(champ_path))
+    champ = json.load(open(VPRUNE_REF))
     if "val_step" not in champ:
         return 1.0, 1.0, 0, 0
     cvals = {int(s): (a, i) for s, a, i in zip(champ["val_step"], champ["val_ahead"], champ["val_imm"])}
@@ -402,7 +450,7 @@ def fit_vprune_alpha(recs):
                 continue
             v = json.loads(line)
             s = int(v["step"])
-            if s < 1000 or s not in cvals:  # the vprune-active window only
+            if s < 1000 or s not in cvals:
                 continue
             xa.append(v["val_ahead"] - cvals[s][0]); ya.append(r["ahead"] - base["ahead"])
             xi.append(v["val_imm"] - cvals[s][1]);   yi.append(r["imm"] - base["imm"])
@@ -416,30 +464,27 @@ def fit_vprune_alpha(recs):
         a = sum(u * v for u, v in zip(x, y)) / sxx
         if a <= 0:  # noise/anti-correlation = no information -> naive slope, not a fake floor
             return 1.0
-        return min(max(a, 0.25), 1.5)  # clamp: tiny-x fits extrapolated to kill-scale x
+        return min(max(a, 0.25), 1.5)
     return slope(xa, ya), slope(xi, yi), len(xa), n_trials
 
 
 def cmd_record_pruned(name):
-    """Record a pruned trial from its .pruned.json marker: journal gets the ESTIMATED logloss
-    flagged "pruned": true, so descent proceeds. Handles both marker shapes: the old Wilcoxon
-    train-loss rule (p_ahead/p_imm) and the val rule (rule="val", val_delta_*). For the val rule
-    the estimate is (Andrew 2026-07-10): baseline_tune_eval + alpha * mean(strike-window deltas)
-    -- window mean cuts single-checkpoint noise, fitted alpha corrects early-gap compression and
-    the val->tune-eval scale, and anchoring on the BASELINE JOURNAL ROW (not the champion's
-    full-eval final) keeps pruned rows on the same 200-user scale as honest rows (the old anchor
-    carried a spurious +0.012 offset)."""
+    """Record a pruned trial from its .pruned.json marker: the journal gets the ESTIMATED logloss
+    flagged "pruned": true, so descent proceeds (an abysmal trial never wins a coordinate anyway).
+    Estimate = baseline_tune_eval + alpha * mean(strike-window val deltas): the window mean cuts
+    single-checkpoint noise, the fitted alpha corrects early-gap compression and the val ->
+    tune-eval scale, and anchoring on the BASELINE JOURNAL ROW keeps pruned rows on the same
+    1000-user scale as honest rows."""
     side = json.load(open(f"{TRIAL_DIR}/{name}/{name}.json"))
     marker = json.load(open(f"{TRIAL_DIR}/{name}/{name}_ws_trace.jsonl.pruned.json"))
     rec = {"name": name, "param": side["param"], "config": side["config"],
            "ahead": round(float(marker["estimated_ahead"]), 6),
            "imm": round(float(marker["estimated_imm"]), 6),
            "pruned": True, "pruned_at_step": int(marker["pruned_at_step"]),
-           "rule": marker.get("rule", "wilcoxon")}
-    if "p_ahead" in marker:
-        rec["p_ahead"], rec["p_imm"] = marker["p_ahead"], marker["p_imm"]
-        detail = f"(p_a {marker['p_ahead']:.2e}, p_i {marker['p_imm']:.2e})"
-    else:
+           "rule": marker.get("rule", "val"),
+           "peak_lr": side["peak_lr"], "muon_lr": side["muon_lr"]}
+    detail = ""
+    if "val_delta_ahead" in marker:
         rec["val_delta_ahead"] = marker["val_delta_ahead"]
         rec["val_delta_imm"] = marker["val_delta_imm"]
         detail = f"(val d_a {marker['val_delta_ahead']:+.4f}, d_i {marker['val_delta_imm']:+.4f})"
@@ -466,17 +511,19 @@ def cmd_record_pruned(name):
 
 
 def cmd_record_baseline(ahead, imm):
-    rec = {"name": "baseline", "param": "baseline", "config": dict(DEFAULTS),
-           "ahead": round(float(ahead), 6), "imm": round(float(imm), 6)}
+    rec = {"name": "t65_baseline", "param": "baseline", "config": dict(DEFAULTS),
+           "ahead": round(float(ahead), 6), "imm": round(float(imm), 6), "users": 1000,
+           "peak_lr": BASE_PEAK_LR, "muon_lr": BASE_MUON_LR,
+           "source": "scratchpad/maxval (the validated MAX=65536 run) restricted to 5001-6000"}
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(rec) + "\n")
     print(f"RECORDED baseline: ahead {ahead} imm {imm}")
 
 
 def cmd_loop():
-    """Self-driving coordinate descent: run every remaining trial (its WS->decay->eval->record .cmd)
-    until DONE. Resumable -- replays the journal on restart, so a teardown continues from the next
-    trial. Launch this DETACHED (survives Esc). Each trial .cmd self-records to the journal."""
+    """Self-driving coordinate descent: run every remaining trial (its WS->decay->eval->record
+    .cmd) until DONE. Resumable -- replays the journal on restart, so a teardown continues from
+    the next trial. Launch this DETACHED (survives Esc). Each trial .cmd self-records."""
     while True:
         recs = load_journal()
         out = compute(recs)
@@ -492,21 +539,24 @@ def cmd_loop():
         _, cfg, param = out
         name = trial_name(param, cfg)
         write_trial_files(name, param, cfg)
-        print(f"\n===== TRIAL {name}  param={param}  cfg={json.dumps(cfg)} =====", flush=True)
+        print(f"\n===== TRIAL {name}  param={param}  cfg={json.dumps(cfg)} "
+              f"peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g} =====", flush=True)
         cmd_path = f"{TRIAL_DIR}/{name}/{name}.cmd".replace("/", "\\")
         rc = subprocess.call(["cmd", "/c", cmd_path])
         if find(load_journal(), cfg) is None:
-            print(f"ABORT: {name} did not record (rc={rc}). Check scratchpad/tuner5k/{name}.log. Stopping.",
-                  flush=True)
+            print(f"ABORT: {name} did not record (rc={rc}). "
+                  f"Check scratchpad/tuner65k/{name}.log. Stopping.", flush=True)
             return
 
 
 def cmd_status():
     recs = load_journal()
-    print(f"{'name':30} {'param':14} {'ahead':>9} {'imm':>9} {'obj':>9}  note")
+    print(f"{'name':28} {'param':14} {'peak_lr':>9} {'muon_lr':>9} "
+          f"{'ahead':>9} {'imm':>9} {'obj':>9}  note")
     for r in recs:
         note = f"PRUNED@{r['pruned_at_step']} (estimated)" if r.get("pruned") else ""
-        print(f"{r['name']:30} {r['param']:14} {r['ahead']:9.6f} {r['imm']:9.6f} {obj(r):9.6f}  {note}")
+        print(f"{r['name']:28} {r['param']:14} {r.get('peak_lr', 0):9.2e} "
+              f"{r.get('muon_lr', 0):9.2e} {r['ahead']:9.6f} {r['imm']:9.6f} {obj(r):9.6f}  {note}")
     out = compute(recs)
     if out[0] == "done":
         best = out[1]
@@ -514,13 +564,21 @@ def cmd_status():
         r = find(recs, best)
         base = next((x for x in recs if x["param"] == "baseline"), None)
         if r and base:
-            print(f"  vs baseline: ahead {base['ahead']-r['ahead']:+.6f}  imm {base['imm']-r['imm']:+.6f}")
+            print(f"  vs baseline: ahead {base['ahead']-r['ahead']:+.6f}  "
+                  f"imm {base['imm']-r['imm']:+.6f}")
+            print("  NOTE: a sub-0.001 winner still needs confirming on the full VAL half "
+                  "(5001-7500) before it becomes the recipe.")
     else:
         _, cfg, param = out
         if param == "baseline":
-            print("\nNEXT: run the baseline trial (champion HPs @ 2WS+0.5decay) -- it runs first as hp5k_baseline")
+            print("\nNEXT: seed the baseline row -- `record-baseline 0.299250 0.266335` "
+                  "(the maxval run restricted to 5001-6000); no GPU run needed.")
         else:
-            print(f"\nNEXT: probe param={param} value={cfg[param]:g}  ({trial_name(param, cfg)})")
+            print(f"\nNEXT: probe param={param} value={cfg[param]:g}  ({trial_name(param, cfg)})"
+                  f"  peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g}")
+    remaining = sum(len(g) for _, g in SPACE) - len(SPACE)
+    print(f"\n(grid: {remaining} non-default points; ~4.3 h/trial => ~{remaining*4.3:.0f} h if "
+          f"none prune)")
 
 
 if __name__ == "__main__":
