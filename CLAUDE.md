@@ -1251,8 +1251,10 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
     and the schedulers scale it proportionally (`train_rwkv.py:188-196`). Then `warmup_steps`
     [200,400,800], `muon_lr_mult` [1.0,0.5,2.0] (re-balance Muon vs AdamW after the joint move),
     `weight_decay` [0.01,0.05,0.1], `clip` [0.25,0.5], `decay_ratio` [0.25,0.4].
-  * **11 non-default points x ~4.4 h = ~48 h** if nothing prunes. Trial names are `t65_*`, trial dir
-    `scratchpad/tuner65k/`, journal `optimization/tuner_5k_log.jsonl` (the old rows were archived to
+  * **11 non-default points x ~4.0 h = ~44 h** if nothing prunes — MEASURED on trial 1, not
+    projected: **1.253 steps/s** steady state (5-min window past compile warmup), so WS 10,935
+    steps = 2.42 h, decay 2,733 = 0.61 h, rectified eval on 1000 users ~1.0 h. Trials are named
+    `t65_*`, trial dir `scratchpad/tuner65k/`, journal `optimization/tuner_5k_log.jsonl` (the old rows were archived to
     `tuner_5k_log_d32qat_era.jsonl` — different arch AND batch, not comparable).
   * **Val-based early pruning is ON** against **`optimization/tuner65k_vprune_ref.json`** (built from
     maxval's own val trajectory + its 5001-6000 finals = a matched reference on this exact trunk and
