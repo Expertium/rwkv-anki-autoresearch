@@ -117,7 +117,16 @@ SPACE = [
     # by a wide margin. Spending 4.2 h to confirm that was worse value than 0.25 and lr_mult 0.7.
     # Add it back here if the shape is ever in doubt (warmup turned out non-monotonic, so shapes
     # are not always safe to assume).
-    ("muon_lr_mult",  [1.0, 0.5, 0.25]),
+    # ★★ 0.125 added 2026-08-01 -- SECOND consecutive edge win, and the two modes disagree about
+    # whether it is exhausted. ahead is decelerating (1.0->0.5 gave +0.000601, 0.5->0.25 only
+    # +0.000181) but imm is NOT (+0.000371 then +0.000411). imm was the mode still short of the
+    # bar, so the lever that is still paying on it is worth one more probe.
+    # ⚠ RESEARCH FLAG, not a tuning detail: RWKV_MUON_LR=0.02 was tuned at MAX=32768 and iter 29
+    # accepted Muon on the strength of its imm gain. If 0.125 (muon_lr 0.0025, 8x below default)
+    # keeps winning, the honest question becomes whether Muon still earns its place at THIS batch
+    # size -- an iter-29-level question, not a coordinate. Raise it with Andrew; do not answer it
+    # by letting the grid slide toward zero.
+    ("muon_lr_mult",  [1.0, 0.5, 0.25, 0.125]),
     # Robustness levers. wd kept winning grid edges in the d=32 era (0.1, then 0.2), but that was
     # a different arch and 4x the params -- start from the champion 0.01 and probe upward.
     ("weight_decay",  [0.01, 0.05, 0.1]),
