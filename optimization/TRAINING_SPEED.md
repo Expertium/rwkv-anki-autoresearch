@@ -272,10 +272,18 @@ leaving **0.7 GB free of 63.9 GB**. That is not merely inside the 56-63 GB band 
 three unexplained black-screen hangs — it is *deeper into it than any of them* (63.4 / 56.4 / 58.0
 GB used). Halving the worker count did not halve the ceiling; it only halved how many processes
 climb toward it.
-**Why the earlier 3.8 GB/h figure does not transfer:** that was measured at **MAX=16384** on a
-15-min mid-run window (4 workers x ~238 MB / 15 min). Here each worker holds the mmap pages for a
-**4x larger batch**, and the 48.8 GB total accumulated from process start. The two numbers measure
-different things, so treat "3.8 GB/h" as specific to iter 33's batch size, not as the platform rate.
+**★ THE RATE, MEASURED PRECISELY 2026-07-31 from two consecutive guard firings** (05:03:55 free
+14.0 -> 47.9 GB, then 05:58:06 free 13.9 -> 48.1 GB): **~34 GB re-accumulated in 54 minutes = ~38
+GB/h**, with `NUM_FETCH_PROCESSES = 2`. That is **~10x the 3.8 GB/h** measured at MAX=16384 with 4
+workers — each worker now holds the mmap pages for a 4x larger batch, and there is no sign of a
+plateau below the point where the box runs out.
+**Consequence, and it is why the guard is load-bearing rather than a nicety:** starting a phase
+with ~50 GB free, the box re-enters the 56-63 GB hang band in **~1.2 h**. A WS phase is ~2.5 h, so
+**every single WS phase would enter the band** without intervention — which fits the observed
+history of unexplained hangs far better than any theory involving a rare trigger.
+**What saves the untended case is that the climb RESETS at each phase boundary** (WS -> decay ->
+eval kills and respawns the workers), so only phases longer than ~1.2 h are exposed. That is why
+tuner trial 1 ran 4+ h without tripping the floor while trial 2 tripped it inside WS.
 **One `EmptyWorkingSet` pass reclaimed 46.6 GB (1.0 -> 47.6 GB free) with zero effect on the run**
 — steps kept advancing, fetch waits stayed at 0.004 s — confirming the pages are clean, file-backed
 and cheap to drop, exactly as predicted.
