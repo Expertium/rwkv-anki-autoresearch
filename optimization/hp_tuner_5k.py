@@ -137,6 +137,14 @@ def canon(cfg):
     return tuple(round(float(cfg.get(p, DEFAULTS[p])), 8) for p in PARAMS)
 
 
+# THE BAR: "recover what MAX=65536 cost" == reach iter 31's numbers ON THIS SAME 1000-user
+# subset. Computed 2026-07-30 by restricting result/RWKV{,-P}-iter31_algo_rect.jsonl to
+# 5001-6000. Note the two modes are NOT equidistant from the baseline (0.299250/0.266335):
+# MAX=65536 hurt imm ~2.7x more than ahead here, so a trial that recovers ahead alone has
+# not done the job.
+BAR = {"ahead": 0.299137, "imm": 0.266026}
+
+
 def obj(rec):
     return rec["ahead"] + rec["imm"]
 
@@ -553,10 +561,20 @@ def cmd_status():
     recs = load_journal()
     print(f"{'name':28} {'param':14} {'peak_lr':>9} {'muon_lr':>9} "
           f"{'ahead':>9} {'imm':>9} {'obj':>9}  note")
+    base = next((x for x in recs if x["param"] == "baseline"), None)
     for r in recs:
         note = f"PRUNED@{r['pruned_at_step']} (estimated)" if r.get("pruned") else ""
+        if base is not None and r is not base:
+            # positive = better than baseline; "BAR" marks a trial that cleared it in BOTH modes
+            da, di = base["ahead"] - r["ahead"], base["imm"] - r["imm"]
+            cleared = r["ahead"] <= BAR["ahead"] and r["imm"] <= BAR["imm"]
+            note = (f"d {da:+.6f}/{di:+.6f}" + ("  ** CLEARS THE BAR **" if cleared else "")
+                    + (("  " + note) if note else ""))
         print(f"{r['name']:28} {r['param']:14} {r.get('peak_lr', 0):9.2e} "
               f"{r.get('muon_lr', 0):9.2e} {r['ahead']:9.6f} {r['imm']:9.6f} {obj(r):9.6f}  {note}")
+    print(f"{'--- BAR (iter 31 on 5001-6000)':28} {'':14} {'':>9} {'':>9} "
+          f"{BAR['ahead']:9.6f} {BAR['imm']:9.6f} {BAR['ahead']+BAR['imm']:9.6f}  "
+          f"reach BOTH to have recovered what MAX=65536 cost")
     out = compute(recs)
     if out[0] == "done":
         best = out[1]
@@ -577,8 +595,9 @@ def cmd_status():
             print(f"\nNEXT: probe param={param} value={cfg[param]:g}  ({trial_name(param, cfg)})"
                   f"  peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g}")
     remaining = sum(len(g) for _, g in SPACE) - len(SPACE)
-    print(f"\n(grid: {remaining} non-default points; ~4.3 h/trial => ~{remaining*4.3:.0f} h if "
-          f"none prune)")
+    # 4.0 h MEASURED end-to-end on trials 1 and 2 (WS 2h33 + decay 38 min + eval ~1 h), not projected
+    print(f"\n(grid: {remaining} non-default points; ~4.2 h/trial measured => ~{remaining*4.2:.0f} h "
+          f"if none prune)")
 
 
 if __name__ == "__main__":
