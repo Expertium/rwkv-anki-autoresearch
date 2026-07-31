@@ -442,3 +442,39 @@ row). The giant users need nearly the whole 12 GB card. The successful run start
 - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` did NOT help and was dropped.
 - **`scratchpad/maxval/run_maxval_eval3.cmd` is the resume runner: no `del`**, so `eval_sharded`
   skips completed users and a relaunch only re-risks the remainder. Use it for any big eval.
+
+## ★★ WHAT MAX=65536 COST IS NOT AN LR PROBLEM — the `lr_mult` coordinate, 2026-07-31
+
+MAX=65536 bought 1.61x but dropped the group count 22,346 -> 10,935, i.e. **half the optimizer
+steps per epoch at unchanged LR**, and cost -0.000264 ahead / -0.000307 imm. The obvious
+hypothesis was that the learning rate should scale with the batch, so the HP tuner's FIRST
+coordinate was a joint `lr_mult` on **both** `PEAK_LR` (the 57,412 AdamW params) and
+`RWKV_MUON_LR` (the 500,800 Muon params — tuning `peak_lr` alone would have moved ~10% of the
+model). Four points, full runs, rectified eval on the 1000-user tune subset 5001-6000:
+
+| lr_mult | peak_lr | muon_lr | ahead | imm | d_ahead | d_imm | objective |
+|---|---|---|---|---|---|---|---|
+| **1.00** | 0.00100 | 0.020 | 0.299250 | 0.266335 | — | — | **0.565585 (best)** |
+| 1.41 (sqrt) | 0.00141 | 0.028 | 0.299547 | 0.266151 | -0.000297 | +0.000184 | 0.565698 |
+| 2.00 (linear) | 0.00200 | 0.040 | 0.299749 | 0.266248 | -0.000499 | +0.000087 | 0.565997 |
+| 2.80 | 0.00280 | 0.056 | 0.300272 | 0.266472 | -0.001022 | -0.000137 | 0.566744 |
+
+**VERDICT: raising the LR does not recover the loss — it trades ahead for imm, and loses.**
+- **ahead is strictly monotonic worse over all four points**, total swing **-0.001022**, ~2.5x the
+  ~0.0004 seed-noise floor. A monotonic dose-response across four independent runs is far stronger
+  evidence than any single delta, so this is a real effect, not a bad draw.
+- **imm is an inverted U**: best at 1.41x (+0.000184 — only 60% of the +0.000309 needed) and
+  NEGATIVE by 2.8x. So even the mode that MAX hurt most is not rescued by more LR.
+- Objective is monotonic worse; baseline wins the coordinate outright.
+
+**Consequences.**
+1. **The standard batch-scaling heuristics (linear, sqrt) are actively harmful here.** Do not
+   re-run this coordinate on a future MAX change; the answer is known and it is negative.
+2. **The -0.0003 is looking like a genuine price for the 1.68x**, not a tuning oversight. The LR
+   was the lever with a mechanistic reason to have moved; the survivors (warmup, muon/adamw RATIO,
+   wd, clip, decay_ratio) all have weaker priors.
+3. **`muon_lr_mult` remains a genuinely different question** and is still worth its trials: it
+   changes the RATIO between the Muon and AdamW groups at fixed overall scale, whereas `lr_mult`
+   moved both together. A wrong ratio would not have shown up in this coordinate at all.
+4. If the remaining coordinates also come back empty, the honest framing for Andrew is a
+   **Pareto choice** — 1.68x faster training for -0.0003 in both modes — not a bug to be fixed.
