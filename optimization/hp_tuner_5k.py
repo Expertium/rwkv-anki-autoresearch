@@ -102,21 +102,41 @@ BASE_MUON_LR = 0.02      # the Muon groups' base LR (500,800 matrix params -- th
 # the learning rates are the levers with a mechanistic reason to have moved. Everything after
 # them is the usual robustness sweep.
 SPACE = [
-    # Joint LR scale on BOTH optimizer families at once -- this is the batch-scaling question.
-    # sqrt-scaling of a 2x batch says 1.41x, linear says 2x; 2.8x probes the far edge so a win at
-    # 2.0 is not sitting on the grid boundary.
-    ("lr_mult",       [1.0, 1.41, 2.0, 2.8]),
     # 200 steps was 0.9% of a 22,346-step epoch and is now 1.8% of a 10,935-step one. Bigger
     # batches usually want proportionally MORE warmup, not less; upstream used 20,000.
+    # RESOLVED 2026-07-31: 400 wins, interior optimum (ahead is an inverted U), no extension needed.
     ("warmup_steps",  [200, 400, 800]),
-    # Muon carries ~90% of the parameters, so after the joint move, re-balance its share against
-    # AdamW's. muon_lr = BASE_MUON_LR * lr_mult * muon_lr_mult.
-    ("muon_lr_mult",  [1.0, 0.5, 2.0]),
+    # Muon carries ~90% of the parameters, so re-balance its share against AdamW's at fixed overall
+    # scale. muon_lr = BASE_MUON_LR * lr_mult * muon_lr_mult.
+    # ★ 0.5 was the phase's big win (+0.000601/+0.000371 incremental, first trial to clear the bar
+    # in both modes), and it sits on the LOW EDGE -- hence 0.25, added 2026-07-31 on Andrew's call
+    # to probe it now rather than after the remaining coordinates.
+    # ⚠ 2.0 was DROPPED, not silently skipped. It had been generated and ran ~25 min before being
+    # stopped. Two independent results predict it is worse: the lr_mult coordinate is a 4-point
+    # MONOTONIC dose-response in which more LR is always worse, and on this very lever 0.5 beat 1.0
+    # by a wide margin. Spending 4.2 h to confirm that was worse value than 0.25 and lr_mult 0.7.
+    # Add it back here if the shape is ever in doubt (warmup turned out non-monotonic, so shapes
+    # are not always safe to assume).
+    ("muon_lr_mult",  [1.0, 0.5, 0.25]),
     # Robustness levers. wd kept winning grid edges in the d=32 era (0.1, then 0.2), but that was
     # a different arch and 4x the params -- start from the champion 0.01 and probe upward.
     ("weight_decay",  [0.01, 0.05, 0.1]),
     ("clip",          [0.25, 0.5]),
     ("decay_ratio",   [0.25, 0.4]),
+    # ★ lr_mult MOVED TO LAST and its grid REPLACED, 2026-07-31.
+    # It originally ran FIRST with [1.0, 1.41, 2.0, 2.8] -- upward only, because the design
+    # anchored on "the batch doubled, so the LR should rise". That heuristic was wrong in both
+    # directions: raising the LR hurt monotonically across all four points, and the phase's biggest
+    # win came from LOWERING an LR (muon_lr_mult 0.5). The original grid could not have found that,
+    # since it contained no downward probe at all.
+    # So the live question is the one it never asked: at the tuned config, does lowering the JOINT
+    # LR help? Hence [1.0, 0.7], evaluated LAST so it sees the winning warmup/muon/wd/clip/decay.
+    # The upward points are NOT re-run: that result is settled, monotonic over 4 points, and
+    # recorded in optimization/TRAINING_SPEED.md. Their journal rows are untouched.
+    # ⚠ Reordering is SAFE for the replay: coordinate descent evaluates each coordinate at the
+    # incumbent of the ones BEFORE it, and every recorded row already has lr_mult=1.0 (the
+    # default), so warmup/muon rows still match their configs exactly. Verified before relaunch.
+    ("lr_mult",       [1.0, 0.7]),
 ]
 DEFAULTS = {"lr_mult": 1.0, "warmup_steps": 200, "muon_lr_mult": 1.0,
             "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
