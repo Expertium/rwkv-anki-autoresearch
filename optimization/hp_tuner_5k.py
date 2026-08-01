@@ -131,7 +131,17 @@ SPACE = [
     # a different arch and 4x the params -- start from the champion 0.01 and probe upward.
     ("weight_decay",  [0.01, 0.05, 0.1]),
     ("clip",          [0.25, 0.5]),
-    ("decay_ratio",   [0.25, 0.4]),
+    # ★ CEILING RAISED 2026-08-01 by Andrew ("extend it to 1/1.4") after 0.4 won both modes
+    # (+0.000203/+0.000185) while sitting on the OLD ceiling. That old 0.4 = 1/2.5 was the top of
+    # the sanctioned range in the 5k methodology (Andrew 2026-07-01), NOT an arbitrary grid choice
+    # -- which is why it was escalated rather than extended the way muon_lr_mult was.
+    # 0.7143 (= 1/1.4, rounded; the 1e-5 difference is ~0.1 step out of ~7,810) is probed BEFORE
+    # 0.55 deliberately: if the new ceiling wins, the direction holds all the way and 0.55 only
+    # fills in the curve; if it loses, an interior optimum exists and 0.55 is exactly the right
+    # bisection. More information per trial either way.
+    # ⚠ These trials cost MORE than the standard 4.2 h -- decay is WS x ratio, so 0.7143 means
+    # ~7,810 decay steps (~1h44m) vs 0.25's 2,733 (~38 min). Budget ~5.1 h and ~4.8 h.
+    ("decay_ratio",   [0.25, 0.4, 0.7143, 0.55]),
     # ★ lr_mult MOVED TO LAST and its grid REPLACED, 2026-07-31.
     # It originally ran FIRST with [1.0, 1.41, 2.0, 2.8] -- upward only, because the design
     # anchored on "the batch doubled, so the LR should rise". That heuristic was wrong in both
