@@ -904,12 +904,23 @@ Plain-era and QAT-era logloss are NOT comparable.
      actual steps/s A/B. Also note the dispatch test exercised the int4/rank-1 call variant, not
      the PQ-codebook variant — the PQ config was covered only by the compile half. Do both BEFORE
      the long run; worth **~1.38x, i.e. roughly 1.5 days off a 4-day run**.
-   - **WHERE the QAT sits in the 10x is a real fork,** because `QAT from scratch = +0.0118` (iter
-     40) — it MUST warm-start. Reading A: 10x plain -> warm-start QAT for the existing 2.0-ep
-     fine-tune. Reading B: 10x budget with QAT active throughout, warm-started from the current
-     champion. A is much cheaper and matches how QAT has always behaved here (a fine-tune);
-     B is the literal reading of "the long run is quant-aware". **ASK Andrew which, with the
-     measured overhead in hand — do not assume.**
+   - **★ RESOLVED — ANDREW 2026-08-01: "we'll need to do the 10x budget run WITH AND WITHOUT QAT,
+     to answer two questions: how much 10x-ing epochs reduces log loss, and how much QAT increases
+     it."** So the 10x is TWO ARMS, and each arm IS one of the two measurements:
+     * **Arm 1, PLAIN 10x** vs the current (1.25-ep) champion  ->  *what does 10x the epoch budget
+       buy?*  This is where the +0.0037/+0.0043 vs upstream is supposed to live.
+     * **Arm 2, QAT** vs arm 1  ->  *what does quantization-aware training cost?*  Reported as a
+       clean delta at matched budget, which no previous number gives (plain-era and QAT-era
+       loglosses have never been comparable).
+     ⚠ **ONE THING STILL TO CONFIRM BEFORE LAUNCH, and it is a 2x cost difference:** arm 2 can be
+     (A) the standard **warm-started ~2.0-ep QAT fine-tune on arm 1's final** — cheap, and it
+     measures the QAT cost *as actually deployed*, since that is how QAT has always been applied
+     here; or (B) a **second full 10x run with QAT active throughout**, warm-started from the
+     current champion. **A is the recommendation** — it answers exactly the question asked, adds
+     ~2 epochs instead of ~12.5, and B additionally risks the iter-40 lesson (`QAT from scratch =
+     +0.0118`; it MUST warm-start). B is only worth it if the separate question "would QAT-aware
+     training from the start be BETTER at 10x?" is also wanted. Put it to Andrew when the run is
+     actually scheduled, not before — this is after the features rebuild.
    **Three things that are tuned for 1 epoch and must be RECONSIDERED at 12.5 — write the answers
    down before launching:** (a) **warmup 200 steps** is 0.9% of a 1-ep run but 0.09% of this one;
    upstream used 20,000. (b) **augmentation is OFF** (`RWKV_AUGMENT_SEED=1234`) — a deliberate
@@ -1162,7 +1173,30 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
   * A sub-0.001 winner still needs **confirming on the full VAL half (5001-7500)** before it becomes
     the recipe — the subset is a ranking proxy, not a gate.
 
-**Then iter 34**, on whatever the tuner leaves as the champion recipe.
+### ★ THE ORDER FROM HERE (Andrew 2026-08-01, explicit): finish HP tuning -> seed pair -> PAVA lambda
+
+1. **iter 34 = the HP tuning itself**, recorded on whatever recipe the tuner leaves. ⚠ The grid runs
+   on the 1000-user subset 5001-6000, which is a RANKING PROXY, not a gate — so before iter 34 is
+   recorded the winner needs **one eval on the full VAL half 5001-7500** and a paired comparison
+   against iter 32's RECTIFIED jsonls. That is eval-only (~2.5 h): the winning trial's decay
+   checkpoint already exists under `scratchpad/tuner65k/<trial>/`, so nothing is retrained.
+2. **The SEED PAIR** (queue item 3 below) — the tuned recipe WITH and WITHOUT KD, both at
+   `RWKV_AUGMENT_SEED=4321`. ~9.5 h (2 x ~4.2 h + ~1.5 h fresh teacher dump). It runs BEFORE any
+   new research iteration because it validates the champion everything after is measured against.
+3. **iter 35 = tuning `RWKV_PAVA_LAMBDA`** (and, if it looks live, `RWKV_PROBE_DENSITY`).
+   **WHY THIS ONE:** the rectifier SHIPS, and iter 31 still pays **+0.001893 on ahead** purely to
+   be rectified (0.298909 -> 0.300802) — roughly 4x everything the HP tuner just recovered, and the
+   single largest identified loss we already know how to attack. It is a TRAINING problem, not an
+   inherent cost: A18 (never trained under the constraint) paid +0.003588 and training at
+   `PAVA_LAMBDA=0.1` halved it; nobody has asked whether more pressure halves it again. One env
+   flag on the existing recipe, so a normal ~4.2 h iteration. Extends a family that is 1/1 rather
+   than reopening a closed one (conduct rule 5).
+   ⚠ **Measure BOTH metrics.** This family trades raw accuracy for monotonicity, so it can look
+   like a regression on the unrectified number while being a deploy win. The gate basis is now
+   RECTIFIED, which is finally the quantity it improves — but record both.
+4. **In parallel and CPU-only (no GPU contention): scope the input-features LMDB rebuild.** The
+   endgame says start the long-lead item BEFORE the algorithmic loop runs dry, not after; design is
+   already in `optimization/FUTURE_FEATURES.md`, and the rebuild is 2-4 days of CPU.
 
 **⚠ BIG-EVAL OPS RULE (learned the hard way 2026-07-29/30):** giant users (5002/5905/5995,
 266k-367k reviews) OOM the 12 GB card **iff the DESKTOP is holding several GB of VRAM** — 4.6 GB
