@@ -1,0 +1,36 @@
+# The OLD d=128 2.76M leaderboard model (upstream weights, trained on users 101-4999),
+# evaluated on the VAL half 5001-7500 -- the set every current candidate is scored on.
+#
+# CONFIGURED AS THE MODEL WAS INTENDED TO BE USED (Andrew 2026-08-02): NO PAVA rectifier
+# (RWKV_EVAL_PAVA unset) and the piecewise-linear ahead correction ON (RWKV_NO_AHEAD_RESIDUAL
+# unset). That reproduces the 2026-07-03 baseline's configuration exactly -- that run predated
+# both the rectifier and the NO_AHEAD_RESIDUAL rule.
+#
+# WHY RE-RUN A NUMBER WE ALREADY HAVE: the 2026-07-03 result (ahead 0.294612 / imm 0.263561 on
+# 5001-7500) is the anchor for the entire phase's "we are ~0.0037 behind upstream" narrative, and
+# it is five weeks old. The model code has since gained PAVA, the GRU head, the state clamp,
+# input-feature masking and cmix stripping. All are env-gated and default OFF, so this SHOULD
+# reduce to the original forward -- but the June parity trace taught that a stale reference can
+# silently invalidate a gate for weeks, and "should" is what failed there. Writing to NEW tags
+# (base128_val, not base5k) so the old and new numbers can be diffed instead of one clobbering
+# the other.
+FILE_AHEAD = "RWKV-base128_val"
+FILE_IMM = "RWKV-P-base128_val"
+
+MODEL_PATH = "pretrain/RWKV_trained_on_101_4999.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 3_000_000_000
+
+USER_START = 5001
+USER_END = 7500
+
+NUM_FETCH_PROCESSES = 2
