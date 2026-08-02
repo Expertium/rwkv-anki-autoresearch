@@ -1,0 +1,62 @@
+{
+  "note": "final grid of the 2026-07-30..08-02 run; EDIT THIS FILE between trials -- the loop re-reads it, no kill needed",
+  "defaults": {
+    "lr_mult": 1.0,
+    "warmup_steps": 200,
+    "muon_lr_mult": 1.0,
+    "weight_decay": 0.01,
+    "clip": 0.25,
+    "decay_ratio": 0.25
+  },
+  "space": [
+    {
+      "param": "warmup_steps",
+      "grid": [
+        200,
+        400,
+        800
+      ]
+    },
+    {
+      "param": "muon_lr_mult",
+      "grid": [
+        1.0,
+        0.5,
+        0.25,
+        0.125
+      ]
+    },
+    {
+      "param": "weight_decay",
+      "grid": [
+        0.01,
+        0.05,
+        0.1
+      ]
+    },
+    {
+      "param": "clip",
+      "grid": [
+        0.25,
+        0.5
+      ]
+    },
+    {
+      "param": "decay_ratio",
+      "grid": [
+        0.25,
+        0.4,
+        0.7143,
+        0.55,
+        1.0
+      ]
+    },
+    {
+      "param": "lr_mult",
+      "grid": [
+        1.0,
+        0.7
+      ]
+    }
+  ]
+}

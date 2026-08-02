@@ -174,6 +174,155 @@ DEFAULTS = {"lr_mult": 1.0, "warmup_steps": 200, "muon_lr_mult": 1.0,
             "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
 PARAMS = [p for p, _ in SPACE]
 
+# =============================================================================
+# POLICY (added 2026-08-02, after the first full run). Everything here exists
+# because the 2026-07-30..08-02 grid needed a HUMAN to intervene, four times, for
+# things a rule can decide. Each entry names the incident it prevents.
+# =============================================================================
+SPACE_OVERRIDE = f"{ROOT}/optimization/tuner65k_space.json"
+
+# Cross-seed spread on an IDENTICAL recipe, per mode (the seed-pair doctrine). The objective is
+# ahead+imm, so its noise is ~2x this. Used to flag coordinate winners that are really coin flips.
+SEED_NOISE = 0.0004
+
+POLICY = {
+    # --- auto edge-extension ------------------------------------------------
+    # INCIDENT: muon_lr_mult won at 0.5 (the low edge), then 0.25, then 0.125 -- three manual
+    # stop-edit-verify-relaunch cycles. decay_ratio did the same at 0.4 -> 0.7143 -> 1.0. Each
+    # cycle threw away ~20 min of an in-flight trial and leaked orphaned fetch workers.
+    "auto_extend": True,
+    # Extend only while the edge win is bigger than objective noise -- otherwise the grid would
+    # crawl outward on coin flips.
+    # CALIBRATED, not guessed: replayed against all 11 extend/stop decisions this grid actually
+    # made. 0.0008 agreed on 7, 0.0005 on 8, 0.0002 on 8; 0.0003 agrees on 11 of 11 (with the
+    # bound-clamp below). Re-run the replay in the docstring of tools/replay if this changes.
+    "extend_min_gain": 0.0003,
+    # ...and only while the gain is not collapsing. INCIDENT: I stopped muon_lr_mult at 0.125 by
+    # eyeballing "imm increments went +0.000411 -> +0.000084"; decay_ratio's per-unit slope halved
+    # twice before I called it. This is that judgement, written down: require the newest increment
+    # to be at least this fraction of the previous one.
+    "extend_saturate_frac": 0.45,
+    "extend_max_per_param": 4,
+    # ⚠ BOUNDS ARE A HUMAN DECISION AND THE TUNER NEVER CROSSES THEM. This is what makes
+    # auto-extension safe: decay_ratio's 0.4 ceiling was Andrew's documented methodology limit
+    # (1/2.5), not a grid choice of mine, which is why raising it was escalated rather than
+    # automated -- twice. Encoded here, the tuner extends freely INSIDE the sanctioned range and
+    # stops at the edge with a message asking for a decision, instead of either crawling past a
+    # policy limit or stalling on one that was never really a limit.
+    "bounds": {
+        "decay_ratio":  [0.1, 1.0],      # 1.0 = Andrew 2026-08-02; was 1/2.5 then 1/1.4
+        "muon_lr_mult": [0.03, 4.0],
+        "lr_mult":      [0.5, 3.0],
+        "warmup_steps": [100, 3200],
+        "weight_decay": [0.0, 0.5],
+        "clip":         [0.05, 2.0],
+    },
+    # --- housekeeping between trials ---------------------------------------
+    # INCIDENT: killing a trial to change the grid orphaned its fetch workers; 12 had accumulated
+    # across four relaunches, still holding LMDB mappings, on a box that had already hit 0.3 GB
+    # free once that day.
+    "reap_orphans": True,
+    # --- honest cost reporting ---------------------------------------------
+    # INCIDENT: the ETA said "4.2 h/trial" while decay_ratio=1.0 trials actually took 5.8 h,
+    # because decay steps scale with the ratio. Nobody was misled for long, but the queue estimate
+    # was quietly wrong for a day.
+    "steps_per_sec": 1.253,              # measured on this trunk at MAX=65536
+    "eval_hours": 1.0,                   # ~1000 users, rectified
+    "sanity_hours": 0.05,
+}
+
+
+def bracket(x, steps=2, ratio=2.0, additive=False):
+    """Grid that brackets the incumbent on BOTH sides. USE THIS when adding a lever.
+
+    ★ THE MOST EXPENSIVE LESSON OF THE 2026-07-30 RUN. The `lr_mult` grid was [1.0, 1.41, 2.0,
+    2.8] -- upward ONLY, because the design anchored on "the batch doubled, so the LR should
+    rise". Four full trials (~17 h) went into a hypothesis that was not merely wrong but
+    BACKWARDS: every upward point was worse, monotonically, and the phase's single biggest win
+    turned out to be an 8x REDUCTION in Muon's LR. That win was reachable only by accident,
+    because `muon_lr_mult` happened to contain 0.5 -- the one downward probe anywhere in the
+    design. A grid built with this helper would have found it in trial 2 instead of trial 7.
+
+    Guard against direction priors generally: if you believe a lever should move one way, that
+    belief is exactly the thing the grid should be able to falsify.
+    """
+    if additive:
+        return sorted({x} | {x + k * ratio for k in range(1, steps + 1)}
+                      | {x - k * ratio for k in range(1, steps + 1) if x - k * ratio > 0})
+    out = {float(x)}
+    for k in range(1, steps + 1):
+        out.add(round(x * ratio ** k, 6))
+        out.add(round(x / ratio ** k, 6))
+    return sorted(out)
+
+
+def load_space():
+    """SPACE/DEFAULTS, with an optional JSON override re-read on EVERY call.
+
+    INCIDENT this fixes: changing the grid meant killing the loop AND the in-flight trial, editing
+    this file, re-verifying the journal replay, and relaunching -- four times, each costing ~20 min
+    of training plus a batch of orphaned workers. The loop now re-reads the space between trials,
+    so a grid edit lands at the next trial boundary with nothing killed and nothing lost.
+    Absent or unreadable file -> the in-code SPACE, so this cannot break a run.
+    """
+    if not os.path.exists(SPACE_OVERRIDE):
+        return [(p, list(g)) for p, g in SPACE], dict(DEFAULTS)
+    try:
+        with open(SPACE_OVERRIDE) as fh:
+            d = json.load(fh)
+        space = [(e["param"], list(e["grid"])) for e in d["space"]]
+        defaults = dict(d.get("defaults") or DEFAULTS)
+        if not space:
+            raise ValueError("empty space")
+        return space, defaults
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print(f"[space] override unreadable ({e!r}) -- falling back to the in-code SPACE",
+              flush=True)
+        return [(p, list(g)) for p, g in SPACE], dict(DEFAULTS)
+
+
+def save_space(space, defaults, note=""):
+    tmp = SPACE_OVERRIDE + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump({"note": note or "written by hp_tuner_5k.py; edited between trials is SAFE "
+                                  "-- the loop re-reads this file before each trial",
+                   "defaults": defaults,
+                   "space": [{"param": p, "grid": list(g)} for p, g in space]}, fh, indent=2)
+    os.replace(tmp, SPACE_OVERRIDE)
+
+
+def est_trial_hours(cfg, space=None):
+    """Wall-clock estimate for ONE trial from its config. decay steps scale with decay_ratio, so
+    a ratio-1.0 trial is ~40% dearer than a ratio-0.25 one -- the flat '4.2 h' the old status line
+    printed was wrong for half this grid."""
+    sps = POLICY["steps_per_sec"]
+    ws = ws_steps()
+    dec = int(ws * float(cfg.get("decay_ratio", DEFAULTS["decay_ratio"])))
+    return (ws + dec) / sps / 3600.0 + POLICY["eval_hours"] + POLICY["sanity_hours"]
+
+
+def reap_orphans():
+    """Kill python fetch workers whose parent is gone. Returns the count.
+
+    These accumulate whenever a trial is stopped (grid change, crash, manual abort) and they hold
+    LMDB mappings that re-balloon, on a box whose RAM headroom is already the binding constraint.
+    Deliberately narrow: only python.exe running multiprocessing's spawn_main, and only when the
+    recorded parent pid no longer exists -- so it cannot touch Andrew's srs-benchmark run, the
+    Reddit bot, the Telegram bridge, or a live trial."""
+    if not POLICY["reap_orphans"] or os.name != "nt":
+        return 0
+    ps = ("$live=@{}; Get-CimInstance Win32_Process | ForEach-Object { $live[[int]$_.ProcessId]=1 };"
+          "$n=0; Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object {"
+          " $_.CommandLine -like '*spawn_main*' -and -not $live.ContainsKey([int]$_.ParentProcessId)"
+          "} | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue; $n++ };"
+          "Write-Output $n")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=90)
+        return int((out.stdout or "0").strip() or 0)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 0
+
 
 def peak_lr(cfg):
     return BASE_PEAK_LR * float(cfg["lr_mult"])
@@ -219,12 +368,14 @@ def find(recs, cfg):
     return None
 
 
-def compute(recs):
+def compute(recs, space=None, defaults=None):
     """Replay coordinate descent. Returns ('need', cfg, param) or ('done', best_cfg)."""
-    best = dict(DEFAULTS)
-    if find(recs, DEFAULTS) is None:
-        return ("need", dict(DEFAULTS), "baseline")
-    for param, grid in SPACE:
+    space = space if space is not None else [(p, list(g)) for p, g in SPACE]
+    defaults = defaults if defaults is not None else dict(DEFAULTS)
+    best = dict(defaults)
+    if find(recs, defaults) is None:
+        return ("need", dict(defaults), "baseline")
+    for param, grid in space:
         results = {}
         for v in grid:
             cfg = dict(best)
@@ -235,6 +386,144 @@ def compute(recs):
             results[v] = obj(r)
         best[param] = min(results, key=lambda v: results[v])
     return ("done", best)
+
+
+def coordinate_report(recs, space, defaults):
+    """Per-coordinate: winner, its gain over the DEFAULT, and whether adopting it is justified.
+
+    WHY vs the default and NOT vs the runner-up: the runner-up of a monotonic lever is its
+    adjacent grid point, which is close BY CONSTRUCTION -- muon_lr_mult 0.125 beats 0.25 by only
+    +0.000266, yet beats the default 1.0 by +0.00187. Scoring against the runner-up made every
+    coordinate in this grid look like a coin flip, which is exactly backwards for the two levers
+    that carried the whole result. The decision the tuner actually makes is "change this
+    hyperparameter or keep it", so the honest test is winner vs DEFAULT.
+
+    WHY flag it at all: this grid adopted warmup 400 over the default 200 on +0.000265, well
+    inside the ~0.0008 objective noise floor (2 x the per-mode cross-seed spread). That went into
+    the recipe looking like a finding. A tuned recipe should say which of its values are real and
+    which are coin flips it happened to land on."""
+    best = dict(defaults)
+    out = []
+    for param, grid in space:
+        vals = []
+        for v in grid:
+            cfg = dict(best)
+            cfg[param] = v
+            r = find(recs, cfg)
+            if r is not None:
+                vals.append((obj(r), v))
+        if not vals:
+            out.append((param, None, None, None, None))
+            continue
+        vals.sort()
+        win_o, win_v = vals[0]
+        runner = (vals[1][0] - win_o) if len(vals) > 1 else None
+        dflt = defaults.get(param)
+        dflt_o = next((o for o, v in vals if v == dflt), None)
+        gain = (dflt_o - win_o) if dflt_o is not None else None
+        best[param] = win_v
+        if gain is None:
+            verdict = "default not measured"
+        elif win_v == dflt:
+            verdict = "UNCHANGED (default held)"
+        elif gain >= 2 * SEED_NOISE:
+            verdict = "REAL"
+        else:
+            verdict = "COIN FLIP (adopted inside noise)"
+        out.append((param, win_v, gain, runner, verdict))
+    return out, best
+
+
+def _next_edge_value(grid, at_low):
+    """Next point beyond an edge, by the grid's own geometric step. Falls back to a factor of 2."""
+    s = sorted(grid)
+    if len(s) < 2:
+        return None
+    if at_low:
+        a, b = s[0], s[1]
+        ratio = (a / b) if b else 0.5
+        nxt = a * (ratio if 0 < ratio < 1 else 0.5)
+    else:
+        a, b = s[-1], s[-2]
+        ratio = (a / b) if b else 2.0
+        nxt = a * (ratio if ratio > 1 else 2.0)
+    return round(nxt, 6)
+
+
+def maybe_extend(recs, space, defaults, verbose=True):
+    """If a COMPLETE coordinate was won at a grid edge and is still paying, append the next point.
+
+    Returns a new space if it extended, else None. This is the rule that replaces four manual
+    stop-edit-verify-relaunch cycles. It refuses to extend when:
+      * the edge win is inside noise               -> the grid would crawl on coin flips
+      * the gain is collapsing                     -> the lever is saturating (the judgement I made
+                                                      by eye for muon_lr_mult and decay_ratio)
+      * the next point would cross a declared bound -> a HUMAN decision; it says so and stops
+      * the coordinate has already been extended max_extend times
+    """
+    if not POLICY["auto_extend"]:
+        return None
+    best = dict(defaults)
+    for idx, (param, grid) in enumerate(space):
+        measured = []
+        for v in grid:
+            cfg = dict(best)
+            cfg[param] = v
+            r = find(recs, cfg)
+            if r is None:
+                return None          # coordinate incomplete -- nothing to decide yet
+            measured.append((v, obj(r)))
+        measured.sort(key=lambda t: t[0])
+        win_v = min(measured, key=lambda t: t[1])[0]
+        best[param] = win_v
+        if win_v not in (measured[0][0], measured[-1][0]) or len(measured) < 2:
+            continue                 # interior optimum -> this coordinate is settled
+        at_low = win_v == measured[0][0]
+        ordered = measured if at_low else measured[::-1]      # winner first, walking inward
+        gain = ordered[1][1] - ordered[0][1]                  # win vs its neighbour (positive=better)
+        if gain < POLICY["extend_min_gain"]:
+            if verbose:
+                print(f"[extend] {param}: edge win {win_v:g} but gain {gain:+.6f} is inside noise "
+                      f"({POLICY['extend_min_gain']:.6f}) -- not extending", flush=True)
+            continue
+        if len(ordered) >= 3:
+            prev_gain = ordered[2][1] - ordered[1][1]
+            if prev_gain > 0 and gain < POLICY["extend_saturate_frac"] * prev_gain:
+                if verbose:
+                    print(f"[extend] {param}: SATURATING (last gain {gain:+.6f} < "
+                          f"{POLICY['extend_saturate_frac']:g} x previous {prev_gain:+.6f}) "
+                          f"-- lever spent, not extending", flush=True)
+                continue
+        base_n = len(dict(SPACE).get(param, []))
+        if len(grid) - base_n >= POLICY["extend_max_per_param"]:
+            if verbose:
+                print(f"[extend] {param}: already extended {len(grid)-base_n}x "
+                      f"(max {POLICY['extend_max_per_param']}) -- stopping", flush=True)
+            continue
+        nxt = _next_edge_value(grid, at_low)
+        if nxt is None:
+            continue
+        lo, hi = POLICY["bounds"].get(param, (float("-inf"), float("inf")))
+        # CLAMP to the bound rather than refuse. The geometric step routinely overshoots a
+        # sanctioned limit while the limit itself is still an untried, useful point: at
+        # decay_ratio [0.25, 0.4, 0.7143] the step wants 1.276 but the bound is 1.0, and 1.0 was
+        # exactly what Andrew asked for. Refusing there was the rule's only disagreement with the
+        # human across all 11 decisions this grid made.
+        nxt = min(max(round(nxt, 6), lo), hi)
+        if nxt in grid or any(abs(nxt - g) < 1e-9 for g in grid):
+            if verbose:
+                print(f"[extend] ** {param} won at {win_v:g}, which is the edge of its sanctioned "
+                      f"range [{lo:g}, {hi:g}], and the lever is STILL PAYING ({gain:+.6f}). "
+                      f"This is a HUMAN decision -- widen POLICY['bounds'][{param!r}] if the "
+                      f"range should change. **", flush=True)
+            continue
+        new_space = [(p, list(g)) for p, g in space]
+        new_space[idx] = (param, list(grid) + [nxt])
+        if verbose:
+            print(f"[extend] {param}: won at the {'low' if at_low else 'high'} edge {win_v:g} "
+                  f"with gain {gain:+.6f} -> appending {nxt:g}", flush=True)
+        return new_space
+    return None
 
 
 def trial_name(param, cfg):
@@ -583,10 +872,21 @@ def cmd_record_baseline(ahead, imm):
 def cmd_loop():
     """Self-driving coordinate descent: run every remaining trial (its WS->decay->eval->record
     .cmd) until DONE. Resumable -- replays the journal on restart, so a teardown continues from
-    the next trial. Launch this DETACHED (survives Esc). Each trial .cmd self-records."""
+    the next trial. Launch this DETACHED (survives Esc). Each trial .cmd self-records.
+
+    Between trials it now also: re-reads the grid (so an edit needs no kill), auto-extends a
+    coordinate won at a still-paying edge, and reaps orphaned fetch workers. All three were manual
+    in the 2026-07-30..08-02 run."""
     while True:
+        space, defaults = load_space()           # hot reload -- edits land with nothing killed
         recs = load_journal()
-        out = compute(recs)
+
+        ext = maybe_extend(recs, space, defaults)
+        if ext is not None:
+            save_space(ext, defaults, note="auto-extended by the edge rule; see POLICY")
+            continue                             # re-plan against the extended grid
+
+        out = compute(recs, space, defaults)
         if out[0] == "done":
             best = out[1]
             print("TUNER DONE. best:", json.dumps(best), flush=True)
@@ -595,12 +895,26 @@ def cmd_loop():
             if r and base:
                 print(f"  best vs baseline: ahead {base['ahead']-r['ahead']:+.6f}  "
                       f"imm {base['imm']-r['imm']:+.6f}  (obj {obj(base)-obj(r):+.6f})", flush=True)
+            rep, _ = coordinate_report(recs, space, defaults)
+            for param, win, gain, runner, verdict in rep:
+                if win is None:
+                    continue
+                gs = f"{gain:+.6f}" if gain is not None else "n/a"
+                print(f"  {param:14} -> {win:<9g} vs default {defaults.get(param, 0):<9g} "
+                      f"gain {gs:>10}  {verdict}", flush=True)
+            print("  NOTE: a sub-0.001 winner still needs confirming on the full VAL half "
+                  "(5001-7500) -- run scratchpad/tuner65k/run_confirm.cmd.", flush=True)
             return
+
         _, cfg, param = out
         name = trial_name(param, cfg)
         write_trial_files(name, param, cfg)
+        n = reap_orphans()
+        if n:
+            print(f"[reap] killed {n} orphaned fetch worker(s) before starting", flush=True)
         print(f"\n===== TRIAL {name}  param={param}  cfg={json.dumps(cfg)} "
-              f"peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g} =====", flush=True)
+              f"peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g} "
+              f"est {est_trial_hours(cfg):.1f} h =====", flush=True)
         cmd_path = f"{TRIAL_DIR}/{name}/{name}.cmd".replace("/", "\\")
         rc = subprocess.call(["cmd", "/c", cmd_path])
         if find(load_journal(), cfg) is None:
@@ -627,7 +941,8 @@ def cmd_status():
     print(f"{'--- BAR (iter 31 on 5001-6000)':28} {'':14} {'':>9} {'':>9} "
           f"{BAR['ahead']:9.6f} {BAR['imm']:9.6f} {BAR['ahead']+BAR['imm']:9.6f}  "
           f"reach BOTH to have recovered what MAX=65536 cost")
-    out = compute(recs)
+    space, defaults = load_space()
+    out = compute(recs, space, defaults)
     if out[0] == "done":
         best = out[1]
         print("\nCOORDINATE DESCENT COMPLETE. best:", json.dumps(best))
@@ -636,8 +951,17 @@ def cmd_status():
         if r and base:
             print(f"  vs baseline: ahead {base['ahead']-r['ahead']:+.6f}  "
                   f"imm {base['imm']-r['imm']:+.6f}")
-            print("  NOTE: a sub-0.001 winner still needs confirming on the full VAL half "
-                  "(5001-7500) before it becomes the recipe.")
+        # Which coordinate choices are real and which are coin flips (see coordinate_report).
+        rep, _ = coordinate_report(recs, space, defaults)
+        print(f"\n  {'coordinate':14} {'winner':>9} {'default':>9} {'gain vs default':>16}"
+              f"  verdict")
+        for param, win, gain, runner, verdict in rep:
+            if win is None:
+                continue
+            gs = f"{gain:+.6f}" if gain is not None else "n/a"
+            print(f"  {param:14} {win:>9g} {defaults.get(param, 0):>9g} {gs:>16}  {verdict}")
+        print("\n  NOTE: a sub-0.001 winner still needs confirming on the full VAL half "
+              "(5001-7500) before it becomes the recipe.")
     else:
         _, cfg, param = out
         if param == "baseline":
@@ -645,11 +969,25 @@ def cmd_status():
                   "(the maxval run restricted to 5001-6000); no GPU run needed.")
         else:
             print(f"\nNEXT: probe param={param} value={cfg[param]:g}  ({trial_name(param, cfg)})"
-                  f"  peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g}")
-    remaining = sum(len(g) for _, g in SPACE) - len(SPACE)
-    # 4.0 h MEASURED end-to-end on trials 1 and 2 (WS 2h33 + decay 38 min + eval ~1 h), not projected
-    print(f"\n(grid: {remaining} non-default points; ~4.2 h/trial measured => ~{remaining*4.2:.0f} h "
-          f"if none prune)")
+                  f"  peak_lr={peak_lr(cfg):g} muon_lr={muon_lr(cfg):g}"
+                  f"  est {est_trial_hours(cfg):.1f} h")
+    # Cost is per-config, not a flat constant: decay steps scale with decay_ratio, so the old flat
+    # "4.2 h x N" understated this grid by ~25% on its longest trials.
+    todo, hours = 0, 0.0
+    probe = dict(defaults)
+    for param, grid in space:
+        for v in grid:
+            cfg = dict(probe)
+            cfg[param] = v
+            if find(recs, cfg) is None:
+                todo += 1
+                hours += est_trial_hours(cfg)
+        got = [(obj(find(recs, {**probe, param: v})), v) for v in grid
+               if find(recs, {**probe, param: v}) is not None]
+        if got:
+            probe[param] = min(got)[1]
+    print(f"\n(grid: {sum(len(g) for _, g in space)} points, {todo} unrun "
+          f"=> ~{hours:.0f} h at {POLICY['steps_per_sec']:g} steps/s)")
 
 
 if __name__ == "__main__":
