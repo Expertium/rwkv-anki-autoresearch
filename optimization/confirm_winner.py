@@ -59,6 +59,10 @@ def main():
         raise SystemExit(f"no decay checkpoint under {folder} -- did the trial finish?")
     step, ckpt = max(cands)
 
+    # ⚠ KEY NAMES ARE get_result's, NOT the training toml's. Written wrong the first time
+    # (TEST_DATASET_LMDB_PATH / TEST_USERS_START, which are TRAINING-side names) and the dry run
+    # missed it because it only checked the file PARSED. Parsing is not validation -- the schema
+    # check below is. Format mirrors scratchpad/write_eval_toml.py, which is the reference.
     with open(OUT_TOML, "w") as f:
         f.write(f'''# FULL VAL-half confirmation of the HP tuner winner: {name} (decay step {step}).
 # Subset (5001-6000) result: ahead {best["ahead"]:.6f} / imm {best["imm"]:.6f}.
@@ -66,15 +70,34 @@ def main():
 FILE_AHEAD = "RWKV-{TAG}"
 FILE_IMM = "RWKV-P-{TAG}"
 MODEL_PATH = "{ckpt}"
-TEST_USERS_START = {VAL_START}
-TEST_USERS_END = {VAL_END}
-TEST_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
-TEST_DATASET_LMDB_SIZE = 250_000_000_000
-LABEL_FILTER_LMDB_PATH = "label_filter_db"
-LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 DEVICE = "cuda"
 DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = {VAL_START}
+USER_END = {VAL_END}
+NUM_FETCH_PROCESSES = 2
 ''')
+
+    # Schema check: eval_sharded reads these by exact name and dies with a bare KeyError if any
+    # is missing, so assert them here where the message can say what to do about it.
+    import tomli
+    with open(OUT_TOML, "rb") as fh:
+        parsed = tomli.load(fh)
+    required = ["FILE_AHEAD", "FILE_IMM", "MODEL_PATH", "DEVICE", "DTYPE", "DATASET_LMDB_PATH",
+                "DATASET_LMDB_SIZE", "LABEL_FILTER_LMDB_PATH", "LABEL_FILTER_LMDB_SIZE",
+                "USER_START", "USER_END", "NUM_FETCH_PROCESSES"]
+    missing = [k for k in required if k not in parsed]
+    if missing:
+        raise SystemExit(f"toml is missing get_result keys {missing} -- compare against "
+                         f"scratchpad/write_eval_toml.py")
+    if not os.path.exists(ckpt):
+        raise SystemExit(f"checkpoint does not exist: {ckpt}")
     with open(WINNER_TXT, "w") as f:
         f.write(name + "\n")
 
