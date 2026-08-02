@@ -18,7 +18,7 @@ REM     record of every trim it had done. Now ">>" (append), with a start banner
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 echo ===== RAM GUARD START %DATE% %TIME% ===== >> scratchpad\ram_guard.log
 :loop
-powershell -NoProfile -ExecutionPolicy Bypass -File scratchpad\ram_guard.ps1 -FloorGB 14 -IntervalSec 60 -Minutes 1440 >> scratchpad\ram_guard.log 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -File scratchpad\ram_guard.ps1 -FloorGB 22 -IntervalSec 45 -Minutes 1440 >> scratchpad\ram_guard.log 2>&1
 echo [guard] inner run ended (exit %ERRORLEVEL%) %DATE% %TIME% - restarting >> scratchpad\ram_guard.log
 timeout /t 5 /nobreak > nul
 goto loop
