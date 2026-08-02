@@ -1194,6 +1194,24 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
    ⚠ **Measure BOTH metrics.** This family trades raw accuracy for monotonicity, so it can look
    like a regression on the unrectified number while being a deploy win. The gate basis is now
    RECTIFIED, which is finally the quantity it improves — but record both.
+3b. **THE d=128 VAL-HALF RE-EVAL + a research_5k.md row (Andrew 2026-08-02).** Runner staged at
+   `scratchpad/base128_val/` (~2.5 h, queue it behind the winner confirmation). Config = **the
+   model as intended: NO rectifier, piecewise-linear ahead correction ON** — which is exactly the
+   2026-07-03 baseline's setup, since that run predated both `RWKV_EVAL_PAVA` and the
+   `NO_AHEAD_RESIDUAL` rule.
+   **It re-derives a number we already have** (ahead 0.294612 / imm 0.263561 on 5001-7500) *on
+   purpose*: that five-week-old result anchors the entire phase's "~0.0037 behind upstream"
+   narrative, and the model code has since gained PAVA, the GRU head, the state clamp, feature
+   masking and cmix stripping. All default OFF, so it SHOULD reduce to the original forward — but
+   the June parity trace proved a stale reference can invalidate a gate for weeks, and "should" is
+   what failed there. New tags (`base128_val`) so the July jsonls are not clobbered;
+   `compare_base128.py` reports mean AND max per-user drift and flags a mean move >1e-4.
+   **THEN (Andrew's instruction, CONDITIONAL on the drift check passing): add 0.294612/0.263561 to
+   `research_5k.md`.** ⚠ Do NOT add them if the re-run disagrees — report the drift instead.
+   **WHY the row is worth adding:** the table's iteration-0 row currently carries the **5001-10000**
+   numbers (0.2964/0.2649) while every other row is VAL-half (the ᵛ marker), so row 0 is not
+   comparable to row 32 as printed. The VAL-half restriction makes the target directly diffable
+   against every candidate.
 4. **In parallel and CPU-only (no GPU contention): scope the input-features LMDB rebuild.** The
    endgame says start the long-lead item BEFORE the algorithmic loop runs dry, not after; design is
    already in `optimization/FUTURE_FEATURES.md`, and the rebuild is 2-4 days of CPU.
