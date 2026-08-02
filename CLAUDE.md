@@ -1183,6 +1183,28 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
 2. **The SEED PAIR** (queue item 3 below) — the tuned recipe WITH and WITHOUT KD, both at
    `RWKV_AUGMENT_SEED=4321`. ~9.5 h (2 x ~4.2 h + ~1.5 h fresh teacher dump). It runs BEFORE any
    new research iteration because it validates the champion everything after is measured against.
+2b. **HP TUNING EXTENDED — two more coordinates (Andrew 2026-08-02: "let's add momentum and beta2
+   then").** `muon_momentum` [0.95, 0.9, 0.8, 0.975] and `adamw_beta2` [0.999, 0.98, 0.95] =
+   **5 unrun points x ~5.9 h = ~29 h** (they run at the incumbent `decay_ratio=1.0`, whose decay
+   phase is as long as WS itself). Runs AFTER the current confirmation eval, which is for the
+   pre-extension winner and stays valid as a checkpoint either way; **re-confirm only if the
+   winner changes.**
+   `muon_momentum` is the high-EV one: Muon's LR turned out 8x too high for this batch size, and
+   momentum enters the effective step the same way (~lr/(1-m)) over the same 500,800 params. It is
+   bracketed in **(1-m)**, not m — a quantity pinned near 1 cannot be bracketed by ratios.
+   ⚠ `RWKV_MUON_MOMENTUM` moved OUT of the fixed trunk env into the per-trial block; a run that
+   copies the old trunk string would pin it at 0.95 and silently flatten the coordinate.
+2c. **TWO METHODOLOGY DECISIONS SETTLED (Andrew 2026-08-02):**
+   * **AUGMENTATION STAYS OFF.** So epochs remain byte-identical replays. The consequence to keep
+     in mind: any "more epochs" result measured in this configuration is measured where extra
+     epochs *cannot* add data variety — which is exactly why the `champ5k_b1` A/B that pinned
+     WS=1 is not evidence against a larger budget.
+   * **THE EPOCH BUDGET IS NOT REOPENED NOW — it belongs to the endgame.** *"We could do more
+     epochs, but that would slow every future run down, so it's best to do it at the very end."*
+     So WS stays 1 epoch for every research iteration, and the budget question is answered ONCE
+     by the 10x run after the features rebuild. ⚠ Note `decay_ratio=1.0` already moved total
+     training 1.25 -> 2.0 epochs, so the "current budget" is 1.6x what it was — a cost every
+     future run now pays, accepted because the accuracy was real (+0.00145 vs the default).
 3. **iter 35 = tuning `RWKV_PAVA_LAMBDA`** (and, if it looks live, `RWKV_PROBE_DENSITY`).
    **WHY THIS ONE:** the rectifier SHIPS, and iter 31 still pays **+0.001893 on ahead** purely to
    be rectified (0.298909 -> 0.300802) — roughly 4x everything the HP tuner just recovered, and the

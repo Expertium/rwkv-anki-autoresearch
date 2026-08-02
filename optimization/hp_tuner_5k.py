@@ -169,9 +169,21 @@ SPACE = [
     # incumbent of the ones BEFORE it, and every recorded row already has lr_mult=1.0 (the
     # default), so warmup/muon rows still match their configs exactly. Verified before relaunch.
     ("lr_mult",       [1.0, 0.7]),
+    # ★ ADDED 2026-08-02 (Andrew: "let's add momentum and beta2 then").
+    # Muon's momentum -- the direct companion of the lever that carried this round. Its LR was 8x
+    # too high FOR THIS BATCH SIZE; momentum enters the effective step the same way (~lr/(1-m))
+    # and governs the same 500,800 params, so the same batch change plausibly mis-set it too.
+    # Bracketed in (1-m) = [0.2, 0.1, 0.05, 0.025], NOT geometrically in m: a quantity pinned near
+    # 1 cannot be bracketed by ratios (bracket(0.95) would propose 1.9).
+    ("muon_momentum", [0.95, 0.9, 0.8, 0.975]),
+    # AdamW beta2. Bounded upside -- it governs only the 57,412 AdamW params, which is exactly why
+    # lr_mult (moving both families) was a wash -- but 0.999 is a ~1000-step second-moment horizon,
+    # ~9% of a 10,935-step epoch, so the estimate barely converges inside a 1-epoch budget.
+    ("adamw_beta2",   [0.999, 0.98, 0.95]),
 ]
 DEFAULTS = {"lr_mult": 1.0, "warmup_steps": 200, "muon_lr_mult": 1.0,
-            "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25}
+            "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25,
+            "muon_momentum": 0.95, "adamw_beta2": 0.999}
 PARAMS = [p for p, _ in SPACE]
 
 # =============================================================================
@@ -216,6 +228,10 @@ POLICY = {
         "warmup_steps": [100, 3200],
         "weight_decay": [0.0, 0.5],
         "clip":         [0.05, 2.0],
+        # momentum is bounded in m-space; the extender's geometric step is meaningless this close
+        # to 1, so the bounds do the real work of keeping it sane.
+        "muon_momentum": [0.5, 0.99],
+        "adamw_beta2":   [0.9, 0.9995],
     },
     # --- housekeeping between trials ---------------------------------------
     # INCIDENT: killing a trial to change the grid orphaned its fetch workers; 12 had accumulated
@@ -318,6 +334,19 @@ def load_space():
         defaults = dict(d.get("defaults") or DEFAULTS)
         if not space:
             raise ValueError("empty space")
+        # MERGE, don't blindly replace. Without this the JSON silently SHADOWS the in-code SPACE,
+        # so adding a coordinate in code would do nothing and the tuner would quietly skip a lever
+        # someone thought they had added -- a failure with no error message, which is the worst
+        # kind. Params present in code but missing from the JSON are appended (in code order);
+        # grids for params the JSON already has win, since those carry auto-extensions.
+        have = {p for p, _ in space}
+        for p, g in SPACE:
+            if p not in have:
+                space.append((p, list(g)))
+                print(f"[space] '{p}' is in SPACE but not in the override -- appending it "
+                      f"(the JSON was written before this coordinate existed)", flush=True)
+        for p in DEFAULTS:
+            defaults.setdefault(p, DEFAULTS[p])
         return space, defaults
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"[space] override unreadable ({e!r}) -- falling back to the in-code SPACE",
@@ -661,6 +690,8 @@ set PYTHONPATH=C:\\Users\\Andrew\\rwkv-anki-autoresearch
 set OMP_NUM_THREADS=7
 {TRUNK_ENV}REM ---- this trial's HPs ----
 set RWKV_MUON_LR={mlr:g}
+set RWKV_MUON_MOMENTUM={cfg.get("muon_momentum", 0.95):g}
+set RWKV_ADAMW_BETA2={cfg.get("adamw_beta2", 0.999):g}
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
 set RWKV_CLIP={cfg["clip"]:g}
 REM ---- the adopted speed stack (cleared again before eval) ----

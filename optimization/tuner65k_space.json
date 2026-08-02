@@ -1,12 +1,14 @@
 {
-  "note": "final grid of the 2026-07-30..08-02 run; EDIT THIS FILE between trials -- the loop re-reads it, no kill needed",
+  "note": "includes muon_momentum + adamw_beta2 (Andrew 2026-08-02)",
   "defaults": {
     "lr_mult": 1.0,
     "warmup_steps": 200,
     "muon_lr_mult": 1.0,
     "weight_decay": 0.01,
     "clip": 0.25,
-    "decay_ratio": 0.25
+    "decay_ratio": 0.25,
+    "muon_momentum": 0.95,
+    "adamw_beta2": 0.999
   },
   "space": [
     {
@@ -56,6 +58,23 @@
       "grid": [
         1.0,
         0.7
+      ]
+    },
+    {
+      "param": "muon_momentum",
+      "grid": [
+        0.95,
+        0.9,
+        0.8,
+        0.975
+      ]
+    },
+    {
+      "param": "adamw_beta2",
+      "grid": [
+        0.999,
+        0.98,
+        0.95
       ]
     }
   ]
