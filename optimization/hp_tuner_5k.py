@@ -232,6 +232,50 @@ POLICY = {
 }
 
 
+# =============================================================================
+# CANDIDATES FOR THE NEXT TUNING ROUND (2026-08-02). NOT active -- adding them to
+# SPACE now would make the loop demand ~7 more trials, and the plan is seed-pair
+# then iter 35. Ranked by expected value, with the reasoning, so the next round
+# starts from an argument instead of a blank page.
+# =============================================================================
+NEXT_ROUND_CANDIDATES = [
+    # ---- 1. HIGHEST EV: Muon's momentum. Already wired (RWKV_MUON_MOMENTUM, default 0.95),
+    # never tuned. It is the direct companion of the lever that carried this entire round.
+    # Muon's LR turned out 8x too high FOR THIS BATCH SIZE, and momentum enters the effective
+    # step size the same way lr does (~lr/(1-m)) while governing the same 500,800 params. If one
+    # was mis-set by the batch change, the prior that the other is too is strong.
+    # ⚠ PARAMETERIZE IN (1-m), NOT m: geometric bracketing of a quantity pinned near 1 is
+    # meaningless (bracket(0.95) would propose 1.9). 1-m = 0.05 -> [0.0125, 0.025, 0.05, 0.1, 0.2]
+    # i.e. momentum [0.9875, 0.975, 0.95, 0.9, 0.8].
+    ("muon_momentum", [0.8, 0.9, 0.95, 0.975], "env RWKV_MUON_MOMENTUM; bracket in (1-m)"),
+
+    # ---- 2. AdamW beta2. Wired (RWKV_ADAMW_BETA2), hardcoded 0.999 since forever, never tuned
+    # on this trunk. Upside is bounded -- it governs only the 57,412 AdamW params, ~10% of the
+    # model, which is exactly why lr_mult (which moved both families) was a wash. But 0.999 is a
+    # ~1000-step second-moment horizon, ~9% of a 10,935-step epoch, which is slow for a 1-epoch
+    # budget: the estimate barely converges before training ends.
+    ("adamw_beta2", [0.95, 0.98, 0.999], "env RWKV_ADAMW_BETA2"),
+]
+# ---- NOT worth adding, and why (so they are not re-proposed):
+#   * dropout_scale -- weight_decay was flat across 10x and clip across 2x. Two independent nulls
+#     in the regularization family is decent evidence the family is flat on this trunk.
+#   * ns_steps (Muon's Newton-Schulz iterations, muon.py default 5) -- a compute/accuracy
+#     tradeoff, not an accuracy lever; 5 is the standard value.
+#   * cb_lr_mult -- meaningless in plain training; it tuned codebook groups that no longer exist.
+# ---- TWO THAT ARE METHODOLOGY DECISIONS, NOT COORDINATES (raise with Andrew, do not just add):
+#   * WS_EPOCHS / where the budget is spent. decay_ratio 1.0 won, so total training is now 2.0
+#     epochs, and the split between stable and decay has never been tested at that budget --
+#     WS 1 + decay 1.0 vs WS 1.5 + decay 0.5 at matched cost. ⚠ AND THE CONSTRAINT PINNING WS=1
+#     IS WEAKER THAN IT LOOKS: it rests on the champ5k_b1 A/B ("2nd epoch adds nothing"), which
+#     CLAUDE.md itself flags was run with augmentation OFF -- i.e. with BYTE-IDENTICAL epochs,
+#     the one configuration in which extra epochs CANNOT help. That null does not license WS=1
+#     at a 2-epoch budget.
+#   * Augmentation ON. Same argument from the other side: at 2.0 epochs the second pass is a
+#     byte-identical replay, and augmentation is precisely the regularizer that regime wants.
+#     ⚠ The cost is real though -- augmentation off is what gives ~zero run-to-run variance, and
+#     this tuner's ability to resolve 0.0003 effects depends on it.
+
+
 def bracket(x, steps=2, ratio=2.0, additive=False):
     """Grid that brackets the incumbent on BOTH sides. USE THIS when adding a lever.
 
