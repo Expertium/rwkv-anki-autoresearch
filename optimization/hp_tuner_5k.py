@@ -141,7 +141,20 @@ SPACE = [
     # bisection. More information per trial either way.
     # ⚠ These trials cost MORE than the standard 4.2 h -- decay is WS x ratio, so 0.7143 means
     # ~7,810 decay steps (~1h44m) vs 0.25's 2,733 (~38 min). Budget ~5.1 h and ~4.8 h.
-    ("decay_ratio",   [0.25, 0.4, 0.7143, 0.55]),
+    # ★★ CEILING RAISED AGAIN 2026-08-02 by Andrew ("raise it to 1") -- 0.7143 won at the previous
+    # ceiling and the lever shows NO sign of exhausting. All four measured points are strictly
+    # monotonic in BOTH modes:
+    #     0.25  0.298117/0.265373   0.40  0.297914/0.265188
+    #     0.55  0.297648/0.265035   0.7143 0.297478/0.264877
+    # ⚠ WHAT THIS LEVER ACTUALLY BUYS IS TOTAL TRAINING (WS 1 ep + decay = ratio ep), so 0.25 ->
+    # 1.0 is 1.25 -> 2.0 epochs = 1.6x. That makes it partly a cheap early read on the ENDGAME's
+    # "10x the epoch budget" hypothesis, and mild independent evidence the model is undertrained --
+    # consistent with the +0.0037/+0.0043 gap to upstream's ~12 epochs.
+    # Only 1.0 is added, not 0.85: four points on a straight line do not need more interior
+    # resolution, they need to know where the line ENDS.
+    # ⚠ COST: decay = WS x ratio, so ratio 1.0 is ~10,935 decay steps (~2h25m, as long as WS
+    # itself) -> a ~5.8 h trial rather than 4.2 h.
+    ("decay_ratio",   [0.25, 0.4, 0.7143, 0.55, 1.0]),
     # ★ lr_mult MOVED TO LAST and its grid REPLACED, 2026-07-31.
     # It originally ran FIRST with [1.0, 1.41, 2.0, 2.8] -- upward only, because the design
     # anchored on "the batch doubled, so the LR should rise". That heuristic was wrong in both
