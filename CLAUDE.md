@@ -1378,7 +1378,11 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **SCOPED 2026-07-27** —
    that doc now carries the four code sites, the F:-side-by-side disk plan (no delete needed), and
    a 100-user de-risk build. **CONSTANTS MEASURED 2026-08-03** (`optimization/feature_stats_id.py`,
-   300 users / 24.3M reviews, train half only) — so the only unknown left is the rebuild wall-clock.
+   300 users / 24.3M reviews, train half only) and **WALL-CLOCK MEASURED: ~23 h for both DBs**
+   (6,671 rev/s on a contended box; an overestimate — see the doc). **SCOPING IS COMPLETE.**
+   ⚠ Two blockers that inspection had missed, both found by actually running it: (a) the `-id` swap
+   is **NOT** a one-line `DATA_PATH` change — `data_processing.py:408` asserts an exhaustive column
+   partition and dies on the extra `review_time`; (b) the landmine below.
    ⚠ **That measurement found a LANDMINE: the `-id` rebuild produces NaN features on 3.2% of users**
    (48 rows in 25M, but one bad row poisons a user; ~160 train / ~80 eval users). `build_parquet_id`
    recomputes `elapsed_seconds` from the SHOW time, which goes negative-but-not-`-1` when a duration
