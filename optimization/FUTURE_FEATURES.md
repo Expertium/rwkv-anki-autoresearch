@@ -362,6 +362,27 @@ stamp — a re-created card); clamp at 0 rather than adding a sign dim for 1 row
    mean 2.62 / std 6.25 — a column that is one constant 81% of the time. The earlier verdict
    ("treat preset AGE as a low-value add-on, not a peer of deck age") is upheld at 10x the sample.
 
+### The rebuild wall-clock is measured: ~1 day, not 2-4
+20-user probe, `PROCESSES = 6`, **while GPU training was running** (so the box was contended):
+913,958 reviews in **137 s = 6,671 reviews/s**.
+
+| DB | reviews | projected |
+|---|---|---|
+| train half 1-5000 | ~372 M | **15.5 h** |
+| test half (`test_db_5k`) | ~186 M | **7.7 h** |
+| **both** | | **~23 h** |
+
+**This is an OVERestimate, in three independent ways**, which is the direction to want: the probe's
+users average 45,697 reviews against the 300-user sample's 81,022, so per-user fixed costs (parquet
+open, merges, LMDB txn) amortize over 1.77x fewer reviews than they will in the real run; the box was
+sharing CPU with a training run; and `PROCESSES` can go above 6 on a 16-core part when nothing else is
+competing. Pushing the other way, the real rebuild derives the new columns too. Net: **plan for about
+a day, not the 2-4 days this page previously assumed** — which materially changes when it can be
+scheduled (it fits inside one overnight-plus, not a long weekend).
+⚠ **NOT included: `find_equalize_test_reviews`** (the 37.3 GB `label_filter_db` helper). Whether it
+needs rebuilding at all is open — `day_offset` moves on 0.001% of reviews, so it is *probably* still
+valid — but if it does, that is unmeasured time on top. Settle it before scheduling, not during.
+
 ### Time-of-day has real signal (the feature is not degenerate)
 Mean resultant length **R = 0.415** (median 0.414, p10 0.197, p90 0.624) over 300 users. R≈0 would
 mean users review uniformly round the clock and "deviation from the usual hour" would be dead; R≈0.41
