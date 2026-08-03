@@ -237,3 +237,119 @@ drive) and check two things that catch a broken pipeline for ~1% of the cost:
 
 Then re-base: the champion re-runs on the new DBs and every later candidate is scored against
 *that*, since cross-rebuild numbers are not comparable.
+
+---
+
+## ★ THE `STATISTICS` CONSTANTS ARE MEASURED (2026-08-03) — code site 2 is no longer an unknown
+
+Tool: **`optimization/feature_stats_id.py`** (CPU-only, read-only on the dataset, ~45 min).
+Sample = **300 users, 24,306,799 reviews**, stride-16 over the **TRAIN half 1-5000 only** — deriving
+normalization constants from 5001-10000 would leak eval-set statistics into every candidate's inputs.
+Full output: `optimization/feature_stats_id.json`.
+
+### ⚠⚠ THE LANDMINE: the `-id` rebuild introduces NaN features on **3.2% of users**
+This is the single most important thing on this page and it would not have surfaced until after a
+2-4 day rebuild. `build_parquet_id.py` recomputes `elapsed_seconds` from the corrected SHOW time
+(`review_time = revlog.id - taken_millis`). When a review's duration overlaps the next review, the
+recomputed gap goes **negative but not `-1`** — and `scale_elapsed_seconds` is
+
+    np.where(x == -1, 0, np.log(1 + 1e-5 + x))
+
+so `x = -26` takes the log branch: `log(-25.99999)` = **NaN**. The NaN flows into the feature vector,
+the loss, and then the eval NaN guard skips the whole user.
+
+| | published `anki-revlogs-10k` | `anki-revlogs-10k-id` |
+|---|---|---|
+| user 486 (11,469 rows, identical count) | **0** bad rows | **1** bad row (`elapsed_seconds = -26`) |
+| 313-user sweep, 25,063,241 rows | — | **48 rows = 0.000192%** |
+| **users affected** | — | **10 of 313 = 3.2%** (most negative seen: −144) |
+
+Rows are a rounding error; **users are not** — one bad row poisons a user. Projected onto the real
+split that is **~160 of 5,000 train users and ~80 of 2,500 eval users**. It would have shown up as
+`nan_users` jumping 0 → ~80 *and* a `size` gate failure, with no obvious cause, weeks after the fact.
+**FIX (one line, in the derivation, before any log):** clamp to the sentinel —
+`elapsed_seconds = np.where(elapsed_seconds < -1, -1, elapsed_seconds)` (same for `elapsed_days`) —
+i.e. treat a negative gap as "no previous review" rather than as a magnitude. Decide it deliberately;
+silently clamping to 0 instead would claim the two reviews were simultaneous.
+
+### The self-check: it half-passed, and the half that failed says the sample differs
+The script recomputes the **nine existing** constants in the same pass, because their derivation was
+never written down. Result — `missing->0` is the convention (all four sentinel-bearing columns are
+closer under it, decisively so for `elapsed_seconds`: **9.8968 vs upstream 9.96**, where present-only
+gives 11.37):
+
+| constant | upstream | recomputed (best convention) | off by |
+|---|---|---|---|
+| `cum_new_cards_today_mean` | 2.55 | 2.5577 | **0.3%** |
+| `elapsed_seconds_mean` | 9.96 | 9.8968 | **0.6%** |
+| `duration_mean` | 8.90 | 8.7278 | 1.9% |
+| `elapsed_days_mean` | 1.51 | 1.4610 | 3.2% |
+| `elapsed_seconds_cumulative_mean` | 10.86 | 11.7164 | 7.9% |
+| `cum_reviews_today_mean` | 4.59 | 5.0535 | 10.1% |
+| `elapsed_days_cumulative_mean` | 2.14 | 2.4905 | 16.4% |
+| `diff_new_cards_mean` | 2.945 | 3.5907 | **21.9%** |
+| `diff_reviews_mean` | 4.64 | 5.7411 | **23.7%** |
+
+The pattern is not random: **every badly-missed constant is one that scales with how much the user
+reviews** (`diff_reviews` = reviews on other cards between this card's two reviews; `cum_reviews_today`;
+`diff_new_cards`), and all three come out **higher** than upstream. So upstream's sample was of
+**smaller users** than a stride sample of the train half. Which users, and whether it was drawn before
+or after segmentation, is not recoverable from the code.
+
+**=> RECOMMENDATION: do NOT touch the existing nine.** They are part of the model as trained, the
+mismatch is a sample difference rather than an error, and each column is standardized to roughly unit
+scale anyway — which is all the input FC needs. Use the measured constants **for the new columns
+only**, and accept that the new columns are centred on a slightly different sample than the old 24.
+(The alternative — recompute all 33 on one sample — is *free at rebuild time* since the rebuild
+re-bases everything regardless, but it changes 24 working inputs to fix a cosmetic inconsistency.
+Not worth the risk without a reason.)
+
+### The constants (present-only; set undefined rows to log-value 0, the upstream sentinel pattern)
+
+    "t_since_any_review_mean": 2.2682,          "t_since_any_review_std": 1.3649,
+    "user_tenure_mean": 17.8880,                "user_tenure_std": 1.1326,
+    "creation_to_first_review_mean": 14.8600,   "creation_to_first_review_std": 4.3134,
+    "deck_age_at_review_mean": 14.3750,         "deck_age_at_review_std": 5.5264,
+    "creation_batch_1min_mean": 2.5430,         "creation_batch_1min_std": 2.1196,
+    "creation_batch_1h_mean": 3.6674,           "creation_batch_1h_std": 2.1707,
+    "creation_batch_1d_mean": 4.4760,           "creation_batch_1d_std": 2.2149,
+    "creation_batch_pos_1h_mean": 3.0207,       "creation_batch_pos_1h_std": 1.9252,
+    "deck_depth_mean": 1.2703,                  "deck_depth_std": 1.6451,
+
+Transforms: `log(1 + 1e-5 + x)` for the seconds/duration family, `log(3 + x)` for the count family
+(`creation_batch_*`), raw for `deck_depth` — matching the idioms already in `data_processing.py`.
+`creation_to_first_review` is **0.2% negative** (a card whose first review predates its own creation
+stamp — a re-created card); clamp at 0 rather than adding a sign dim for 1 row in 500.
+
+### Three design corrections the measurement forces
+
+1. **★ Drop `card_id − deck_id` as a single column — it is 57.2% negative.** At n=300 the signed-log
+   encoding gives mean −4.59 with **std 15.95**, i.e. a bimodal column whose sign carries most of the
+   variance. (The 6-user smoke said 15% negative and looked survivable; it was a small-sample
+   artifact.) Cards move between decks constantly, so "card older than its deck" is the *normal* case,
+   not an anomaly. **Use `deck_age_at_review` (always ≥0, mean 14.38 / std 5.53) plus a binary
+   `card_predates_deck` flag.** Same information, well-conditioned.
+2. **Coverage per REVIEW ROW is much lower than the per-deck-row figures above** — that table measured
+   the `decks` table, but the model sees review rows, and many rows have a NaN `note_id`/`deck_id`
+   merge or the default-deck sentinel:
+
+   | id | per deck row (earlier) | **per review row (what matters)** |
+   |---|---|---|
+   | `card_id` | 100% | **99.86%** |
+   | `note_id` | — | **74.47%** |
+   | `deck_id` | 99.5% | **70.22%** |
+   | `preset_id` | 7.0% | **18.87%** |
+
+   So deck-derived features are undefined for **~30% of rows**, not 0.5%. `deck_id_is_nan` already
+   flags the NaN part but **not** the default-deck (`id == 1`) part → **add an `is_default_deck`
+   flag**, or the net cannot distinguish "no deck age" from "deck age 0".
+3. **Preset age is confirmed dead; ship only the flag.** Folding its 81% undefined rows to 0 gives
+   mean 2.62 / std 6.25 — a column that is one constant 81% of the time. The earlier verdict
+   ("treat preset AGE as a low-value add-on, not a peer of deck age") is upheld at 10x the sample.
+
+### Time-of-day has real signal (the feature is not degenerate)
+Mean resultant length **R = 0.415** (median 0.414, p10 0.197, p90 0.624) over 300 users. R≈0 would
+mean users review uniformly round the clock and "deviation from the usual hour" would be dead; R≈0.41
+means a clear preferred window with real spread. The p10 of 0.197 says ~10% of users are near-uniform,
+which is an argument for **also** feeding the raw phase (the recurrent user stream can then learn the
+per-user concentration itself) rather than the deviation alone.

@@ -1,0 +1,193 @@
+{
+  "generated": "2026-08-03 04:53:17",
+  "dataset": "C:\\Users\\Andrew\\anki-revlogs-10k-id",
+  "users_sampled": 300,
+  "user_range": [
+    1,
+    5000
+  ],
+  "reviews": 24306799,
+  "selfcheck": {
+    "elapsed_days": {
+      "upstream_mean": 1.51,
+      "upstream_std": 1.62,
+      "present_mean": 1.678,
+      "present_std": 1.6062,
+      "withmiss_mean": 1.461,
+      "withmiss_std": 1.601
+    },
+    "elapsed_days_cumulative": {
+      "upstream_mean": 2.14,
+      "upstream_std": 2.25,
+      "present_mean": 3.3983,
+      "present_std": 2.0937,
+      "withmiss_mean": 2.4905,
+      "withmiss_std": 2.3395
+    },
+    "elapsed_seconds": {
+      "upstream_mean": 9.96,
+      "upstream_std": 5.21,
+      "present_mean": 11.3672,
+      "present_std": 3.6905,
+      "withmiss_mean": 9.8968,
+      "withmiss_std": 5.139
+    },
+    "elapsed_seconds_cumulative": {
+      "upstream_mean": 10.86,
+      "upstream_std": 5.8,
+      "present_mean": 13.4571,
+      "present_std": 3.6157,
+      "withmiss_mean": 11.7164,
+      "withmiss_std": 5.6372
+    },
+    "duration": {
+      "upstream_mean": 8.9,
+      "upstream_std": 1.07,
+      "present_mean": 8.7278,
+      "present_std": 1.1121,
+      "withmiss_mean": 8.7278,
+      "withmiss_std": 1.1121
+    },
+    "diff_new_cards": {
+      "upstream_mean": 2.945,
+      "upstream_std": 2.011,
+      "present_mean": 3.5907,
+      "present_std": 2.3549,
+      "withmiss_mean": 3.5907,
+      "withmiss_std": 2.3549
+    },
+    "diff_reviews": {
+      "upstream_mean": 4.64,
+      "upstream_std": 2.59,
+      "present_mean": 5.7411,
+      "present_std": 2.9487,
+      "withmiss_mean": 5.7411,
+      "withmiss_std": 2.9487
+    },
+    "cum_new_cards_today": {
+      "upstream_mean": 2.55,
+      "upstream_std": 1.41,
+      "present_mean": 2.5577,
+      "present_std": 1.4718,
+      "withmiss_mean": 2.5577,
+      "withmiss_std": 1.4718
+    },
+    "cum_reviews_today": {
+      "upstream_mean": 4.59,
+      "upstream_std": 1.3,
+      "present_mean": 5.0535,
+      "present_std": 1.3596,
+      "withmiss_mean": 5.0535,
+      "withmiss_std": 1.3596
+    }
+  },
+  "new": {
+    "t_since_any_review": {
+      "n": 24306499,
+      "mean": 2.2682,
+      "std": 1.3649,
+      "min": 0.0,
+      "max": 19.137,
+      "n_neg_raw": 0
+    },
+    "user_tenure": {
+      "n": 24306799,
+      "mean": 17.888,
+      "std": 1.1326,
+      "min": 0.0,
+      "max": 19.8259,
+      "n_neg_raw": 0
+    },
+    "creation_to_first_review": {
+      "n": 24271715,
+      "mean": 14.8209,
+      "std": 4.5395,
+      "min": -28.0281,
+      "max": 20.0845,
+      "n_neg_raw": 48481
+    },
+    "creation_to_first_review__poslog": {
+      "n": 24271715,
+      "mean": 14.86,
+      "std": 4.3134,
+      "min": 0.0,
+      "max": 20.0845,
+      "n_neg_raw": 0
+    },
+    "card_minus_deck_creation": {
+      "n": 17041581,
+      "mean": -4.5942,
+      "std": 15.9453,
+      "min": -20.0678,
+      "max": 28.028,
+      "n_neg_raw": 9752789
+    },
+    "deck_age_at_review": {
+      "n": 17041581,
+      "mean": 14.375,
+      "std": 5.5264,
+      "min": 0.0,
+      "max": 19.7288,
+      "n_neg_raw": 0
+    },
+    "preset_age_at_review": {
+      "n": 4587078,
+      "mean": 13.8931,
+      "std": 7.0756,
+      "min": 0.0,
+      "max": 19.7008,
+      "n_neg_raw": 0
+    },
+    "creation_batch_1min": {
+      "n": 24072731,
+      "mean": 2.543,
+      "std": 2.1196,
+      "min": 1.0986,
+      "max": 10.55,
+      "n_neg_raw": 0
+    },
+    "creation_batch_1h": {
+      "n": 24072731,
+      "mean": 3.6674,
+      "std": 2.1707,
+      "min": 1.0986,
+      "max": 10.9657,
+      "n_neg_raw": 0
+    },
+    "creation_batch_1d": {
+      "n": 24072731,
+      "mean": 4.476,
+      "std": 2.2149,
+      "min": 1.0986,
+      "max": 10.9657,
+      "n_neg_raw": 0
+    },
+    "creation_batch_pos_1h": {
+      "n": 24072731,
+      "mean": 3.0207,
+      "std": 1.9252,
+      "min": 1.0986,
+      "max": 10.8715,
+      "n_neg_raw": 0
+    },
+    "deck_depth": {
+      "n": 24306799,
+      "mean": 1.2703,
+      "std": 1.6451,
+      "min": 0.0,
+      "max": 19.0,
+      "n_neg_raw": 0
+    }
+  },
+  "coverage_rows": {
+    "rows": 24306799,
+    "card_ts": 24271715,
+    "note_ts": 18101476,
+    "deck_ts": 17068259,
+    "preset_ts": 4587078
+  },
+  "tod_R": {
+    "mean": 0.4147991909029891,
+    "median": 0.41405043990500934
+  }
+}
