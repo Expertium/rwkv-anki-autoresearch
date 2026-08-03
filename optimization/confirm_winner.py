@@ -43,6 +43,18 @@ def main():
     best = min(recs, key=T.obj)
     if best.get("pruned"):
         raise SystemExit(f"best row {best['name']} is a PRUNED estimate, not a real eval -- refusing")
+    # ⚠ The BASELINE row is a legitimate journal row and can legitimately win -- it is the default
+    # config, and a grid where nothing beats the default is a real (informative) outcome, not an
+    # error. But it has no trial directory: its numbers came from scratchpad/maxval restricted to
+    # 5001-6000, not from a run under scratchpad/tuner65k. Without this branch the checkpoint
+    # search below just reports "no decay checkpoint -- did the trial finish?", which points the
+    # reader at a broken trial instead of at the actual, benign situation.
+    if best.get("param") == "baseline":
+        raise SystemExit(
+            "the BASELINE (default HPs) is still the best row -- no coordinate beat it, so there "
+            "is nothing to confirm and nothing to adopt. Its checkpoint lives in scratchpad/maxval, "
+            "not under scratchpad/tuner65k. Confirm maxval directly if a full VAL-half number is "
+            "wanted.")
 
     name = best["name"]
     folder = f"{T.TRIAL_DIR}/{name}"
