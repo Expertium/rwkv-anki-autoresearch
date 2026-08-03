@@ -1382,7 +1382,12 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    (6,671 rev/s on a contended box; an overestimate — see the doc). **SCOPING IS COMPLETE.**
    ⚠ Two blockers that inspection had missed, both found by actually running it: (a) the `-id` swap
    is **NOT** a one-line `DATA_PATH` change — `data_processing.py:408` asserts an exhaustive column
-   partition and dies on the extra `review_time`; (b) the landmine below.
+   partition and dies on the extra `review_time`; (b) the landmine below. **★ AND A THIRD, measured
+   2026-08-03: `label_filter_db` MUST be rebuilt and the `size` GATE WILL LEGITIMATELY MOVE** —
+   `create_features`' outlier/continuity filter amplifies the 0.001% raw-row difference into
+   **70% of users getting a different equalized set and 30% a different `size`** (user 17:
+   108,870 -> 109,025). So gate #1 ("`size` IDENTICAL, any change = a pipeline bug") must be restated
+   as *within a rebuild generation*, and the plan's own de-risk check was invalidated and redesigned.
    ⚠ **That measurement found a LANDMINE: the `-id` rebuild produces NaN features on 3.2% of users**
    (48 rows in 25M, but one bad row poisons a user; ~160 train / ~80 eval users). `build_parquet_id`
    recomputes `elapsed_seconds` from the SHOW time, which goes negative-but-not-`-1` when a duration
