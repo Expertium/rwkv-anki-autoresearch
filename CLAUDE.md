@@ -1339,6 +1339,16 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
      **MAX=65536**, which regroups 22,346 steps into 10,935. Failure is LOUD (exit 43), so this
      cannot silently corrupt a run — but it does mean a fresh dump.
    **=> cost ≈ 2 x ~4.0 h training + ~1.5 h teacher dump ≈ 9.5 h.**
+   **OPERATIONAL FACTS for the fresh dump (mapped 2026-08-03 from `run_iter32_kd.cmd`, so the seed
+   pair can be launched without re-deriving them):** teacher = `pretrain/RWKV_trained_on_101_4999.pth`
+   (the original d=128 model, forward-only); the runner does smoke-5-steps -> `check_dump.py`
+   (semantic + disk projection, `--max-gb 60`) -> full dump -> assert `step_<WSSTEPS>.pt` exists.
+   **`WSSTEPS` becomes 10,935 at MAX=65536** (was 22,346). Size ~7 GB again (half the files, ~2x each);
+   C: has 248 GB free, so the old dump can stay.
+   ⚠⚠ **THE RUNNER DOES `if exist "%DUMP%" rmdir /s /q "%DUMP%"` BEFORE THE FULL DUMP.** Reusing the
+   name `t128_iter32` would therefore DESTROY the one artifact that can reproduce iter 32 exactly as
+   accepted — the thing this very entry says not to delete. **Use a new `%DUMP%` name** (e.g.
+   `C:\rwkv_kd_dump\t128_seedpair_65k`).
    ⚠ **THE SAME CORRECTION KILLS THIS ENTRY'S OLD CLAIM** that the annealed-alpha variant and the
    alpha sweep are "student-only re-runs, no dump". That was true at MAX=32768; at the adopted
    MAX=65536 they each need the fresh dump too (one dump serves all of them, so batch them with
