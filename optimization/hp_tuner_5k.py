@@ -44,6 +44,63 @@ diverge and would otherwise burn 4.3 h.
 Objective minimized = ahead + imm (rectified, by-user mean on 5001-6000).
 CLI: next / record <name> / record-pruned <name> / record-baseline <ahead> <imm> / status / loop.
 """
+#  ============================================================================================
+#  ★ WHERE **NOT** TO LOOK FOR BUGS  (read before auditing this file -- 2026-08-03)
+#  ============================================================================================
+#  Each of these LOOKS wrong on a first read, has been checked, and is correct and usually
+#  load-bearing. Re-deriving them costs an hour each; "fixing" them breaks something.
+#
+#  1. canon() filling absent levers from DEFAULTS. It compares configs with DIFFERENT key sets and
+#     calls them equal. That is the point: a journal row written before a lever existed ran with
+#     the env var unset, which IS the default, so it belongs at that point on the new axis. This is
+#     what lets a coordinate be added mid-run without invalidating 19 rows of history. VERIFIED
+#     2026-08-03: after adding two coordinates, all 19 rows still matched and the next-trial
+#     decision was unchanged.
+#  2. Duplicate `set FOO=` lines in a generated .cmd. cmd.exe takes the LAST one, so the per-trial
+#     block (emitted after TRUNK_ENV) wins. This was real for RWKV_MUON_MOMENTUM until 2026-08-03
+#     and the trials were still CORRECT -- verified against the "[muon] ... momentum=0.9" line in
+#     the trial's own log. If you suspect an env var is not taking effect, grep that log line
+#     rather than reasoning about the template.
+#  3. maybe_extend() returning None at the FIRST incomplete coordinate. Not an early-exit bug:
+#     coordinate descent evaluates each coordinate at the incumbent of the ones before it, so a
+#     later coordinate's results are meaningless until the earlier ones are settled. Extension
+#     decisions therefore only happen once the whole grid is measured.
+#  4. The eval block runs up to 3x with NO `del` between attempts. Deliberate and load-bearing:
+#     eval_sharded SKIPS users it already banked, which is the only reason the giant-user OOM
+#     (5002/5905/5995) is recoverable instead of costing a 1 h re-eval. Stale-result deletion
+#     happens in write_trial_files() at GENERATION time instead, which keeps both properties.
+#  5. VALIDATE_USERS 5001-5010 overlapping the tune-eval subset 5001-6000. KNOWN and accepted, not
+#     an oversight: those 10 users drive only the vprune ABORT decision, which kills hopeless
+#     trials -- it never selects a winner, and the recorded metric is a mean over all 1000. The
+#     influence of 10 users on a kill/no-kill threshold is negligible. Flagged here so it is not
+#     re-discovered as a leak; do NOT let it grow into "tune on val" without saying so.
+#  6. fit_vprune_alpha() returning 1.0 from four different paths. All are deliberate "no
+#     information -> use the naive slope" fallbacks, including the a<=0 case, which means the fit
+#     found noise or anti-correlation and a fitted value would be worse than none.
+#  7. Float `==` in coordinate_report/_next_edge_value. Safe: both sides originate from the same
+#     literals (code SPACE or the JSON), and canon rounds to 8 dp before hashing.
+#  8. compute() re-running find() O(grid x rows) per call. The journal is ~20 rows. Leave it.
+#
+#  ALREADY FIXED, DO NOT RE-AUDIT (all verified by direct test on the date shown):
+#   * 2026-08-02  coordinate_report scored winner-vs-RUNNER-UP, making every monotonic lever look
+#                 like a coin flip. Now winner-vs-DEFAULT. (See its own docstring.)
+#   * 2026-08-02  the JSON override SHADOWED the in-code SPACE, so adding a coordinate in code did
+#                 nothing. Now merged, with a printed notice per appended param.
+#   * 2026-08-03  canon() ignored params present only in the JSON -> every grid point of a
+#                 JSON-added coordinate collided onto one row and the lever was silently skipped
+#                 entirely. Now _canon_basis() unions both, and demands a default (loudly).
+#   * 2026-08-03  cmd_next() ignored the JSON override while cmd_loop() honoured it, so the manual
+#                 path could generate a trial the loop never wanted -- including missing an
+#                 auto-extension that maybe_extend had just persisted.
+#   * 2026-08-03  cmd_record() recorded a by-user mean without checking HOW MANY users it covered.
+#
+#  THE RECURRING FAILURE MODE IN THIS PROJECT, of which three instances were found on 2026-08-03
+#  alone: a lever that silently does nothing and therefore measures as a perfect null. The dropout
+#  env var ignored by the forked arch file; the momentum env var overwritten by a later `set`; a
+#  JSON-added coordinate invisible to canon. NONE of them raises. When a coordinate comes back
+#  flat, the FIRST question is "did the value actually reach the model?" -- check the trial log's
+#  own echo of the parameter -- and only then "is the lever real?".
+#  ============================================================================================
 import json
 import os
 import subprocess
@@ -452,10 +509,57 @@ def muon_lr(cfg):
     return BASE_MUON_LR * float(cfg["lr_mult"]) * float(cfg["muon_lr_mult"])
 
 
+_CANON_BASIS = None
+
+
+def _canon_basis():
+    """(params, defaults) that canon() hashes over: in-code SPACE/DEFAULTS UNION the JSON override.
+
+    ⚠ BUG THIS FIXES (found 2026-08-03 by review, never fired in anger). canon() used the in-code
+    `PARAMS` alone. But load_space() deliberately lets a human ADD a coordinate by editing
+    tuner65k_space.json between trials -- that is the whole point of the hot reload -- and a param
+    present only in the JSON was therefore INVISIBLE to canon. The failure is silent and total:
+    every grid point of that coordinate canonicalizes to the SAME key, so find() returns the same
+    incumbent row for all of them, compute() sees the coordinate as already complete with all
+    values tied, min() picks the first, and the tuner moves on having run NOTHING. A brand-new
+    lever would read as a perfect null with no error anywhere -- the same shape as the dropout
+    no-op and the duplicated momentum env.
+    Cached per process: the journal never changes basis mid-run, and this is called in a loop by
+    find()."""
+    global _CANON_BASIS
+    if _CANON_BASIS is not None:
+        return _CANON_BASIS
+    params = [p for p, _ in SPACE]
+    defaults = dict(DEFAULTS)
+    try:
+        with open(SPACE_OVERRIDE) as fh:
+            d = json.load(fh)
+        for k, v in (d.get("defaults") or {}).items():
+            defaults.setdefault(k, v)
+        for e in d.get("space") or []:
+            p = e["param"]
+            if p in params:
+                continue
+            if p not in defaults:
+                # Loud, because the alternative is the silent no-op described above. A default is
+                # REQUIRED: journal rows written before this coordinate existed have no value for
+                # it, and canon has to know what they implicitly ran at.
+                raise SystemExit(
+                    f"tuner65k_space.json adds coordinate '{p}' to `space` but gives it no entry "
+                    f"in `defaults`. canon() cannot place existing journal rows on that axis "
+                    f"without it. Add \"{p}\": <the env-unset value> to the defaults block.")
+            params.append(p)
+    except (OSError, ValueError, KeyError):
+        pass                     # unreadable override -> in-code basis, same as load_space()
+    _CANON_BASIS = (params, defaults)
+    return _CANON_BASIS
+
+
 def canon(cfg):
     # .get with the DEFAULT for every later-added lever: journal rows written before a lever
     # existed ran with the (env-unset ==) default value, so they canon onto the same point.
-    return tuple(round(float(cfg.get(p, DEFAULTS[p])), 8) for p in PARAMS)
+    params, defaults = _canon_basis()
+    return tuple(round(float(cfg.get(p, defaults[p])), 8) for p in params)
 
 
 # THE BAR: "recover what MAX=65536 cost" == reach iter 31's numbers ON THIS SAME 1000-user
@@ -853,8 +957,14 @@ def by_user_mean(path):
 
 
 def cmd_next():
+    # ⚠ MUST pass the loaded space (fixed 2026-08-03). This used to call compute(recs) bare, which
+    # falls back to the in-code SPACE -- while cmd_loop() honours the JSON override. The two entry
+    # points could therefore disagree about which trial is next, and `next` also WRITES the trial
+    # files, so a human running it after an auto-extension (which maybe_extend persists to the
+    # JSON via save_space) would generate and possibly run a trial the loop never asked for.
+    space, defaults = load_space()
     recs = load_journal()
-    out = compute(recs)
+    out = compute(recs, space, defaults)
     if out[0] == "done":
         best = out[1]
         print("DONE")
@@ -873,12 +983,31 @@ def cmd_next():
     print(f"  cmd=scratchpad/tuner65k/{name}/{name}.cmd")
 
 
+EXPECTED_USERS = EVAL_UEND - EVAL_USTART + 1      # 1000
+
+
 def cmd_record(name):
     side = json.load(open(f"{TRIAL_DIR}/{name}/{name}.json"))
     ahead, na = by_user_mean(f"{ROOT}/result/RWKV-{name}.jsonl")
     imm, ni = by_user_mean(f"{ROOT}/result/RWKV-P-{name}.jsonl")
+    # ⚠ COMPARABILITY GUARD (added 2026-08-03). Both numbers are BY-USER MEANS, so they are only
+    # comparable across trials if they cover the SAME users. Two ways that can silently break and
+    # neither raises: the eval is gated on exit code, but eval_sharded exits 0 having skipped
+    # NaN users (the nan_users column every research_log row records exists for exactly this), and
+    # the deliberate no-del retry policy means a partially-banked eval is a normal intermediate
+    # state rather than an error. A trial scored over 995 users then gets ranked against one
+    # scored over 1000 as if the difference were signal. Recorded, and loud when it happens --
+    # NOT fatal, because a couple of NaN users is a real property of the data, not a failure.
+    if na != ni:
+        print(f"WARNING {name}: ahead covers {na} users but imm covers {ni} -- the two modes are "
+              f"means over DIFFERENT populations; obj is not strictly comparable.")
+    if na != EXPECTED_USERS or ni != EXPECTED_USERS:
+        print(f"WARNING {name}: expected {EXPECTED_USERS} users ({EVAL_USTART}-{EVAL_UEND}), got "
+              f"ahead={na} imm={ni}. Likely NaN-skipped users; every other row in this journal is "
+              f"a mean over {EXPECTED_USERS}, so treat small deltas against them with suspicion.")
     rec = {"name": name, "param": side["param"], "config": side["config"],
            "ahead": round(ahead, 6), "imm": round(imm, 6), "users": na,
+           "users_imm": ni, "nan_users": EXPECTED_USERS - na,
            "peak_lr": side["peak_lr"], "muon_lr": side["muon_lr"]}
     with open(JOURNAL, "a") as f:
         f.write(json.dumps(rec) + "\n")
