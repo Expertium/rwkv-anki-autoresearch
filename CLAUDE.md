@@ -1377,8 +1377,15 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
 5. **NEW INPUT FEATURES — now on the critical path** (Andrew 2026-07-26; see "THE ENDGAME,
    ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **SCOPED 2026-07-27** —
    that doc now carries the four code sites, the F:-side-by-side disk plan (no delete needed), and
-   a 100-user de-risk build. Remaining unknowns are the STATISTICS constants and the rebuild
-   wall-clock, not the design. Budget question CLOSED: the 10x run happens once, last, after this.
+   a 100-user de-risk build. **CONSTANTS MEASURED 2026-08-03** (`optimization/feature_stats_id.py`,
+   300 users / 24.3M reviews, train half only) — so the only unknown left is the rebuild wall-clock.
+   ⚠ **That measurement found a LANDMINE: the `-id` rebuild produces NaN features on 3.2% of users**
+   (48 rows in 25M, but one bad row poisons a user; ~160 train / ~80 eval users). `build_parquet_id`
+   recomputes `elapsed_seconds` from the SHOW time, which goes negative-but-not-`-1` when a duration
+   overlaps the next review, and `scale_elapsed_seconds` then takes `log` of a negative. The
+   published set has ZERO such rows. One-line clamp + the three forced design corrections (card−deck
+   gap is 57% negative; deck ids are timestamps on only 70% of REVIEW rows; preset age stays
+   flag-only) are in `FUTURE_FEATURES.md`. Budget question CLOSED: the 10x run happens once, last, after this.
 6. Entropy-floor analysis (~30 min GPU; design in `research_5k_notes.md`); permutation init (LOW).
    `pava_loss_avg` / `pava_pool_frac` step-trace fields: DONE (train_rwkv.py, keyed on enablement).
 7. **POSTPONED by Andrew 2026-07-27 — the users-vs-epochs ablation** (2,500 users x 2 epochs vs
