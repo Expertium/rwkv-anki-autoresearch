@@ -244,9 +244,13 @@ swap half, unused since the 5k phase fixed h1) and the closed-era `train_db_sc8k
 ### De-risk before committing anything
 Build a **100-user** LMDB from `-id` first (~7.5 GB at the measured ~75 MB/user, trivial on either
 drive) and check two things that catch a broken pipeline for ~1% of the cost:
-1. **`size` parity** — per-user equalized review count must be unchanged vs the current DB. Row
+1. ~~**`size` parity** — per-user equalized review count must be unchanged vs the current DB. Row
    counts are already known identical user-for-user and `day_offset` differs on only 4 of 363,598
-   reviews (0.001%), so any real movement here is a bug in the new derivations, not the data.
+   reviews (0.001%), so any real movement here is a bug in the new derivations, not the data.~~
+   ⚠ **THIS CHECK IS INVALID — measured 2026-08-03; see "`label_filter_db` MUST be rebuilt" above.**
+   `size` moves for ~30% of users purely from the dataset swap, so this would false-alarm on a third
+   of them. Use the **`-id`-vs-`-id`, new-columns-on vs new-columns-off** comparison instead, where a
+   difference is unambiguously the new derivations.
 2. **A champion re-run reproduces** on those users with the new columns zeroed/excluded — proving
    the rebuild is additive before any candidate is judged on it.
 
@@ -379,9 +383,52 @@ sharing CPU with a training run; and `PROCESSES` can go above 6 on a 16-core par
 competing. Pushing the other way, the real rebuild derives the new columns too. Net: **plan for about
 a day, not the 2-4 days this page previously assumed** — which materially changes when it can be
 scheduled (it fits inside one overnight-plus, not a long weekend).
-⚠ **NOT included: `find_equalize_test_reviews`** (the 37.3 GB `label_filter_db` helper). Whether it
-needs rebuilding at all is open — `day_offset` moves on 0.001% of reviews, so it is *probably* still
-valid — but if it does, that is unmeasured time on top. Settle it before scheduling, not during.
+⚠ **NOT included: `find_equalize_test_reviews`** (the 37.3 GB `label_filter_db` helper) — and it
+**must** be rebuilt, see immediately below.
+
+### ★★ `label_filter_db` MUST be rebuilt, and the `size` gate WILL legitimately move (measured 2026-08-03)
+Tool: `scratchpad/probe_id/check_equalize_drift.py` (read-only, seconds per user). It runs the real
+`create_features` on both datasets and reproduces `find_equalize_test_reviews.process()`'s selection —
+`TimeSeriesSplit(n_splits=5)` over the surviving frame — then diffs the chosen `review_th` lists.
+
+**40 users, 1-40:**
+
+| outcome | users |
+|---|---|
+| equalized set IDENTICAL | 12 / 40 (30%) |
+| **equalized set DIFFERS** | **28 / 40 (70%)** |
+| ... of which **`size` itself changes** | **12 / 40 (30%)** |
+
+Examples: user 17 `size` 108,870 → **109,025**; user 8 45,235 → **45,310**; user 6 65,805 → 65,800.
+Deltas are small (±5 … ±155) but they are not zero.
+
+**Why the earlier "0.001% of reviews" reading did not predict this.** That figure was about RAW rows,
+and it was right — raw counts are identical user-for-user and `day_offset` moves on 4 of 363,598
+reviews. But `create_features` applies **outlier and non-continuity filtering**, which AMPLIFIES a
+tiny input change: user 486 loses one surviving row (8,026 → 8,025), while user 17 **gains 188**
+(130,645 → 130,833). And because the split is POSITIONAL, even users whose kept-count is unchanged get
+a different selection — user 3 keeps exactly 7,089 rows both ways yet 11 `review_th` values differ,
+i.e. rows also **reorder** under the corrected show time.
+⚠ **The clamp fix for the negative-`elapsed_seconds` landmine will NOT restore parity.** It plausibly
+explains user 486's −1 row, but nothing about user 17's +188. This drift is inherent to having more
+accurate timestamps, not a defect to repair — the `-id` benchmark set is simply a *different* (better
+grounded) one.
+
+**=> TWO RULE CHANGES, both of which have to be made deliberately:**
+1. **Acceptance gate #1 currently says `size` must be "IDENTICAL to champion … any change = a pipeline
+   bug".** After the rebuild that is false by construction for ~30% of users. Restate it as
+   **identical *within a rebuild generation*** — comparisons across the rebuild boundary are not
+   size-comparable, exactly as they are not logloss-comparable.
+2. **★ The de-risk step below is INVALIDATED AS WRITTEN and must be redesigned.** It says to check
+   "per-user equalized review count must be unchanged vs the current DB … any real movement here is a
+   bug in the new derivations, not the data." That check would now fire on ~30% of users *for correct
+   reasons* — worse than useless, because it trains the reader to dismiss the one alarm that was
+   supposed to catch a real pipeline bug.
+   **Replacement that actually discriminates:** build the 100-user probe DB from `-id` **twice** —
+   once with the new feature columns enabled and once with them disabled — and require `size` and the
+   equalized sets to match **between those two**. Same data source, so any difference is unambiguously
+   the new derivations. Separately, and only as an expectation rather than a gate, `-id`-vs-published
+   drift should land near the 70% / 30% measured here; wildly more would mean something else moved.
 
 ### Time-of-day has real signal (the feature is not degenerate)
 Mean resultant length **R = 0.415** (median 0.414, p10 0.197, p90 0.624) over 300 users. R≈0 would
