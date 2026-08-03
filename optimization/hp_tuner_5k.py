@@ -80,7 +80,13 @@ TRUNK_ENV = (
     "set RWKV_PROBE_DENSITY=0.08\n"
     "set RWKV_PROBE_DUR=0.0\n"
     "set RWKV_MUON=1\n"
-    "set RWKV_MUON_MOMENTUM=0.95\n"
+    # ⚠ RWKV_MUON_MOMENTUM deliberately NOT set here. It lived in this trunk block until
+    # 2026-08-03, while the per-trial block ALSO set it -- so every trial emitted it twice.
+    # That was benign only because cmd.exe takes the LAST `set` and the per-trial block comes
+    # after (verified: the momentum=0.9 trial logged "momentum=0.9"). But it is exactly the trap
+    # that silently flattens a coordinate: reorder the template so the trunk block lands second
+    # and every momentum trial runs at 0.95, producing a clean null with no error anywhere.
+    # The per-trial line always emits, defaulting to 0.95, so removing this is byte-identical.
     "set RWKV_NO_AHEAD_RESIDUAL=1\n"
     "set RWKV_STRIP_L0_VLORA=1\n"
     "set RWKV_ZERO_FEATURES=22\n"
