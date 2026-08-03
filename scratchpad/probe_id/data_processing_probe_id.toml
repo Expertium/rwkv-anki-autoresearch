@@ -1,0 +1,20 @@
+# TIMING + DROP-IN PROBE for the features rebuild (2026-08-03). NOT a real DB.
+# Purpose: (1) measure reviews/s so the 2-4 day rebuild estimate stops being a guess, and
+# (2) prove `anki-revlogs-10k-id` is a genuine drop-in for DATA_PATH -- so far only the SCHEMA
+# was verified, the pipeline had never actually been run against it.
+# Writes to a throwaway LMDB on F: (890 GB free); reads the read-only -id set. Touches nothing live.
+# Small LMDB_SIZE on purpose: Windows reserves map_size on disk up front.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/probe_id_db"
+LMDB_SIZE = 12_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 20
+MAX_BATCH_SIZE = 16384
+PROCESSES = 6
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

@@ -201,8 +201,23 @@ every change lands:
    here. This is the only site where the leakage rule can be got wrong.
 4. **The dataset root** (`:196-202`, `read_parquet` of `revlogs`/`cards`/`decks`) — point at
    `anki-revlogs-10k-id`. **Schema-verified 2026-07-27**: `-id`'s `revlogs` is the published schema
-   **plus `review_time`**, and `cards`/`decks` are column-identical. So this is a path change, not a
-   reader change — every existing derivation keeps working untouched.
+   **plus `review_time`**, and `cards`/`decks` are column-identical. ~~So this is a path change, not a
+   reader change — every existing derivation keeps working untouched.~~
+   ⚠ **CORRECTED 2026-08-03 BY ACTUALLY RUNNING IT — it is NOT a path change, and the schema check
+   could not have caught this.** A 20-user probe with only `DATA_PATH` repointed dies at
+   `data_processing.py:408`: `AssertionError: review_time not found`. That line is an **exhaustive
+   partition assert** — every column of `section_df` must appear in `keep_columns` or
+   `reject_columns`, backed by a length assert whose message is *"Ensure that all columns are
+   explicitly listed"*. The schema check asked "are the needed columns present?" (yes); the pipeline
+   asks "is every column accounted for?" (no). An EXTRA column is exactly the case the first question
+   cannot fail on and the second must.
+   This is a good assert, and the decision it forces is real: `keep_columns` survive onto the query
+   ("no press yet") rows, `reject_columns` are zeroed there because they would leak the outcome.
+   **Recommended handling: derive the new features from `review_time` and then DROP it before that
+   block** (`df.drop(columns=["review_time"])`). The assert then passes untouched, and a raw epoch-ms
+   value — which must never be an input on magnitude grounds alone — cannot leak in by accident.
+   Listing it in `keep_columns` would work too, but leaves a 1.7e12-magnitude column one mistake away
+   from the feature vector.
 
 ### Disk: build on F:, side by side — do NOT delete first
 CLAUDE.md records the sequencing as "delete the only copy, no rollback", from the estimate that the

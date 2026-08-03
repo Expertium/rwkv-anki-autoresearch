@@ -1,0 +1,20 @@
+# TIMING probe for the features rebuild (2026-08-03). NOT a real DB -- delete after reading.
+# Points at the PUBLISHED set on purpose: the -id run hard-fails on data_processing.py:408
+# (exhaustive column partition; `review_time` is in neither keep_columns nor reject_columns), and
+# fixing that means editing live code, which a timing probe has no business doing. Row counts are
+# identical between the two sets, so reviews/s measured here transfers -- it is a LOWER BOUND for
+# the real rebuild, which additionally derives the new columns.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/probe_time_db"
+LMDB_SIZE = 12_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 20
+MAX_BATCH_SIZE = 16384
+PROCESSES = 6
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
