@@ -180,10 +180,41 @@ SPACE = [
     # lr_mult (moving both families) was a wash -- but 0.999 is a ~1000-step second-moment horizon,
     # ~9% of a 10,935-step epoch, so the estimate barely converges inside a 1-epoch budget.
     ("adamw_beta2",   [0.999, 0.98, 0.95]),
+    # ★★ ADDED 2026-08-03, after Andrew: "We're looking for algorithmic improvements of any kind,
+    # there is no reason to stop (other than exhausting this particular lever)."
+    #
+    # wd_head_mult -- weight decay for the SRS-HEAD group alone, as a multiple of `weight_decay`.
+    # ⚠ THE FLAT `weight_decay` RESULT IS THE ARGUMENT *FOR* THIS, NOT AGAINST IT. Until today all
+    # THREE wd groups (matrix decay / channel-mixer / head) read the SAME env var, so that
+    # coordinate could only move them together. A flat response to a shared knob has two readings:
+    # wd genuinely does not matter, or the groups want OPPOSITE things and cancelled. This model
+    # has already produced exactly the second case once -- peak_lr looked tuned while governing
+    # only 10% of the weights, and splitting Muon's LR off was worth +0.00183, the round's biggest
+    # win. Same structure, so the same prior applies. Split wired 2026-08-03
+    # (RWKV_WEIGHT_DECAY_HEAD / _CMIX, each defaulting to RWKV_WEIGHT_DECAY == byte-identical).
+    # The head is probed first because it is the most functionally distinct group: a curve mixture
+    # plus a rating head, not part of the recurrent trunk.
+    ("wd_head_mult",  [1.0, 0.2, 5.0]),
+    # dropout_scale -- ⚠ RE-PROPOSED ON PURPOSE. NEXT_ROUND_CANDIDATES below says "not worth
+    # adding", on the grounds that wd (10x) and clip (2x) were both flat. That argument stands on
+    # its own, but two things now outweigh it:
+    #  1. ★ THE LEVER WAS A NO-OP ON THIS TRUNK UNTIL TODAY. architecture_d80_lora4.py HARDCODED
+    #     the three rates when it was forked from rwkv/architecture.py, so RWKV_DROPOUT_SCALE was
+    #     silently ignored. Adding this coordinate before the fix would have produced two
+    #     BYTE-IDENTICAL trials and "confirmed" the family-is-flat hypothesis with zero
+    #     information -- the trap is what makes it worth naming, not the lever.
+    #  2. The budget changed underneath the flat results: decay_ratio 1.0 took total training from
+    #     1.25 to 2.0 epochs, and wd/clip were measured at 0.25. Regularization is more live at
+    #     1.6x the training.
+    # Conduct rule 5 also applies: wd + clip = 2 in-family rejects = "deprioritized", not closed.
+    # This is the third distinct variant, and it is a different MECHANISM (stochastic, not
+    # shrinkage), so it is not redundant with the first two.
+    ("dropout_scale", [1.0, 0.5, 2.0]),
 ]
 DEFAULTS = {"lr_mult": 1.0, "warmup_steps": 200, "muon_lr_mult": 1.0,
             "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 0.25,
-            "muon_momentum": 0.95, "adamw_beta2": 0.999}
+            "muon_momentum": 0.95, "adamw_beta2": 0.999,
+            "wd_head_mult": 1.0, "dropout_scale": 1.0}
 PARAMS = [p for p, _ in SPACE]
 
 # =============================================================================
@@ -232,6 +263,11 @@ POLICY = {
         # to 1, so the bounds do the real work of keeping it sane.
         "muon_momentum": [0.5, 0.99],
         "adamw_beta2":   [0.9, 0.9995],
+        # Multipliers on `weight_decay` / the base dropout rates. 0 is a legitimate endpoint for
+        # wd_head_mult (no decay on the heads at all) but NOT for dropout_scale, where the extender
+        # would then geometrically crawl toward 0 forever without ever reaching a decisive answer.
+        "wd_head_mult":  [0.0, 20.0],
+        "dropout_scale": [0.1, 5.0],
     },
     # --- housekeeping between trials ---------------------------------------
     # INCIDENT: killing a trial to change the grid orphaned its fetch workers; 12 had accumulated
@@ -273,8 +309,13 @@ NEXT_ROUND_CANDIDATES = [
     ("adamw_beta2", [0.95, 0.98, 0.999], "env RWKV_ADAMW_BETA2"),
 ]
 # ---- NOT worth adding, and why (so they are not re-proposed):
-#   * dropout_scale -- weight_decay was flat across 10x and clip across 2x. Two independent nulls
-#     in the regularization family is decent evidence the family is flat on this trunk.
+#   * ~~dropout_scale -- weight_decay was flat across 10x and clip across 2x. Two independent nulls
+#     in the regularization family is decent evidence the family is flat on this trunk.~~
+#     ★ PROMOTED TO SPACE 2026-08-03. The reasoning above is still sound as far as it goes, but the
+#     lever was a NO-OP on this trunk until that date (architecture_d80_lora4.py hardcoded the
+#     rates), so adding it earlier would have run two byte-identical trials and "confirmed" the
+#     flat-family read with no information at all. Plus decay_ratio=1.0 moved total training
+#     1.25 -> 2.0 epochs, which is 1.6x more than where wd/clip were measured flat.
 #   * ns_steps (Muon's Newton-Schulz iterations, muon.py default 5) -- a compute/accuracy
 #     tradeoff, not an accuracy lever; 5 is the standard value.
 #   * cb_lr_mult -- meaningless in plain training; it tuned codebook groups that no longer exist.
@@ -693,6 +734,8 @@ set RWKV_MUON_LR={mlr:g}
 set RWKV_MUON_MOMENTUM={cfg.get("muon_momentum", 0.95):g}
 set RWKV_ADAMW_BETA2={cfg.get("adamw_beta2", 0.999):g}
 set RWKV_WEIGHT_DECAY={cfg["weight_decay"]:g}
+set RWKV_WEIGHT_DECAY_HEAD={cfg["weight_decay"] * cfg.get("wd_head_mult", 1.0):g}
+set RWKV_DROPOUT_SCALE={cfg.get("dropout_scale", 1.0):g}
 set RWKV_CLIP={cfg["clip"]:g}
 REM ---- the adopted speed stack (cleared again before eval) ----
 {SPEED_ENV}

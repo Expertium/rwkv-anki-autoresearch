@@ -72,8 +72,17 @@ CB_LR_MULT = float(os.environ.get("RWKV_CB_LR_MULT") or "1")
 # HP-tuner env overrides (Andrew 2026-06-30): default == current champion values, so an UNSET env var
 # leaves behavior byte-identical. The greedy coordinate-descent tuner sweeps these without source edits.
 WEIGHT_DECAY = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
-WEIGHT_DECAY_CHANNEL_MIXER = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
-WEIGHT_DECAY_HEAD = float(os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
+# Split per group (2026-08-03). These three feed genuinely different param groups (matrix decay
+# weights / channel-mixer / SRS heads) but every one of them read the SAME env var, so the tuner's
+# `weight_decay` coordinate could only move all three together. That is exactly the structure whose
+# splitting produced this phase's largest tuning win: peak_lr looked tuned, but it governed only the
+# 57,412 AdamW params, and giving the 500,800 Muon params their own LR was worth +0.00183. A shared
+# knob over groups that may want different values hides the same kind of miss here.
+# Each defaults to RWKV_WEIGHT_DECAY, so unset == the old behaviour, byte-identical.
+WEIGHT_DECAY_CHANNEL_MIXER = float(
+    os.environ.get("RWKV_WEIGHT_DECAY_CMIX") or os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
+WEIGHT_DECAY_HEAD = float(
+    os.environ.get("RWKV_WEIGHT_DECAY_HEAD") or os.environ.get("RWKV_WEIGHT_DECAY") or "0.01")
 CLIP = float(os.environ.get("RWKV_CLIP") or "0.5")
 FETCH_AHEAD = 10  # prefetch depth = MAX concurrent fetch workers (the main loop keeps this many batches
 # in flight). Raised 5->10 (Andrew 2026-06-30) so NUM_FETCH_PROCESSES=10 is actually usable -- with

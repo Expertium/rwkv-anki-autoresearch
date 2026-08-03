@@ -17,9 +17,19 @@ HEAD_DIM = 16  # A17: K 32 -> 16 (kernel is K-dynamic; the track-1 champion runs
 
 N_HEADS = 5  # A17: d_model = 16*5 = 80 (A15 was 3 x 32 = 96)
 
-DROPOUT = 0.02
-DROPOUT_LONG = 0.05
-DROPOUT_LAYER = 0.01
+# ⚠ RESTORED 2026-08-03: these were HARDCODED when this file was forked from
+# rwkv/architecture.py, which silently KILLED the RWKV_DROPOUT_SCALE lever for the whole
+# track-2/merged lineage. The env var still exists and is still honoured by
+# rwkv/architecture.py, so setting it on THIS trunk looked like it worked and did nothing --
+# an HP-tuner coordinate on it would have produced 3 byte-identical trials and the false
+# conclusion "dropout doesn't matter". Same failure class as STRIP_CMIX living only in
+# rwkv_model.py. Unset == 1 == byte-identical to every run from A17 through iter 34.
+import os
+
+_DROPOUT_SCALE = float(os.environ.get("RWKV_DROPOUT_SCALE") or "1")
+DROPOUT = 0.02 * _DROPOUT_SCALE
+DROPOUT_LONG = 0.05 * _DROPOUT_SCALE
+DROPOUT_LAYER = 0.01 * _DROPOUT_SCALE
 
 
 @dataclass
