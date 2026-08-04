@@ -428,6 +428,13 @@ def load_space():
     of training plus a batch of orphaned workers. The loop now re-reads the space between trials,
     so a grid edit lands at the next trial boundary with nothing killed and nothing lost.
     Absent or unreadable file -> the in-code SPACE, so this cannot break a run.
+
+    ⚠ THE HOT RELOAD COVERS THE **JSON**, NOT THIS FILE (bitten 2026-08-04). A running loop's
+    module-level SPACE is baked at import; the merge below runs against THAT. Adding a coordinate
+    in code and verifying with a fresh python (which imports the new code) proves nothing about
+    the loop already running -- it will finish its old grid, print TUNER DONE and exit, having
+    silently skipped the addition. Cost: 47 min of idle GPU and a relaunch. To grow the grid
+    mid-run, EDIT tuner65k_space.json (that is what it is for); code edits need a loop relaunch.
     """
     if not os.path.exists(SPACE_OVERRIDE):
         return [(p, list(g)) for p, g in SPACE], dict(DEFAULTS)

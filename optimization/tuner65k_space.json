@@ -1,5 +1,5 @@
 {
-  "note": "includes muon_momentum + adamw_beta2 (Andrew 2026-08-02)",
+  "note": "2026-08-04: wd_head_mult + dropout_scale written INTO the JSON. Lesson: a RUNNING loop only hot-reloads this file; code-side SPACE edits are invisible to it until relaunch.",
   "defaults": {
     "lr_mult": 1.0,
     "warmup_steps": 200,
@@ -8,7 +8,9 @@
     "clip": 0.25,
     "decay_ratio": 0.25,
     "muon_momentum": 0.95,
-    "adamw_beta2": 0.999
+    "adamw_beta2": 0.999,
+    "wd_head_mult": 1.0,
+    "dropout_scale": 1.0
   },
   "space": [
     {
@@ -75,6 +77,22 @@
         0.999,
         0.98,
         0.95
+      ]
+    },
+    {
+      "param": "wd_head_mult",
+      "grid": [
+        1.0,
+        0.2,
+        5.0
+      ]
+    },
+    {
+      "param": "dropout_scale",
+      "grid": [
+        1.0,
+        0.5,
+        2.0
       ]
     }
   ]
