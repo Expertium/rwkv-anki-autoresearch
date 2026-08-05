@@ -71,6 +71,27 @@ def main():
         raise SystemExit(f"no decay checkpoint under {folder} -- did the trial finish?")
     step, ckpt = max(cands)
 
+    # ⚠ STALE-RESULT HYGIENE, at generation time (added 2026-08-05, BEFORE it could bite). The
+    # .cmd deliberately has NO del between its three eval attempts -- eval_sharded resumes from
+    # banked users, which is what makes the giant-user OOM recoverable. But the SAME tag is reused
+    # across confirmations, and a PREVIOUS winner's completed jsonls would make eval_sharded skip
+    # all 2500 users and score the NEW checkpoint with the OLD model's numbers, silently: the gate
+    # would then "confirm" whatever the previous winner scored. Caught on the second confirmation
+    # of this grid (the first left complete decay_ratio_1 files behind). Archive rather than
+    # delete -- the old files ARE the previous confirmation's record.
+    prev = "unknown"
+    if os.path.exists(WINNER_TXT):
+        prev = open(WINNER_TXT).read().strip() or "unknown"
+    if prev != name:
+        for f in (f"RWKV-{TAG}", f"RWKV-P-{TAG}", f"RWKV-{TAG}-s0", f"RWKV-P-{TAG}-s0"):
+            src = f"{ROOT}/result/{f}.jsonl"
+            if os.path.exists(src):
+                dst = f"{ROOT}/result/{f}_prev_{prev}.jsonl"
+                if os.path.exists(dst):
+                    os.remove(dst)
+                os.replace(src, dst)
+                print(f"  archived stale {f}.jsonl -> {os.path.basename(dst)}")
+
     # ⚠ KEY NAMES ARE get_result's, NOT the training toml's. Written wrong the first time
     # (TEST_DATASET_LMDB_PATH / TEST_USERS_START, which are TRAINING-side names) and the dry run
     # missed it because it only checked the file PARSED. Parsing is not validation -- the schema
