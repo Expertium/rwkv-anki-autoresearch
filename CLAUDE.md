@@ -789,7 +789,23 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 32 `iter32_kd` (iter-31 trunk + full-run distillation) -- promoted 2026-07-27 23:13
+#### CHAMPION = iter 34 `t65_dropout_scale_0p5` (iter-32 env + the MAX=65536 tuned recipe) -- promoted 2026-08-05 22:45
+**RECTIFIED (the gate basis): ahead 0.298970 / imm 0.266217** on the VAL half (n=2500) =
++0.001298 / +0.001044 vs iter 32 at p=1.8e-152 / ~0. size 0/2500, nan_users 0. **558,212 params,
+card/note state 2,880/1,440 -- all IDENTICAL to iter 32** (training-recipe only; nothing new ships
+to Rust). Throughput 1797.6 rev/s. ckpt `scratchpad/tuner65k/t65_dropout_scale_0p5/t65_dropout_scale_0p5d_10935.pth`;
+`champion_5k_track2.json` points at it (= the vprune ref).
+**Env = iter 32's PLUS:** `MAX_TRAIN_GLOBAL_LEN=65536`, `NUM_FETCH_PROCESSES=2`, the speed stack
+(`RWKV_MUON_BATCHED=1 RWKV_NO_JIT=1 RWKV_QAT_COMPILE=1`, cleared before eval), `WARMUP_STEPS=400`,
+`RWKV_MUON_LR=0.0025` (8x cut -- THE win, +0.00183), `decay_ratio=1.0` (+0.00145; ⚠ total training
+is now 2.0 epochs -- a budget every future run pays), `RWKV_DROPOUT_SCALE=0.5` (+0.000254 subset,
+survived full-VAL; ⚠ the env var was a SILENT NO-OP on this trunk until 2026-08-03 -- the fork had
+hardcoded the rates). Also 1.68x FASTER to train. Grid detail + lessons: `research_5k_verbose.md`
+iter 34; journal `optimization/tuner_5k_log.jsonl` (24 rows).
+⚠ warmup 400 and dropout 0.5 were adopted INSIDE the ~0.0008 noise band -- the seed pair (next)
+doubles as their robustness check.
+
+#### PREVIOUS CHAMPION = iter 32 `iter32_kd` (iter-31 trunk + full-run distillation) -- promoted 2026-07-27 23:13
 **RECTIFIED (deploy, and the gate basis from iter 33 on): ahead 0.300268 / imm 0.267262** on the VAL
 half (5001-7500, n=2500) = +0.000534 / +0.000429 vs iter 31 at p=3.4e-54 / 2.9e-144. Unrectified
 0.298333 / 0.267207. **Both metrics agree**, so the gate-vs-deploy divergence risk did not bite.
@@ -940,7 +956,10 @@ Plain-era and QAT-era logloss are NOT comparable.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
-**The only live GPU work is the HP TUNER — see the QUEUE head below.** The previous "3-job GPU
+**HP TUNING IS DONE AND RECORDED AS ITER 34 (2026-08-05).** The grid closed after 24 rows; the
+winner passed the full-VAL confirmation and was promoted (champion block above). GPU order now:
+**base128_val re-eval (running) -> seed pair (needs the fresh teacher dump; see QUEUE 3) ->
+iter 35 = PAVA lambda.** The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
 archive (moved out of CLAUDE.md 2026-07-30)" — go there for the verbatim entries. The findings
