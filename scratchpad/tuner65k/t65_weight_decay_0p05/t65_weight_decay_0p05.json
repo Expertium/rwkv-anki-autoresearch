@@ -1,0 +1,1 @@
+{"name": "t65_weight_decay_0p05", "param": "weight_decay", "config": {"lr_mult": 1.0, "warmup_steps": 400, "muon_lr_mult": 0.125, "weight_decay": 0.05, "clip": 0.25, "decay_ratio": 0.25}, "ws_steps": 10935, "peak_lr": 0.001, "muon_lr": 0.0025}

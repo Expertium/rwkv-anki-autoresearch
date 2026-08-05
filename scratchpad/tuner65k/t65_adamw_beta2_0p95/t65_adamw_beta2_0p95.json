@@ -1,0 +1,1 @@
+{"name": "t65_adamw_beta2_0p95", "param": "adamw_beta2", "config": {"lr_mult": 1.0, "warmup_steps": 400, "muon_lr_mult": 0.125, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 1.0, "muon_momentum": 0.95, "adamw_beta2": 0.95}, "ws_steps": 10935, "peak_lr": 0.001, "muon_lr": 0.0025}

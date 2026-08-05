@@ -1623,3 +1623,61 @@ hold MAX at 32768 by lowering probe density rather than raising it. Then only th
 31 h wall clock. The run survived a hard black-screen hang at WS step 33,003 and two clean
 stop/resumes (Andrew's cable management), for a **total training loss of 3 steps** out of 43,354 —
 the checkpoint-every-1000 + `RWKV_RESUME_SKIP_GROUPS` discipline did its job.
+
+## iter 34 — HP tuning for the MAX=65536 era (ACCEPTED, 2026-08-05)
+
+**What it is.** Not one run but the tuner's outcome: greedy coordinate descent over 10 levers,
+24 journal rows (`optimization/tuner_5k_log.jsonl`), ~6 days of GPU. Andrew's framing fixed the
+scope twice: the original goal was "recover the −0.0003 that MAX=65536 cost", and mid-grid he
+retargeted it — *"We're looking for algorithmic improvements of any kind, there is no reason to
+stop (other than exhausting this particular lever)"* — which added the momentum/beta2 extension
+(his call, 2026-08-02) and then wd_head_mult/dropout_scale (2026-08-03).
+
+**Winner recipe** (= `champion_5k_track2.json` -> `t65_dropout_scale_0p5d_10935.pth`): iter 32's
+env + MAX=65536 + the 1.68x speed stack + `WARMUP_STEPS 400`, `RWKV_MUON_LR 0.0025` (8x below
+the 0.02 tuned at MAX=32768), `decay_ratio 1.0`, `RWKV_DROPOUT_SCALE 0.5`. peak_lr/wd/clip/
+momentum/beta2/head-wd all held their defaults.
+
+**Result, rect-vs-rect vs iter 32 on the full VAL half (n=2500):** ahead 0.298970 (+0.001298,
+p=1.8e-152), imm 0.266217 (+0.001044, p underflows). size 0/2500 mismatches, nan_users 0, params
+558,212 and card/note state unchanged — training-recipe only, nothing new ships to Rust.
+Throughput 1797.6 rev/s (deploy-identical to iter 32; the delta vs 1857.4 is bench noise).
+Recovered the MAX cost ~4x over on ahead and ~3x on imm, while keeping the 1.68x training
+speedup: accuracy and speed moved together, which is rare enough to note.
+
+**What the grid actually learned, in credit order:**
+1. **Muon's LR was the whole problem (+0.00183).** The batch doubling had NOT mis-set "the LR" —
+   raising the joint LR is monotonically worse across 4 points — it had mis-set *Muon's* LR
+   specifically. The AdamW side (10% of params) was fine at 1e-3.
+2. **decay_ratio 1.0 (+0.00145)** — with the honest caveat that this lever buys TOTAL TRAINING
+   (1.25 -> 2.0 epochs), a ~5.9 h/run budget every future iteration now pays. Andrew accepted
+   the budget change implicitly by accepting the recipe; the 2c methodology note (epoch budget
+   belongs to the endgame) is unchanged for WS.
+3. **Momentum is an interior optimum at 0.95** (0.8 +0.000375, 0.9 +0.000176, 0.975 +0.000235 —
+   a clean inverted U). This *inverts* the motivating hypothesis: if the LR cut had been about
+   effective step size (~lr/(1−m)), momentum would substitute for it. It does not — the two
+   knobs are independent, and the batch change broke only one of them.
+4. **beta2 0.999 held** (0.98 +0.000048, 0.95 +0.000097 — mild monotone worsening).
+5. **The per-group wd split did not pay**: head-wd flat across 25x (0.2x +0.000064, 5x
+   +0.000101). The peak_lr-style "shared knob hides a split optimum" prior was worth testing and
+   is now answered for wd.
+6. **dropout x0.5 (+0.000254 subset, COIN FLIP by the tuner's own report) — but it survived the
+   full-VAL confirmation**, beating the pre-dropout winner there too (+0.000089/+0.000152).
+   Coherent with the capacity-limited-trunk story: a model past its width floor wants LESS
+   regularization. ⚠ This lever was a SILENT NO-OP until 2026-08-03 — architecture_d80_lora4.py
+   had hardcoded the dropout rates at fork time, eating RWKV_DROPOUT_SCALE — so its coordinate
+   only exists because the fix landed first. The other two silent-null finds of the same sweep:
+   the momentum env emitted twice per .cmd (benign, last-set-wins, removed), and canon() blind
+   to JSON-only coordinates (fixed + self-tested).
+
+**Caveats carried forward.** warmup 400 and dropout 0.5 were adopted INSIDE the ~0.0008 noise
+band — the recipe carries them because they won, not because they are individually proven. The
+seed pair (next in Andrew's order) re-runs the tuned recipe at seed 4321 and doubles as their
+robustness check; if the margin collapses there, the suspects are exactly these two levers.
+
+**Ops record:** one 47-min idle-GPU incident (a running loop's SPACE is baked at import; grid
+growth mid-run must edit tuner65k_space.json — lesson now in load_space()'s docstring), one
+giant-user OOM eval recovered by the designed no-del retry, one stale-confirm-jsonl hazard
+caught before it bit (t65confirm files archive at generation time now — they would have made
+eval_sharded skip all 2500 users and "confirm" the new checkpoint with the old winner's
+numbers).

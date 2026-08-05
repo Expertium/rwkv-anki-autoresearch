@@ -1,0 +1,1 @@
+{"name": "t65_wd_head_mult_0p2", "param": "wd_head_mult", "config": {"lr_mult": 1.0, "warmup_steps": 400, "muon_lr_mult": 0.125, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 1.0, "muon_momentum": 0.95, "adamw_beta2": 0.999, "wd_head_mult": 0.2, "dropout_scale": 1.0}, "ws_steps": 10935, "peak_lr": 0.001, "muon_lr": 0.0025}

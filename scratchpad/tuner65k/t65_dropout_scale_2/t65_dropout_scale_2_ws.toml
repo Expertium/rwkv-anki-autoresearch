@@ -1,0 +1,35 @@
+# HP tuner (MAX=65536 era) trial t65_dropout_scale_2: param=dropout_scale -> 2
+# Full config: {"lr_mult": 1.0, "warmup_steps": 400, "muon_lr_mult": 0.125, "weight_decay": 0.01, "clip": 0.25, "decay_ratio": 1.0, "muon_momentum": 0.95, "adamw_beta2": 0.999, "wd_head_mult": 1.0, "dropout_scale": 2.0}  ->  PEAK_LR 0.001, RWKV_MUON_LR 0.0025
+# Recipe = scratchpad/maxval/run_maxval.cmd (the validated MAX=65536 run) with the HPs swapped.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 0.001
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/tuner65k/t65_dropout_scale_2"
+SAVE_MODEL_PREFIX = "t65_dropout_scale_2ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
