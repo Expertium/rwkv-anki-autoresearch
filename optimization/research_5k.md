@@ -45,6 +45,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | iter | trained on | ahead | imm | logloss | status | p-value | params | NaN users | provenance | summary |
 |---|---|---|---|---|---|---|---|---|---|---|
 | 0 | 101–4999 | 0.2964 | 0.2649 | exact | — (target) | — (reference) | 2,762,884 | 0 | adopted | Old d=128 leaderboard model, unquantized — the fp target to beat on 5001–10000. |
+| 0ᵛ | 101–4999 | 0.2946ᵛ | 0.2636ᵛ | exact | — (target) | — (reference) | 2,762,884 | 0 | adopted | Same model restricted to the VAL half (5001–7500, n=2500) — directly diffable against every ᵛ row. Re-verified 2026-08-05: fresh eval reproduces the 2026-07-03 numbers to 1e-6/user (as intended: no rectifier, piecewise residual ON). |
 | 1 | 1–5000 | 0.3066 | 0.2783 | exact | **accepted** | 1.0 / 1.0 (vs iter 0) | 193,724 | 0 | invented | champ5k_r1 = first 5k champion (H=2/K=16, q72u quant-aware, 2ep budget). Superseded by iter 2. |
 | 2 | 1–5000 | 0.3066 | 0.2779 | exact | **accepted** | 0.31 / 6.1e-62 (vs iter 1) | 193,724 | 0 | invented | **champ5k_b1 = CURRENT CHAMPION**: iter 1 at half budget (1ep WS + 0.25ep decay) — 2nd epoch adds nothing. |
 | 3 | 1–5000 | 0.3072 | 0.2786 | exact | rejected | 1.0 / 1.0 (vs iter 2) | 193,724 | 0 | invented | champ5k_t1 = tuner winner (wd 0.2, dropout 0.5); its 200-user subset win inverted at n=5000. HP tuning closed. |
