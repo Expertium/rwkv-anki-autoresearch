@@ -789,7 +789,33 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 34 `t65_dropout_scale_0p5` (iter-32 env + the MAX=65536 tuned recipe) -- promoted 2026-08-05 22:45
+#### CHAMPION = iter 35 `sp4321_kd` (the tuned recipe + KD restored, seed 4321) -- promoted 2026-08-06 21:20
+**RECTIFIED (the gate basis): ahead 0.298816 / imm 0.265946** on the VAL half (n=2500) =
++0.000153 / +0.000271 vs iter 34 at p=5.9e-11 / 7.9e-71 -- and it ALSO beats its same-seed twin
+(arm A, tuned-no-KD at 4321) by +0.000160 / +0.000251 at p=4.3e-13 / 3.3e-75, so the accept is
+not cross-seed luck. size 0/2500 (vs champion AND twin), nan_users 0. **558,212 params (exact,
+incl. pava_theta -- model_stats WITHOUT the PAVA env prints 558,209), card/note state
+2,880/1,440 unchanged** (KD is train-time only; nothing new ships to Rust). Throughput 1829.7
+rev/s (same deploy model as iter 32/34; deltas are bench noise). ckpt
+`scratchpad/seedpair65k/spb_d_10935.pth`; `champion_5k_track2.json` points at it (= the vprune
+ref; ⚠ its trace was EXTRACTED from the WS log by `scratchpad/seedpair65k/
+extract_trace_from_log.py` -- the arms ran without RWKV_STEP_TRACE -- 4-dp precision, val at
+1000-step cadence, fine for vprune).
+**Env = iter 34's tuned recipe PLUS `RWKV_AUGMENT_SEED=4321` + `RWKV_KD_MIX=C:\rwkv_kd_dump\
+t128_seedpair_65k:10935` + `RWKV_KD_ALPHA=0.5` (KD WS-only, cleared before decay).** Why this
+exists: the HP tuner ran WITHOUT KD (the old dump was bound to MAX=32768 + seed 1234), so iter
+34 silently dropped iter 32's accepted KD win; iter 35 = the seed pair's arm B restores it.
+**★ FUTURE CANDIDATES RUN AT SEED 4321 WITH KD** -- that keeps gates same-seed and reuses the
+dump for free. The dump is bound to db/MAX/seed AND probe layout: model-side levers (PAVA
+lambda) reuse it; data-side levers (MAX, RWKV_PROBE_DENSITY) need a fresh one (~1.5 h, 7.7 GB).
+**The seed pair also CLOSED iter 32's seed caveat and iter 34's robustness caveat:** KD wins at
+a second seed (distillation family 2/2), and arm A reproduces iter 34's means to
++0.000006/-0.000020 while per-user losses genuinely differ (mean |d| 0.0012/0.0005, coin-flip
+sign) -- cross-seed spread on this recipe ~2e-5, ~20x tighter than the ~0.0004 doctrine figure
+(QAT d=32 era; pair-specific observation, not a new rule). Full detail: `research_5k_verbose.md`
+iter 35.
+
+#### PREVIOUS CHAMPION = iter 34 `t65_dropout_scale_0p5` (iter-32 env + the MAX=65536 tuned recipe) -- promoted 2026-08-05 22:45
 **RECTIFIED (the gate basis): ahead 0.298970 / imm 0.266217** on the VAL half (n=2500) =
 +0.001298 / +0.001044 vs iter 32 at p=1.8e-152 / ~0. size 0/2500, nan_users 0. **558,212 params,
 card/note state 2,880/1,440 -- all IDENTICAL to iter 32** (training-recipe only; nothing new ships
@@ -802,8 +828,8 @@ is now 2.0 epochs -- a budget every future run pays), `RWKV_DROPOUT_SCALE=0.5` (
 survived full-VAL; ⚠ the env var was a SILENT NO-OP on this trunk until 2026-08-03 -- the fork had
 hardcoded the rates). Also 1.68x FASTER to train. Grid detail + lessons: `research_5k_verbose.md`
 iter 34; journal `optimization/tuner_5k_log.jsonl` (24 rows).
-⚠ warmup 400 and dropout 0.5 were adopted INSIDE the ~0.0008 noise band -- the seed pair (next)
-doubles as their robustness check.
+⚠ warmup 400 and dropout 0.5 were adopted INSIDE the ~0.0008 noise band -- RESOLVED 2026-08-06:
+the seed pair's arm A reproduced this recipe at seed 4321 to ~2e-5 both modes; they survive.
 
 #### PREVIOUS CHAMPION = iter 32 `iter32_kd` (iter-31 trunk + full-run distillation) -- promoted 2026-07-27 23:13
 **RECTIFIED (deploy, and the gate basis from iter 33 on): ahead 0.300268 / imm 0.267262** on the VAL
@@ -815,9 +841,9 @@ nothing new ships to Rust). Throughput **1857.4 rev/s** (measured). ckpt
 Env = iter 31's env plus `RWKV_KD_MIX` + `RWKV_KD_ALPHA=0.5`; teacher dump at
 `C:
 wkv_kd_dump	128_iter32` (22,346 files / 6.96 GB -- do NOT delete, the cheap follow-ups reuse it).
-⚠ **Seed-pair caveat OPEN:** imm +0.000429 is below the ~0.0005 threshold and the rectified eval
-re-scores the SAME run, so it confirms the metric, not the seed. Precedent (iter 31 accepted at
-ahead +0.000393) supports the promotion; an `RWKV_AUGMENT_SEED=4321` re-run would settle it.
+⚠ ~~Seed-pair caveat OPEN~~ **CLOSED 2026-08-06 by iter 35 (the seed pair):** KD wins at seed
+4321 too (+0.000160/+0.000251 within-seed, p=4.3e-13/3.3e-75) -- the +0.000429 imm margin was
+not seed luck.
 
 #### PREVIOUS CHAMPION = iter 31 `iter31_algo` (A18 trunk + PAVA + GRU N=3 + Muon)
 Accepted 2026-07-26, the FIRST merged-lineage iteration. **ahead 0.298909 / imm 0.267637** on the
@@ -956,10 +982,14 @@ Plain-era and QAT-era logloss are NOT comparable.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
-**HP TUNING IS DONE AND RECORDED AS ITER 34 (2026-08-05).** The grid closed after 24 rows; the
-winner passed the full-VAL confirmation and was promoted (champion block above). GPU order now:
-**base128_val re-eval (running) -> seed pair (needs the fresh teacher dump; see QUEUE 3) ->
-iter 35 = PAVA lambda.** The previous "3-job GPU
+**THE SEED PAIR IS DONE AND RECORDED AS ITER 35 (2026-08-06)** — chain ran 20.9 h unattended,
+clean end-to-end; arm B (tuned + KD) is the NEW CHAMPION (block above), iter 32's seed caveat
+and iter 34's robustness caveat both CLOSED. base128_val completed earlier (drift check passed
+to 1e-6/user; row 0ᵛ added). GPU order now: **iter 36 = PAVA lambda** (renumbered from "iter 35
+= PAVA lambda" — the seed pair took the 35 slot since it produced a champion promotion; the
+substance of Andrew's order is unchanged). New-run env = the iter-35 champion recipe: seed 4321
++ KD reusing `C:\rwkv_kd_dump\t128_seedpair_65k` (PAVA lambda is model-side, dump stays valid).
+HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
 archive (moved out of CLAUDE.md 2026-07-30)" — go there for the verbatim entries. The findings
@@ -1199,9 +1229,11 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
    recorded the winner needs **one eval on the full VAL half 5001-7500** and a paired comparison
    against iter 32's RECTIFIED jsonls. That is eval-only (~2.5 h): the winning trial's decay
    checkpoint already exists under `scratchpad/tuner65k/<trial>/`, so nothing is retrained.
-2. **The SEED PAIR** (queue item 3 below) — the tuned recipe WITH and WITHOUT KD, both at
-   `RWKV_AUGMENT_SEED=4321`. ~9.5 h (2 x ~4.2 h + ~1.5 h fresh teacher dump). It runs BEFORE any
-   new research iteration because it validates the champion everything after is measured against.
+2. **✓ DONE 2026-08-06 — the SEED PAIR ran and is RECORDED AS ITER 35** (champion block above;
+   detail in `research_5k_verbose.md` iter 35). Both questions answered YES: KD wins at seed
+   4321 (+0.000160/+0.000251 within-seed) and the tuned recipe is seed-robust (~2e-5 mean
+   spread). Arm B (tuned + KD) passed the gate vs iter 34 AND vs its same-seed twin -> promoted.
+   Actual cost 20.9 h (the ~9.5 h estimate predated decay_ratio=1.0 doubling each arm's decay).
 2b. **HP TUNING EXTENDED — two more coordinates (Andrew 2026-08-02: "let's add momentum and beta2
    then").** `muon_momentum` [0.95, 0.9, 0.8, 0.975] and `adamw_beta2` [0.999, 0.98, 0.95] =
    **5 unrun points x ~5.9 h = ~29 h** (they run at the incumbent `decay_ratio=1.0`, whose decay
@@ -1224,13 +1256,16 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
      by the 10x run after the features rebuild. ⚠ Note `decay_ratio=1.0` already moved total
      training 1.25 -> 2.0 epochs, so the "current budget" is 1.6x what it was — a cost every
      future run now pays, accepted because the accuracy was real (+0.00145 vs the default).
-3. **iter 35 = tuning `RWKV_PAVA_LAMBDA`** (and, if it looks live, `RWKV_PROBE_DENSITY`).
+3. **iter 36 = tuning `RWKV_PAVA_LAMBDA`** (renumbered: the seed pair became iter 35; this is
+   the NEXT run). ⚠ `RWKV_PROBE_DENSITY` is data-side — changing it invalidates the KD dump
+   (~1.5 h + 7.7 GB per density value); PAVA lambda alone reuses `t128_seedpair_65k` free.
+   Candidate runs = the iter-35 champion recipe (seed 4321 + KD) with lambda swapped.
    **WHY THIS ONE:** the rectifier SHIPS, and iter 31 still pays **+0.001893 on ahead** purely to
    be rectified (0.298909 -> 0.300802) — roughly 4x everything the HP tuner just recovered, and the
    single largest identified loss we already know how to attack. It is a TRAINING problem, not an
    inherent cost: A18 (never trained under the constraint) paid +0.003588 and training at
    `PAVA_LAMBDA=0.1` halved it; nobody has asked whether more pressure halves it again. One env
-   flag on the existing recipe, so a normal ~4.2 h iteration. Extends a family that is 1/1 rather
+   flag on the existing recipe, so a normal ~5.9 h iteration. Extends a family that is 1/1 rather
    than reopening a closed one (conduct rule 5).
    ⚠ **Measure BOTH metrics.** This family trades raw accuracy for monotonicity, so it can look
    like a regression on the unrectified number while being a deploy win. The gate basis is now
@@ -1335,7 +1370,9 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    threshold; the rectified eval re-scores the SAME training run, so it confirms the metric, not
    the seed) is **DECIDED — Andrew 2026-07-30: re-run it at a different seed AFTER the HP tune.**
    Design + cost in item 3.
-3. **★ SEED-PAIR RE-RUN — SPECIFIED BY ANDREW 2026-07-30: "let's do iter 31 and iter 32 both with
+3. **✓ DONE 2026-08-06 — RECORDED AS ITER 35 AND PROMOTED (see the champion block).** The
+   design below ran exactly as specified (`scratchpad/seedpair65k/run_seedpair.cmd`); kept for
+   the reasoning. **★ SEED-PAIR RE-RUN — SPECIFIED BY ANDREW 2026-07-30: "let's do iter 31 and iter 32 both with
    the same seed after HP tune."** So it is a **TWO-ARM, SEED-MATCHED** test, run AFTER the tuner
    on whatever recipe it leaves: the tuned recipe **WITHOUT KD (the iter-31 arm)** and **WITH KD
    (the iter-32 arm)**, both at **`RWKV_AUGMENT_SEED=4321`**, and the margin taken WITHIN that seed.

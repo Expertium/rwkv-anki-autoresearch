@@ -80,6 +80,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 32 | 1–5000 | 0.2983ᵛ | 0.2672ᵛ | exact | **accepted** | 2.3e-66 / 3.1e-143 (vs iter 31) | 558,212 | 0 | lit review | Full-run distillation from the d=128 teacher: ahead +0.00058, imm +0.00043. Closes 13% of the ahead gap / 11% of imm to the teacher. KD costs ~9% wall-clock. CHAMPION — rectified 0.3003/0.2673, the baseline iter 33 was gated against. |
 | 33 | 1–5000 | 0.3031ᵛʳ | 0.2681ᵛʳ | exact | rejected | 1.0 / 1.0 (vs iter 32 RECT) | 558,212 | 0 | invented | Withhold the current row's duration from its own ahead prediction (deploy-contract). Both modes worse. ⚠ 3 changes bundled — cannot attribute. |
 | 34 | 1–5000 | 0.2990ᵛʳ | 0.2662ᵛʳ | exact | **accepted** | 1.8e-152 / ~0 (vs iter 32 RECT) | 558,212 | 0 | HP tuning | MAX=65536 tuner: Muon LR ÷8 (+0.00183) + decay_ratio 1.0 (+0.00145) + dropout ×0.5. ahead +0.00130, imm +0.00104 — and 1.68× faster training. NEW champion. |
+| 35 | 1–5000 | 0.2988ᵛʳ | 0.2659ᵛʳ | exact | **accepted** | 5.9e-11 / 7.9e-71 (vs iter 34) | 558,212 | 0 | distillation | Seed pair at 4321: KD confirmed at 2nd seed (+0.00016/+0.00025 within-seed); tuned+KD beats iter 34; iter-34 recipe seed-robust to ~2e-5. NEW champion. |
 
 ## Track 2 — ablate the old d=128 model
 

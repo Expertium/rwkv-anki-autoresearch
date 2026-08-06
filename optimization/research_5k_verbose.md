@@ -1681,3 +1681,54 @@ giant-user OOM eval recovered by the designed no-del retry, one stale-confirm-js
 caught before it bit (t65confirm files archive at generation time now — they would have made
 eval_sharded skip all 2500 users and "confirm" the new checkpoint with the old winner's
 numbers).
+
+## iter 35 — the seed pair; KD confirmed at a second seed and restored to the recipe (ACCEPTED, 2026-08-06)
+
+**What ran.** Andrew's spec (2026-07-30): "let's do iter 31 and iter 32 both with the same seed
+after HP tune" — a two-arm, seed-matched test on the tuned recipe. One detached chain
+(`scratchpad/seedpair65k/run_seedpair.cmd`, 20.9 h unattended): fresh d=128 teacher dump at
+seed 4321 + MAX=65536 (`C:\rwkv_kd_dump\t128_seedpair_65k`, 10,935 steps, 7.7 GB — a NEW dir;
+the runner rmdir's its target, and reusing `t128_iter32` would have destroyed iter 32's only
+exact-reproduction artifact) → arm A `sp4321_nokd` (iter-34 tuned recipe, no KD) → arm B
+`sp4321_kd` (same + `RWKV_KD_MIX` + `RWKV_KD_ALPHA=0.5`, KD WS-only). Both arms
+`RWKV_AUGMENT_SEED=4321`, full-VAL 5001-7500 RECTIFIED evals, 2500/2500 users on attempt 1,
+zero exit-43s (the dump's batch-stream identity held for all 10,935 steps), KD wall-clock cost
+~0 (both arms 3.4 h WS).
+
+**Question 1 — does KD still win at a second seed? YES.** Within seed 4321:
+(B−A) = **+0.000160 ahead / +0.000251 imm**, p = 4.3e-13 / 3.3e-75, KD better on 1435/2500 and
+1629/2500. Smaller than the seed-1234 untuned-recipe margin (+0.000534/+0.000429, iter 32 vs
+iter 31 rect) — plausibly the tuned recipe (2.0 epochs, Muon LR ÷8) already captures part of
+what KD provided — but the direction and significance are unambiguous. Distillation family 2/2.
+
+**Question 2 — is iter 34 seed-robust? YES, remarkably.** Arm A reproduces the seed-1234
+champion's means to **+0.000006 ahead / −0.000020 imm** — and this is genuine stability, not a
+replay: the log confirms fetch seed 4321, and per-user losses differ substantially (mean |d|
+0.001188 / 0.000501, max |d| 0.087, candidate worse on 1237/2500 and 1238/2500 — exact coin
+flips both modes). Real per-user differences cancelling to a near-zero mean. The inside-noise
+adoptions (warmup 400, dropout ×0.5) survive their robustness check. Observed cross-seed spread
+on this recipe ~2e-5 — ~20× tighter than the ~0.0004 doctrine figure, which came from the QAT
+d=32 era; recorded as pair-specific, NOT a new general rule.
+
+**The promotion (arm B → champion).** The tuner's trials ran WITHOUT KD (the old dump was bound
+to MAX=32768 + seed 1234), so iter 34 had silently dropped iter 32's accepted KD win; arm B is
+the tuned recipe with KD restored — and it beats iter 34: **rect ahead 0.298816 (+0.000153,
+p=5.9e-11) / imm 0.265946 (+0.000271, p=7.9e-71)**, 4-dp deltas 0.0002/0.0003, both ≥0.0001.
+It also passes against its SAME-SEED twin A (+0.000160/+0.000251), so the accept is not
+cross-seed luck. size 0/2500 vs both champion and A; params **558,212 exact** (incl.
+`pava_theta` — `model_stats.py` without the PAVA env prints 558,209; set `RWKV_PAVA_LAMBDA`
+when checking); card/note state 2,880/1,440 unchanged (KD is train-time only; nothing new ships
+to Rust); throughput 1829.7 rev/s (same deploy model as iter 32/34 — deltas are bench noise).
+ckpt `scratchpad/seedpair65k/spb_d_10935.pth`; `champion_5k_track2.json` points at it.
+
+**Operational consequences.**
+- **The champion is at seed 4321 and its recipe includes KD.** Future candidates should run
+  `RWKV_AUGMENT_SEED=4321` WITH KD — that keeps gates same-seed AND reuses the
+  `t128_seedpair_65k` dump for free.
+- The dump is bound to db/MAX/seed AND the probe layout: data-side levers (MAX,
+  `RWKV_PROBE_DENSITY`) need a fresh dump (~1.5 h + 7.7 GB); model-side levers (PAVA lambda)
+  reuse it. Keep `t128_iter32` (iter 32's audit artifact).
+- The champion json's trace was EXTRACTED from the WS log
+  (`scratchpad/seedpair65k/extract_trace_from_log.py`; the arms deliberately ran without
+  `RWKV_STEP_TRACE`) — 4-dp precision, val points at 1000-step cadence, step numbering 0-based
+  vs native traces' 1-based. Fine for vprune/pairing; noted for provenance.
