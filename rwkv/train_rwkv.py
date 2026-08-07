@@ -822,6 +822,25 @@ def main_loop(config, task_queue, batch_queue):
         config.MAX_TRAIN_GLOBAL_LEN,
         users=TRAIN_USERS,
     )
+    # ---- iter 37 OBJECTIVE ALIGNMENT (RWKV_USER_WEIGHT=1) ---------------------------------
+    # Training minimizes a flat mean over ROWS; the gate is the mean over USERS of each user's
+    # own LogLoss. With review counts spanning ~500..367k, that hands the largest users ~720x
+    # the influence they get at eval. Weighting each chunk by 1/N_u makes the training objective
+    # an estimator of the gate quantity instead.
+    # N_u is summed over the POST-filter chunk list, so it counts exactly the rows that will
+    # actually train (get_groups drops any chunk larger than MAX_TRAIN_GLOBAL_LEN). It counts
+    # ALL rows of a chunk, not just scored ones -- a proxy, but the scored fraction is roughly
+    # constant across users and the imbalance being corrected is ~700x, not 5%.
+    _user_row_totals = None
+    if os.environ.get("RWKV_USER_WEIGHT", "") == "1":
+        _user_row_totals = {}
+        for _g in groups:
+            for _k in _g:
+                _user_row_totals[_k[0]] = _user_row_totals.get(_k[0], 0) + _k[3]
+        _tot = sorted(_user_row_totals.values())
+        print(f"[user-weight] ON: per-user loss weight = 1/N_u over {len(_user_row_totals)} users; "
+              f"rows/user min {_tot[0]} med {_tot[len(_tot)//2]} max {_tot[-1]} "
+              f"(imbalance {_tot[-1]/max(1,_tot[0]):.0f}x, now equalized)")
     VALIDATION_USERS = list(
         range(config.VALIDATE_USERS_START, config.VALIDATE_USERS_END + 1)
     )
@@ -1159,6 +1178,17 @@ def main_loop(config, task_queue, batch_queue):
             prepared_batch = data_fetcher.get(f"train-{group_i}")
             print(f"Got: {time.time() - time_fetch:.4f}s")
             prepared_batch = prepared_batch.to(config.DEVICE)
+            # iter 37 OBJECTIVE ALIGNMENT: attach the (B,) per-user loss weight. Built HERE, from
+            # the group's own keys, because this is the only place that knows both the batch and
+            # which chunks it came from -- and because doing it here leaves the fetch workers (and
+            # therefore the batch data stream, and therefore the KD labels checksum) untouched.
+            # Batch row i == groups[group_i][i] (prepare() stacks data_list in key order).
+            if _user_row_totals is not None:
+                _w = torch.tensor(
+                    [1.0 / _user_row_totals[k[0]] for k in groups[group_i]],
+                    dtype=torch.float32, device=config.DEVICE,
+                )
+                prepared_batch.user_weight = _w / _w.mean()  # mean 1 => gradient scale preserved
             fetch_ahead_group_i = group_i + FETCH_AHEAD
             if fetch_ahead_group_i < len(groups):
                 data_fetcher.enqueue(

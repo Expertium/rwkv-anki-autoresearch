@@ -123,6 +123,11 @@ class PreparedBatch:
     probe_target: "torch.Tensor | None" = None    # (M,) the probed real row
     probe_pressed: "torch.Tensor | None" = None   # (M,) actual rating - 1 in 0..3
     probe_query: "torch.Tensor | None" = None     # (M,) paired imm query row (iter 24 w)
+    # iter 37 objective alignment (RWKV_USER_WEIGHT): (B,) per-chunk loss weight, already
+    # normalized to mean 1. Set by the TRAIN LOOP (which owns the epoch's chunk list), never
+    # by the fetch workers -- that keeps the data stream byte-identical, so the KD dump's
+    # per-step labels checksum still matches. None => unweighted, bit-identical to pre-iter-37.
+    user_weight: "torch.Tensor | None" = None
 
     def to(self, device):
         start = self.start.to(device)
@@ -146,6 +151,7 @@ class PreparedBatch:
             probe_target=None if self.probe_target is None else self.probe_target.to(device),
             probe_pressed=None if self.probe_pressed is None else self.probe_pressed.to(device),
             probe_query=None if self.probe_query is None else self.probe_query.to(device),
+            user_weight=None if self.user_weight is None else self.user_weight.to(device),
         )
 
 
@@ -738,6 +744,8 @@ class SrsRWKV(ModuleType):
         # iter 23 probe channel: (probe_rows (M,4), probe_target (M,), probe_pressed (M,),
         # probe_query (M,)) flat b*T+t indices; None = no probes in this batch
         probes: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        # iter 37: (B,) per-chunk loss weight (mean 1), or None for the historical flat mean.
+        user_weight: Optional[torch.Tensor] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits, out_s_raw, out_d_raw = self.forward_batch(
             batch_start,
@@ -823,6 +831,24 @@ class SrsRWKV(ModuleType):
         ahead_equalize_mask = ahead_mask * label_is_equalize
 
         immediate_equalize_mask = immediate_mask * label_is_equalize
+        # ---- iter 37: OBJECTIVE ALIGNMENT (RWKV_USER_WEIGHT) -------------------------------
+        # The gate is the BY-USER mean LogLoss (every user counts once), but this loss is a flat
+        # mean over ROWS, so a 360k-review user drives ~720x the gradient of a 500-review one
+        # while counting the same at eval. user_weight is (B,) = 1/N_u normalized to mean 1
+        # (each batch row is exactly one user's chunk -- see prepare(), which stacks data_list in
+        # order), so these become weighted means: same magnitude, hence the tuned LRs still hold.
+        # ⚠ WEIGHTED: the OBJECTIVE terms only. The *_equalize_avg metrics and the *_n counts
+        # below stay UNWEIGHTED on purpose -- they are what the step trace reports and what the
+        # champion's vprune reference is made of, so weighting them would silently make traces
+        # non-comparable across runs (and turn a row count into a fractional weight sum).
+        # float() on the new path: weights are O(1) but bf16 carries only ~3 digits.
+        if user_weight is not None:
+            _uw = user_weight.reshape(-1, 1).float()
+            ahead_wmask = ahead_mask.float() * _uw
+            immediate_wmask = immediate_mask.float() * _uw
+        else:
+            ahead_wmask = ahead_mask
+            immediate_wmask = immediate_mask
         curve_loss = torch.nn.functional.binary_cross_entropy_with_logits(
             curve_logits, label_y, reduction="none"
         )
@@ -854,29 +880,29 @@ class SrsRWKV(ModuleType):
         p_binary_loss = torch.nn.functional.binary_cross_entropy(
             out_p_binary, label_y, reduction="none"
         )
-        ahead_avg = (curve_loss * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
+        ahead_avg = (curve_loss * ahead_wmask).sum() / (1e-8 + ahead_wmask.sum())
         AHEAD_SCALE = 0.5
-        ahead_raw_avg = (curve_raw_loss * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
+        ahead_raw_avg = (curve_raw_loss * ahead_wmask).sum() / (1e-8 + ahead_wmask.sum())
         AHEAD_RAW_SCALE = 0.5
-        immediate_avg = (p_loss * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
+        immediate_avg = (p_loss * immediate_wmask).sum() / (1e-8 + immediate_wmask.sum())
         # Optimization-loop knob (local literal — TorchScript can't use module globals/env):
         # weight on the immediate 4-way rating loss. 1.0 = original. (iter2 tried 2.0 -> imm
         # got WORSE, reverted.)
         IMMEDIATE_SCALE = 1.0
-        w_avg = (w_loss * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
+        w_avg = (w_loss * ahead_wmask).sum() / (1e-8 + ahead_wmask.sum())
         W_LOSS_SCALE = 1e-5
         ahead_logits_mag_loss = torch.sqrt(
             1e-16 + out_ahead_logits.square().mean(dim=-1)
         )
-        ahead_logits_mag_avg = (ahead_logits_mag_loss * ahead_mask).sum() / (
-            1e-8 + ahead_mask.sum()
+        ahead_logits_mag_avg = (ahead_logits_mag_loss * ahead_wmask).sum() / (
+            1e-8 + ahead_wmask.sum()
         )
         AHEAD_LOGITS_MAG_LOSS_SCALE = 1e-4
         ahead_logits_diff_loss = torch.sqrt(
             1e-16 + out_ahead_logits.diff().square().mean(dim=-1)
         )
-        ahead_logits_diff_avg = (ahead_logits_diff_loss * ahead_mask).sum() / (
-            1e-8 + ahead_mask.sum()
+        ahead_logits_diff_avg = (ahead_logits_diff_loss * ahead_wmask).sum() / (
+            1e-8 + ahead_wmask.sum()
         )
         AHEAD_LOGITS_DIFF_LOSS_SCALE = 1e-3
         loss_avg = (
@@ -889,7 +915,7 @@ class SrsRWKV(ModuleType):
         )
         if self.pbin_scale != 0.0:
             # iter 17: the benchmark-imm objective, trained directly (see __init__ note).
-            pbin_avg = (p_binary_loss * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
+            pbin_avg = (p_binary_loss * immediate_wmask).sum() / (1e-8 + immediate_wmask.sum())
             loss_avg = loss_avg + self.pbin_scale * pbin_avg
         # iter 23: learnable power-mean PAVA on the 4 counterfactual probe curves
         pava_loss_avg = ahead_avg.detach() * 0.0
@@ -913,11 +939,11 @@ class SrsRWKV(ModuleType):
                 torch.softmax(t_p_logits, dim=-1)
                 * torch.log_softmax(out_p_logits.float(), dim=-1)
             ).sum(dim=-1)
-            kd_p_avg = (kd_p * immediate_mask).sum() / (1e-8 + immediate_mask.sum())
+            kd_p_avg = (kd_p * immediate_wmask).sum() / (1e-8 + immediate_wmask.sum())
             kd_c = torch.nn.functional.binary_cross_entropy_with_logits(
                 curve_logits.float(), t_curve_probs, reduction="none"
             )
-            kd_c_avg = (kd_c * ahead_mask).sum() / (1e-8 + ahead_mask.sum())
+            kd_c_avg = (kd_c * ahead_wmask).sum() / (1e-8 + ahead_wmask.sum())
             loss_avg = loss_avg + kd_lam * (
                 IMMEDIATE_SCALE * kd_p_avg + AHEAD_SCALE * kd_c_avg
             )
@@ -998,6 +1024,7 @@ class SrsRWKV(ModuleType):
             kd=kd,
             kd_mix=kd_mix,
             probes=probes,
+            user_weight=batch.user_weight,
         )
 
     def copy_downcast_(self, master_model, dtype):
