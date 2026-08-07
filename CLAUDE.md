@@ -1013,10 +1013,23 @@ to 1e-6/user; row 0ᵛ added).
 the new champion (block above). Dose pair λ=0.2/0.3 measured; no λ>0.1 passes the both-modes
 gate, and Andrew took the 5.9:1 trade at 0.2. **The deploy contract's λ is now 0.2 — set
 `RWKV_PAVA_LAMBDA=0.2` in every new run.**
-**GPU is FREE. Next = iter 37**, on the iter-36 champion recipe: seed 4321 + KD reusing
-`C:\rwkv_kd_dump\t128_seedpair_65k` (still valid — λ is model-side) + λ=0.2. No family is
-queued by name; pick per the research-phase conduct rules (new FAMILIES, not variants;
-the ~50-iteration floor is not reached).
+**▶ ITER 37 IS RUNNING (launched 2026-08-07, detached pid 22148; direction chosen by Claude —
+Andrew: "It's up to you"): BY-USER LOSS WEIGHTING (`RWKV_USER_WEIGHT=1`), family = objective
+alignment (NEW).** The gate is a BY-USER mean but training minimized a flat per-row mean;
+measured imbalance **4,308x rows/user (1,179..5,079,718)**. The flag weights each chunk 1/N_u
+(mean-normalized) on the OBJECTIVE terms only — reported equalize metrics/counts stay
+unweighted (trace comparability), and the weight attaches in the train loop so the fetch stream
+and the KD labels checksum are untouched (verified live: `checksum OK` at step 1). OFF is
+bit-identical — smoke `scratchpad/parity3/smoke_user_weight.py`. No parity3 case needed: it is
+a loss-aggregation flag, not an arch flag; eval/deploy quantities unchanged. Recipe = the
+iter-36 champion exactly (seed 4321, KD from `t128_seedpair_65k`, **λ=0.2**). Rect-only eval,
+tag `RWKV-iter37_uw`, gate vs `RWKV-iter36_pava02-s0.jsonl`. Runner
+`scratchpad/iter37_uw/run_iter37.cmd` (guards: WS AND decay both grep `[user-weight] ON` —
+a silently-unset lever measures as a perfect null). Verdict ~18:00-ish.
+RISK NOTE: the tuned LRs were tuned under the row-mean objective; mean-1 normalization
+preserves the global gradient scale but the per-batch variance rises (weight range ~0.003..2.5
+within a batch), so a reject here may mean "needs LR retune", not "family dead" — conduct
+rule 2 applies before writing it off.
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
