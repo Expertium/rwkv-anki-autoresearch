@@ -985,9 +985,19 @@ Plain-era and QAT-era logloss are NOT comparable.
 **THE SEED PAIR IS DONE AND RECORDED AS ITER 35 (2026-08-06)** — chain ran 20.9 h unattended,
 clean end-to-end; arm B (tuned + KD) is the NEW CHAMPION (block above), iter 32's seed caveat
 and iter 34's robustness caveat both CLOSED. base128_val completed earlier (drift check passed
-to 1e-6/user; row 0ᵛ added). GPU order now: **iter 36 = PAVA lambda** (renumbered from "iter 35
-= PAVA lambda" — the seed pair took the 35 slot since it produced a champion promotion; the
-substance of Andrew's order is unchanged). New-run env = the iter-35 champion recipe: seed 4321
+to 1e-6/user; row 0ᵛ added).
+**ITER 36 (PAVA lambda) IS DONE AND RECORDED — REJECTED ON THE GATE, DIRECTED VERDICT PENDING
+ANDREW (2026-08-07).** Dose pair λ=0.2/0.3 on the champion recipe: ahead +0.000478/+0.000591
+BETTER (p=5e-67/8e-82), imm −0.000081/−0.000180 worse — monotone opposite responses, so no
+λ>0.1 passes the both-modes gate. The rectification penalty shrinks as hypothesized
+(~+0.0019 → +0.001544 → +0.001334) and raw ahead does not pay; the imm cost is training-side.
+**The question put to Andrew: (a) keep λ=0.1; (b) directed-accept λ=0.2 (5.9:1 exchange, imm
+cost = one 4-dp tick, RECOMMENDED if any trade is taken); (c) λ=0.3 (marginal step trades
+~1.1:1).** Ckpts exist for both (`scratchpad/iter36_pava/i36b_d_10935.pth` / `i36_d_10935.pth`)
+— acceptance would be promotion-only. Full table: `research_5k_verbose.md` iter 36.
+**GPU is FREE pending that verdict** (an iter-37 candidate would train on the champion recipe,
+which the verdict may change — launching one now risks a re-base).
+New-run env = the iter-35 champion recipe: seed 4321
 + KD reusing `C:\rwkv_kd_dump\t128_seedpair_65k` (PAVA lambda is model-side, dump stays valid).
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
@@ -1256,8 +1266,10 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
      by the 10x run after the features rebuild. ⚠ Note `decay_ratio=1.0` already moved total
      training 1.25 -> 2.0 epochs, so the "current budget" is 1.6x what it was — a cost every
      future run now pays, accepted because the accuracy was real (+0.00145 vs the default).
-3. **iter 36 = tuning `RWKV_PAVA_LAMBDA`** (renumbered: the seed pair became iter 35; this is
-   the NEXT run). ⚠ `RWKV_PROBE_DENSITY` is data-side — changing it invalidates the KD dump
+3. **✓ DONE 2026-08-07 — RECORDED AS ITER 36, rejected on gate, directed verdict pending Andrew
+   (see LIVE).** Dose pair λ=0.2/0.3: big ahead wins, small linear imm costs — no λ passes both
+   modes; λ=0.2 recommended if the trade is taken. Design notes kept below for the record.
+   ⚠ `RWKV_PROBE_DENSITY` is data-side — changing it invalidates the KD dump
    (~1.5 h + 7.7 GB per density value); PAVA lambda alone reuses `t128_seedpair_65k` free.
    Candidate runs = the iter-35 champion recipe (seed 4321 + KD) with lambda swapped.
    **WHY THIS ONE:** the rectifier SHIPS, and iter 31 still pays **+0.001893 on ahead** purely to
@@ -1265,7 +1277,8 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
    single largest identified loss we already know how to attack. It is a TRAINING problem, not an
    inherent cost: A18 (never trained under the constraint) paid +0.003588 and training at
    `PAVA_LAMBDA=0.1` halved it; nobody has asked whether more pressure halves it again. One env
-   flag on the existing recipe, so a normal ~5.9 h iteration. Extends a family that is 1/1 rather
+   flag on the existing recipe, so a normal ~9.4 h iteration (the seed-pair arms' measured cost:
+3.4 h WS + 3.4 h decay at ratio 1.0 + 2.6 h full-VAL eval). Extends a family that is 1/1 rather
    than reopening a closed one (conduct rule 5).
    ⚠ **Measure BOTH metrics.** This family trades raw accuracy for monotonicity, so it can look
    like a regression on the unrectified number while being a deploy win. The gate basis is now
@@ -1559,7 +1572,8 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
 **distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
 ⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
-curve-shape constraints **1/1** (PAVA) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
+curve-shape constraints **1/2** (PAVA ACCEPTED iter 23; PAVA-lambda>0.1 REJECTED on gate iter 36
+— a clean monotone ahead-vs-imm trade, directed verdict pending Andrew) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
 largest imm gain; cautious wd REJECTED iter 30 — a pure trade) · GRU-head N-sweep **peaks at
 N=3** (N=4 worse, closed) · readout/xhead **0/3** with real signal but negative under the GRU
 head (iter 28), closed pending new ideas · loss-reweighting **0/2** (pbin scale lever closed by

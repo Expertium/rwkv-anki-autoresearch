@@ -1732,3 +1732,51 @@ ckpt `scratchpad/seedpair65k/spb_d_10935.pth`; `champion_5k_track2.json` points 
   (`scratchpad/seedpair65k/extract_trace_from_log.py`; the arms deliberately ran without
   `RWKV_STEP_TRACE`) — 4-dp precision, val points at 1000-step cadence, step numbering 0-based
   vs native traces' 1-based. Fine for vprune/pairing; noted for provenance.
+
+## iter 36 — PAVA lambda dose pair: a clean monotone trade, directed verdict to Andrew (REJECTED on gate, 2026-08-07)
+
+**What ran.** Andrew's queued order ("iter 36 = tuning RWKV_PAVA_LAMBDA"). Two dose points on
+the iter-35 champion recipe — seed 4321, KD reusing `t128_seedpair_65k` (lambda is model-side,
+dump valid), tuned HPs — with ONLY the lambda changed: trial 1 = 0.3
+(`scratchpad/iter36_pava/run_iter36.cmd`), trial 2 = 0.2 (`run_iter36_l02.cmd`). Each trial ran
+TWO full-VAL evals per the family's measure-both-metrics rule: rectified (the gate basis) and
+unrectified (the decomposition). Both chains clean end-to-end (~10.9 h and ~10.8 h), all four
+evals 2500/2500 on attempt 1, size 0/2500 vs the champion in both trials, nan_users 0.
+
+**The dose-response (rectified, vs the λ=0.1 champion 0.298816/0.265946):**
+
+| λ | rect ahead | Δahead | rect imm | Δimm | unrect ahead | unrect imm | rect penalty (ahead) |
+|---|---|---|---|---|---|---|---|
+| 0.1 | 0.298816 | — | 0.265946 | — | (not measured) | (not measured) | ~+0.0019 (iter-31 basis) |
+| 0.2 | 0.298338 | **+0.000478** (p=5.1e-67) | 0.266027 | −0.000081 (p=1.0) | 0.296795 | 0.265959 | +0.001544 |
+| 0.3 | 0.298225 | **+0.000591** (p=8.4e-82) | 0.266126 | −0.000180 | 0.296892 | 0.266063 | +0.001334 |
+
+Both responses are monotone in opposite directions, so **no λ>0.1 can pass the both-modes
+gate**: the ahead gain is concave (81% of the λ=0.3 gain already at 0.2) while the imm cost is
+~linear (~−0.00008 per +0.1 of λ). Mechanical verdict: REJECTED, both trials.
+
+**What the decomposition says.** The hypothesis is CONFIRMED on its own terms: training under
+more monotonicity pressure keeps buying down the deploy-time rectification penalty
+(~+0.0019 → +0.001544 → +0.001334 ahead), and the raw (unrectified) curve barely pays — at
+λ=0.3 raw ahead is unchanged and at λ=0.2 it is the best measured (0.296795). The imm
+regression is a genuine training-side effect, not an artifact: its rect−unrect gap
+(+0.000068/+0.000063) matches the known probe-insertion noise (+0.000056 on iter 31), so the
+rectifier itself still cannot touch imm; the cost leaks in through the shared trunk during
+training.
+
+**The open question (Andrew's call — precedent iters 22/23, where monotonicity constraints were
+directed-accepted for the constraint, not logloss):** λ=0.2 offers ahead +0.000478 for imm
+−0.000081 — a 5.9:1 exchange, with the imm cost exactly one 4-dp tick. The marginal step
+0.2→0.3 trades ~1.1:1 (near-neutral) — so if any trade is taken, **0.2 is the recommended
+point**. Both deploy surfaces ship: button intervals come from the curve head (the ahead
+quantity), `retrievability_head` = 1−P(Again) from the rating head (the imm quantity).
+Options: (a) keep λ=0.1 — status quo, gate-clean; (b) directed-accept λ=0.2; (c)
+directed-accept λ=0.3. Checkpoints exist for both trials
+(`scratchpad/iter36_pava/i36b_d_10935.pth` = λ=0.2, `i36_d_10935.pth` = λ=0.3), so a directed
+acceptance is promotion-only, no retraining.
+
+**Family scoreboard:** curve-shape constraints 1/2 (PAVA accepted iter 23; the lambda lever
+rejected on gate here) — pending the directed verdict.
+⚠ Cross-seed robustness of the λ effect is untested (single seed 4321, same-seed gates). The
+iter-35 pair measured ~2e-5 recipe-level spread on this trunk, so the +0.00048 ahead margin is
+far above plausible seed noise; flagged for completeness, not as a blocker.
