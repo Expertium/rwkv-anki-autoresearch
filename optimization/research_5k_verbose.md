@@ -1733,7 +1733,7 @@ ckpt `scratchpad/seedpair65k/spb_d_10935.pth`; `champion_5k_track2.json` points 
   `RWKV_STEP_TRACE`) — 4-dp precision, val points at 1000-step cadence, step numbering 0-based
   vs native traces' 1-based. Fine for vprune/pairing; noted for provenance.
 
-## iter 36 — PAVA lambda dose pair: a clean monotone trade, directed verdict to Andrew (REJECTED on gate, 2026-08-07)
+## iter 36 — PAVA lambda dose pair: a clean monotone trade, λ=0.2 DIRECTED-ACCEPTED (2026-08-07)
 
 **What ran.** Andrew's queued order ("iter 36 = tuning RWKV_PAVA_LAMBDA"). Two dose points on
 the iter-35 champion recipe — seed 4321, KD reusing `t128_seedpair_65k` (lambda is model-side,
@@ -1764,19 +1764,23 @@ regression is a genuine training-side effect, not an artifact: its rect−unrect
 rectifier itself still cannot touch imm; the cost leaks in through the shared trunk during
 training.
 
-**The open question (Andrew's call — precedent iters 22/23, where monotonicity constraints were
-directed-accepted for the constraint, not logloss):** λ=0.2 offers ahead +0.000478 for imm
-−0.000081 — a 5.9:1 exchange, with the imm cost exactly one 4-dp tick. The marginal step
-0.2→0.3 trades ~1.1:1 (near-neutral) — so if any trade is taken, **0.2 is the recommended
-point**. Both deploy surfaces ship: button intervals come from the curve head (the ahead
-quantity), `retrievability_head` = 1−P(Again) from the rating head (the imm quantity).
-Options: (a) keep λ=0.1 — status quo, gate-clean; (b) directed-accept λ=0.2; (c)
-directed-accept λ=0.3. Checkpoints exist for both trials
-(`scratchpad/iter36_pava/i36b_d_10935.pth` = λ=0.2, `i36_d_10935.pth` = λ=0.3), so a directed
-acceptance is promotion-only, no retraining.
+**THE VERDICT — ANDREW DIRECTED-ACCEPTED λ=0.2 (2026-08-07).** Precedent iters 22/23, where
+monotonicity constraints were also accepted for the constraint rather than the logloss. The
+choice was between (a) keep λ=0.1, (b) λ=0.2, (c) λ=0.3; λ=0.2 was the recommendation because
+it offers a **5.9:1 exchange** (ahead +0.000478 for imm −0.000081, the imm cost being exactly
+one 4-dp tick) whereas the marginal step 0.2→0.3 trades ~1.1:1 — you pay nearly as much imm as
+you gain ahead. Both deploy surfaces ship, which is why the trade is real in both directions:
+button intervals come from the curve head (the ahead quantity), `retrievability_head` =
+1−P(Again) from the rating head (the imm quantity). Promotion-only — the checkpoint already
+existed (`scratchpad/iter36_pava/i36b_d_10935.pth`), nothing was retrained. Throughput 1769.4
+rev/s; `champion_5k_track2.json` now points at it.
 
-**Family scoreboard:** curve-shape constraints 1/2 (PAVA accepted iter 23; the lambda lever
-rejected on gate here) — pending the directed verdict.
+**★ THE DEPLOY CONTRACT NOW CARRIES `RWKV_PAVA_LAMBDA=0.2`** — every future run on this trunk
+must set it. 0.1 was the value from iter 31 through iter 35; a run that copies an older env
+string silently trains at the wrong pressure and its gate is not comparable.
+
+**Family scoreboard:** curve-shape constraints 2/3 (PAVA accepted iter 23, λ=0.2 accepted here;
+λ=0.3 rejected as the worse point of the same lever).
 ⚠ Cross-seed robustness of the λ effect is untested (single seed 4321, same-seed gates). The
 iter-35 pair measured ~2e-5 recipe-level spread on this trunk, so the +0.00048 ahead margin is
 far above plausible seed noise; flagged for completeness, not as a blocker.

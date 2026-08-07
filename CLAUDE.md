@@ -789,7 +789,30 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 35 `sp4321_kd` (the tuned recipe + KD restored, seed 4321) -- promoted 2026-08-06 21:20
+#### CHAMPION = iter 36 `iter36_pava02` (iter-35 recipe with RWKV_PAVA_LAMBDA 0.1 -> 0.2) -- DIRECTED-accepted + promoted 2026-08-07
+**RECTIFIED (the gate basis): ahead 0.298338 / imm 0.266027** on the VAL half (n=2500) =
+**+0.000478 ahead (p=5.1e-67) / -0.000081 imm** vs iter 35. **The mechanical gate FAILED on imm
+and Andrew took the trade anyway** (precedent iters 22/23 -- monotonicity constraints accepted
+for the constraint, not the logloss): the exchange is **5.9:1** and the imm cost is exactly one
+4-dp tick. size 0/2500, nan_users 0, **558,212 params and card/note state 2,880/1,440 unchanged**
+(lambda is a loss weight -- nothing new ships to Rust, but see the contract note). Throughput
+1769.4 rev/s. ckpt `scratchpad/iter36_pava/i36b_d_10935.pth`; `champion_5k_track2.json` points
+at it (trace EXTRACTED from the WS log, same convention as iter 35).
+**★★ THE DEPLOY CONTRACT NOW CARRIES `RWKV_PAVA_LAMBDA=0.2` -- SET IT IN EVERY FUTURE RUN ON
+THIS TRUNK.** 0.1 was the value from iter 31 through iter 35, so a `.cmd` that copies an older
+env string trains at the wrong pressure and its gate is not comparable to this champion.
+**Env = iter 35's exactly, with that one value changed** (seed 4321 + KD from
+`C:\rwkv_kd_dump\t128_seedpair_65k` still stand).
+**WHY IT IS A TRADE AND NOT A WIN:** the rectifier's deploy penalty shrinks with training
+pressure (~+0.0019 at lambda 0.1 -> +0.001544 at 0.2 -> +0.001334 at 0.3) while raw
+(unrectified) ahead does NOT pay -- the ahead gain is almost entirely recovered deploy cost.
+The imm cost is genuine and training-side (its rect-unrect gap matches known probe noise), and
+the two responses are monotone in OPPOSITE directions, so **no lambda > 0.1 can pass the
+both-modes gate**; the ahead gain is concave (81% captured at 0.2) and the imm cost ~linear.
+lambda=0.3 was measured and rejected as the worse point (marginal step trades ~1.1:1). Full
+dose-response table: `research_5k_verbose.md` iter 36.
+
+#### PREVIOUS CHAMPION = iter 35 `sp4321_kd` (the tuned recipe + KD restored, seed 4321) -- promoted 2026-08-06 21:20
 **RECTIFIED (the gate basis): ahead 0.298816 / imm 0.265946** on the VAL half (n=2500) =
 +0.000153 / +0.000271 vs iter 34 at p=5.9e-11 / 7.9e-71 -- and it ALSO beats its same-seed twin
 (arm A, tuned-no-KD at 4321) by +0.000160 / +0.000251 at p=4.3e-13 / 3.3e-75, so the accept is
@@ -986,19 +1009,14 @@ Plain-era and QAT-era logloss are NOT comparable.
 clean end-to-end; arm B (tuned + KD) is the NEW CHAMPION (block above), iter 32's seed caveat
 and iter 34's robustness caveat both CLOSED. base128_val completed earlier (drift check passed
 to 1e-6/user; row 0ᵛ added).
-**ITER 36 (PAVA lambda) IS DONE AND RECORDED — REJECTED ON THE GATE, DIRECTED VERDICT PENDING
-ANDREW (2026-08-07).** Dose pair λ=0.2/0.3 on the champion recipe: ahead +0.000478/+0.000591
-BETTER (p=5e-67/8e-82), imm −0.000081/−0.000180 worse — monotone opposite responses, so no
-λ>0.1 passes the both-modes gate. The rectification penalty shrinks as hypothesized
-(~+0.0019 → +0.001544 → +0.001334) and raw ahead does not pay; the imm cost is training-side.
-**The question put to Andrew: (a) keep λ=0.1; (b) directed-accept λ=0.2 (5.9:1 exchange, imm
-cost = one 4-dp tick, RECOMMENDED if any trade is taken); (c) λ=0.3 (marginal step trades
-~1.1:1).** Ckpts exist for both (`scratchpad/iter36_pava/i36b_d_10935.pth` / `i36_d_10935.pth`)
-— acceptance would be promotion-only. Full table: `research_5k_verbose.md` iter 36.
-**GPU is FREE pending that verdict** (an iter-37 candidate would train on the champion recipe,
-which the verdict may change — launching one now risks a re-base).
-New-run env = the iter-35 champion recipe: seed 4321
-+ KD reusing `C:\rwkv_kd_dump\t128_seedpair_65k` (PAVA lambda is model-side, dump stays valid).
+**ITER 36 (PAVA lambda) IS DONE, RECORDED, AND DIRECTED-ACCEPTED AT λ=0.2 (Andrew 2026-08-07)** —
+the new champion (block above). Dose pair λ=0.2/0.3 measured; no λ>0.1 passes the both-modes
+gate, and Andrew took the 5.9:1 trade at 0.2. **The deploy contract's λ is now 0.2 — set
+`RWKV_PAVA_LAMBDA=0.2` in every new run.**
+**GPU is FREE. Next = iter 37**, on the iter-36 champion recipe: seed 4321 + KD reusing
+`C:\rwkv_kd_dump\t128_seedpair_65k` (still valid — λ is model-side) + λ=0.2. No family is
+queued by name; pick per the research-phase conduct rules (new FAMILIES, not variants;
+the ~50-iteration floor is not reached).
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
@@ -1572,8 +1590,8 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
 **distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
 ⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
-curve-shape constraints **1/2** (PAVA ACCEPTED iter 23; PAVA-lambda>0.1 REJECTED on gate iter 36
-— a clean monotone ahead-vs-imm trade, directed verdict pending Andrew) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
+curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
+5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
 largest imm gain; cautious wd REJECTED iter 30 — a pure trade) · GRU-head N-sweep **peaks at
 N=3** (N=4 worse, closed) · readout/xhead **0/3** with real signal but negative under the GRU
 head (iter 28), closed pending new ideas · loss-reweighting **0/2** (pbin scale lever closed by

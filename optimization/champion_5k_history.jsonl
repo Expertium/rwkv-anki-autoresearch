@@ -20,3 +20,4 @@
 {"name": "iter31_algo", "date": "2026-07-26 19:23:11", "final_ahead": 0.298909, "final_imm": 0.267637, "n_trace_steps": 22346, "ckpt": "scratchpad/iter31_algo/iter31d_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "iter32_kd", "date": "2026-07-27 23:14:50", "final_ahead": 0.300268, "final_imm": 0.267262, "n_trace_steps": 22346, "ckpt": "scratchpad/iter32_kd/iter32d_5586.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "t65_dropout_scale_0p5", "date": "2026-08-05 22:36:38", "final_ahead": 0.29897, "final_imm": 0.266217, "n_trace_steps": 10935, "ckpt": "scratchpad/tuner65k/t65_dropout_scale_0p5/t65_dropout_scale_0p5d_10935.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "sp4321_kd", "date": "2026-08-06 20:50:00", "final_ahead": 0.298816, "final_imm": 0.265946, "n_trace_steps": 10935, "ckpt": "scratchpad/seedpair65k/spb_d_10935.pth", "cb_wkv": "", "cb_shift": ""}
