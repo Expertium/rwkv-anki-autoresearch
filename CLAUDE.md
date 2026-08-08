@@ -1051,6 +1051,21 @@ of total training at ratio 1.0 and runs pure hard labels today).
 ⚠ Ops (iter 39's first launch): generating a `.cmd` by string replacement missed the backslash
 `set DIR=` line (forward-slash-only replace) — killed at minute 4, fixed, relaunched. Replace
 BOTH slash styles, and assert no stale refs remain (iter 40's generator does).
+**▶ ITER 41 IS STAGED AND PARKED (detached pid 32676, waitloop on iter 40's DONE_EXIT):
+`RWKV_INTERLEAVE=1`, family = TOPOLOGY (NEW) — Andrew's "try something more ambitious"
+directive (2026-08-08; HP tuning has out-gained every architectural accept combined).** The
+sequential form gives the 5-stream chain ONE pass — global context never reaches card-level
+processing; interleaving round-robins the SAME layers across scopes (round r = layer r of each
+stream, hierarchy order within rounds; depths [2,4,1,3,3] → 4 rounds, 13 layer-steps). Same
+params/per-entity states/ops — execution ORDER only. Gathers re-anchored to the canonical
+layout model-side (fetch workers + KD dump untouched); v0 stream-local; the RNN mirror reads
+the same flag (`srs_model_rnn.py`), trace parity due before any interleaved champion ships.
+PRE-VERIFIED (`scratchpad/parity3/smoke_interleave.py`): depth-1 oracle BIT-EXACT vs the
+sequential branch, real depths differ, no-grad sets identical, scripted compile OK. Recipe =
+iter-39 champion (seed 4321, KD α=0.9, λ=0.2). Tag `RWKV-iter41_ilv`, gate vs iter 39.
+Runner `scratchpad/iter41_ilv/run_iter41.cmd` (banner guards on WS AND decay; INTERLEAVE
+stays set through eval). ⚠ If it barely misses, the iter-37 risk note applies doubly: a new
+TOPOLOGY at the incumbent's HPs — one lr_mult probe before writing the family off.
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
