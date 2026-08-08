@@ -1021,13 +1021,20 @@ the shared trunk, which raw data volume trains best; down-weighting big users di
 Family objective-alignment 0/1, deprioritized. Hook stays in-tree (`RWKV_USER_WEIGHT`,
 default off, bit-identical off — smoke `scratchpad/parity3/smoke_user_weight.py`). Full
 quartile table: `research_5k_verbose.md` iter 37.
-**▶ ITER 38 IS RUNNING (launched 2026-08-08 ~08:10, detached pid 6148): `RWKV_KD_ALPHA`
-0.5 → 0.75, family = distillation (2/2).** Alpha was iter 32's first guess, never tuned; the
-d=128 teacher still beats the champion by ~0.004 ahead. One env var, dump reused free (alpha is
-loss-time). Recipe = the iter-36 champion exactly (seed 4321, λ=0.2). Rect-only eval, tag
-`RWKV-iter38_kda075`, gate vs `RWKV-iter36_pava02-s0.jsonl`. Runner
-`scratchpad/iter38_kda/run_iter38.cmd` (guard: WS log must contain `alpha=0.7500`). Banners
-verified live (`alpha=0.7500 (checksum OK)`). Verdict ~17:40.
+**✗ ITER 38 (KD α 0.75) DONE + REJECTED BY 2e-6 (2026-08-08) — the phase's nearest miss.**
+BOTH modes better (ahead +0.000115 p=3.9e-6, imm +0.000048 p=8.6e-7), p-gate passes, ahead
+clears the bar — but imm's raw delta is 0.000048 vs the ≥0.00005 rounding rule. **Flagged for
+Andrew: a directed accept (iter-36 precedent) would be promotion-only** — ckpt
+`scratchpad/iter38_kda/i38_d_10935.pth`, jsonls `RWKV-iter38_kda075-s0`. Its grad stats:
+`grad_stats_iter38.json`.
+**▶ ITER 39 IS RUNNING (relaunched 2026-08-08 13:55, detached pid 7988): `RWKV_KD_ALPHA=0.9`,
+the third dose point** — monotone-up ⇒ climb toward pure-teacher WS; down ⇒ 0.75 is the peak.
+Same recipe, tag `RWKV-iter39_kda09`, gate vs iter 36. Verdict ~23:20. If the dose curve alone
+cannot clear the bar, the next in-family variant is annealed alpha / KD-through-decay (decay is
+HALF of total training at ratio 1.0 and runs pure hard labels today).
+⚠ Ops: the first iter-39 launch went into the WRONG DIR (string-replace missed the backslash
+`set DIR=` line) — killed at minute 4, fixed, relaunched. Replace BOTH slash styles when
+generating a `.cmd` by substitution.
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE

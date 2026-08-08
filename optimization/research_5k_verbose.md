@@ -1823,3 +1823,32 @@ signal (consistent with the standing data-limited lesson). A milder dose (1/√N
 interpolate toward zero effect — not worth 9.4 h. **Family objective-alignment 0/1,
 mechanism-refuted, deprioritized.** The hook stays in-tree, env-gated, default off,
 bit-identical when off.
+
+## iter 38 — KD alpha 0.75: the nearest miss of the phase (REJECTED by 2e-6, 2026-08-08)
+
+**What ran.** `RWKV_KD_ALPHA` 0.5 → 0.75 on the iter-36 champion recipe — the first tuning of a
+value that was iter 32's opening guess. Family distillation (2/2). Dump reused (alpha is
+loss-time); KD WS-only as always; guard greps `alpha=0.7500` in the WS log. Chain clean
+end-to-end, eval 2500/2500 on attempt 1, size 0/2500, nan_users 0.
+
+**Verdict: REJECTED — by two millionths.** Rect vs the champion: **ahead 0.298224 (+0.000115
+better, p=3.9e-6) / imm 0.265979 (+0.000048 better, p=8.6e-7)**. Both modes improved; the
+p-gate passes both modes; ahead clears the magnitude bar — but imm's raw +0.000048 rounds to
+0.0000 against the ≥0.00005 requirement (Andrew's 2026-07-19 rounding rule, applied as
+written). The bar is the bar; not relitigated unilaterally, but this is the phase's closest
+near-miss and is flagged for Andrew: **a directed accept would be promotion-only**
+(ckpt `scratchpad/iter38_kda/i38_d_10935.pth`, jsonls banked as `RWKV-iter38_kda075-s0`).
+
+**Follow-up per conduct rule 2 (barely-missed → variant): iter 39 = α 0.9 is running** — the
+third dose point maps the curve: monotone-up ⇒ keep climbing toward pure-teacher WS;
+down ⇒ 0.75 is the peak and the lever's verdict is "sub-bar positive". Note the WS/decay
+split matters here: KD applies to WS only, and decay (half of total training at ratio 1.0)
+still runs pure hard labels — an annealed-alpha or KD-through-decay variant is the next
+in-family idea if the dose curve alone cannot clear the bar.
+
+**Ops lesson (cost ~13 min GPU):** iter 39's runner was generated from iter 38's by string
+replacement using forward-slash paths only — the backslash `set DIR=` line kept pointing at
+`iter38_kda`, sending logs (and eventually grad_stats) into the wrong directory. Caught by the
+post-launch banner-verify step, killed at minute 4, fixed, relaunched. When generating a `.cmd`
+by replacement, replace BOTH slash styles — or write the file fresh. (iter 38's grad stats
+preserved as `grad_stats_iter38.json`.)

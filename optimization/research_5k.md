@@ -84,6 +84,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 35 | 1–5000 | 0.2988ᵛʳ | 0.2659ᵛʳ | exact | **accepted** | 5.9e-11 / 7.9e-71 (vs iter 34) | 558,212 | 0 | distillation | Seed pair at 4321: KD confirmed at 2nd seed (+0.00016/+0.00025 within-seed); tuned+KD beats iter 34; iter-34 recipe seed-robust to ~2e-5. NEW champion. |
 | 36 | 1–5000 | 0.2983ᵛʳ | 0.2660ᵛʳ | exact | **accepted** (directed) | 5.1e-67 / 1.0 (vs iter 35) | 558,212 | 0 | Andrew | PAVA λ→0.2: ahead +0.00048 for imm −0.00008 (5.9:1). Gate failed on imm; Andrew took the trade. NEW champion; deploy λ is now 0.2. |
 | 37 | 1–5000 | 0.2986ᵛʳ | 0.2661ᵛʳ | exact | rejected | 1.0 / 1.0 (vs iter 36) | 558,212 | 0 | invented | By-user loss weighting (1/Nᵤ, 4308× imbalance): worse in EVERY size quartile incl. the small users it targeted — mechanism refuted, not underdosed. Objective-alignment 0/1. |
+| 38 | 1–5000 | 0.2982ᵛʳ | 0.2660ᵛʳ | exact | rejected | 3.9e-06 / 8.6e-07 (vs iter 36, better) | 558,212 | 0 | invented | KD α 0.5→0.75: BOTH modes better, p-gate passes — but imm +0.000048 misses the ≥0.00005 bar by 2e-6. Nearest miss of the phase; α=0.9 running per conduct rule 2. |
 
 ## Track 2 — ablate the old d=128 model
 
