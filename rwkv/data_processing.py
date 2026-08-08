@@ -202,8 +202,22 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     # discover ALL 10,000 user_id=* partitions before applying the filter -- ~280x slower
     # than a direct path per call, and this runs once per user per table. Content verified
     # identical (modulo the user_id column, which the old path immediately dropped anyway).
-    df_cards = pd.read_parquet(data_path / "cards" / f"{user_id=}")
-    df_decks = pd.read_parquet(data_path / "decks" / f"{user_id=}")
+    # Some users have no cards/decks partition at all (66/10,000, per Expertium's PR #1
+    # review); filters= silently returned an empty frame for those, which the note_id/
+    # deck_id-is-nan handling below relies on. A direct partition read raises
+    # FileNotFoundError instead, so fall back to an empty frame with the right columns.
+    cards_dir = data_path / "cards" / f"{user_id=}"
+    decks_dir = data_path / "decks" / f"{user_id=}"
+    df_cards = (
+        pd.read_parquet(cards_dir)
+        if cards_dir.is_dir()
+        else pd.DataFrame(columns=["card_id", "note_id", "deck_id"])
+    )
+    df_decks = (
+        pd.read_parquet(decks_dir)
+        if decks_dir.is_dir()
+        else pd.DataFrame(columns=["deck_id", "parent_id", "preset_id"])
+    )
     df_decks.drop(columns=["parent_id"], inplace=True)
     df = df.merge(df_cards, on="card_id", how="left", validate="many_to_one")
     df = df.merge(df_decks, on="deck_id", how="left", validate="many_to_one")
