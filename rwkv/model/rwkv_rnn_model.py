@@ -43,6 +43,22 @@ class RWKV7RNN(torch.nn.Module):
         state = copy.deepcopy(state)
         return self.forward(in_BC, state)
 
+    # iter 41 (RWKV_INTERLEAVE) deploy mirror: run ONE block, mutating the caller-owned
+    # state dict in place (the caller deepcopies once per review, replacing run()'s
+    # per-stream deepcopy). v0 threading matches the training side: local layer 0 SETS v0.
+    def init_state(self):
+        state = {}
+        for i in range(len(self.blocks)):
+            state[i] = None
+        return state
+
+    def forward_layer(self, layer_idx, in_BC, v0_BC, state):
+        x_BC, v0_out, block_state = self.blocks[layer_idx](
+            in_BC=in_BC, v0_BC=v0_BC, state=state[layer_idx]
+        )
+        state[layer_idx] = block_state
+        return x_BC, v0_out
+
 
 class RWKV7RNNLayer(ModuleType):
     def __init__(self, config: RWKV7Config, layer_id):

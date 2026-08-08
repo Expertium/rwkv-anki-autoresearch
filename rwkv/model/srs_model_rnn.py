@@ -100,6 +100,13 @@ class SrsRWKVRnn(ModuleType):
         self.rwkv_modules = torch.nn.ModuleList(
             [RWKV7RNN(config=config) for _, config in anki_rwkv_config.modules]
         )
+        # iter 41 (RWKV_INTERLEAVE): deploy mirror of srs_model.py's round-robin layer
+        # schedule -- same flag, same order, or the deploy path silently computes a
+        # different model (the exact failure class the three-way-parity rule exists for).
+        self.interleave_on = os.environ.get("RWKV_INTERLEAVE", "0") == "1"
+        self.stream_depths = [config.n_layers for _, config in anki_rwkv_config.modules]
+        if self.interleave_on:
+            print(f"[interleave] (rnn) round-robin layer schedule ON: depths={self.stream_depths}")
         self.prehead_norm = torch.nn.LayerNorm(self.d_model)
         self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
         if self.gru_on:
@@ -349,21 +356,43 @@ class SrsRWKVRnn(ModuleType):
                 card_features.device, card_features.dtype
             )
         card_rwkv_input = self.features2card(card_features)
-        card_encoding, next_card_state = self.rwkv_modules[0].run(
-            card_rwkv_input, card_state
-        )
-        deck_encoding, next_deck_state = self.rwkv_modules[1].run(
-            card_encoding, deck_state
-        )
-        note_encoding, next_note_state = self.rwkv_modules[2].run(
-            deck_encoding, note_state
-        )
-        preset_encoding, next_preset_state = self.rwkv_modules[3].run(
-            note_encoding, preset_state
-        )
-        global_encoding, next_global_state = self.rwkv_modules[4].run(
-            preset_encoding, global_state
-        )
+        if self.interleave_on:
+            import copy as _copy
+            in_states = [card_state, deck_state, note_state, preset_state, global_state]
+            states = []
+            for _i, _st in enumerate(in_states):
+                states.append(
+                    _copy.deepcopy(_st) if _st is not None
+                    else self.rwkv_modules[_i].init_state()
+                )
+            x_il = card_rwkv_input
+            v0s = [torch.empty(0) for _ in range(len(states))]
+            for _r in range(max(self.stream_depths)):
+                for _i in range(len(states)):
+                    if _r < self.stream_depths[_i]:
+                        v0_in = torch.empty_like(x_il) if _r == 0 else v0s[_i]
+                        x_il, v0s[_i] = self.rwkv_modules[_i].forward_layer(
+                            _r, x_il, v0_in, states[_i]
+                        )
+            global_encoding = x_il
+            (next_card_state, next_deck_state, next_note_state,
+             next_preset_state, next_global_state) = states
+        else:
+            card_encoding, next_card_state = self.rwkv_modules[0].run(
+                card_rwkv_input, card_state
+            )
+            deck_encoding, next_deck_state = self.rwkv_modules[1].run(
+                card_encoding, deck_state
+            )
+            note_encoding, next_note_state = self.rwkv_modules[2].run(
+                deck_encoding, note_state
+            )
+            preset_encoding, next_preset_state = self.rwkv_modules[3].run(
+                note_encoding, preset_state
+            )
+            global_encoding, next_global_state = self.rwkv_modules[4].run(
+                preset_encoding, global_state
+            )
 
         x = self.prehead_dropout(self.prehead_norm(global_encoding))
         x_w = self.head_w(x).float()

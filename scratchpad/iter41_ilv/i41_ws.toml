@@ -1,0 +1,37 @@
+# ITER 41 = RWKV_INTERLEAVE (round-robin layer schedule) on the iter-39 champion recipe (2026-08-09).
+# Clone of the champion WS toml with only the save paths changed. Data-affecting fields (db,
+# users, MAX, fetch) MUST stay identical to the seed-pair dump's spdump.toml -- KD reuses
+# C:\rwkv_kd_dump\t128_seedpair_65k and the labels checksum enforces batch-stream identity.
+# Interleaving is MODEL-side (execution order only), so the dump stays valid.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/iter41_ilv"
+SAVE_MODEL_PREFIX = "i41_ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

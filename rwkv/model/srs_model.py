@@ -390,6 +390,21 @@ class SrsRWKV(ModuleType):
                 self.rwkv_modules = torch.nn.ModuleList(
                     [RWKV7(config=config) for _, config in anki_rwkv_config.modules]
                 )
+            # iter 41 (RWKV_INTERLEAVE=1): round-robin the EXISTING layers across scopes --
+            # round r runs layer r of every stream that has one, in the hierarchy order the
+            # config already defines. Same params, same per-entity states, same per-layer ops;
+            # only the execution ORDER changes, so from round 1 on the specific streams see
+            # the general streams' round-(r-1) output (the sequential form gives card->...->
+            # user exactly one pass, so general context can never reach card-level processing).
+            # Default unset = the sequential branch below runs untouched (bit-identical).
+            self.interleave_on = os.environ.get("RWKV_INTERLEAVE", "0") == "1"
+            self.stream_depths = [config.n_layers for _, config in anki_rwkv_config.modules]
+            if self.interleave_on:
+                assert not env_baseline_cell(), \
+                    "RWKV_INTERLEAVE + RWKV_BASELINE_CELL unsupported (no forward_layer on RNNStream)"
+                print(f"[interleave] round-robin layer schedule ON: depths={self.stream_depths} "
+                      f"-> {max(self.stream_depths)} rounds, {sum(self.stream_depths)} layer-steps "
+                      f"(order within each round = the config's hierarchy order)")
             self.prehead_norm = torch.nn.LayerNorm(self.d_model)
             self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
             if self.gru_on:
@@ -683,6 +698,16 @@ class SrsRWKV(ModuleType):
             x = self._apply_grade_emb(x, batch_start)
 
         assert len(batch_sub_gather) == len(self.rwkv_modules)
+        if self.interleave_on:
+            x = self._interleaved_streams(
+                x,
+                batch_sub_gather,
+                batch_sub_gather_lens,
+                batch_time_shift_selects,
+                batch_skips,
+            )
+            x = x.view(batch_num_data, -1, self.d_model)
+            return self.head_and_out(x)
         for i, submodule in enumerate(self.rwkv_modules):
             module_splits = batch_sub_gather[i]
             sub_lens = batch_sub_gather_lens[i]
@@ -716,6 +741,101 @@ class SrsRWKV(ModuleType):
 
         x = x.view(batch_num_data, -1, self.d_model)
         return self.head_and_out(x)
+
+    # iter 41 RWKV_INTERLEAVE -- the round-robin execution of the same 5 stacks.
+    #
+    # WHY THE GATHER COMPOSITION EXISTS: prepare() builds each stream's gather indices
+    # against the PREVIOUS stream's output layout (current_locs_list chains), because the
+    # sequential form never returns to an earlier stream. Interleaving does, so every
+    # (stream, split) gather is re-anchored to the CANONICAL layout (features2card order --
+    # the layout labels/probes index) by composing the chained permutations once per batch;
+    # x then lives in canonical order the whole time, each layer-step doing
+    # gather -> one layer -> scatter-back. Pad slots (-1) are dropped at scatter, never
+    # written. This stays MODEL-side on purpose: prepare() runs in the fetch workers, and
+    # touching it would change the batch stream (KD dump identity, byte-identical replays).
+    #
+    # v0 (the value-residual) is stream-local: each stream's round-0 layer has local
+    # layer_id==0 and SETS v0 (the incoming empty tensor is ignored); it is stored per
+    # (stream, split) in the STREAM'S layout and re-fed to that stream's later rounds --
+    # identical threading to the sequential form, just spread across rounds.
+    @FunctionType
+    def _interleaved_streams(
+        self,
+        x,
+        batch_sub_gather: list[list[torch.Tensor]],
+        batch_sub_gather_lens: list[list[int]],
+        batch_time_shift_selects: list[list[torch.Tensor]],
+        batch_skips: list[list[torch.Tensor]],
+    ):
+        # -- 1) compose canonical-anchored gathers + their scatter halves, once per batch --
+        n_rows = x.size(0)
+        cur = torch.arange(n_rows, dtype=torch.long, device=x.device)
+        gath: list[list[torch.Tensor]] = []   # per (stream, split): canonical src index, -1 pads
+        spos: list[list[torch.Tensor]] = []   # per (stream, split): non-pad positions in the flat split
+        stgt: list[list[torch.Tensor]] = []   # per (stream, split): canonical target rows for those
+        for i in range(len(batch_sub_gather)):
+            gi: list[torch.Tensor] = []
+            pi: list[torch.Tensor] = []
+            ti: list[torch.Tensor] = []
+            parts: list[torch.Tensor] = []
+            for p in batch_sub_gather[i]:
+                pl = p.long()
+                g = torch.where(
+                    pl >= 0,
+                    torch.index_select(cur, 0, torch.clamp(pl, min=0)),
+                    torch.full_like(pl, -1),
+                )
+                pos = torch.nonzero(g >= 0).squeeze(-1)
+                gi.append(g)
+                pi.append(pos)
+                ti.append(torch.index_select(g, 0, pos))
+                parts.append(g)
+            gath.append(gi)
+            spos.append(pi)
+            stgt.append(ti)
+            cur = torch.cat(parts)
+        # -- 2) per-(stream, split) v0 stores (round 0 sets them; later rounds consume) --
+        v0s: list[list[torch.Tensor]] = []
+        for i in range(len(batch_sub_gather)):
+            vi: list[torch.Tensor] = []
+            for _s in range(len(batch_sub_gather[i])):
+                vi.append(torch.empty(0))
+            v0s.append(vi)
+        # -- 3) the rounds --
+        max_depth = 0
+        for d in self.stream_depths:
+            max_depth = max(max_depth, d)
+        for r in range(max_depth):
+            i = 0
+            for submodule in self.rwkv_modules:
+                if r < self.stream_depths[i]:
+                    sub_lens = batch_sub_gather_lens[i]
+                    tss = batch_time_shift_selects[i]
+                    sks = batch_skips[i]
+                    for s in range(len(gath[i])):
+                        g = gath[i][s]
+                        sub_len = sub_lens[s]
+                        x_in = torch.index_select(x, 0, torch.clamp(g, min=0)).view(
+                            -1, sub_len, self.d_model
+                        )
+                        if r == 0:
+                            v0_in = torch.empty_like(x_in)
+                        else:
+                            v0_in = v0s[i][s]
+                        x_out, v0_out = submodule.forward_layer(
+                            r,
+                            x_in,
+                            v0_in,
+                            tss[s].view(-1, sub_len),
+                            sks[s].view(-1, sub_len),
+                        )
+                        v0s[i][s] = v0_out
+                        flat = x_out.reshape(-1, self.d_model)
+                        x = x.index_copy(
+                            0, stgt[i][s], torch.index_select(flat, 0, spos[i][s])
+                        )
+                i += 1
+        return x
 
     @FunctionType
     def nanmin(self, tensor):

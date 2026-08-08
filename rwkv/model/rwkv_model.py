@@ -448,6 +448,29 @@ class RWKV7(ModuleType):
             )
         return x_BTC
 
+    # iter 41 (RWKV_INTERLEAVE): run exactly ONE block of this stack, threading the caller's
+    # v0. TorchScript cannot index a ModuleList (self.blocks[j] fails to compile), hence the
+    # enumerate-guard; the dead iterations cost a python-level compare each, nothing on GPU.
+    # v0 semantics are unchanged: the block with local layer_id==0 SETS v0 (ignores the
+    # incoming one), later blocks lerp toward it -- so the caller persists v0 per stream
+    # across rounds and the stream's value-residual stays stream-local, as in the
+    # sequential form.
+    @FunctionType
+    def forward_layer(self, layer_idx: int, in_BTC, v0_BTC, time_shift_select_BT, skip_BT):
+        x_BTC = in_BTC
+        v0_out = v0_BTC
+        i = 0
+        for block in self.blocks:
+            if i == layer_idx:
+                x_BTC, v0_out = block(
+                    in_BTC=x_BTC,
+                    v0_BTC=v0_out,
+                    time_shift_select_BT=time_shift_select_BT,
+                    skip_BT=skip_BT,
+                )
+            i += 1
+        return x_BTC, v0_out
+
 
 class RWKV7Layer(ModuleType):
     def __init__(self, config: RWKV7Config, layer_id):

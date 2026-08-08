@@ -121,6 +121,12 @@ def main():
         # the clamp: inert at a huge tau (parity must survive it), binding at a small one
         ("state clamp, huge tau (inert)", {"RWKV_STATE_CLAMP_TAU": "1e9"}),
         ("state clamp, small tau (binds)", {"RWKV_STATE_CLAMP_TAU": "0.05"}),
+        # RWKV_INTERLEAVE (iter 41) has NO case here BY DESIGN: it lives at the SrsRWKV
+        # level (multi-stream schedule + gather composition), which this single-stream
+        # harness cannot see. Its coverage: scratchpad/parity3/smoke_interleave.py (the
+        # depth-1 oracle proves the composition bit-exact vs the sequential branch) plus
+        # the standard checkpoint-level trace parity (export_rnn_trace + verify) before
+        # any interleaved champion ships -- the RNN mirror reads the same flag.
     ]
     ok = [run(t, e) for t, e in cases]
     print("\nPARITY_" + ("ALL_PASS" if all(ok) else "FAILED: "
