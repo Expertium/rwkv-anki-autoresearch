@@ -408,7 +408,12 @@ changes — training, hyperparameters, AND architecture. Biggest wins first, but
 champion close to the +0.0015 threshold early** (the champion's distance from the threshold is
 the remaining budget for ALL future iterations — burning it early starves them).
 
-**Two hard INVARIANTS (never change):** (1) hierarchy `card→note→deck→preset→global` (5 chained
+**Two hard INVARIANTS (never change):** (1) hierarchy `card→deck→note→preset→global` (5 chained
+— ⚠ CORRECTED 2026-08-09, Andrew's catch: this doc said card→NOTE→DECK for weeks, but every
+architecture file incl. the vendored original executes card→DECK→NOTE; the code is and always
+was the ground truth (`RWKV_SUBMODULES` in config.py orders feature columns only, not
+execution). Note the actual order is NOT monotone fine-to-coarse (notes ≈ 0.9× cards, decks
+≈ 56/user) — a "true fine-to-coarse swap" is a legitimate cheap future candidate. —
 streams in that order); (2) inputs — the model must still run on the *same preprocessed 92-dim
 data* / existing LMDBs. No new/changed inputs.
 
@@ -624,7 +629,8 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 both modes stay within **+0.0015** of the champion AND the change shrinks state and/or speeds training (it
 Pareto-dominates at accuracy-parity). H=2/K=16 was accepted this way (halved card state, 1.16x faster, accuracy
 within 0.0002). Such a change MAY shrink card/note state (gate #3 is for accuracy-research iters, not these).
-Two HARD INVARIANTS (never change): hierarchy card->note->deck->preset->global; same preprocessed 92-dim
+Two HARD INVARIANTS (never change): hierarchy card->deck->note->preset->global (the CODE's order,
+corrected 2026-08-09 -- the doc had note/deck swapped vs what every arch file executes); same preprocessed 92-dim
 inputs / existing LMDBs (no new/changed inputs).
 **RESEARCH-PHASE CONDUCT (Andrew 2026-07-10) -- for the phase after HP tuning + the deck/preset/global
 state-size ladders:** (1) try LOTS of different tweaks of both the ARCHITECTURE and the TRAINING
