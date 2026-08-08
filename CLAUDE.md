@@ -789,7 +789,24 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 36 `iter36_pava02` (iter-35 recipe with RWKV_PAVA_LAMBDA 0.1 -> 0.2) -- DIRECTED-accepted + promoted 2026-08-07
+#### CHAMPION = iter 39 `iter39_kda09` (iter-36 recipe with RWKV_KD_ALPHA 0.5 -> 0.9) -- promoted 2026-08-08 22:15
+**RECTIFIED (the gate basis): ahead 0.298180 / imm 0.265875** on the VAL half (n=2500) =
++0.000158 / +0.000153 vs iter 36 at p=2.2e-10 / 7.8e-37 -- a clean full-gate pass (both modes
+>=0.0001 after rounding). size 0/2500, nan_users 0, **558,212 params, card/note state
+2,880/1,440 unchanged** (alpha is loss-time only; nothing new ships to Rust). Throughput
+1823.8 rev/s. ckpt `scratchpad/iter39_kda9/i39_d_10935.pth`; `champion_5k_track2.json` points
+at it (trace extracted from the WS log, the iter-35 convention).
+**★ THE CHAMPION RECIPE'S `RWKV_KD_ALPHA` IS NOW 0.9** (0.5 was the value iter 32 -> 36; an env
+string copied from an older `.cmd` silently trains at the wrong mix). Full env = iter 36's with
+that one value changed: seed 4321, KD WS-only from `C:\rwkv_kd_dump\t128_seedpair_65k`,
+PAVA lambda 0.2, tuned HPs, MAX=65536.
+**The alpha dose curve is MONOTONE UP** (vs alpha 0.5: ahead +0.000115 -> +0.000158, imm
++0.000048 -> +0.000153 at 0.75 -> 0.9; imm ACCELERATING, p=4.4e-21 paired 0.9-vs-0.75), which
+MOOTS iter 38's near-miss question -- 0.9 dominates 0.75. Reading: at a 1-ep WS budget the
+12-ep teacher's soft targets beat a 50/50 mix; hard labels still anchor the whole decay phase.
+Family distillation 3/3 (+1 dominated near-miss). Detail: `research_5k_verbose.md` iter 39.
+
+#### PREVIOUS CHAMPION = iter 36 `iter36_pava02` (iter-35 recipe with RWKV_PAVA_LAMBDA 0.1 -> 0.2) -- DIRECTED-accepted + promoted 2026-08-07
 **RECTIFIED (the gate basis): ahead 0.298338 / imm 0.266027** on the VAL half (n=2500) =
 **+0.000478 ahead (p=5.1e-67) / -0.000081 imm** vs iter 35. **The mechanical gate FAILED on imm
 and Andrew took the trade anyway** (precedent iters 22/23 -- monotonicity constraints accepted
@@ -1021,20 +1038,19 @@ the shared trunk, which raw data volume trains best; down-weighting big users di
 Family objective-alignment 0/1, deprioritized. Hook stays in-tree (`RWKV_USER_WEIGHT`,
 default off, bit-identical off — smoke `scratchpad/parity3/smoke_user_weight.py`). Full
 quartile table: `research_5k_verbose.md` iter 37.
-**✗ ITER 38 (KD α 0.75) DONE + REJECTED BY 2e-6 (2026-08-08) — the phase's nearest miss.**
-BOTH modes better (ahead +0.000115 p=3.9e-6, imm +0.000048 p=8.6e-7), p-gate passes, ahead
-clears the bar — but imm's raw delta is 0.000048 vs the ≥0.00005 rounding rule. **Flagged for
-Andrew: a directed accept (iter-36 precedent) would be promotion-only** — ckpt
-`scratchpad/iter38_kda/i38_d_10935.pth`, jsonls `RWKV-iter38_kda075-s0`. Its grad stats:
-`grad_stats_iter38.json`.
-**▶ ITER 39 IS RUNNING (relaunched 2026-08-08 13:55, detached pid 7988): `RWKV_KD_ALPHA=0.9`,
-the third dose point** — monotone-up ⇒ climb toward pure-teacher WS; down ⇒ 0.75 is the peak.
-Same recipe, tag `RWKV-iter39_kda09`, gate vs iter 36. Verdict ~23:20. If the dose curve alone
-cannot clear the bar, the next in-family variant is annealed alpha / KD-through-decay (decay is
-HALF of total training at ratio 1.0 and runs pure hard labels today).
-⚠ Ops: the first iter-39 launch went into the WRONG DIR (string-replace missed the backslash
-`set DIR=` line) — killed at minute 4, fixed, relaunched. Replace BOTH slash styles when
-generating a `.cmd` by substitution.
+**✓ ITER 39 (KD α 0.9) ACCEPTED + PROMOTED 2026-08-08 — the new champion (block above).** The
+alpha dose curve is monotone up with imm accelerating; iter 38's near-miss question is MOOT
+(0.9 dominates 0.75). iter 38 stays recorded as rejected.
+**▶ ITER 40 IS RUNNING (launched 2026-08-08 ~22:00, detached pid 7584): `RWKV_KD_ALPHA=1.0`,
+the dose-curve endpoint** — pure-teacher WS / hard-label decay (the pretrain-finetune split).
+Banners verified (`alpha=1.0000 (checksum OK)`, seed 4321). Tag `RWKV-iter40_kda10`, gate vs
+**iter 39** (`RWKV-iter39_kda09-s0.jsonl`). Runner `scratchpad/iter40_kda1/run_iter40.cmd`.
+Verdict ~08:00 Aug 9. Worse ⇒ peak bracketed in [0.75, 1.0], 0.9 stands; better ⇒ WS wants no
+hard labels. If 1.0 rejects, next in-family: annealed alpha / KD-through-decay (decay is HALF
+of total training at ratio 1.0 and runs pure hard labels today).
+⚠ Ops (iter 39's first launch): generating a `.cmd` by string replacement missed the backslash
+`set DIR=` line (forward-slash-only replace) — killed at minute 4, fixed, relaunched. Replace
+BOTH slash styles, and assert no stale refs remain (iter 40's generator does).
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE

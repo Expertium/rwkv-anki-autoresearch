@@ -1852,3 +1852,39 @@ replacement using forward-slash paths only — the backslash `set DIR=` line kep
 post-launch banner-verify step, killed at minute 4, fixed, relaunched. When generating a `.cmd`
 by replacement, replace BOTH slash styles — or write the file fresh. (iter 38's grad stats
 preserved as `grad_stats_iter38.json`.)
+
+## iter 39 — KD alpha 0.9: clean accept, the dose curve is monotone up (ACCEPTED, 2026-08-08)
+
+**What ran.** The third point of the alpha sweep (`RWKV_KD_ALPHA` → 0.9) on the iter-36
+champion recipe; KD WS-only from the reused dump. Chain clean, eval 2500/2500 attempt 1.
+
+**Verdict: ACCEPTED — the first full-gate pass since iter 35.** Rect vs iter 36:
+**ahead 0.298180 (+0.000158, p=2.2e-10) / imm 0.265875 (+0.000153, p=7.8e-37)**; size 0/2500;
+params 558,212 exact; card/note state unchanged (alpha is loss-time only — nothing new ships to
+Rust); throughput 1823.8 rev/s. Promoted: `champion_5k_track2.json` →
+`scratchpad/iter39_kda9/i39_d_10935.pth` (trace extracted from the WS log, same convention as
+iters 35/36).
+
+**The dose curve (all rect, vs the α=0.5 champion iter 36):**
+
+| α | ahead Δ | imm Δ |
+|---|---|---|
+| 0.5 (iter 32's guess) | — | — |
+| 0.75 (iter 38) | +0.000115 | +0.000048 |
+| 0.9 (iter 39) | +0.000158 | **+0.000153** |
+
+Monotone up in both modes, and **imm is accelerating** (+0.000104 more between 0.75 and 0.9,
+p=4.4e-21 paired against the 0.75 run directly). This **moots iter 38's directed-accept
+question** — 0.9 dominates 0.75 (vs 0.75: imm better at p=4e-21, ahead +0.000043 not-worse).
+Reading: at a 1-epoch WS budget, the 12-epoch teacher's soft targets are simply a better
+supervision signal than a 50/50 mix — and the hard labels still anchor the entire decay phase,
+which at ratio 1.0 is half of total training.
+
+**★ THE CHAMPION RECIPE'S `RWKV_KD_ALPHA` IS NOW 0.9** (0.5 was the value from iter 32 through
+iter 36) — every future run on this trunk must set it; an env string copied from an older `.cmd`
+silently trains at the wrong mix.
+
+**iter 40 = α 1.0 is already running** — pure-teacher WS / hard-label decay, the
+pretrain-finetune split and the curve's endpoint. Worse ⇒ the peak is bracketed in [0.75, 1.0]
+and 0.9 stands; better ⇒ the WS phase wants no hard labels at all. Family distillation 3/3
+accepted (+1 dominated near-miss).
