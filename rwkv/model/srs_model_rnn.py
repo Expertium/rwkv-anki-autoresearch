@@ -105,8 +105,15 @@ class SrsRWKVRnn(ModuleType):
         # different model (the exact failure class the three-way-parity rule exists for).
         self.interleave_on = os.environ.get("RWKV_INTERLEAVE", "0") == "1"
         self.stream_depths = [config.n_layers for _, config in anki_rwkv_config.modules]
+        # Execution follows the ARCH MODULE's tuple order; states are routed BY NAME (iter 41,
+        # 2026-08-09) so reordering streams in an arch file cannot cross-wire per-entity
+        # states. Before this, review()'s body hardcoded modules[1]=deck / modules[2]=note --
+        # correct for every historical arch file, but a silent state-swap bug for any
+        # reordered one.
+        self.stream_names = [name for name, _ in anki_rwkv_config.modules]
         if self.interleave_on:
-            print(f"[interleave] (rnn) round-robin layer schedule ON: depths={self.stream_depths}")
+            print(f"[interleave] (rnn) round-robin layer schedule ON: "
+                  f"order={self.stream_names} depths={self.stream_depths}")
         self.prehead_norm = torch.nn.LayerNorm(self.d_model)
         self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
         if self.gru_on:
@@ -356,11 +363,20 @@ class SrsRWKVRnn(ModuleType):
                 card_features.device, card_features.dtype
             )
         card_rwkv_input = self.features2card(card_features)
+        # Route states BY ENTITY NAME, execute in the arch module's order (see __init__ note).
+        state_by_entity = {
+            "card_id": card_state,
+            "note_id": note_state,
+            "deck_id": deck_state,
+            "preset_id": preset_state,
+            "user_id": global_state,
+        }
+        next_by_entity = {}
         if self.interleave_on:
             import copy as _copy
-            in_states = [card_state, deck_state, note_state, preset_state, global_state]
             states = []
-            for _i, _st in enumerate(in_states):
+            for _i, _nm in enumerate(self.stream_names):
+                _st = state_by_entity[_nm]
                 states.append(
                     _copy.deepcopy(_st) if _st is not None
                     else self.rwkv_modules[_i].init_state()
@@ -375,24 +391,19 @@ class SrsRWKVRnn(ModuleType):
                             _r, x_il, v0_in, states[_i]
                         )
             global_encoding = x_il
-            (next_card_state, next_deck_state, next_note_state,
-             next_preset_state, next_global_state) = states
+            for _nm, _st in zip(self.stream_names, states):
+                next_by_entity[_nm] = _st
         else:
-            card_encoding, next_card_state = self.rwkv_modules[0].run(
-                card_rwkv_input, card_state
-            )
-            deck_encoding, next_deck_state = self.rwkv_modules[1].run(
-                card_encoding, deck_state
-            )
-            note_encoding, next_note_state = self.rwkv_modules[2].run(
-                deck_encoding, note_state
-            )
-            preset_encoding, next_preset_state = self.rwkv_modules[3].run(
-                note_encoding, preset_state
-            )
-            global_encoding, next_global_state = self.rwkv_modules[4].run(
-                preset_encoding, global_state
-            )
+            x_seq = card_rwkv_input
+            for _i, _nm in enumerate(self.stream_names):
+                x_seq, _next = self.rwkv_modules[_i].run(x_seq, state_by_entity[_nm])
+                next_by_entity[_nm] = _next
+            global_encoding = x_seq
+        next_card_state = next_by_entity["card_id"]
+        next_note_state = next_by_entity["note_id"]
+        next_deck_state = next_by_entity["deck_id"]
+        next_preset_state = next_by_entity["preset_id"]
+        next_global_state = next_by_entity["user_id"]
 
         x = self.prehead_dropout(self.prehead_norm(global_encoding))
         x_w = self.head_w(x).float()

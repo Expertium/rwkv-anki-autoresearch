@@ -1,7 +1,14 @@
 @echo off
 REM ===========================================================================================
-REM ITER 41: RWKV_INTERLEAVE=1 (2026-08-09, family: TOPOLOGY, NEW -- Andrew's "try something
-REM more ambitious" directive; HP tuning has out-gained every architectural accept combined).
+REM ITER 41: RWKV_INTERLEAVE=1 + TRUE FINE-TO-COARSE ORDER (2026-08-09, family: TOPOLOGY, NEW
+REM -- Andrew's "try something more ambitious" directive, then his order directive after the
+REM audit: every historical arch file ran card->DECK->NOTE; this run uses the corrected
+REM card->NOTE->DECK->preset->user via architecture_d80_lora4_cnd.py. A 2-change bundle BY
+REM DIRECTION (Andrew 2026-08-09) -- under interleaving the within-round order matters less
+REM (every scope hears every other across rounds), so the interleave is the main effect.
+REM Smoke re-run under the reordered arch: depth-1 oracle BIT-EXACT, order banner
+REM [2,1,4,3,3] = card,note,deck,preset,user, no-grad sets identical (67 design-dead).
+REM The RNN deploy path routes states BY NAME since the iter-41 refactor (golden-exact).
 REM WHY: the sequential form gives card->deck->note->preset->user exactly ONE pass, so global
 REM context can never influence card-level processing. Interleaving round-robins the SAME
 REM layers across scopes (round r = layer r of every stream that has one, hierarchy order
@@ -41,7 +48,7 @@ set RWKV_DETERMINISTIC=1
 set RWKV_AUGMENT_SEED=4321
 set RWKV_EMPTY_CACHE_EVERY=1
 set RWKV_EMPTY_CACHE_WINDOW=0
-set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4.py
+set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py
 set RWKV_GRU_HEAD=3
 set RWKV_PAVA_LAMBDA=0.2
 set RWKV_PROBE_DENSITY=0.08
