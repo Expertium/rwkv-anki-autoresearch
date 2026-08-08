@@ -1013,23 +1013,21 @@ to 1e-6/user; row 0ᵛ added).
 the new champion (block above). Dose pair λ=0.2/0.3 measured; no λ>0.1 passes the both-modes
 gate, and Andrew took the 5.9:1 trade at 0.2. **The deploy contract's λ is now 0.2 — set
 `RWKV_PAVA_LAMBDA=0.2` in every new run.**
-**▶ ITER 37 IS RUNNING (launched 2026-08-07, detached pid 22148; direction chosen by Claude —
-Andrew: "It's up to you"): BY-USER LOSS WEIGHTING (`RWKV_USER_WEIGHT=1`), family = objective
-alignment (NEW).** The gate is a BY-USER mean but training minimized a flat per-row mean;
-measured imbalance **4,308x rows/user (1,179..5,079,718)**. The flag weights each chunk 1/N_u
-(mean-normalized) on the OBJECTIVE terms only — reported equalize metrics/counts stay
-unweighted (trace comparability), and the weight attaches in the train loop so the fetch stream
-and the KD labels checksum are untouched (verified live: `checksum OK` at step 1). OFF is
-bit-identical — smoke `scratchpad/parity3/smoke_user_weight.py`. No parity3 case needed: it is
-a loss-aggregation flag, not an arch flag; eval/deploy quantities unchanged. Recipe = the
-iter-36 champion exactly (seed 4321, KD from `t128_seedpair_65k`, **λ=0.2**). Rect-only eval,
-tag `RWKV-iter37_uw`, gate vs `RWKV-iter36_pava02-s0.jsonl`. Runner
-`scratchpad/iter37_uw/run_iter37.cmd` (guards: WS AND decay both grep `[user-weight] ON` —
-a silently-unset lever measures as a perfect null). Verdict ~18:00-ish.
-RISK NOTE: the tuned LRs were tuned under the row-mean objective; mean-1 normalization
-preserves the global gradient scale but the per-batch variance rises (weight range ~0.003..2.5
-within a batch), so a reject here may mean "needs LR retune", not "family dead" — conduct
-rule 2 applies before writing it off.
+**✗ ITER 37 (by-user loss weighting) DONE + REJECTED (2026-08-08): worse in EVERY size
+quartile, INCLUDING the small users it was built to help** (smallest 25%: +0.000143 worse,
+coin-flip sign) — the mechanism is REFUTED, not underdosed, so no 1/sqrt(N) retry. Overall
+−0.000264/−0.000091 vs iter 36. Reading: small users' losses are driven by generalization from
+the shared trunk, which raw data volume trains best; down-weighting big users discards signal.
+Family objective-alignment 0/1, deprioritized. Hook stays in-tree (`RWKV_USER_WEIGHT`,
+default off, bit-identical off — smoke `scratchpad/parity3/smoke_user_weight.py`). Full
+quartile table: `research_5k_verbose.md` iter 37.
+**▶ ITER 38 IS RUNNING (launched 2026-08-08 ~08:10, detached pid 6148): `RWKV_KD_ALPHA`
+0.5 → 0.75, family = distillation (2/2).** Alpha was iter 32's first guess, never tuned; the
+d=128 teacher still beats the champion by ~0.004 ahead. One env var, dump reused free (alpha is
+loss-time). Recipe = the iter-36 champion exactly (seed 4321, λ=0.2). Rect-only eval, tag
+`RWKV-iter38_kda075`, gate vs `RWKV-iter36_pava02-s0.jsonl`. Runner
+`scratchpad/iter38_kda/run_iter38.cmd` (guard: WS log must contain `alpha=0.7500`). Banners
+verified live (`alpha=0.7500 (checksum OK)`). Verdict ~17:40.
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
@@ -1604,7 +1602,9 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 **distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
 ⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
-5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
+5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) ·
+objective-alignment **0/1 mechanism-refuted** (iter 37 by-user weighting: worse in every size
+quartile incl. its intended beneficiaries — do not retry milder doses) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
 largest imm gain; cautious wd REJECTED iter 30 — a pure trade) · GRU-head N-sweep **peaks at
 N=3** (N=4 worse, closed) · readout/xhead **0/3** with real signal but negative under the GRU
 head (iter 28), closed pending new ideas · loss-reweighting **0/2** (pbin scale lever closed by

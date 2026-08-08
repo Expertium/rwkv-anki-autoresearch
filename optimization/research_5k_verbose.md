@@ -1784,3 +1784,42 @@ string silently trains at the wrong pressure and its gate is not comparable.
 ⚠ Cross-seed robustness of the λ effect is untested (single seed 4321, same-seed gates). The
 iter-35 pair measured ~2e-5 recipe-level spread on this trunk, so the +0.00048 ahead margin is
 far above plausible seed noise; flagged for completeness, not as a blocker.
+
+## iter 37 — by-user loss weighting: refuted in every size quartile (REJECTED, 2026-08-08)
+
+**What ran.** Family **objective alignment** (NEW); direction chosen by Claude under Andrew's
+"It's up to you". The gate is the BY-USER mean LogLoss (every user counts once) but the
+training loss was a flat mean over ROWS — and the measured imbalance is **4,308× rows/user**
+(1,179..5,079,718; the single largest user carried ~0.8% of ALL gradient signal while counting
+as 1/5000th of the eval). `RWKV_USER_WEIGHT=1` weights each chunk 1/N_u, mean-normalized so the
+global gradient scale (and therefore the tuned LRs) stay sensible. Implementation invariants,
+all verified before launch: objective terms only (the reported equalize metrics and `*_n`
+counts stay unweighted, so step traces remain comparable across runs); attached in the train
+loop, not the fetch workers (batch stream byte-identical ⇒ the KD labels checksum still passes,
+confirmed live at step 1); OFF is bit-identical (`scratchpad/parity3/smoke_user_weight.py` —
+scripted compile, unit-weight bit-exactness, independent reference-formula match). The runner
+greps the `[user-weight] ON` banner in BOTH WS and decay (the silent-null-lever lesson).
+Recipe = the iter-36 champion exactly (seed 4321, KD α=0.5, PAVA λ=0.2). Chain clean
+end-to-end; eval 2500/2500 on attempt 1; size 0/2500; nan_users 0.
+
+**Verdict: REJECTED — both modes worse.** Rect ahead 0.298603 (−0.000264 vs the champion),
+imm 0.266118 (−0.000091), p=1.0 both.
+
+**The finding worth keeping — the mechanism is refuted, not underdosed.** Per-user delta by
+size quartile (negative = iter 37 better):
+
+| quartile | size range | mean Δ | iter 37 better on |
+|---|---|---|---|
+| smallest 25% | 845–8,040 | **+0.000143** | 308/625 (coin flip) |
+| 25–50% | 8,045–19,305 | +0.000202 | 290/625 |
+| 50–75% | 19,335–52,615 | +0.000371 | 226/625 |
+| largest 25% | 52,820–2,566,240 | +0.000341 | 244/625 |
+
+If distribution-matching worked, the small users would improve while the large ones paid.
+Instead **everyone** got slightly worse — including the intended beneficiaries. Reading: a
+small user's per-user loss is driven by *generalization from the shared trunk*, and the trunk
+is trained best by raw data volume; down-weighting the data-rich users just discards gradient
+signal (consistent with the standing data-limited lesson). A milder dose (1/√N) would
+interpolate toward zero effect — not worth 9.4 h. **Family objective-alignment 0/1,
+mechanism-refuted, deprioritized.** The hook stays in-tree, env-gated, default off,
+bit-identical when off.

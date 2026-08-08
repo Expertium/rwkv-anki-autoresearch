@@ -83,6 +83,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 34 | 1–5000 | 0.2990ᵛʳ | 0.2662ᵛʳ | exact | **accepted** | 1.8e-152 / ~0 (vs iter 32 RECT) | 558,212 | 0 | HP tuning | MAX=65536 tuner: Muon LR ÷8 (+0.00183) + decay_ratio 1.0 (+0.00145) + dropout ×0.5. ahead +0.00130, imm +0.00104 — and 1.68× faster training. NEW champion. |
 | 35 | 1–5000 | 0.2988ᵛʳ | 0.2659ᵛʳ | exact | **accepted** | 5.9e-11 / 7.9e-71 (vs iter 34) | 558,212 | 0 | distillation | Seed pair at 4321: KD confirmed at 2nd seed (+0.00016/+0.00025 within-seed); tuned+KD beats iter 34; iter-34 recipe seed-robust to ~2e-5. NEW champion. |
 | 36 | 1–5000 | 0.2983ᵛʳ | 0.2660ᵛʳ | exact | **accepted** (directed) | 5.1e-67 / 1.0 (vs iter 35) | 558,212 | 0 | Andrew | PAVA λ→0.2: ahead +0.00048 for imm −0.00008 (5.9:1). Gate failed on imm; Andrew took the trade. NEW champion; deploy λ is now 0.2. |
+| 37 | 1–5000 | 0.2986ᵛʳ | 0.2661ᵛʳ | exact | rejected | 1.0 / 1.0 (vs iter 36) | 558,212 | 0 | invented | By-user loss weighting (1/Nᵤ, 4308× imbalance): worse in EVERY size quartile incl. the small users it targeted — mechanism refuted, not underdosed. Objective-alignment 0/1. |
 
 ## Track 2 — ablate the old d=128 model
 
