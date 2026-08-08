@@ -1057,9 +1057,17 @@ of total training at ratio 1.0 and runs pure hard labels today).
 ⚠ Ops (iter 39's first launch): generating a `.cmd` by string replacement missed the backslash
 `set DIR=` line (forward-slash-only replace) — killed at minute 4, fixed, relaunched. Replace
 BOTH slash styles, and assert no stale refs remain (iter 40's generator does).
-**▶ ITER 41 IS STAGED AND PARKED (detached pid 32676, waitloop on iter 40's DONE_EXIT):
-`RWKV_INTERLEAVE=1`, family = TOPOLOGY (NEW) — Andrew's "try something more ambitious"
-directive (2026-08-08; HP tuning has out-gained every architectural accept combined).** The
+**▶ ITER 41 IS STAGED AND PARKED (relaunched pid 35356, waitloop on iter 40's DONE_EXIT):
+`RWKV_INTERLEAVE=1` **PLUS the corrected fine-to-coarse stream order** (Andrew 2026-08-09,
+after the order audit) via `scratchpad/track2_a18/architecture_d80_lora4_cnd.py` — same
+streams/depths, tuple order now card→note→deck→preset→user (depths travel with names:
+2,1,4,3,3). A 2-change bundle by direction; under interleaving the within-round order is the
+smaller effect. The RNN deploy path routes states BY NAME since this change (was positional
+with modules[1]=deck hardcoded — a silent state-cross-wire under any reordered arch;
+refactor verified GOLDEN-EXACT). Smoke re-run under the reordered arch: depth-1 oracle
+bit-exact, banner order correct, no-grad sets identical. Family = TOPOLOGY (NEW) — Andrew's
+"try something more ambitious" directive (2026-08-08; HP tuning has out-gained every
+architectural accept combined).** The
 sequential form gives the 5-stream chain ONE pass — global context never reaches card-level
 processing; interleaving round-robins the SAME layers across scopes (round r = layer r of each
 stream, hierarchy order within rounds; depths [2,4,1,3,3] → 4 rounds, 13 layer-steps). Same
