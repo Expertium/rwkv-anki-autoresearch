@@ -87,6 +87,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 38 | 1–5000 | 0.2982ᵛʳ | 0.2660ᵛʳ | exact | rejected | 3.9e-06 / 8.6e-07 (vs iter 36, better) | 558,212 | 0 | adopted | KD α 0.5→0.75: BOTH modes better, p-gate passes — but imm +0.000048 misses the ≥0.00005 bar by 2e-6. Nearest miss of the phase; α=0.9 running per conduct rule 2. |
 | 39 | 1–5000 | 0.2982ᵛʳ | 0.2659ᵛʳ | exact | **accepted** | 2.2e-10 / 7.8e-37 (vs iter 36) | 558,212 | 0 | adopted | KD α→0.9: ahead +0.000158, imm +0.000153 — clean full-gate pass; dose curve monotone up, imm accelerating. Moots iter 38's near-miss (0.9 dominates 0.75). NEW champion; recipe α is now 0.9. |
 | 40 | 1–5000 | 0.2982ᵛʳ | 0.2659ᵛʳ | exact | rejected | 0.71 / 1.0 (vs iter 39) | 558,212 | 0 | adopted | KD α→1.0 (pure-teacher WS): ahead flat, imm −0.000067 worse — peak BRACKETED at ~0.9, lever closed. The 10% hard labels in WS still carry signal. |
+| 41 | 1–5000 | 0.2979ᵛʳ | 0.2655ᵛʳ | exact | **accepted** | 5.1e-24 / 7.5e-95 (vs iter 39) | 558,212 | 0 | invented | Interleave (round-robin layers across scopes) + fine-to-coarse order bundle: ahead +0.00029, imm +0.00040 — the largest both-modes architectural gain of the phase. Topology family opens 1/1. NEW champion. |
 
 ## Track 2 — ablate the old d=128 model
 

@@ -1913,3 +1913,45 @@ entirely from WS costs real imm. Family distillation closes the sweep at 3 accep
 35-arm-B, 39) + 1 dominated near-miss (38) + this informative endpoint reject. Still open
 in-family if revisited: annealed alpha, KD-through-decay (decay is HALF of total training at
 ratio 1.0 and runs pure hard labels today).
+
+## iter 41 — interleaving + fine-to-coarse order: the topology family opens with the phase's largest architectural gain (ACCEPTED, 2026-08-09)
+
+**What ran.** The 2-change bundle Andrew directed: `RWKV_INTERLEAVE=1` (round-robin layer
+schedule — layer r of every stream per round, 4 rounds / 13 layer-steps, same params/states/
+ops, execution order only) on `architecture_d80_lora4_cnd.py` (stream tuples reordered to the
+true fine-to-coarse card→note→deck→preset→user; the audit had found every historical arch file
+ran card→DECK→NOTE while the docs claimed otherwise). Recipe = the iter-39 champion (seed
+4321, KD α=0.9 WS-only, PAVA λ=0.2, tuned HPs). Chain fired itself 5 min after iter 40's
+DONE_EXIT and ran clean end-to-end; eval 2500/2500 attempt 1.
+
+**Verdict: ACCEPTED — rect ahead 0.297889 (+0.000291, p=5.1e-24) / imm 0.265479 (+0.000396,
+p=7.5e-95)** vs iter 39. The largest both-modes architectural gain of the phase — no single
+PAVA/GRU/Muon/KD accept moved both modes this much. Gates: size 0/2500; params 558,212 EXACT
+(a schedule has no weights); card 2,880 / note 1,440 / deck 5,760 state floats all unchanged;
+throughput 1849.8 rev/s (bench noise). WS wall-clock unchanged (~0.91 steps/s — the 13
+gather/scatter round-trips through the canonical layout cost nothing measurable).
+
+**Why it works (the mechanism the family was opened on):** the sequential chain gives global
+context no path into card-level processing — the card stream is finished before any other
+scope has run. Interleaved, every scope's later layers condition on every other scope's
+earlier layers. The imm gain (rating head, fed by the full trunk) being the LARGER of the two
+is consistent with that story: prediction-time integration of scopes improved.
+
+**Verification behind the accept:** the depth-1 oracle (all depths 1 ⇒ interleaved schedule
+degenerates to the sequential order) proved the gather composition BIT-EXACT vs the
+battle-tested branch; the smoke was re-run under the reordered champion arch (banner
+[2,1,4,3,3], no-grad sets identical, grads finite, scripted compile); the RNN deploy path now
+routes states BY NAME (the old positional body would have silently cross-wired deck/note
+states under any reordered arch — refactor verified golden-exact against pre-edit behavior).
+
+**Caveats, all recorded in the jsonl row:**
+- **Bundle attribution unknown** — and deploy-relevant: if the ORDER alone carries the gain,
+  Rust never needs the interleave port. iter 42 = the de-bundle control (sequential +
+  reordered order), gate vs iter 41.
+- ahead's +0.000291 sits below the old ~0.0005 seed-doctrine line (but 15× the ~2e-5 trunk
+  spread iter 35 measured). Flagged, not blocking.
+- **Deploy:** the champion is now interleaved + reordered; `rust/rwkv-infer` implements
+  neither (its chain is hardcoded sequential card→deck→note). The port plan gains both items;
+  pre-ship trace parity (export_rnn_trace vs the by-name RNN mirror) is mandatory.
+- `model_stats.py` labels per-stream states by a hardcoded name order — under reordered archs
+  the deck/note labels swap (values positional, correct). Tool fix pending.

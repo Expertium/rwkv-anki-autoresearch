@@ -795,7 +795,28 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 39 `iter39_kda09` (iter-36 recipe with RWKV_KD_ALPHA 0.5 -> 0.9) -- promoted 2026-08-08 22:15
+#### CHAMPION = iter 41 `iter41_ilv` (INTERLEAVE + fine-to-coarse order on the iter-39 recipe) -- promoted 2026-08-09 15:45
+**RECTIFIED (the gate basis): ahead 0.297889 / imm 0.265479** on the VAL half (n=2500) =
++0.000291 / +0.000396 vs iter 39 at p=5.1e-24 / 7.5e-95 -- **the largest both-modes
+architectural gain of the phase** (bigger than any single PAVA/GRU/Muon/KD accept). size
+0/2500, nan_users 0, **558,212 params EXACT, card 2,880 / note 1,440 / deck 5,760 state
+floats ALL unchanged** (a schedule has no weights), throughput 1849.8 rev/s, WS wall-clock
+unchanged. ckpt `scratchpad/iter41_ilv/i41_d_10935.pth`; `champion_5k_track2.json` points at
+it (trace extracted from the WS log).
+**★ THE CHAMPION ENV NOW CARRIES TWO NEW PIECES — set BOTH in every run on this trunk:**
+`RWKV_INTERLEAVE=1` and `RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py`
+(the fine-to-coarse card→note→deck→preset→user order; depths [2,1,4,3,3] travel with names).
+Everything else = iter 39's env (seed 4321, KD α=0.9 WS-only, PAVA λ=0.2, tuned HPs).
+**⚠ A 2-CHANGE BUNDLE (Andrew-directed)** — iter 42 (the de-bundle control: sequential +
+reordered order) decides attribution, and it is DEPLOY-relevant: if order alone carries the
+gain, Rust never needs the interleave port. **⚠ DEPLOY: `rust/rwkv-infer` implements NEITHER
+piece** (hardcoded sequential card→deck→note chain) — both are now port-plan items, and the
+pre-ship trace parity (export_rnn_trace vs the BY-NAME RNN mirror, refactored+golden-exact
+this iter) is mandatory. ⚠ `model_stats.py` labels per-stream states by a hardcoded name
+order — under reordered archs its deck/note LABELS swap (values positional, correct); tool
+fix pending. Family TOPOLOGY opens 1/1. Detail: `research_5k_verbose.md` iter 41.
+
+#### PREVIOUS CHAMPION = iter 39 `iter39_kda09` (iter-36 recipe with RWKV_KD_ALPHA 0.5 -> 0.9) -- promoted 2026-08-08 22:15
 **RECTIFIED (the gate basis): ahead 0.298180 / imm 0.265875** on the VAL half (n=2500) =
 +0.000158 / +0.000153 vs iter 36 at p=2.2e-10 / 7.8e-37 -- a clean full-gate pass (both modes
 >=0.0001 after rounding). size 0/2500, nan_users 0, **558,212 params, card/note state
@@ -1057,8 +1078,17 @@ alpha / KD-through-decay (decay is HALF of total training at ratio 1.0, pure har
 ⚠ Ops (iter 39's first launch): generating a `.cmd` by string replacement missed the backslash
 `set DIR=` line (forward-slash-only replace) — killed at minute 4, fixed, relaunched. Replace
 BOTH slash styles, and assert no stale refs remain (iter 40's generator does).
-**▶ ITER 41 IS RUNNING (fired 2026-08-09 05:57, 5 min after iter 40's DONE_EXIT; banners
-verified: interleave ON, depths [2,1,4,3,3] = the reordered arch, seed 4321):
+**✓ ITER 41 ACCEPTED + PROMOTED 2026-08-09 — the new champion (block above), the phase's
+largest architectural gain (+0.000291/+0.000396, p=5e-24/7e-95). TOPOLOGY family opens 1/1.**
+**▶ ITER 42 IS RUNNING (launched 15:55, detached pid 30708): the DE-BUNDLE CONTROL** — the
+fine-to-coarse ORDER alone (arch `_cnd`), sequential execution (`RWKV_INTERLEAVE` unset,
+leak-guarded: the runner FAILS if the interleave banner appears). Gate vs **iter 41** (is
+order-alone as good as the bundle?) + informative diff vs iter 39 (does order alone beat the
+old order?). Deploy-relevant: if order carries the bundle, Rust never needs the interleave
+port. Tag `RWKV-iter42_cnd`, runner `scratchpad/iter42_cnd/run_iter42.cmd`, verdict ~01:30
+Aug 10. Banners verified (cnd arch named, zero interleave lines, seed 4321).
+(Iter 41's own run record: fired 05:57 five min after iter 40's DONE_EXIT; banners verified:
+interleave ON, depths [2,1,4,3,3] = the reordered arch, seed 4321:
 `RWKV_INTERLEAVE=1` **PLUS the corrected fine-to-coarse stream order** (Andrew 2026-08-09,
 after the order audit) via `scratchpad/track2_a18/architecture_d80_lora4_cnd.py` — same
 streams/depths, tuple order now card→note→deck→preset→user (depths travel with names:
@@ -1656,6 +1686,8 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 7.11x fewer params, sublinear as the elementwise-dominated profile predicts.)
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+**TOPOLOGY 1/1** (iter 41 ACCEPTED — interleave + fine-to-coarse order bundle, the phase's
+largest architectural gain; iter 42 de-bundles) ·
 **distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
 ⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
