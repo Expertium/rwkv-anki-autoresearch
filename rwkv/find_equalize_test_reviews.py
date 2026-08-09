@@ -63,11 +63,26 @@ def process(user_id):
         return
 
     # Get RMSE (bins) indices
-    bins = []
-    for i in range(len(df)):
-        row = df.iloc[i].copy()
-        bin = get_bin(row)
-        bins.append(bin)
+    # Perf (2026-07-28): df.iloc[i] per row rebuilds a mixed-dtype Series (dtype-promotion
+    # over ALL columns) each call -- profiled at ~17s/60k-row user, the single biggest cost
+    # in this file. get_bin() only reads 4 columns; pull those once as plain Python lists
+    # and index into them instead. Verified bit-identical (scratchpad/content_aware/
+    # verify_find_equalize_patch.py), ~10-16x faster.
+    r_hist_col = df["r_history"].tolist()
+    t_hist_col = df["t_history"].tolist()
+    delta_t_col = df["delta_t"].tolist()
+    i_col = df["i"].tolist()
+    bins = [
+        get_bin(
+            {
+                "r_history": r_hist_col[k],
+                "t_history": t_hist_col[k],
+                "delta_t": delta_t_col[k],
+                "i": i_col[k],
+            }
+        )
+        for k in range(len(df))
+    ]
 
     bins_set = set(bins)
     bins_ind = {}
@@ -75,14 +90,13 @@ def process(user_id):
         bins_ind[x] = i
 
     # Get review_th that are included in the benchmark
+    review_th_col = df["review_th"].tolist()
     tscv = TimeSeriesSplit(n_splits=5)
     test_label_review_th = []
     test_label_rmse_bins = []
     for _, (_, test_index) in enumerate(tscv.split(df)):
         for i in test_index:
-            row = df.iloc[i]
-            review_th = row["review_th"]
-            test_label_review_th.append(review_th)
+            test_label_review_th.append(review_th_col[i])
             test_label_rmse_bins.append(bins_ind[bins[i]])
 
     assert sorted(test_label_review_th) == test_label_review_th
