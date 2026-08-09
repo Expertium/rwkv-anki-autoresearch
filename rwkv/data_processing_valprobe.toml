@@ -1,0 +1,20 @@
+# Tiny LMDB for the WS phase's 10-user validation probe (users 5001-5010). train_rwkv's
+# get_test_keys() hard-asserts exactly ONE batch per user, so this needs the eval-style
+# unbounded MAX_BATCH_SIZE (matching the live rwkv/data_processing_config_test.toml's
+# 2097152), NOT the sc8k-chunked 16384 that data_processing_test_5k_local.toml uses for the
+# bulk eval db (get_result.py/eval_sharded.py handle multi-batch users fine -- only this
+# 10-user probe path needs single-batch).
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "test_db_valprobe"
+LMDB_SIZE = 20_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 5010
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 4
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
