@@ -10,7 +10,11 @@ export PYTHONUNBUFFERED=1
 export OMP_NUM_THREADS=7
 export RWKV_DETERMINISTIC=1
 export RWKV_AUGMENT_SEED=4321
-export RWKV_EMPTY_CACHE_EVERY=1
+# Local-box fix (see README.md): the champion recipe's EVERY=1/WINDOW=0 OOMs on this GPU and
+# costs ~500ms/step even when it doesn't. expandable_segments + no forced clearing is faster
+# and doesn't crash here.
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export RWKV_EMPTY_CACHE_EVERY=0
 export RWKV_EMPTY_CACHE_WINDOW=0
 export RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py
 export RWKV_GRU_HEAD=3
