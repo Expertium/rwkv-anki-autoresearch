@@ -1536,7 +1536,11 @@ Do NOT interleave research iterations into (b). Full measurements + method rules
    — our engine has NO SIMD, and that is the most portable remaining speed win (⚠ AGPL: flag to
    Andrew before copying, keep provenance comments).
 5. **NEW INPUT FEATURES — now on the critical path** (Andrew 2026-07-26; see "THE ENDGAME,
-   ORDERED"). `optimization/FUTURE_FEATURES.md` + the deck-tree features. **SCOPED 2026-07-27** —
+   ORDERED"). **★ Andrew 2026-08-09: the rebuild must DROP Anki's card state
+   (new/learning/review/relearning — the `state − 2` column, dim 22) from the input vector** —
+   the permanent form of iter 15's ZERO_FEATURES=22 mask; cautions (keep state for the
+   FILTERS, renumber mask/Rust dim consumers) recorded in FUTURE_FEATURES.md's plan.
+   `optimization/FUTURE_FEATURES.md` + the deck-tree features. **SCOPED 2026-07-27** —
    that doc now carries the four code sites, the F:-side-by-side disk plan (no delete needed), and
    a 100-user de-risk build. **CONSTANTS MEASURED 2026-08-03** (`optimization/feature_stats_id.py`,
    300 users / 24.3M reviews, train half only) and **WALL-CLOCK MEASURED: ~23 h for both DBs**

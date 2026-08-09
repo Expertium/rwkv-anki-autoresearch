@@ -185,6 +185,25 @@ the full table) so same-day-created-and-reviewed cards stay honest.
 
 ## ★ IMPLEMENTATION PLAN (2026-07-27) — and the delete is probably NOT needed
 
+### ★ DIRECTIVE (Andrew 2026-08-09): the rebuild DROPS Anki's card state from the inputs
+The card-state column (new/learning/review/relearning — INPUT_FEATURES.md row 16, the single
+`state − 2` column, flat dim 22) must NOT be in the rebuilt feature vector. This is the
+permanent version of the decision already in force: iter 15 accepted `RWKV_ZERO_FEATURES=22`
+(Andrew's directive), the deploy contract zeroes the dim everywhere, and the Rust export bakes
+the zeroed columns into the shipped weights — the rebuild simply stops emitting the column at
+the source, so no consumer needs to know a mask ever existed.
+Two implementation cautions:
+1. **Drop it from the INPUT vector only.** The state column may still be read internally by
+   the filtering/label machinery (`create_features`' outlier/continuity filter and the
+   equalize selection were built with the benchmark's `--short --secs` settings) — removing it
+   from `CARD_FEATURE_COLUMNS` is correct; removing it from the *frame* before the filters run
+   is NOT verified safe. Same pattern as `review_time`: derive/filter, then drop before the
+   partition assert.
+2. **Renumber `RWKV_ZERO_FEATURES` consumers.** With the column gone the vector shifts by one
+   at and after dim 22; the mask env (22), Rust `model.rs::load`'s zeroed-column list, and any
+   hardcoded dim indices (`COL_DUR=8` is BELOW 22 and safe) must be re-audited against the new
+   layout. Grep targets: `ZERO_FEATURES`, `feat_mask`, `COL_`, `dim 22`.
+
 ### The four code sites
 The RWKV feature vector is built in `rwkv/data_processing.py`, not in `features/` — that is where
 every change lands:
