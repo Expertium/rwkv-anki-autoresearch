@@ -1888,3 +1888,28 @@ silently trains at the wrong mix.
 pretrain-finetune split and the curve's endpoint. Worse ⇒ the peak is bracketed in [0.75, 1.0]
 and 0.9 stands; better ⇒ the WS phase wants no hard labels at all. Family distillation 3/3
 accepted (+1 dominated near-miss).
+
+## iter 40 — KD alpha 1.0: the endpoint that brackets the peak (REJECTED, 2026-08-09)
+
+**What ran.** `RWKV_KD_ALPHA=1.0` — pure-teacher WS (hard labels contribute nothing during
+warmup-stable), hard-label decay: the classic pretrain-finetune split, and the natural
+endpoint after 0.9's clean accept. Chain clean, eval 2500/2500 attempt 1, size 0/2500.
+
+**Verdict: REJECTED vs iter 39, exactly as an endpoint probe should fail.** Ahead
+0.298199 (−0.000019, p=0.71 — a coin flip); imm 0.265942 (−0.000067, p=1.0 — genuinely
+worse). The full dose curve, rectified on the VAL half:
+
+| α | rect ahead | rect imm |
+|---|---|---|
+| 0.5 (iter 36) | 0.298338 | 0.266027 |
+| 0.75 (iter 38) | 0.298224 | 0.265979 |
+| **0.9 (iter 39, champion)** | **0.298180** | **0.265875** |
+| 1.0 (iter 40) | 0.298199 | 0.265942 |
+
+Concave with an interior optimum at ~0.9 — **the alpha lever is now mapped end-to-end and
+closed**. Reading: even at a 1-epoch WS budget, where the 12-epoch teacher's soft targets
+dominate the signal, the 10% hard-label component still earns its keep; removing ground truth
+entirely from WS costs real imm. Family distillation closes the sweep at 3 accepts (32,
+35-arm-B, 39) + 1 dominated near-miss (38) + this informative endpoint reject. Still open
+in-family if revisited: annealed alpha, KD-through-decay (decay is HALF of total training at
+ratio 1.0 and runs pure hard labels today).

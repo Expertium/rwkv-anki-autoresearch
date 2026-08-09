@@ -1047,17 +1047,18 @@ quartile table: `research_5k_verbose.md` iter 37.
 **✓ ITER 39 (KD α 0.9) ACCEPTED + PROMOTED 2026-08-08 — the new champion (block above).** The
 alpha dose curve is monotone up with imm accelerating; iter 38's near-miss question is MOOT
 (0.9 dominates 0.75). iter 38 stays recorded as rejected.
-**▶ ITER 40 IS RUNNING (launched 2026-08-08 ~22:00, detached pid 7584): `RWKV_KD_ALPHA=1.0`,
-the dose-curve endpoint** — pure-teacher WS / hard-label decay (the pretrain-finetune split).
-Banners verified (`alpha=1.0000 (checksum OK)`, seed 4321). Tag `RWKV-iter40_kda10`, gate vs
-**iter 39** (`RWKV-iter39_kda09-s0.jsonl`). Runner `scratchpad/iter40_kda1/run_iter40.cmd`.
-Verdict ~08:00 Aug 9. Worse ⇒ peak bracketed in [0.75, 1.0], 0.9 stands; better ⇒ WS wants no
-hard labels. If 1.0 rejects, next in-family: annealed alpha / KD-through-decay (decay is HALF
-of total training at ratio 1.0 and runs pure hard labels today).
+**✗ ITER 40 (KD α 1.0) DONE + REJECTED 2026-08-09 — and it BRACKETS THE PEAK, as designed.**
+Ahead flat vs 0.9 (−0.000019, p=0.71); imm genuinely worse (−0.000067, p=1.0). The dose curve
+is concave with an interior optimum at ~0.9: imm 0.266027 (α.5) → 0.265979 (.75) → **0.265875
+(.9)** → 0.265942 (1.0). **The alpha lever is mapped end-to-end and CLOSED; α=0.9 stands.**
+The 10% hard labels in WS still carry real signal. Family distillation: 3 accepts + 1
+dominated near-miss + 1 informative endpoint reject. Open in-family if revisited: annealed
+alpha / KD-through-decay (decay is HALF of total training at ratio 1.0, pure hard labels).
 ⚠ Ops (iter 39's first launch): generating a `.cmd` by string replacement missed the backslash
 `set DIR=` line (forward-slash-only replace) — killed at minute 4, fixed, relaunched. Replace
 BOTH slash styles, and assert no stale refs remain (iter 40's generator does).
-**▶ ITER 41 IS STAGED AND PARKED (relaunched pid 35356, waitloop on iter 40's DONE_EXIT):
+**▶ ITER 41 IS RUNNING (fired 2026-08-09 05:57, 5 min after iter 40's DONE_EXIT; banners
+verified: interleave ON, depths [2,1,4,3,3] = the reordered arch, seed 4321):
 `RWKV_INTERLEAVE=1` **PLUS the corrected fine-to-coarse stream order** (Andrew 2026-08-09,
 after the order audit) via `scratchpad/track2_a18/architecture_d80_lora4_cnd.py` — same
 streams/depths, tuple order now card→note→deck→preset→user (depths travel with names:
