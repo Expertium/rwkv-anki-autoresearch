@@ -812,9 +812,10 @@ reordered order) decides attribution, and it is DEPLOY-relevant: if order alone 
 gain, Rust never needs the interleave port. **⚠ DEPLOY: `rust/rwkv-infer` implements NEITHER
 piece** (hardcoded sequential card→deck→note chain) — both are now port-plan items, and the
 pre-ship trace parity (export_rnn_trace vs the BY-NAME RNN mirror, refactored+golden-exact
-this iter) is mandatory. ⚠ `model_stats.py` labels per-stream states by a hardcoded name
-order — under reordered archs its deck/note LABELS swap (values positional, correct); tool
-fix pending. Family TOPOLOGY opens 1/1. Detail: `research_5k_verbose.md` iter 41.
+this iter) is mandatory. `model_stats.py`'s deck/note LABEL swap under reordered archs is
+FIXED (2026-08-09): labels now come from the config's own module names, verified correct
+under both orders (values were always positional and correct). Family TOPOLOGY opens 1/1.
+Detail: `research_5k_verbose.md` iter 41.
 
 #### PREVIOUS CHAMPION = iter 39 `iter39_kda09` (iter-36 recipe with RWKV_KD_ALPHA 0.5 -> 0.9) -- promoted 2026-08-08 22:15
 **RECTIFIED (the gate basis): ahead 0.298180 / imm 0.265875** on the VAL half (n=2500) =
