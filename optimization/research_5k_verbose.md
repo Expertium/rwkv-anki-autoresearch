@@ -1954,4 +1954,50 @@ states under any reordered arch — refactor verified golden-exact against pre-e
   neither (its chain is hardcoded sequential card→deck→note). The port plan gains both items;
   pre-ship trace parity (export_rnn_trace vs the by-name RNN mirror) is mandatory.
 - `model_stats.py` labels per-stream states by a hardcoded name order — under reordered archs
-  the deck/note labels swap (values positional, correct). Tool fix pending.
+  the deck/note labels swap (values positional, correct). FIXED 2026-08-09 (`bd473b2`): labels
+  now come from the config's own module names; verified under both orders.
+
+*(Attribution resolved by iter 42 below: the interleave carries all of it, and the reorder is
+a small negative. The bundle's net gain understates the schedule's effect.)*
+
+## iter 42 — the de-bundle control: interleaving carries it, the reorder is a small negative (REJECTED, 2026-08-09)
+
+**What ran.** The fine-to-coarse ORDER alone: `architecture_d80_lora4_cnd.py` with
+**sequential** execution (`RWKV_INTERLEAVE` explicitly cleared, and the runner fails with
+`DONE_EXIT_ILVLEAK` if the interleave banner appears in either training phase — a lingering
+env var would have silently re-run iter 41). Everything else identical to iters 39/41: seed
+4321, KD α=0.9 WS-only, PAVA λ=0.2, tuned HPs, MAX=65536. Chain clean, eval 2500/2500 on
+attempt 1, leak guard 0 occurrences, arch banner confirmed `_cnd`.
+
+**Verdict: REJECTED as a candidate — rect ahead 0.298379 (−0.000489) / imm 0.266090
+(−0.000612) vs iter 41, p=1.0 both.** But it is the most informative run since the merge,
+because the order is not merely *weaker* than the bundle — it is a **negative in its own
+right**. Against iter 39, which is the same sequential recipe at the OLD card→deck→note order,
+it loses **−0.000198 ahead / −0.000215 imm**.
+
+**The 2×2 (rectified, VAL half, n=2500):**
+
+| | sequential | interleaved |
+|---|---|---|
+| **old order** (card→deck→note) | iter 39: 0.298180 / 0.265875 | **not yet run** |
+| **new order** (card→note→deck) | iter 42: 0.298379 / 0.266090 | iter 41: 0.297889 / 0.265479 |
+
+**Three conclusions.**
+1. **Interleaving carries the entire iter-41 gain and more.** Holding the new order fixed, the
+   schedule is worth **+0.000489 ahead / +0.000612 imm** (iter 41 − iter 42) — it had to
+   overcome the order penalty to deliver its net +0.000291/+0.000396. The bundle's headline
+   *understates* the schedule.
+2. **Deploy: `rust/rwkv-infer` DOES need the interleave port.** The cheap escape is closed. And
+   since the champion ships with the reorder too, the port carries both.
+3. **Fine-to-coarse is not automatically better.** The intuition behind the reorder (notes
+   ≈0.9× cards, decks ≈56/user, so note is "finer" than deck) does not survive measurement.
+   Whatever the deck stream contributes, the note stream benefits from receiving it — the
+   right axis is information flow, not granularity. That is also the mechanism story
+   interleaving tells, so the two findings agree.
+
+**The implied next run is the missing cell** — interleave + the ORIGINAL order (iter 41 minus
+the reorder). If the −0.0002 order penalty is roughly additive under interleaving, it lands
+≈0.29769/0.26526 and passes the gate against the current champion. One arch swap on an
+existing recipe (~8.6 h), and well-posed either way: if the penalty *vanishes* under
+interleaving, that is itself the finding — within-round order stops mattering once every scope
+hears every other across rounds.

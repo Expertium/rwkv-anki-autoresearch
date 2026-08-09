@@ -1081,13 +1081,31 @@ alpha / KD-through-decay (decay is HALF of total training at ratio 1.0, pure har
 BOTH slash styles, and assert no stale refs remain (iter 40's generator does).
 **✓ ITER 41 ACCEPTED + PROMOTED 2026-08-09 — the new champion (block above), the phase's
 largest architectural gain (+0.000291/+0.000396, p=5e-24/7e-95). TOPOLOGY family opens 1/1.**
-**▶ ITER 42 IS RUNNING (launched 15:55, detached pid 30708): the DE-BUNDLE CONTROL** — the
-fine-to-coarse ORDER alone (arch `_cnd`), sequential execution (`RWKV_INTERLEAVE` unset,
-leak-guarded: the runner FAILS if the interleave banner appears). Gate vs **iter 41** (is
-order-alone as good as the bundle?) + informative diff vs iter 39 (does order alone beat the
-old order?). Deploy-relevant: if order carries the bundle, Rust never needs the interleave
-port. Tag `RWKV-iter42_cnd`, runner `scratchpad/iter42_cnd/run_iter42.cmd`, verdict ~01:30
-Aug 10. Banners verified (cnd arch named, zero interleave lines, seed 4321).
+**✗✓ ITER 42 (the de-bundle control) DONE 23:30 + REJECTED — AND IT INVERTS THE CHEAP
+HYPOTHESIS: INTERLEAVING CARRIES THE WHOLE ITER-41 GAIN, THE REORDER IS A SMALL NEGATIVE.**
+Order-alone (arch `_cnd`, sequential) scores **0.298379 / 0.266090** = −0.000489 / −0.000612
+vs iter 41 (p=1.0 both) **and −0.000198 / −0.000215 vs iter 39's OLD order** on the identical
+sequential recipe. The (order)×(schedule) 2×2, rectified VAL half n=2500:
+old+seq (iter 39) 0.298180/0.265875 · new+seq (iter 42) 0.298379/0.266090 · new+interleaved
+(iter 41) 0.297889/0.265479 · **old+interleaved = ITER 43, RUNNING**.
+**Three consequences.** (1) Holding order fixed, the schedule is worth **+0.000489 / +0.000612**
+— it had to overcome the order penalty to deliver iter 41's net gain, so the bundle headline
+UNDERSTATES interleaving. (2) **DEPLOY: `rust/rwkv-infer` DOES need the interleave port** — the
+cheap escape is closed, and since the champion also ships the reorder, the port carries both.
+(3) **Fine-to-coarse is not automatically better**: the granularity intuition (notes ≈0.9×
+cards, decks ≈56/user) does not survive measurement — the right axis is information flow, which
+is the same story interleaving tells. Chain clean (DONE_EXIT_0, eval 2500/2500 attempt 1, size
+0/2500, nan 0, leak guard 0 hits, params/state identical). Detail: `research_5k_verbose.md`
+iter 42.
+**▶ ITER 43 IS RUNNING (launched 23:35, detached pid 40340): THE MISSING 4th CELL** —
+`RWKV_INTERLEAVE=1` on the **ORIGINAL** order (`architecture_d80_lora4.py`, depths [2,4,1,3,3]),
+i.e. iter 41 minus the reorder. If the −0.0002 order penalty is ~additive under interleaving it
+lands ≈0.29769/0.26526 and **passes the gate vs the champion**; if it vanishes, that is itself
+the finding (within-round order stops mattering once every scope hears every other across
+rounds). Guards INVERTED vs iter 42: the ws log MUST carry the interleave banner and MUST NOT
+name `_cnd` (`DONE_EXIT_NOILV` / `DONE_EXIT_WRONGARCH`). Tag `RWKV-iter43_ilvold`, runner
+`scratchpad/iter43_ilv_old/run_iter43.cmd`, gate vs iter 41, verdict ~08:10 Aug 10. Banners
+verified (original arch named, interleave ON with depths [2,4,1,3,3], seed 4321).
 (Iter 41's own run record: fired 05:57 five min after iter 40's DONE_EXIT; banners verified:
 interleave ON, depths [2,1,4,3,3] = the reordered arch, seed 4321:
 `RWKV_INTERLEAVE=1` **PLUS the corrected fine-to-coarse stream order** (Andrew 2026-08-09,
@@ -1687,8 +1705,10 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 7.11x fewer params, sublinear as the elementwise-dominated profile predicts.)
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
-**TOPOLOGY 1/1** (iter 41 ACCEPTED — interleave + fine-to-coarse order bundle, the phase's
-largest architectural gain; iter 42 de-bundles) ·
+**TOPOLOGY 1/2** (iter 41 ACCEPTED — interleave + fine-to-coarse order bundle, the phase's
+largest architectural gain; iter 42 REJECTED but attributing — order-alone is a small NEGATIVE
+(−0.0002 both modes vs the old order), so INTERLEAVING carries all of it and more (+0.00049/
++0.00061); iter 43 = the missing 4th cell, interleave at the original order) ·
 **distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
 ⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
