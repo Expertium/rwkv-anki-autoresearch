@@ -211,12 +211,19 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     df_cards = (
         pd.read_parquet(cards_dir)
         if cards_dir.is_dir()
-        else pd.DataFrame(columns=["card_id", "note_id", "deck_id"])
+        # int64, matching the parquet schema: an object-dtype fallback merges into
+        # object note_id/deck_id columns instead of the float64 NaN the old filters=
+        # path produced, which crashes the downstream int32 tensor cast in create_sample.
+        else pd.DataFrame(
+            {c: pd.Series(dtype="int64") for c in ("card_id", "note_id", "deck_id")}
+        )
     )
     df_decks = (
         pd.read_parquet(decks_dir)
         if decks_dir.is_dir()
-        else pd.DataFrame(columns=["deck_id", "parent_id", "preset_id"])
+        else pd.DataFrame(
+            {c: pd.Series(dtype="int64") for c in ("deck_id", "parent_id", "preset_id")}
+        )
     )
     df_decks.drop(columns=["parent_id"], inplace=True)
     df = df.merge(df_cards, on="card_id", how="left", validate="many_to_one")
