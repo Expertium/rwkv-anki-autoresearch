@@ -2001,3 +2001,66 @@ the reorder). If the −0.0002 order penalty is roughly additive under interleav
 existing recipe (~8.6 h), and well-posed either way: if the penalty *vanishes* under
 interleaving, that is itself the finding — within-round order stops mattering once every scope
 hears every other across rounds.
+
+## iter 43 — the 2×2's fourth cell: under interleaving, stream order stops mattering (REJECTED as a TIE, 2026-08-10)
+
+**What ran.** `RWKV_INTERLEAVE=1` on the **original** stream order
+(`architecture_d80_lora4.py`, card→deck→note→preset→user, depths [2,4,1,3,3]) — iter 41 minus
+the reorder. Recipe otherwise identical to iters 39/41/42. Guards inverted vs iter 42: the WS
+log had to carry the interleave banner and had to *not* name the `_cnd` arch.
+
+**Verdict: REJECTED, but as a statistical TIE, not a loss** — ahead 0.297964 (−0.000075,
+p=0.42) / imm 0.265464 (+0.000014, p=0.098) vs the iter-41 champion. This is the least
+significant pairing of the entire phase; every other iteration pair has at least one mode at
+p<1e-9. size 0/2500, nan_users 0, params 558,212 and card/note/deck state 2,880/1,440/5,760
+identical.
+
+**The completed 2×2 (rectified, VAL half, n=2500):**
+
+| | sequential | interleaved |
+|---|---|---|
+| **old order** (card→deck→note) | iter 39: 0.298180 / 0.265875 | iter 43: 0.297964 / 0.265464 |
+| **new order** (card→note→deck) | iter 42: 0.298379 / 0.266090 | iter 41: 0.297889 / 0.265479 |
+
+**Decomposed:**
+
+| effect | at old order / sequential | at new order / interleaved |
+|---|---|---|
+| **interleave** | +0.000216 / +0.000411 | +0.000490 / +0.000611 |
+| **reorder** | −0.000199 / −0.000215 | +0.000075 / −0.000015 (noise) |
+
+**The finding — and it is the alternative flagged at launch.** The interleave effect is large
+and robust to order (both cells p<1e-25). The reorder effect is a real negative when the chain
+is sequential and **vanishes** when it is interleaved. So the two changes iter 41 bundled do
+not merely add — they *interact*, and the mechanism is the same one the family was opened on:
+once every scope hears every other scope across rounds, the order they are heard in *within* a
+round carries almost no information. The reorder was never a second improvement; it was a cost
+that the schedule paid off.
+
+**Four consequences.**
+1. **The champion is unchanged (iter 41).** A tie is not a promotion.
+2. **Deploy, and this is the actionable one:** the reorder can be dropped at zero measured
+   accuracy cost, which removes **port gap 8** from `rust/rwkv-infer` and lets the engine keep
+   its existing hardcoded card→deck→note chain. One less thing to get wrong in the deploy path
+   for a delta the data cannot distinguish from zero. That is a Pareto-simplicity call for
+   Andrew, not a gate decision — recorded and flagged, not acted on.
+3. **The ORDER lever is CLOSED.** Measured at both schedule settings: negative sequentially,
+   null under interleaving. No reason to try further permutations.
+4. **The SCHEDULE lever is where the next TOPOLOGY iterations go** — it is the phase's most
+   productive single change and iter 43 shows its gain does not depend on the ordering choice
+   that shipped with it.
+
+Family TOPOLOGY: 1 accept + 2 rejects, and both rejects were *controls that changed what we
+believe* rather than failed candidates.
+
+**Ops — a self-inflicted chain break, zero GPU time lost.** WS completed normally
+(`i43_ws_10935.pth` + `grad_stats.json` at 02:54:37), then the chain died 27 s later with
+`DONE_EXIT_WSFAIL_9009` and `'ratchpad' is not recognized`: cmd.exe re-reads a batch file from
+a saved byte offset after each command returns, and `git rebase --autostash` had **rewritten
+the running `run_iter43.cmd`** on disk (it was committed after launch). Same hazard class as
+CLAUDE.md's live-`.cmd`-edit warning, now generalized: **no git operation that rewrites the
+working tree may touch a running runner's path until its chain reports DONE_EXIT.** Recovered
+by resuming decay+eval from the final WS checkpoint (`run_iter43b.cmd`, new filename, with a
+guard asserting step 10935 rather than a partial). Collateral: the garbage line's redirect
+truncated the WS log to 99 B, so iter 43 has no step trace — irrelevant here since it is not
+promoted, but it would have cost the vprune val trace had it won.

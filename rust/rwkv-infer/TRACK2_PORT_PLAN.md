@@ -98,6 +98,59 @@ A15's exact strip map (auto-detected, for the parity test): card L0 v_lora, card
 deck L0 v_lora, deck L1/L2 cmix; note L0 v_lora; preset L0 v_lora + L0/L1/L2 cmix;
 user L0 v_lora + L0/L1/L2 cmix.
 
+## Gaps 7 and 8 — the champion's EXECUTION SCHEDULE and STREAM ORDER (added 2026-08-10, iters 41–42)
+
+**Neither is detectable from weight shapes, and the engine currently implements neither.**
+`rust/rwkv-infer` runs a hardcoded sequential chain in card→deck→note→preset→user order. Since
+iter 41 the champion runs a *round-robin* schedule over a *reordered* stream list, and iter 42
+measured that the schedule is the part that matters. An engine built from the table above alone
+would silently compute a different model — the exact failure class §9's three-way-parity rule
+exists to catch.
+
+| # | gap | detection | work |
+|---|---|---|---|
+| 7 | **Interleaved layer schedule** (`RWKV_INTERLEAVE=1`) | **none — recipe flag** | round r runs layer r of every stream that has one, hierarchy order within the round; `max(depths)` rounds, Σdepths layer-steps |
+| 8 | **Stream order** card→**note→deck**→preset→user | tensor *names* in the checkpoint, not shapes | the chain must follow the config's module order, not a hardcoded one |
+
+**Why gap 7 is not optional (iter 42, the de-bundle control).** Holding order fixed, the
+schedule is worth **+0.000489 ahead / +0.000612 imm** — larger than iter 41's headline, because
+the reorder it shipped with is itself a small negative (−0.000198 / −0.000215 vs the old order,
+measured sequentially). So "just port the reorder, skip the schedule" is not available; it was
+the cheap escape and the control closed it.
+
+What the recurrent form has to do, and the one thing that is genuinely different from training:
+in the parallel path each stream's gather is re-anchored to the canonical row layout every round
+(`srs_model.py::_interleaved_streams`), because `prepare()` builds each stream's indices against
+the *previous* stream's output layout and interleaving returns to earlier streams. **A one-review
+engine has no such layout problem** — there is exactly one row, and the five states are held
+separately. So the port is genuinely simple: instead of "for each stream: run all its layers",
+do "for round r: for each stream with depth > r: run its layer r", threading the single hidden
+vector through in that order. `srs_model_rnn.py`'s interleaved branch is the reference, and it
+already routes states **by name** (the refactor that landed with iter 41 — the old positional
+body hardcoded `modules[1] = deck` and would cross-wire deck/note under any reordered arch).
+
+**★ GAP 8 MAY BE UNNECESSARY (iter 43, 2026-08-10).** Interleaving at the ORIGINAL order ties
+the champion in both modes (0.297964/0.265464 vs 0.297889/0.265479, p=0.42/0.098) -- the
+reorder's sequential cost vanishes once the schedule is interleaved. So the engine could keep
+its existing hardcoded card->deck->note chain at zero measured accuracy cost, and gap 8 becomes
+optional. That is Andrew's call (the champion still ships the reorder, and a tie is not a
+promotion); until he takes it, implement gap 8 as written.
+
+Gap 8 is mostly a matter of not hardcoding: read the stream order from the checkpoint's module
+names and drive the chain from that list. Note `RWKV_SUBMODULES` in `config.py` orders **feature
+columns**, not execution — those two were conflated in the docs for weeks (corrected 2026-08-09).
+Do not derive execution order from it.
+
+**v0 (value-residual) stays stream-local.** Every stream sets its own v0 at *its own* layer 0 and
+consumes it in its own later layers; interleaving does not thread v0 across streams. Getting this
+wrong is invisible in a shape check and produces plausible-looking numbers.
+
+**Verification:** the pre-ship trace parity is mandatory and must be regenerated for the
+interleaved champion — `export_rnn_trace.py` with `RWKV_INTERLEAVE=1` and the champion arch, into
+a fresh `RWKV_REF_DIR` (never overwrite an existing trace), then `trace_selfcontained.py` FIRST to
+confirm the new trace is reproducible by current Python, then `verify_rust.py`. The A18 and iter-31
+traces are both sequential and cannot certify this path.
+
 ## Order of work
 
 1. **Loader tolerance + auto-detect** — treat 1×1 tensors as "absent"; record per-layer
@@ -164,6 +217,10 @@ user L0 v_lora + L0/L1/L2 cmix.
 Muon is training-only — nothing ships. The q72u quantization path already in the engine
 stays untouched; the track-2 model is plain fp32 for now, and quantization is a separate
 axis that already works.
+
+⚠ **The interleaved schedule and the stream reorder are NOT non-goals either** (gaps 7–8,
+added 2026-08-10). They carry the largest architectural gain of the phase and ship in the
+champion; an engine without them computes a different model.
 
 ⚠ **The PAVA rectifier and GRU_HEAD are NOT non-goals** (corrected 2026-07-26). An earlier
 version of this line listed them as "track-1 deploy extras, training-only", which was

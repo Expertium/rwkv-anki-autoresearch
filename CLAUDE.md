@@ -1097,15 +1097,34 @@ cards, decks ≈56/user) does not survive measurement — the right axis is info
 is the same story interleaving tells. Chain clean (DONE_EXIT_0, eval 2500/2500 attempt 1, size
 0/2500, nan 0, leak guard 0 hits, params/state identical). Detail: `research_5k_verbose.md`
 iter 42.
-**▶ ITER 43 IS RUNNING (launched 23:35, detached pid 40340): THE MISSING 4th CELL** —
-`RWKV_INTERLEAVE=1` on the **ORIGINAL** order (`architecture_d80_lora4.py`, depths [2,4,1,3,3]),
-i.e. iter 41 minus the reorder. If the −0.0002 order penalty is ~additive under interleaving it
-lands ≈0.29769/0.26526 and **passes the gate vs the champion**; if it vanishes, that is itself
-the finding (within-round order stops mattering once every scope hears every other across
-rounds). Guards INVERTED vs iter 42: the ws log MUST carry the interleave banner and MUST NOT
-name `_cnd` (`DONE_EXIT_NOILV` / `DONE_EXIT_WRONGARCH`). Tag `RWKV-iter43_ilvold`, runner
-`scratchpad/iter43_ilv_old/run_iter43.cmd`, gate vs iter 41, verdict ~08:10 Aug 10. Banners
-verified (original arch named, interleave ON with depths [2,4,1,3,3], seed 4321).
+**✗= ITER 43 (the 4th cell) DONE 09:05 + REJECTED AS A TIE — AND IT CLOSES THE ORDER LEVER:
+UNDER INTERLEAVING, WITHIN-ROUND STREAM ORDER STOPS MATTERING.** Interleave at the ORIGINAL
+order scores **0.297964 / 0.265464** = −0.000075 (p=0.42) / +0.000014 (p=0.098) vs iter 41 —
+the least significant pairing of the phase (every other pair has a mode at p<1e-9).
+**THE COMPLETED 2×2** (rectified VAL half, n=2500):
+
+| | sequential | interleaved |
+|---|---|---|
+| old order (card→deck→note) | iter 39: 0.298180/0.265875 | iter 43: 0.297964/0.265464 |
+| new order (card→note→deck) | iter 42: 0.298379/0.266090 | iter 41: 0.297889/0.265479 |
+
+**interleave effect** +0.000216/+0.000411 (old order) and +0.000490/+0.000611 (new), all
+p<1e-25 — large and robust. **reorder effect** −0.000199/−0.000215 sequentially but
++0.000075/−0.000015 (noise) interleaved. The two changes INTERACT: the reorder was never a
+second improvement, it was a cost the schedule paid off.
+**Consequences.** (1) Champion UNCHANGED (iter 41) — a tie is not a promotion. (2) **DEPLOY,
+actionable: the reorder can be dropped at zero measured cost, removing port gap 8 and letting
+`rust/rwkv-infer` keep its existing hardcoded card→deck→note chain** — a Pareto-simplicity call
+for Andrew, flagged not taken. (3) The ORDER lever is CLOSED (measured at both schedule
+settings). (4) The SCHEDULE is the productive lever and where the next TOPOLOGY iterations go.
+⚠ OPS, self-inflicted, zero GPU time lost: WS completed (i43_ws_10935.pth 02:54:37) but the
+chain died 27 s later with `DONE_EXIT_WSFAIL_9009` / `'ratchpad' is not recognized` —
+**`git rebase --autostash` REWROTE the running `run_iter43.cmd`**, corrupting cmd.exe's saved
+read offset. Generalizes CLAUDE.md's live-`.cmd`-edit rule: **no git operation that rewrites the
+working tree may touch a running runner's path until its chain reports DONE_EXIT.** Recovered
+via `run_iter43b.cmd` (decay+eval from the final ckpt, guard asserting step 10935); collateral
+was the WS log truncated to 99 B, so iter 43 has no step trace. Detail:
+`research_5k_verbose.md` iter 43.
 (Iter 41's own run record: fired 05:57 five min after iter 40's DONE_EXIT; banners verified:
 interleave ON, depths [2,1,4,3,3] = the reordered arch, seed 4321:
 `RWKV_INTERLEAVE=1` **PLUS the corrected fine-to-coarse stream order** (Andrew 2026-08-09,
@@ -1705,10 +1724,12 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 7.11x fewer params, sublinear as the elementwise-dominated profile predicts.)
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
-**TOPOLOGY 1/2** (iter 41 ACCEPTED — interleave + fine-to-coarse order bundle, the phase's
-largest architectural gain; iter 42 REJECTED but attributing — order-alone is a small NEGATIVE
-(−0.0002 both modes vs the old order), so INTERLEAVING carries all of it and more (+0.00049/
-+0.00061); iter 43 = the missing 4th cell, interleave at the original order) ·
+**TOPOLOGY 1/3, and both rejects are CONTROLS that changed what we believe** (iter 41 ACCEPTED
+— interleave + reorder bundle, the phase's largest architectural gain; iter 42 REJECTED —
+order-alone is a small NEGATIVE, so INTERLEAVING carries all of it; iter 43 REJECTED AS A TIE —
+interleave at the original order equals the champion (p=0.42/0.098), so the reorder's cost
+VANISHES under interleaving. **ORDER lever CLOSED; SCHEDULE is the productive one** and the
+2×2 is complete) ·
 **distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
 ⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
