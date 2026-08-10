@@ -7,7 +7,7 @@ from rwkv.data_processing import (
     CARD_FEATURE_COLUMNS,
 )
 from rwkv.model.rwkv_rnn_model import RWKV7RNN
-from rwkv.model.srs_model import is_excluded
+from rwkv.model.srs_model import interleave_schedule, is_excluded
 import torch
 
 # An RNN implementation of srs_model.
@@ -111,9 +111,17 @@ class SrsRWKVRnn(ModuleType):
         # correct for every historical arch file, but a silent state-swap bug for any
         # reordered one.
         self.stream_names = [name for name, _ in anki_rwkv_config.modules]
+        # iter 44 (RWKV_ILV_SPREAD): same schedule helper as the training path, so the two
+        # cannot drift -- see interleave_schedule()'s docstring for the placement rule.
+        self.ilv_spread = os.environ.get("RWKV_ILV_SPREAD", "0") == "1"
+        self.ilv_sched = interleave_schedule(self.stream_depths, self.ilv_spread)
         if self.interleave_on:
             print(f"[interleave] (rnn) round-robin layer schedule ON: "
-                  f"order={self.stream_names} depths={self.stream_depths}")
+                  f"order={self.stream_names} depths={self.stream_depths} "
+                  f"placement={'SPREAD' if self.ilv_spread else 'front-loaded'} "
+                  f"sched={self.ilv_sched}")
+        else:
+            assert not self.ilv_spread, "RWKV_ILV_SPREAD requires RWKV_INTERLEAVE=1"
         self.prehead_norm = torch.nn.LayerNorm(self.d_model)
         self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
         if self.gru_on:
@@ -385,10 +393,14 @@ class SrsRWKVRnn(ModuleType):
             v0s = [torch.empty(0) for _ in range(len(states))]
             for _r in range(max(self.stream_depths)):
                 for _i in range(len(states)):
-                    if _r < self.stream_depths[_i]:
-                        v0_in = torch.empty_like(x_il) if _r == 0 else v0s[_i]
+                    # iter 44: stream-local layer for this round (-1 = sits out). The v0 dummy
+                    # keys on the LAYER index, not the round -- under spread a stream's layer 0
+                    # (the one that SETS v0) can land in a later round.
+                    _lj = self.ilv_sched[_i][_r]
+                    if _lj >= 0:
+                        v0_in = torch.empty_like(x_il) if _lj == 0 else v0s[_i]
                         x_il, v0s[_i] = self.rwkv_modules[_i].forward_layer(
-                            _r, x_il, v0_in, states[_i]
+                            _lj, x_il, v0_in, states[_i]
                         )
             global_encoding = x_il
             for _nm, _st in zip(self.stream_names, states):

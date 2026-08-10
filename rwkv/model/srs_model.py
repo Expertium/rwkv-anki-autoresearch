@@ -79,6 +79,52 @@ def perm_gather(x: torch.Tensor, idx: torch.Tensor) -> torch.Tensor:
 _USE_PERM_GATHER = os.environ.get("RWKV_PERM_GATHER", "1") != "0"
 
 
+def interleave_schedule(depths: list, spread: bool) -> list:
+    """Which stream-local layer (if any) each stream runs in each round.
+
+    Returns sched[stream][round] = layer index, or -1 for "this stream sits this round out".
+    Rounds = max(depths). Shared by the training path (srs_model) and the deploy RNN mirror
+    (srs_model_rnn) so the two schedules cannot drift -- a divergence here is invisible to
+    every gate, since each path stays self-consistent (CLAUDE.md SS9).
+
+    FRONT-LOADED (spread=False, iter 41's schedule): layer j runs in round j, so a stream of
+    depth d occupies rounds 0..d-1 and then sits out the rest. Bit-identical to the original
+    `if r < depth` loop by construction.
+
+    SPREAD (spread=True, iter 44): layers are distributed across ALL rounds with the endpoints
+    anchored -- layer 0 in round 0, the LAST layer in the LAST round:
+        round(j) = round(j * (R-1) / (d-1))          for d > 1
+        round(0) = R-1                                for d == 1
+    WHY: under front-loading a shallow stream only ever runs EARLY, so it can never consume the
+    cross-scope context that interleaving exists to expose. In the champion (depths
+    [2,4,1,3,3]) the note stream has depth 1 -- it runs in round 0 and never again, so it
+    contributes to the global context but never reads it. Spreading fixes that (note -> round
+    3) and additionally puts every stream's FINAL layer in the last round, so each scope's
+    output representation is computed with maximal context. Depth-1 streams go LAST rather than
+    to the middle: consuming context is the whole point, and a lone layer cannot do both.
+    """
+    n_rounds = 0
+    for d in depths:
+        if d > n_rounds:
+            n_rounds = d
+    sched = []
+    for d in depths:
+        rows = [-1] * n_rounds
+        if d > 0:
+            if not spread:
+                for j in range(d):
+                    rows[j] = j
+            elif d == 1:
+                rows[n_rounds - 1] = 0
+            else:
+                for j in range(d):
+                    # round-half-up of j*(R-1)/(d-1); integer arithmetic keeps it exact
+                    r = (2 * j * (n_rounds - 1) + (d - 1)) // (2 * (d - 1))
+                    rows[r] = j
+        sched.append(rows)
+    return sched
+
+
 class SrsRWKVIterStatistics(NamedTuple):
     average_loss: torch.Tensor
     loss_tensor: torch.Tensor
@@ -399,12 +445,24 @@ class SrsRWKV(ModuleType):
             # Default unset = the sequential branch below runs untouched (bit-identical).
             self.interleave_on = os.environ.get("RWKV_INTERLEAVE", "0") == "1"
             self.stream_depths = [config.n_layers for _, config in anki_rwkv_config.modules]
+            # iter 44 (RWKV_ILV_SPREAD=1): distribute each stream's layers across ALL rounds
+            # (endpoints anchored) instead of front-loading them. Motivated by iter 43's
+            # result -- the schedule is the productive lever, the order is not -- and by a
+            # concrete deficiency of front-loading: a depth-1 stream runs only in round 0, so
+            # it feeds the global context but never reads it. See interleave_schedule().
+            self.ilv_spread = os.environ.get("RWKV_ILV_SPREAD", "0") == "1"
+            self.ilv_sched = interleave_schedule(self.stream_depths, self.ilv_spread)
             if self.interleave_on:
                 assert not env_baseline_cell(), \
                     "RWKV_INTERLEAVE + RWKV_BASELINE_CELL unsupported (no forward_layer on RNNStream)"
                 print(f"[interleave] round-robin layer schedule ON: depths={self.stream_depths} "
                       f"-> {max(self.stream_depths)} rounds, {sum(self.stream_depths)} layer-steps "
                       f"(order within each round = the config's hierarchy order)")
+                print(f"[interleave] layer placement = "
+                      f"{'SPREAD (endpoint-anchored)' if self.ilv_spread else 'front-loaded'}: "
+                      f"sched={self.ilv_sched} (per stream, per round; -1 = sits out)")
+            else:
+                assert not self.ilv_spread, "RWKV_ILV_SPREAD requires RWKV_INTERLEAVE=1"
             self.prehead_norm = torch.nn.LayerNorm(self.d_model)
             self.prehead_dropout = torch.nn.Dropout(p=anki_rwkv_config.dropout)
             if self.gru_on:
@@ -808,7 +866,11 @@ class SrsRWKV(ModuleType):
         for r in range(max_depth):
             i = 0
             for submodule in self.rwkv_modules:
-                if r < self.stream_depths[i]:
+                # iter 44: which of THIS stream's layers runs this round (-1 = sits out).
+                # With spread off this is exactly `r if r < depth else -1`, so the sequence of
+                # forward_layer calls is unchanged and the path stays bit-identical.
+                lj = self.ilv_sched[i][r]
+                if lj >= 0:
                     sub_lens = batch_sub_gather_lens[i]
                     tss = batch_time_shift_selects[i]
                     sks = batch_skips[i]
@@ -818,12 +880,15 @@ class SrsRWKV(ModuleType):
                         x_in = torch.index_select(x, 0, torch.clamp(g, min=0)).view(
                             -1, sub_len, self.d_model
                         )
-                        if r == 0:
+                        # ⚠ keyed on the STREAM-LOCAL layer index, not the round: under spread a
+                        # stream's layer 0 can land in a later round, and layer 0 is the one that
+                        # SETS v0 (the passed tensor is ignored there).
+                        if lj == 0:
                             v0_in = torch.empty_like(x_in)
                         else:
                             v0_in = v0s[i][s]
                         x_out, v0_out = submodule.forward_layer(
-                            r,
+                            lj,
                             x_in,
                             v0_in,
                             tss[s].view(-1, sub_len),
