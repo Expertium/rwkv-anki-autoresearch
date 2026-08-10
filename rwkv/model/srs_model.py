@@ -125,6 +125,45 @@ def interleave_schedule(depths: list, spread: bool) -> list:
     return sched
 
 
+class _PermScatterWrite(torch.autograd.Function):
+    """x.index_copy(0, index, source) whose backward avoids the deterministic-mode slow path,
+    exploiting that `index` references each row of x AT MOST once (RWKV_INTERLEAVE's per-round
+    scatter-back re-anchors gathers to canonical order every round -- see _interleaved_streams
+    -- so `index` == the same-round gather's non-pad targets, a permutation subset by the exact
+    argument _PermGather already relies on for the read side).
+
+    index_copy's stock backward needs grad_self = grad_out with the copied rows zeroed and
+    grad_source = index_select(grad_out, dim, index); PyTorch's autograd-generated formula
+    routes the zeroing through index_put machinery, which under torch.use_deterministic_
+    algorithms takes the same sort-based path _PermGather's docstring measures at ~43% of a
+    step. Neither piece needs that path here: zeroing UNIQUE rows to a constant has no
+    accumulation race (index_fill is safe regardless of duplicates), and index_select's
+    accumulation-free backward is exactly what _PermGather already established. Forward is
+    bit-identical to index_copy; backward is exact (no reduction, no approximation -- unique
+    indices mean there is nothing to accumulate)."""
+
+    @staticmethod
+    def forward(ctx, x, index, source):
+        ctx.save_for_backward(index)
+        return x.index_copy(0, index, source)
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        (index,) = ctx.saved_tensors
+        grad_source = grad_out.index_select(0, index)
+        grad_x = grad_out.index_fill(0, index, 0.0)
+        return grad_x, None, grad_source
+
+
+@torch.jit.ignore
+def perm_scatter(x: torch.Tensor, index: torch.Tensor, source: torch.Tensor) -> torch.Tensor:
+    return _PermScatterWrite.apply(x, index, source)
+
+
+# RWKV_PERM_SCATTER=0 restores the stock index_copy (escape hatch; default ON).
+_USE_PERM_SCATTER = os.environ.get("RWKV_PERM_SCATTER", "1") != "0"
+
+
 class SrsRWKVIterStatistics(NamedTuple):
     average_loss: torch.Tensor
     loss_tensor: torch.Tensor
@@ -235,6 +274,7 @@ class SrsRWKV(ModuleType):
 
         self.card_features_dim = 92
         self.use_perm_gather = _USE_PERM_GATHER
+        self.use_perm_scatter = _USE_PERM_SCATTER
         # Research iter 11 (2026-07-13, Andrew's idea): dedicated additive grade embedding.
         # The grade one-hot (cols 9:13 of the 92) already gets an implicit embedding via
         # features2card's first Linear, but there it competes with 88 other dims for the
@@ -877,9 +917,12 @@ class SrsRWKV(ModuleType):
                     for s in range(len(gath[i])):
                         g = gath[i][s]
                         sub_len = sub_lens[s]
-                        x_in = torch.index_select(x, 0, torch.clamp(g, min=0)).view(
-                            -1, sub_len, self.d_model
-                        )
+                        if self.use_perm_gather:
+                            x_in = perm_gather(x, g).view(-1, sub_len, self.d_model)
+                        else:
+                            x_in = torch.index_select(x, 0, torch.clamp(g, min=0)).view(
+                                -1, sub_len, self.d_model
+                            )
                         # ⚠ keyed on the STREAM-LOCAL layer index, not the round: under spread a
                         # stream's layer 0 can land in a later round, and layer 0 is the one that
                         # SETS v0 (the passed tensor is ignored there).
@@ -896,9 +939,14 @@ class SrsRWKV(ModuleType):
                         )
                         v0s[i][s] = v0_out
                         flat = x_out.reshape(-1, self.d_model)
-                        x = x.index_copy(
-                            0, stgt[i][s], torch.index_select(flat, 0, spos[i][s])
-                        )
+                        if self.use_perm_gather:
+                            src = perm_gather(flat, spos[i][s])
+                        else:
+                            src = torch.index_select(flat, 0, spos[i][s])
+                        if self.use_perm_scatter:
+                            x = perm_scatter(x, stgt[i][s], src)
+                        else:
+                            x = x.index_copy(0, stgt[i][s], src)
                 i += 1
         return x
 
