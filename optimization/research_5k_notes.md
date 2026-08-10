@@ -33,10 +33,17 @@ the 5001–10000 eval half is split into **VAL = users 5001–7500** and **TEST 
 
 1. **Split + accept gate.** Train on one 5k half, eval on the other (train 1–5000 → eval 5001–10000;
    the old d=128 model already has weights → just eval it on 5001–10000, same eval set = fair). A change
-   is **accepted only if it beats the current champion in BOTH modes by ≥ 0.0001 AFTER ROUNDING
-   TO 4 DECIMALS (raw delta ≥ 0.00005; Andrew 2026-07-19, loosened from ≥ 0.0003 which applied
-   through iter 25)** — immediate (imm) AND
-   forgetting-curve (ahead). Monotonic-both-modes champion.
+   is **accepted only if it beats the current champion in BOTH modes by a RAW ≥ 0.0001** — immediate
+   (imm) AND forgetting-curve (ahead). Monotonic-both-modes champion.
+   **★ THRESHOLD HISTORY, and why it moved (Andrew 2026-08-10):** ≥ 0.0003 (through iter 25) →
+   ≥ 0.0001 *after 4-dp rounding*, i.e. raw ≥ 0.00005 (2026-07-19, first applied to iter 26) →
+   **raw ≥ 0.0001, no rounding step** (2026-08-10). The rounding form was retired because iters
+   41/43/44 measured the same-capacity spread between three different execution schedules at
+   |Δ| ≤ 7.5e-5 — i.e. the old raw bar of 0.00005 sat *below* the level the data can resolve, so
+   it could accept noise. A raw +0.000088 now FAILS where it used to round up to a pass. No past
+   accept is invalidated (smallest surviving margins: iter 39 +0.000158/+0.000153, iter 35
+   +0.000153/+0.000271). ⚠ The noise floor is budget-dependent — re-derive the bar from the
+   calibration's null pair if research moves to a shorter training budget.
    **+ p-gate (Andrew 2026-07-08):** additionally, the paired per-user one-sided Wilcoxon signed-rank
    (candidate vs current champion, same 5000 eval users — the data is already in the result jsonls, zero
    GPU cost) must give **p < 0.0001 in BOTH modes**. Tool: `python optimization/paired_pvalue.py

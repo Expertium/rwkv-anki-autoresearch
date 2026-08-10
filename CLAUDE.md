@@ -615,15 +615,27 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 ### ACCEPTANCE GATE (research phase) -- accept iff ALL hold (record binary accepted/rejected per iter):
 1. "size" (equalized review count, 101-200) IDENTICAL to champion (data-integrity; any change = pipeline bug).
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
-4./5. **(Andrew 2026-07-19 ~21:00, LOOSENED from >=0.0003): each mode's improvement vs the
-   CURRENT champion, ROUNDED TO 4 DECIMALS, must be >= 0.0001 — i.e. raw delta >= 0.00005 —
-   in BOTH modes** (so +0.000088 rounds to 0.0001 = PASS). First applied to iter 26.
+4./5. **★ CURRENT RULE (Andrew 2026-08-10, TIGHTENED): each mode's RAW improvement vs the CURRENT
+   champion must be >= 0.0001 in BOTH modes.** No rounding step -- a raw +0.000088 now FAILS.
+   **WHY it moved:** the previous rule (>=0.0001 *after 4-dp rounding*, i.e. raw >= 0.00005) put
+   the bar BELOW the measured noise floor. Iters 41/43/44 are three structurally different
+   schedules at identical capacity, mutually indistinguishable at |delta| <= 7.5e-5 -- so a raw
+   0.00005 bar could accept a difference the data cannot resolve. 0.0001 sits above that floor.
+   History: >=0.0003 (original) -> raw >=0.00005 via 4-dp rounding (2026-07-19, first applied to
+   iter 26) -> raw >=0.0001 (2026-08-10).
+   ⚠ NO PAST ACCEPT IS INVALIDATED -- checked: the smallest accepted margins are iter 39
+   (+0.000158/+0.000153) and iter 35 (+0.000153/+0.000271), both clear the new bar; iter 38 was
+   already rejected for missing the OLD bar. And iter 36 stands as a directed accept regardless.
+   ⚠ The floor is BUDGET-DEPENDENT: if research moves to the 1/3 training budget, the calibration's
+   c41-vs-c43 null measures the noise floor THERE, and the bar should be re-derived from it rather
+   than carried over.
 6. **p-gate (Andrew 2026-07-08):** paired per-user one-sided Wilcoxon (candidate vs champion, same 5000
    eval users) gives **p < 0.0001 in BOTH modes** -- `python optimization/paired_pvalue.py` (zero GPU cost,
    reads the result jsonls; exit 0 = pass). Record both p-values in research_5k.md's `p-value` column.
    Applies to accuracy accepts only (SIZE/SPEED-exception accepts claim parity, not improvement -> exempt).
-=> accept ONLY changes that improve BOTH modes (>=0.0001 after 4-dp rounding, 2026-07-19; was
->=0.0003) AND pass the p-gate (a monotonic champion).
+=> accept ONLY changes that improve BOTH modes (RAW >=0.0001 in each, Andrew 2026-08-10; was
+raw >=0.00005 via 4-dp rounding, and >=0.0003 before that) AND pass the p-gate (a monotonic
+champion).
 [[research-acceptance-gate]]
 **EXCEPTION -- SIZE/SPEED changes** (e.g. H=2/K=16): judged on the **efficiency budget** instead -- accept if
 both modes stay within **+0.0015** of the champion AND the change shrinks state and/or speeds training (it
@@ -819,8 +831,9 @@ Detail: `research_5k_verbose.md` iter 41.
 
 #### PREVIOUS CHAMPION = iter 39 `iter39_kda09` (iter-36 recipe with RWKV_KD_ALPHA 0.5 -> 0.9) -- promoted 2026-08-08 22:15
 **RECTIFIED (the gate basis): ahead 0.298180 / imm 0.265875** on the VAL half (n=2500) =
-+0.000158 / +0.000153 vs iter 36 at p=2.2e-10 / 7.8e-37 -- a clean full-gate pass (both modes
->=0.0001 after rounding). size 0/2500, nan_users 0, **558,212 params, card/note state
++0.000158 / +0.000153 vs iter 36 at p=2.2e-10 / 7.8e-37 -- a clean full-gate pass, and both
+margins still clear the TIGHTENED raw >=0.0001 bar adopted 2026-08-10 (they were the smallest
+surviving accept when that bar was checked). size 0/2500, nan_users 0, **558,212 params, card/note state
 2,880/1,440 unchanged** (alpha is loss-time only; nothing new ships to Rust). Throughput
 1823.8 rev/s. ckpt `scratchpad/iter39_kda9/i39_d_10935.pth`; `champion_5k_track2.json` points
 at it (trace extracted from the WS log, the iter-35 convention).
@@ -1230,14 +1243,22 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    supported** — training without the current row's duration did not shrink the deploy penalty, it
    made the deploy number worse.
    ⚠ **BUT IT CANNOT ATTRIBUTE — three changes shipped together**, and that is the run's design
-   fault: (1) the duration withholding (the hypothesis); (2) `RWKV_AHEAD_PROBE_ONLY=1` dropped the
-   ahead supervision on the **~23.5% of rows probes cannot cover** (a card's first in-chunk review
-   has no paired query row) — a large training-signal loss unrelated to duration, flagged as an
-   open question at design time and shipped with those rows dropped; (3) MAX 32768->16384, which
-   halves batching and doubles the step count. Any of the three could produce -0.0028.
-   **Retry design, if the family is revisited:** keep the real-row ahead term for the uncovered
-   23.5%, and hold MAX at 32768 by LOWERING probe density instead of raising it — then only the
-   duration changes. Full notes in `research_5k_verbose.md`.
+   fault: (1) the duration withholding (the hypothesis); (2) ⚠ **THIS ITEM WAS WRONG — CORRECTED
+   2026-08-10.** It said `RWKV_AHEAD_PROBE_ONLY=1` "dropped the ahead supervision on the ~23.5% of
+   rows probes cannot cover". The code does the OPPOSITE (`srs_model.py:1010-1013`, whose own
+   comment says "Rows NOT eligible for probes keep the real-row term"): it zeroes `ahead_mask`
+   **only at PROBED rows**, so the 23.5% kept full weight and the probed **76.5%** moved onto the
+   PAVA probe path — which enters as `pava_lambda * pava_loss` at **lambda=0.1** (`:1114`) versus
+   the real-row term's scale 1.0. That is a **10x downweighting of the ahead objective for the
+   majority of rows**, with the remaining gradient dominated by a biased subsample (first-in-chunk
+   reviews = least history). Bigger confound than the one we recorded; (3) MAX 32768->16384, which
+   halves batching and doubles the step count. Any of the three could produce -0.0028, and (2) is
+   the most likely single culprit.
+   **Retry design, if the family is revisited:** do NOT use probes to withhold duration. Use
+   per-row Bernoulli dropout on `scaled_duration` (dim 8) at the model input — no probe-density
+   change, no row inflation, no MAX change, no loss reweighting, so only the duration varies.
+   iter 18 (permanent removal, -0.0018/-0.0024) brackets the p=1.0 end. Full notes in
+   `research_5k_verbose.md`.
    ROBUSTNESS: 31 h, survived a hard hang at step 33,003 + two clean stop/resumes, **total loss 3
    steps of 43,354**.
    Historical detail of the run below.

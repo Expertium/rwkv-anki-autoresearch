@@ -1604,19 +1604,32 @@ that cost, and it didn't.
 **Does not:** attribute. **Three changes shipped together** — this is the run's design fault and it
 should be named plainly:
 1. **duration withheld** — the hypothesis;
-2. **`RWKV_AHEAD_PROBE_ONLY=1` dropped ~23.5% of the ahead supervision.** Probes cover only 76.5%
-   of eligible reviews (a card's first in-chunk review has no paired query row, so probes are
-   excluded by design). Those rows previously carried a real-row ahead term and now carry none.
-   That is a big training-signal loss and has nothing to do with duration. It was flagged as an
-   open question at design time — "should the 23.5% keep the old real-row ahead term?" — and the
-   run shipped with them dropped;
+2. **~~`RWKV_AHEAD_PROBE_ONLY=1` dropped ~23.5% of the ahead supervision.~~ ⚠ THIS WAS WRONG —
+   CORRECTED 2026-08-10, and the true version is a bigger confound than the false one.** Verified
+   in code at `srs_model.py:1010-1013`: the flag zeroes `ahead_mask` **only at probed rows**
+   (`ahead_mask.reshape(-1)[_pt] = 0`), and the comment there says so explicitly — "Rows NOT
+   eligible for probes keep the real-row term". So the 23.5% were **never dropped**; they kept
+   full weight. What actually happened is the reverse and worse: the probed **76.5%** moved off
+   the real-row term (scale `AHEAD_SCALE 0.5 + AHEAD_RAW_SCALE 0.5 = 1.0`, `:1069-1071,1094-1096`)
+   and onto the PAVA probe path, which enters the loss as `loss_avg + self.pava_lambda * pava_loss`
+   at **lambda = 0.1** (`:1114`) — an effective **10x downweighting** of the ahead objective for
+   the majority of rows. Meanwhile the un-probed 23.5%, a *biased* subsample (first-in-chunk
+   reviews = the cards with the least history), kept weight 1.0 and so absorbed the great majority
+   of the remaining ahead gradient. A 10x cut plus a biased-subsample reweighting is a far larger
+   perturbation than the signal loss we thought we had shipped;
 3. **MAX 32768 -> 16384**, forced by VRAM at density 1.0, which halves batching and doubles the
    step count (43,354 vs 22,346). Structural, and worth ~1.84x throughput by itself.
 
-Any of the three could produce -0.0028.
+Any of the three could produce -0.0028 — and confound 2, correctly understood, is the most likely
+single culprit.
 
-**If the family is retried:** keep the real-row ahead term for the 23.5% probes cannot cover, and
-hold MAX at 32768 by lowering probe density rather than raising it. Then only the duration changes.
+**If the family is retried:** do NOT use probes to withhold duration at all. The clean instrument
+is per-row Bernoulli dropout on `scaled_duration` (dim 8) at the model input: no probe-density
+change, therefore no row inflation, therefore no MAX change and no loss-term reweighting — only
+the duration varies. `p = 1.0` is bracketed by iter 18 (permanent removal, -0.0018/-0.0024), so
+the dose curve has a known bad end. **This correction is what makes the retry well-posed; the
+old prescription ("keep the real-row term for the 23.5%") described fixing something that was
+never broken.**
 
 ### Robustness note
 
