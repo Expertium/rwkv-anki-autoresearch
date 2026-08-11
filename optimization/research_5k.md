@@ -90,6 +90,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 41 | 1–5000 | 0.2979ᵛʳ | 0.2655ᵛʳ | exact | **accepted** | 5.1e-24 / 7.5e-95 (vs iter 39) | 558,212 | 0 | invented | Interleave (round-robin layers across scopes) + fine-to-coarse order bundle: ahead +0.00029, imm +0.00040 — the largest both-modes architectural gain of the phase. Topology family opens 1/1. NEW champion. |
 | 42 | 1–5000 | 0.2984ᵛʳ | 0.2661ᵛʳ | exact | rejected | 1.0 / 1.0 (vs iter 41) | 558,212 | 0 | invented | De-bundle control: fine-to-coarse ORDER alone, sequential. Worse than iter 41 (−0.00049/−0.00061) AND than iter 39's old order (−0.00020/−0.00022) — the order is a small NEGATIVE; INTERLEAVING carries the whole iter-41 gain. Rust needs the interleave port. |
 | 43 | 1–5000 | 0.2980ᵛʳ | 0.2655ᵛʳ | exact | rejected (tie) | 0.42 / 0.098 (vs iter 41) | 558,212 | 0 | invented | The 2×2's 4th cell: interleave at the ORIGINAL order. Statistical TIE with the champion in both modes — under interleaving, within-round order stops mattering. Order lever CLOSED; the reorder could be dropped for Rust-port simplicity at zero measured cost. |
+| 44 | 1–5000 | 0.2979ᵛʳ | 0.2655ᵛʳ | exact | rejected (tie) | 0.93 / 1.0e-4 (vs iter 41) | 558,212 | 0 | invented | Endpoint-anchored layer PLACEMENT (RWKV_ILV_SPREAD) so shallow streams also run LATE. Statistical tie; prediction of a gain was WRONG. Third indistinguishable schedule (spread ≤7.5e-5) → rearrangement sub-family EXHAUSTED, and that spread calibrated the accept bar. |
 
 ## Track 2 — ablate the old d=128 model
 

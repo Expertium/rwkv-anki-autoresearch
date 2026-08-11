@@ -2077,3 +2077,67 @@ by resuming decay+eval from the final WS checkpoint (`run_iter43b.cmd`, new file
 guard asserting step 10935 rather than a partial). Collateral: the garbage line's redirect
 truncated the WS log to 99 B, so iter 43 has no step trace — irrelevant here since it is not
 promoted, but it would have cost the vprune val trace had it won.
+
+## iter 44 — endpoint-anchored placement: the third indistinguishable schedule (REJECTED as a TIE, 2026-08-10)
+
+**What ran.** `RWKV_ILV_SPREAD=1`, one flag on the iter-41 champion recipe. Front-loading puts
+layer *j* in round *j*, so a **shallow stream only ever runs EARLY** and can never consume the
+cross-scope context interleaving exists to expose: in the champion (`_cnd`, depths [2,1,4,3,3])
+the **note** stream has depth 1, runs in round 0 and never again — it feeds the global context
+but never reads it. SPREAD distributes each stream's layers across all rounds with the endpoints
+anchored (layer 0 → round 0, last layer → last round, a depth-1 stream goes LAST):
+card `[0,-,-,1]`, note `[-,-,-,0]`, deck `[0,1,2,3]`, preset `[0,-,1,2]`, user `[0,-,1,2]`.
+Same params, same per-entity states, same op count — **placement only**.
+
+**PREDICTION MADE BEFORE LAUNCH: a gate-passing gain in both modes**, on the reasoning that note
+would finally read global context and every stream's final layer would be computed with maximal
+context.
+
+**Verdict: REJECTED as a TIE, and the prediction was WRONG** — recorded as such, because a
+well-motivated mechanism that produces nothing is the most useful kind of miss. vs iter 41:
+ahead 0.297912 (−0.000023, p=0.93) / imm 0.265479 (−0.000001, p=1.0e-4 — rank-significant but
+magnitude-null: most users shift slightly one way while the mean is identical to 6 dp,
+0.265479 vs 0.265479). size 0/2500, nan_users 0, params 558,212, card/note/deck state unchanged.
+
+**THE REAL FINDING, which needs all four TOPOLOGY runs to see.** Iters 41, 43 and 44 are three
+structurally different schedules that are mutually **indistinguishable**:
+
+| pair | Δ ahead | Δ imm |
+|---|---|---|
+| 41 vs 43 | −0.000075 | +0.000014 |
+| 41 vs 44 | −0.000023 | −0.000001 |
+| 43 vs 44 | +0.000052 | −0.000015 |
+
+every |Δ| ≤ 7.5e-5 — while **sequential-vs-interleaved** differs by +0.000216..0.000611. So the
+binary *"do scopes interact across rounds at all?"* is worth +0.0002..0.0006 in both modes, and
+the **details** of how they interact (within-round order, cross-round layer placement) are worth
+approximately **zero**. Reading: what the model gains is the EXISTENCE of a cross-scope
+information path, not any particular choreography of it; once every scope can see every other,
+the specific rendezvous points carry almost no information.
+
+**Consequences.**
+1. The **rearrangement sub-family of TOPOLOGY is EXHAUSTED** — order (iters 42/43) and placement
+   (44) are both null, and a third rearrangement variant would be a fourth draw from a
+   distribution whose spread we have now measured. Further TOPOLOGY gains must change **what** is
+   computed, not merely **when**: extra rounds via layer reuse, cross-stream fusion, added
+   connectivity.
+2. **A useful calibration falls out free:** ±7.5e-5 is the empirical full-budget spread between
+   same-capacity schedule variants. It sat AT the then-current raw accept threshold (0.00005,
+   i.e. 0.0001 after 4-dp rounding), so a rearrangement-class "win" of exactly one tick had to be
+   treated as unresolved rather than a pass. **This measurement is what moved the accept bar to a
+   raw 0.0001** (Andrew, 2026-08-10).
+3. **Deploy unaffected** — spread is not adopted, so the Rust port's gap 7 is the FRONT-LOADED
+   schedule. (Closed and parity-verified 2026-08-11; `interleave_visits()` implements front-loaded
+   only, and adopting spread later would need `interleave_schedule()`'s table instead.)
+
+**Chain clean:** `DONE_EXIT_0`, eval 2500/2500 on attempt 1, SPREAD banner verified in BOTH
+training phases (the runner fails `DONE_EXIT_NOSPREAD` / `_DECAY` otherwise). Pre-launch smoke
+`scratchpad/parity3/smoke_ilv_spread.py` passed 4 checks including two oracles: spread OFF
+bit-identical to a literal re-implementation of the old front-loaded loop, and depth-1 spread ==
+front-loaded == sequential; plus identical no-grad sets and a scripted compile matching eager
+bit-for-bit.
+
+**Implementation note.** One shared `interleave_schedule()` now drives BOTH the training path and
+the RNN deploy mirror, and wiring it exposed a latent trap: **the v0 dummy keyed on the ROUND**,
+which only coincides with the stream-local layer index under front-loading — so any placement
+change would have silently mis-threaded the value residual.

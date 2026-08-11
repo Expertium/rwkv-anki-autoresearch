@@ -6,8 +6,10 @@
 Usage:
   python optimization/logbook.py add record.json   # append a record, rebuild md
   python optimization/logbook.py rebuild           # rebuild md from jsonl
+  python optimization/logbook.py audit             # every iter in all 4 records?
 """
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -303,11 +305,64 @@ def add(record_path):
     rebuild_md()
 
 
+
+def audit():
+    """Does every 5k research iteration appear in ALL FOUR records?
+
+    The protocol is "research_log.jsonl + research_5k.md row + research_5k_verbose.md section +
+    rebuild log.md", and iter 44 silently landed in only two of them (caught by Andrew reading the
+    front table, 2026-08-11). The jsonl is the source of truth; this checks the three derived
+    records against it. Exit 1 on any gap so it can gate a runner or a pre-commit hook.
+
+    ⚠ The three files key rows DIFFERENTLY, which is why an eyeball audit is error-prone:
+    research_5k.md by ITERATION NUMBER, research_5k_verbose.md by "## iter N " heading, log.md's
+    research section by EXPERIMENT NAME. Checking log.md by number matches unrelated rows in its
+    quant/qat/iteration tables, which have independent numbering.
+    """
+    import re
+    here = os.path.dirname(os.path.abspath(__file__))
+    recs = []
+    with open(os.path.join(here, "research_log.jsonl"), encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                recs.append(json.loads(line))
+    def read(name):
+        with open(os.path.join(here, name), encoding="utf-8") as f:
+            return f.read()
+    front, verbose, logmd = read("research_5k.md"), read("research_5k_verbose.md"), read("log.md")
+    missing = []
+    for r in recs:
+        n, exp = r.get("number"), r.get("exp", "")
+        if n is None:
+            continue  # pre-numbering rows (HP-tuner trials etc.)
+        gaps = []
+        if f"| {n} | " not in front:
+            gaps.append("research_5k.md")
+        if f"## iter {n} " not in verbose:
+            gaps.append("research_5k_verbose.md")
+        if exp and f"| {exp} |" not in logmd:
+            gaps.append("log.md")
+        if gaps:
+            missing.append((n, exp, gaps))
+    numbered = [r for r in recs if r.get("number") is not None]
+    print(f"audited {len(numbered)} numbered research iterations from research_log.jsonl")
+    if not missing:
+        print("OK - every iteration appears in all four records")
+        return 0
+    for n, exp, gaps in missing:
+        print(f"  iter {n} ({exp}) MISSING FROM: {', '.join(gaps)}")
+    print("")
+    print(f"{len(missing)} incomplete iteration(s) -- the protocol wants all four")
+    return 1
+
+
 if __name__ == "__main__":
     if len(sys.argv) >= 3 and sys.argv[1] == "add":
         add(sys.argv[2])
     elif len(sys.argv) >= 2 and sys.argv[1] == "rebuild":
         rebuild_md()
+    elif len(sys.argv) >= 2 and sys.argv[1] == "audit":
+        sys.exit(audit())
     else:
         print(__doc__)
         sys.exit(1)
