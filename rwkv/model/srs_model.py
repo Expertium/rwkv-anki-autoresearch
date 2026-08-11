@@ -169,6 +169,11 @@ class PreparedBatch:
     probe_target: "torch.Tensor | None" = None    # (M,) the probed real row
     probe_pressed: "torch.Tensor | None" = None   # (M,) actual rating - 1 in 0..3
     probe_query: "torch.Tensor | None" = None     # (M,) paired imm query row (iter 24 w)
+    # iter 46 self-distillation teacher index (RWKV_SELFKD_BETA): (B, global_T) int64 holding, for
+    # each row, the flat b*global_T+t index of the query row scoring THAT ROW'S OWN ahead target
+    # (-1 = none, incl. every query row). Always built by prepare(); the model ignores it at
+    # beta=0, so its presence alone is bit-identical.
+    ahead_query: "torch.Tensor | None" = None
     # iter 37 objective alignment (RWKV_USER_WEIGHT): (B,) per-chunk loss weight, already
     # normalized to mean 1. Set by the TRAIN LOOP (which owns the epoch's chunk list), never
     # by the fetch workers -- that keeps the data stream byte-identical, so the KD dump's
@@ -198,6 +203,7 @@ class PreparedBatch:
             probe_pressed=None if self.probe_pressed is None else self.probe_pressed.to(device),
             probe_query=None if self.probe_query is None else self.probe_query.to(device),
             user_weight=None if self.user_weight is None else self.user_weight.to(device),
+            ahead_query=None if self.ahead_query is None else self.ahead_query.to(device),
         )
 
 
@@ -316,6 +322,38 @@ class SrsRWKV(ModuleType):
         # BEFORE the press and therefore never has it. Pair with RWKV_PROBE_DENSITY=1.0 so every
         # eligible review is covered (measured cost: 2.54x rows). Default 0 = byte-identical.
         self.ahead_probe_only = os.environ.get("RWKV_AHEAD_PROBE_ONLY", "0") == "1"
+        # PRIVILEGED SELF-DISTILLATION, imm -> ahead (iter 46, 2026-08-11). RWKV_SELFKD_BETA=<b>
+        # softens the probe path's BCE target away from the raw 0/1 ahead label and toward the
+        # model's OWN better-informed estimate of THE SAME EVENT. b reallocates only the HARD
+        # share, so an active external teacher keeps its tuned weight a exactly:
+        #     target = a*d128_teacher + (1-a) * [ b * (1-P(Again))@probe_query.detach()
+        #                                         + (1-b) * hard_label@probe_target ]
+        # (a = the RWKV_KD_MIX alpha, 0 when KD is off -- e.g. the whole decay phase -- where this
+        # reduces to b*teacher + (1-b)*hard. Derivation at the substitution site.)
+        # WHY THIS PAIRING IS THE RIGHT ONE, and why it costs no new plumbing: probe_target and
+        # probe_query already index the real row supplying the ahead label and *its paired imm
+        # query row* -- the same review, scored twice from different information sets. Measured on
+        # the iter-41 champion (research_5k_notes.md): identical per-user `size` on all 2500 users,
+        # imm better than ahead on 2497 of them, mean gap 0.032411. So the query row is a teacher
+        # that is free, online, and already aligned.
+        # LUPI, not leakage: the teacher sits at the decision point and sees the intervening
+        # reviews and the exact lag; the student (probe row) is the cold-from-history prediction
+        # that deploy actually serves. The teacher is used ONLY as a target and is DETACHED, so no
+        # gradient reaches the rating head (it must not be dragged toward the weaker head) and
+        # nothing enters the student's forward pass. Train/eval/deploy therefore still compute one
+        # quantity -- this is a loss-side change only, like the external KD alpha, and the Rust
+        # engine is untouched. (Contrast the ranked-#2 coupling variant, which would feed R(t) into
+        # the Again logit: same motivation, but a forward-pass edit and a 9th Rust port gap.)
+        # ⚠ The gap is an UPPER BOUND: distillation can transfer the variance-reduction part of it
+        # (a calibrated soft target beats a 0/1 label -- which is why the external-teacher alpha
+        # peaks at 0.9), never the information part. Default 0 = target unchanged = byte-identical.
+        self.selfkd_beta = float(os.environ.get("RWKV_SELFKD_BETA", "0"))
+        if self.selfkd_beta != 0.0:
+            print(
+                f"[selfkd] privileged self-distillation ON: ahead target hard-share = "
+                f"{self.selfkd_beta} * imm(teacher row, detached) "
+                f"+ {1.0 - self.selfkd_beta} * hard label"
+            )
         # RECTIFIED EVAL (2026-07-26, Andrew: "Eval should score the rectified model, of
         # course"). Until now the rectifier existed ONLY inside the loss -- curve_probs was
         # returned unrectified -- so every reported `ahead` number from iters 23-30 scored a
@@ -931,6 +969,9 @@ class SrsRWKV(ModuleType):
         probes: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]] = None,
         # iter 37: (B,) per-chunk loss weight (mean 1), or None for the historical flat mean.
         user_weight: Optional[torch.Tensor] = None,
+        # iter 46 (RWKV_SELFKD_BETA): (B,T) int64 index of each row's self-distillation teacher
+        # row, -1 = none. Ignored at beta=0.
+        ahead_query: Optional[torch.Tensor] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits, out_s_raw, out_d_raw = self.forward_batch(
             batch_start,
@@ -967,6 +1008,27 @@ class SrsRWKV(ModuleType):
         # (alpha*teacher + (1-alpha)*hard) is exactly the annealed soft-target design. alpha
         # anneals 1 -> 0 across the KD window in train_rwkv; masks/scales untouched. The 4-way
         # rating CE gets its mixed prob target below (after p_loss). None => byte-identical.
+        # PRIVILEGED SELF-DISTILLATION (iter 46) -- runs BEFORE the KD mix, and that order is the
+        # whole design. It softens the HARD label only, so when an external teacher is also active
+        # the composition is
+        #     a*d128_teacher + (1-a) * [ beta*imm_teacher + (1-beta)*hard ]
+        # i.e. alpha keeps its tuned value exactly (iter 39 swept 0.5/0.75/0.9/1.0; 0.9 won) and
+        # beta reallocates only the residual hard share. Softening the POST-KD target instead
+        # would drag a from 0.9 to 0.9*(1-beta) -- two changes in one experiment, which is what
+        # iters 42/43/44 were spent un-bundling.
+        if self.selfkd_beta != 0.0 and ahead_query is not None:
+            _aq = ahead_query.reshape(-1)
+            # index 0 is Again (see out_p_probs.unbind below), so 1-P(Again) = P(success), the
+            # same quantity label_y holds. .detach() is load-bearing: the teacher must not be
+            # pulled toward the weaker curve head, or the advantage being distilled is traded away.
+            _psucc = (1.0 - torch.softmax(out_p_logits.float(), dim=-1)[:, :, 0]).reshape(-1)
+            _teacher = _psucc[_aq.clamp(min=0)].detach()
+            _ly = label_y.reshape(-1)
+            _soft = self.selfkd_beta * _teacher + (1.0 - self.selfkd_beta) * _ly
+            label_y = torch.where(_aq >= 0, _soft, _ly).reshape(label_y.shape)
+        # ⚠ label_y is OVERWRITTEN here, and _pava_probe_loss reads the overwritten value -- so
+        # under KD the probe path's "ahead label" is already alpha*teacher + (1-alpha)*hard, NOT a
+        # hard 0/1.
         if kd_mix is not None:
             _km_curve, _km_p, _km_alpha = kd_mix
             label_y = _km_alpha * _km_curve + (1.0 - _km_alpha) * label_y
@@ -1210,6 +1272,7 @@ class SrsRWKV(ModuleType):
             kd_mix=kd_mix,
             probes=probes,
             user_weight=batch.user_weight,
+            ahead_query=batch.ahead_query,
         )
 
     def copy_downcast_(self, master_model, dtype):

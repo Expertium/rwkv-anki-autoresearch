@@ -205,6 +205,55 @@ def insert_probes(data: RWKVSample, density: float, base_seed,
     return data_new, meta
 
 
+def build_ahead_query(data, base: int) -> np.ndarray:
+    """(iter 46) For each row, the flat index of the QUERY row that scores the SAME review this
+    row's ahead label refers to; -1 where there is none. Used only as a self-distillation teacher
+    index (RWKV_SELFKD_BETA); -1 everywhere = the historical hard-label behaviour.
+
+    THE PAIRING, from data_processing.py:
+      * a REAL row's label is the NEXT review of the same card
+        (`label_review_th = groupby("card_id")["review_th"].shift(-1)`, :292-303), so its ahead
+        target is review `label_review_th`;
+      * a QUERY row carries `label_review_th = its own review_th` with the press hidden (:442-453).
+    So real row r and the query row q with `review_th[q] == label_review_th[r]` score the SAME
+    event -- which is exactly why extract_p keys both metric dicts on label_review_th and the
+    per-user `size` counts match. q is the better-informed estimate of r's own target.
+
+    ⚠ NOT the same join as the probe channel's `probe_query`, which uses `review_th[q] ==
+    review_th[r]` -- review r's OWN decision point. That is correct there (PAVA weights the
+    pooling by what the user would press AT r) and wrong here (r's label is review r+1).
+
+    QUERY ROWS ARE EXCLUDED (-1): a query row's label_review_th is its own review_th, so the join
+    would return the row itself and the teacher would be its own output.
+    """
+    sk = data.skips.numpy().astype(bool)
+    lab = data.global_labels.float().numpy()
+    n = sk.shape[0]
+    out = np.full(n, -1, dtype=np.int64)
+    isq = lab[:, _LBL_IS_QUERY] > 0.5
+    has_lab = lab[:, _LBL_HAS_LABEL] > 0.5
+    q_rows = np.nonzero(sk & isq)[0]
+    if q_rows.size == 0:
+        return out
+    rt = data.review_ths.numpy()
+    # label_review_th is NOT fillna'd upstream (unlike label_y/label_rating), so it is NaN on
+    # rows with no next review -- cast only where a label exists.
+    lrt_f = data.label_review_ths.numpy().astype(np.float64)
+    src = has_lab & (~isq) & np.isfinite(lrt_f)
+    if not src.any():
+        return out
+    lrt_i = np.zeros(n, dtype=np.int64)
+    lrt_i[src] = lrt_f[src].astype(np.int64)
+    q_rt = rt[q_rows].astype(np.int64)
+    order = np.argsort(q_rt, kind="stable")
+    q_rt_s, q_rows_s = q_rt[order], q_rows[order]
+    pos = np.searchsorted(q_rt_s, lrt_i)
+    pos_c = np.clip(pos, 0, q_rt_s.size - 1)
+    hit = src & (pos < q_rt_s.size) & (q_rt_s[pos_c] == lrt_i)
+    out[hit] = q_rows_s[pos_c][hit] + base
+    return out
+
+
 def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
             probe_density: float = 0.0, probe_equalize_only: bool = False) -> PreparedBatch:
     if seed is not None:
@@ -448,6 +497,24 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
         padded_label_review_th = torch.stack(
             list(map(lambda data: pad_review_ths(data.label_review_ths), data_list))
         )
+        # iter 46 self-distillation teacher index: (B, global_T) flat b*global_T+t, -1 = none.
+        # GATED ON THE FLAG so that with RWKV_SELFKD_BETA unset NOT ONE new line executes in the
+        # fetch workers -- the change is then inert by construction, not merely unused. (Written
+        # this way after noticing the hazard live: a phase that starts LATER imports whatever is
+        # on disk THEN, so editing a module mid-chain silently changes the next phase of a
+        # gate-critical run. Same family as the "never rewrite a running runner's tree" rule.)
+        # Uses numpy only -- no torch RNG -- so augmentation draws, and hence the KD dump's
+        # per-step labels checksum, are untouched either way.
+        ahead_query_t = None
+        if float(os.environ.get("RWKV_SELFKD_BETA", "0")) != 0.0:
+            ahead_query_t = torch.from_numpy(
+                np.stack([
+                    np.pad(build_ahead_query(d, i * global_T),
+                           (0, global_T - d.card_features.size(0)),
+                           mode="constant", constant_values=-1)
+                    for i, d in enumerate(data_list)
+                ])
+            ).long()
         probe_rows_t = probe_target_t = probe_pressed_t = probe_query_t = None
         if probe_metas is not None and any(m is not None for m in probe_metas):
             rows, tgts, prs, qs = [], [], [], []
@@ -476,6 +543,7 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
             probe_target=probe_target_t,
             probe_pressed=probe_pressed_t,
             probe_query=probe_query_t,
+            ahead_query=ahead_query_t,
         )
 
 
