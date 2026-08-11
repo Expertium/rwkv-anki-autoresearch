@@ -672,3 +672,30 @@ ahead on 99.9% of users) — the same structural asymmetry shows up as *stabilit
 ⚠ Do NOT read this as "short budget is useless". It is unusable for *accepting champions* at our
 effect sizes; it is fine for triage. And the bias caveat still stands untested: all three arms were
 SCHEDULE changes, so nothing here measures how short budget treats regularization or capacity.
+
+### ...and the follow-up that closes it: SCREENING IS NOT WORTH IT EITHER (Andrew asked "are you sure screening+full run of the best candidate will be cheaper?", 2026-08-11)
+
+It is not, for our candidate pool. The "licensed for screening/ranking" line above is too
+generous; this supersedes it. **Standing decision (Andrew): keep doing full runs.**
+
+**1. The saving is 46%, not 67%.** A short run is 5.1 h vs 9.4 h, because the eval is a FIXED
+2.9 h and becomes 57% of a short run. Screening K candidates then confirming the leader costs
+`5.1K + 9.4` vs `9.4K`, so it only breaks even at **K > 2.2** — at K=2 screening is COSTLIER.
+
+**2. The screen cannot resolve most of our candidates — the fatal one.** Its noise on a PAIRWISE
+comparison is `9.0e-5 x sqrt(2)` = 1.27e-4 short = **1.96e-4 in full-budget effect size**. Applied
+to the last ten iterations' ahead deltas: resolvable = iters 36, 37, 41, 42; **inside the noise =
+iters 35, 38, 39, 40, 43, 44 — six of ten, including TWO ACCEPTED CHAMPIONS (35 and 39).** A screen
+that cannot separate an accepted champion from a null is shuffling, not ranking. Post-HP-tuning our
+candidates cluster inside ±0.0005 and half inside ±0.0001, which is exactly its blind region.
+
+**3. The two fixes fight each other.** Cheaper screen = halve the ranking eval = noise x sqrt(2) =
+blinder. Sharper screen = more eval users = the saving erodes.
+
+**When screening WOULD pay:** a batch of >=3 candidates with WIDE expected spread — a fresh
+architecture family, a coarse HP grid, deliberately wild ideas where some are clear losers. Not the
+incremental near-bar work that is most of what we do.
+
+**The real lesson about throughput:** our ceiling is set by the FIXED 2.9 h eval and the
+dispatch-bound training step, not by the epoch budget. Cutting epochs attacks the half of the
+iteration that is already cheapest to shorten and most expensive to shorten *correctly*.
