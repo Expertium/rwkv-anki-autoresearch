@@ -100,7 +100,44 @@ user L0 v_lora + L0/L1/L2 cmix.
 
 ## Gaps 7 and 8 — the champion's EXECUTION SCHEDULE and STREAM ORDER (added 2026-08-10, iters 41–42)
 
-**Neither is detectable from weight shapes, and the engine currently implements neither.**
+> ### ★★ BOTH CLOSED AND PARITY-VERIFIED 2026-08-11.
+> `RWKV_INTERLEAVE=1` (gap 7) and `RWKV_STREAM_ORDER` (gap 8) are implemented in **both** engines —
+> `Model::review` (candle) and `FastModel::review_batched` (the default fast path) — against a fresh
+> `reference_iter41/` trace exported from the iter-41 champion (`i41_d_10935.pth`, the `_cnd` arch,
+> `RWKV_INTERLEAVE=1`), which is **self-contained at exactly 0.000e+00**.
+>
+> | path | schedule | result |
+> |---|---|---|
+> | fast (default) | sequential | **bit-identical** to the green iter-31 preds, 45,383 values, 0.000e+00 |
+> | fast (default) | interleaved | **PARITY: PASS** — imm 0.000000 / ahead 0.000000, max per-review 4.78e-06 |
+> | candle | sequential | **bit-identical** to the green iter-31 preds |
+> | candle | interleaved | **PARITY: PASS** — max per-review 1.25e-06 |
+>
+> **GAP 8 WAS A LIVE CROSS-WIRING BUG, not just a hardcoding smell — and the gate is what caught it.**
+> First interleaved run came back `PARITY: FAIL` with per-review dpred up to **8.5e-1**: `main.rs`
+> assembled the state array positionally as `[card, deck, note, preset, user]`, so under the `_cnd`
+> order it fed **deck's** state into the **note** module and vice versa. Every shape matched, so
+> nothing failed — it just computed a different model, exactly the failure class §9's three-way
+> parity rule exists for. (The Python deploy mirror had the same bug until the iter-41 by-name
+> refactor; this was its Rust half.) `name_to_idx` for the quant scopes had it too:
+> `card:1:int4,note:1:int4` would have quantized card and **DECK** — wrong stream, and deck state
+> is 5,760 floats vs note's 1,440, so accuracy *and* deploy size accounting were both wrong.
+>
+> **Design:** callers pass and receive states in a fixed CANONICAL entity order
+> `[card, deck, note, preset, user]`; `stream_slot[m]` maps module → canonical slot, and the
+> permutation lives in exactly one place per engine. Set `RWKV_STREAM_ORDER=card,note,deck,preset,user`
+> for the champion; the default is the historical order, so every older invocation is unchanged.
+>
+> **Also fixed en route:** `export_rnn_trace.py` printed `wrote eval-mode reference/ref_metrics.json`
+> regardless of `RWKV_REF_DIR`. Cosmetic, but it is the exact wording that made a stale-trace hunt
+> take hours (HISTORY.md 2026-07-27) — a message naming a directory the tool did not write is worse
+> than no message.
+>
+> ⚠ **Still front-loaded placement only** (the champion's). Iter 44's endpoint-anchored "spread"
+> variant is NOT implemented, and was rejected as a tie, so this is correct today — but if a future
+> iteration adopts spread, the engines need `interleave_schedule()`'s table, not `r < depth[m]`.
+
+**Neither was detectable from weight shapes, and before 2026-08-11 the engine implemented neither.**
 `rust/rwkv-infer` runs a hardcoded sequential chain in card→deck→note→preset→user order. Since
 iter 41 the champion runs a *round-robin* schedule over a *reordered* stream list, and iter 42
 measured that the schedule is the part that matters. An engine built from the table above alone

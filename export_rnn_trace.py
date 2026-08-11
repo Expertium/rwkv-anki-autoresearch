@@ -276,7 +276,10 @@ def main():
             f"prev ref_metrics (dropout-on): imm={old['mean_imm_logloss']:.6f} "
             f"ahead={old['mean_ahead_logloss']:.6f}  -> now eval-mode (dropout off)"
         )
-    print("wrote eval-mode reference/ref_metrics.json")
+    # Print the ACTUAL directory. The old hardcoded "reference/" here was cosmetic but is exactly
+    # the wording that made a stale-trace hunt take hours (HISTORY.md 2026-07-27): a message
+    # naming a directory the tool did not write is worse than no message.
+    print(f"wrote eval-mode {OUT_DIR}/ref_metrics.json")
 
 
 if __name__ == "__main__":

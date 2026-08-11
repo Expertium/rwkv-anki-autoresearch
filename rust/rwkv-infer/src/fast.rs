@@ -49,6 +49,10 @@ pub struct FastModel {
     pub h: usize,
     pub k: usize,
     pub stream_layers: Vec<usize>,
+    /// GAP 8: module -> CANONICAL entity slot, threaded in from Model rather than re-derived, for
+    /// the same reason `arch` is: two independent derivations could disagree, which is exactly the
+    /// fast/candle divergence class this crate is prone to.
+    pub stream_slot: [usize; 5],
     pub num_curves: usize,
     pub num_points: usize,
     s_space: Vec<f32>,    // (num_curves) forgetting-curve time constants; EMPTY under a GRU head
@@ -76,6 +80,7 @@ impl FastModel {
         h: usize,
         k: usize,
         stream_layers: Vec<usize>,
+        stream_slot: [usize; 5],
         num_curves: usize,
         num_points: usize,
         s_space: Vec<f32>,
@@ -98,7 +103,7 @@ impl FastModel {
             let dims = t.dims(); // (in,out)
             fwt.insert(key.clone(), FastW { v: to_vec(t)?, d0: dims[0], d1: dims[1] });
         }
-        Ok(Self { c, h, k, stream_layers, num_curves, num_points, s_space, point_space, arch, compress, fw, fwt })
+        Ok(Self { c, h, k, stream_layers, stream_slot, num_curves, num_points, s_space, point_space, arch, compress, fw, fwt })
     }
 
     fn raw(&self, key: &str) -> Result<&FastW> {
@@ -388,16 +393,41 @@ impl FastModel {
         let mut v0: Option<Vec<f32>> = None;
         let mut new_state: FastStreamState = Vec::with_capacity(n_layers);
         for l in 0..n_layers {
+            let ls = state.map(|s| &s[l]);
+            let (xo, v0_out, layer_state) = self.run_layer(m, l, &x, b, v0.as_deref(), ls)?;
+            x = xo;
+            v0 = Some(v0_out);
+            new_state.push(layer_state);
+        }
+        Ok((x, new_state))
+    }
+
+    /// ONE layer of one stream -- the body `run_stream` used to inline, extracted so the
+    /// interleaved schedule (`RWKV_INTERLEAVE`, iter 41) can walk layers round-by-round across
+    /// streams. Mirrors `Model::run_layer`; keep the two in sync.
+    ///
+    /// `v0` is the caller's STREAM-LOCAL value residual: `None` at that stream's layer 0 (which
+    /// *produces* it), `Some` afterwards. Interleaving never threads v0 across streams.
+    #[allow(clippy::too_many_arguments)]
+    fn run_layer(
+        &self,
+        m: usize,
+        l: usize,
+        input: &[f32],
+        b: usize,
+        v0: Option<&[f32]>,
+        ls: Option<&FastLayerState>,
+    ) -> Result<(Vec<f32>, Vec<f32>, FastLayerState)> {
+        let x = input;
+        {
             let tp = format!("rwkv_modules.{m}.blocks.{l}.time_mixer");
             let cp = format!("rwkv_modules.{m}.blocks.{l}.channel_mixer");
-            let ls = state.map(|s| &s[l]);
             let t_st = ls.map(|s| (s.t_xshift.as_slice(), s.t_state.as_slice()));
             let (xt, v0_out, mut t_xshift, mut t_state) =
-                self.time_mixer(&tp, l, &x, b, v0.as_deref(), t_st)?;
+                self.time_mixer(&tp, l, x, b, v0, t_st)?;
             // Bound the carried state before the compression round-trip below -- the clamp is
             // part of the recurrence, not a storage step. Mirrors Model::clamp_state.
             self.clamp_state(&mut t_state, b);
-            v0 = Some(v0_out);
             let c_st = ls.map(|s| s.c_xshift.as_slice());
             // Stripped channel mixer: skip the sublayer AND its residual add; the shift state is
             // never written, so the incoming one passes through (mirrors Model::run_stream and
@@ -411,16 +441,18 @@ impl FastModel {
                 };
                 (xt.clone(), carried)
             };
-            x = xc;
             // Per-step state compression on the PERSISTED state (matches candle forward_stream): the
             // current step's output (xt) was already computed from the pre-compression state, so this
             // only affects what the NEXT step reads back.
             let e_prev = ls.map(|s| s.e_state.as_slice());
             let (e_state, warm_wkv, warm_shift) =
                 self.compress_stream_state(m, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls);
-            new_state.push(FastLayerState { t_xshift, t_state, c_xshift, e_state, warm_wkv, warm_shift });
+            Ok((
+                xc,
+                v0_out,
+                FastLayerState { t_xshift, t_state, c_xshift, e_state, warm_wkv, warm_shift },
+            ))
         }
-        Ok((x, new_state))
     }
 
     fn features2card(&self, feats: &[f32], b: usize) -> Result<Vec<f32>> {
@@ -442,11 +474,43 @@ impl FastModel {
         states: &[Option<FastStreamState>; 5],
     ) -> Result<(Vec<f32>, FastCurve, Vec<f32>, [FastStreamState; 5])> {
         let mut x = self.features2card(feats, b)?;
+        // GAPS 7 + 8, mirroring Model::review -- keep the two in sync. `states` is in CANONICAL
+        // entity order [card, deck, note, preset, user]; module m consumes slot stream_slot[m] and
+        // writes back to it, so the returned array is canonical too.
+        let slot = self.stream_slot;
         let mut new: Vec<FastStreamState> = Vec::with_capacity(5);
-        for m in 0..5 {
-            let (xo, ns) = self.run_stream(m, self.stream_layers[m], &x, b, states[m].as_ref())?;
-            x = xo;
-            new.push(ns);
+        if self.arch.interleave {
+            // Round r runs layer r of every stream that still has one, in module order, threading
+            // the single hidden vector through. Front-loaded placement (the champion's; iter 44's
+            // spread variant was rejected).
+            let n_rounds = *self.stream_layers.iter().max().unwrap_or(&0);
+            let mut v0s: Vec<Option<Vec<f32>>> = vec![None; 5];
+            let mut per_stream: Vec<FastStreamState> = vec![Vec::new(); 5];
+            for m in 0..5 {
+                per_stream[slot[m]].reserve(self.stream_layers[m]);
+            }
+            for r in 0..n_rounds {
+                for m in 0..5 {
+                    if r >= self.stream_layers[m] {
+                        continue; // this stream sits out the round
+                    }
+                    let ls = states[slot[m]].as_ref().map(|s| &s[r]);
+                    let (xo, v0_out, layer_state) =
+                        self.run_layer(m, r, &x, b, v0s[m].as_deref(), ls)?;
+                    x = xo;
+                    v0s[m] = Some(v0_out); // STREAM-LOCAL
+                    per_stream[slot[m]].push(layer_state);
+                }
+            }
+            new = per_stream;
+        } else {
+            new = vec![Vec::new(); 5];
+            for m in 0..5 {
+                let (xo, ns) =
+                    self.run_stream(m, self.stream_layers[m], &x, b, states[slot[m]].as_ref())?;
+                x = xo;
+                new[slot[m]] = ns;
+            }
         }
         let xh = self.layernorm(&x, b, self.c, "prehead_norm")?;
 

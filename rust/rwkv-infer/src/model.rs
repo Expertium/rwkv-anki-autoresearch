@@ -82,6 +82,11 @@ pub struct ArchFlags {
     /// from the environment (`RWKV_STATE_CLAMP_TAU`). See TRACK2_PORT_PLAN.md on why this is
     /// deliberately NOT bit-identical to the training clamp.
     pub state_clamp_tau: Option<f32>,
+    /// Round-robin layer schedule across streams instead of stream-by-stream (`RWKV_INTERLEAVE=1`,
+    /// the iter-41 champion). Recipe flag, not a weight -- NOT detectable from shapes, which is
+    /// exactly why an engine built from the checkpoint alone would silently compute a different
+    /// model. Front-loaded placement only (iter 44's "spread" variant was rejected).
+    pub interleave: bool,
 }
 
 impl ArchFlags {
@@ -100,7 +105,7 @@ impl ArchFlags {
             if out.is_empty() { "none".into() } else { out.join(",") }
         };
         format!(
-            "arch: head={} ahead_residual={} pava={} clamp={} | stripped cmix=[{}] vlora=[{}]",
+            "arch: head={} ahead_residual={} pava={} clamp={} sched={} | stripped cmix=[{}] vlora=[{}]",
             match self.gru_curves {
                 Some(n) => format!("gru{n}"),
                 None => "basis".into(),
@@ -114,6 +119,7 @@ impl ArchFlags {
                 Some(t) => format!("{t}"),
                 None => "off".into(),
             },
+            if self.interleave { "interleaved" } else { "sequential" },
             strip(&self.has_cmix),
             strip(&self.has_vlora),
         )
@@ -170,7 +176,18 @@ fn detect_arch(w: &TMap, stream_layers: &[usize]) -> Result<ArchFlags> {
         _ => None,
     };
 
-    Ok(ArchFlags { has_cmix, has_vlora, gru_curves, ahead_residual, pava_theta, state_clamp_tau })
+    // Recipe flag, like state_clamp_tau: not detectable from any weight shape.
+    let interleave = matches!(std::env::var("RWKV_INTERLEAVE").as_deref(), Ok("1"));
+
+    Ok(ArchFlags {
+        has_cmix,
+        has_vlora,
+        gru_curves,
+        ahead_residual,
+        pava_theta,
+        state_clamp_tau,
+        interleave,
+    })
 }
 
 /// Debug: print sum / L2 norm / first 3 values of a tensor (matches debug_review0.py).
@@ -1002,6 +1019,18 @@ pub struct Model {
     k: usize,              // head dim = c / h
     c: usize,              // d_model (derived from weights)
     stream_layers: Vec<usize>, // layers per stream (derived by counting blocks)
+    /// GAP 8. `stream_slot[m]` = which CANONICAL entity slot module `m` implements, where the
+    /// canonical order is the fixed `[card, deck, note, preset, user]` every caller uses to key
+    /// its per-entity state maps. Identity for the historical arch; `[0,2,1,3,4]` for the iter-41
+    /// champion, whose execution order is card->NOTE->DECK->preset->user.
+    ///
+    /// Callers pass and receive states in CANONICAL order and need to know nothing about the
+    /// arch's execution order -- the permutation lives here, once. Before this existed the
+    /// engine fed DECK's state into the note module (and vice versa) on any reordered arch: every
+    /// shape matched, so nothing failed, it just computed a different model. The Python deploy
+    /// mirror routes states by NAME for exactly this reason (the positional body it replaced had
+    /// the same bug); this is the Rust half of that fix.
+    stream_slot: [usize; 5],
     /// Architecture features recovered from the weight shapes (stripped sublayers, curve-head
     /// type, ahead residual, PAVA powers). See [`ArchFlags`] / `detect_arch`.
     arch: ArchFlags,
@@ -1180,16 +1209,58 @@ impl Model {
                 _ => None,
             }
         };
+        // ⚠ STREAM NAME -> MODULE INDEX. This MUST follow the checkpoint's own execution order, and
+        // since iter 41 the champion's is card->NOTE->DECK->preset->user (arch
+        // architecture_d80_lora4_cnd.py), not the historical card->deck->note->preset->user. The
+        // safetensors name modules positionally (`rwkv_modules.{N}`), so the order is not
+        // recoverable from the checkpoint -- it is a recipe fact and comes from the environment,
+        // like state_clamp_tau. Default = the historical order, so every pre-iter-41 invocation is
+        // unchanged.
+        // WHY THIS MATTERS: with the old hardcoded map, `card:1:int4,note:1:int4` on a _cnd
+        // checkpoint quantizes modules 0 and 2 = card and DECK. Wrong stream, and deck state is
+        // 5,760 floats vs note's 1,440 -- so both the accuracy effect and the deploy size
+        // accounting would be wrong while every shape check still passed. Same class of bug as
+        // model_stats.py's positional deck/note labels (fixed 2026-08-09).
+        let stream_order: Vec<String> = std::env::var("RWKV_STREAM_ORDER")
+            .unwrap_or_else(|_| "card,deck,note,preset,user".into())
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        assert_eq!(
+            stream_order.len(),
+            5,
+            "RWKV_STREAM_ORDER must name exactly 5 streams, got {stream_order:?}"
+        );
         let name_to_idx = |n: &str| -> usize {
-            match n {
-                "card" => 0,
-                "deck" => 1,
-                "note" => 2,
-                "preset" => 3,
-                "user" => 4,
-                other => panic!("unknown stream in RWKV_STATE_QUANT_SCOPE: {other}"),
-            }
+            stream_order
+                .iter()
+                .position(|s| s == n)
+                .unwrap_or_else(|| panic!("unknown stream {n:?}; RWKV_STREAM_ORDER={stream_order:?}"))
         };
+        // GAP 8 (see the field doc): module m implements canonical entity stream_slot[m].
+        const CANON: [&str; 5] = ["card", "deck", "note", "preset", "user"];
+        let mut stream_slot = [0usize; 5];
+        for (m, name) in stream_order.iter().enumerate() {
+            stream_slot[m] = CANON
+                .iter()
+                .position(|c| c == name)
+                .unwrap_or_else(|| panic!("RWKV_STREAM_ORDER names unknown stream {name:?}"));
+        }
+        {
+            let mut seen = stream_slot.to_vec();
+            seen.sort_unstable();
+            assert_eq!(
+                seen,
+                vec![0, 1, 2, 3, 4],
+                "RWKV_STREAM_ORDER must be a permutation of {CANON:?}, got {stream_order:?}"
+            );
+        }
+        if stream_slot != [0, 1, 2, 3, 4] {
+            println!(
+                "[rwkv-infer] stream order {stream_order:?} -> module->canonical slot map {stream_slot:?}"
+            );
+        }
         let default_qmax = parse_level(std::env::var("RWKV_STATE_QUANT").unwrap_or_default().as_str());
         let scope = std::env::var("RWKV_STATE_QUANT_SCOPE").unwrap_or_default();
         let mut state_quant_qmax: std::collections::HashMap<usize, f64> = std::collections::HashMap::new();
@@ -1371,7 +1442,7 @@ impl Model {
             shift_rot,
         };
         let fast = crate::fast::FastModel::build(
-            &w, &lin_wt, c, h, k, stream_layers.clone(), num_curves, num_points,
+            &w, &lin_wt, c, h, k, stream_layers.clone(), stream_slot, num_curves, num_points,
             s_space.clone().unwrap_or_default(), point_space.clone(), arch.clone(), compress_cfg,
         )?;
         Ok(Self {
@@ -1382,6 +1453,7 @@ impl Model {
             k,
             c,
             stream_layers,
+            stream_slot,
             arch,
             s_space: s_space_t,
             point_space,
@@ -1625,12 +1697,35 @@ impl Model {
         let mut v0: Option<Tensor> = None;
         let mut new_state: StreamState = Vec::with_capacity(n_layers);
         for l in 0..n_layers {
+            let ls = state.map(|s| &s[l]);
+            let (xo, v0_out, layer_state) = self.run_layer(module_idx, l, &x, v0.as_ref(), ls)?;
+            x = xo;
+            v0 = Some(v0_out);
+            new_state.push(layer_state);
+        }
+        Ok((x, new_state))
+    }
+
+    /// ONE layer of one stream: the body `run_stream` used to inline, extracted so the interleaved
+    /// schedule (`RWKV_INTERLEAVE`, iter 41) can visit layers round-by-round across streams.
+    ///
+    /// `v0` is the caller's STREAM-LOCAL value-residual: `None` at that stream's layer 0 (which
+    /// *produces* it) and `Some` thereafter. Interleaving does not thread v0 across streams --
+    /// getting that wrong is invisible in a shape check and yields plausible-looking numbers.
+    fn run_layer(
+        &self,
+        module_idx: usize,
+        l: usize,
+        input: &Tensor,
+        v0: Option<&Tensor>,
+        ls: Option<&LayerState>,
+    ) -> Result<(Tensor, Tensor, LayerState)> {
+        let x = input;
+        {
             let tp = format!("rwkv_modules.{module_idx}.blocks.{l}.time_mixer");
             let cp = format!("rwkv_modules.{module_idx}.blocks.{l}.channel_mixer");
-            let ls = state.map(|s| &s[l]);
             let t_st = ls.map(|s| (&s.t_xshift, &s.t_state));
-            let (xt, v0_out, t_xshift, t_state) =
-                self.time_mixer(&tp, l, &x, v0.as_ref(), t_st)?;
+            let (xt, v0_out, t_xshift, t_state) = self.time_mixer(&tp, l, x, v0, t_st)?;
             // Bound the carried state before anything else sees it -- the clamp is part of the
             // recurrence in training, not a storage step, so it goes ahead of the compression
             // round-trip below.
@@ -1673,7 +1768,6 @@ impl Model {
                 Some(q) => quant_roundtrip(&t_xshift, q)?,
                 None => t_xshift,
             };
-            v0 = Some(v0_out);
             let c_st = ls.map(|s| &s.c_xshift);
             // A stripped channel mixer skips the sublayer AND its residual add, and its shift
             // state is never written (mirrors RWKV7RNNLayer.forward: `return x_BC, v0_BC,
@@ -1694,14 +1788,16 @@ impl Model {
                 };
                 (xt.clone(), carried)
             };
-            x = xc;
-            new_state.push(LayerState {
-                t_xshift,
-                t_state,
-                c_xshift,
-            });
+            Ok((
+                xc,
+                v0_out,
+                LayerState {
+                    t_xshift,
+                    t_state,
+                    c_xshift,
+                },
+            ))
         }
-        Ok((x, new_state))
     }
 
     /// Full forward over all 5 chained streams + heads.
@@ -1719,14 +1815,58 @@ impl Model {
         if dbg {
             summ("features2card", &x);
         }
-        // chain streams
+        // GAP 8: `states` arrives in CANONICAL entity order [card, deck, note, preset, user];
+        // module m consumes slot self.stream_slot[m] and its output is written back to that same
+        // slot, so the returned array is canonical too and callers stay arch-agnostic.
+        let slot = self.stream_slot;
+        // chain streams -- sequentially, or round-robin under the iter-41 interleaved schedule
         let mut new: Vec<StreamState> = Vec::with_capacity(5);
-        for m in 0..5 {
-            let (xo, ns) = self.run_stream(m, self.stream_layers[m], &x, states[m].as_ref())?;
-            x = xo;
-            new.push(ns);
-            if dbg {
-                summ(&format!("stream{m}"), &x);
+        if self.arch.interleave {
+            // GAP 7. Round r runs layer r of every stream that has one, in module order; the
+            // single hidden vector threads through in that order. Worth +0.000489 ahead /
+            // +0.000612 imm on its own (iter 42's de-bundle control), so it is not skippable.
+            //
+            // The parallel trainer has to re-anchor each stream's gather to the canonical row
+            // layout every round (srs_model.py::_interleaved_streams) because prepare() builds
+            // each stream's indices against the previous stream's output layout. A ONE-REVIEW
+            // engine has no such problem: one row, five states held separately.
+            //
+            // Placement is FRONT-LOADED (stream m runs its layer r in round r, for r < depth_m) --
+            // the champion's, and the only one shipped: the endpoint-anchored "spread" variant was
+            // iter 44 and was rejected as a tie.
+            let n_rounds = *self.stream_layers.iter().max().unwrap_or(&0);
+            let mut v0s: [Option<Tensor>; 5] = Default::default();
+            let mut per_stream: Vec<StreamState> = vec![Vec::new(); 5];
+            for m in 0..5 {
+                per_stream[slot[m]].reserve(self.stream_layers[m]);
+            }
+            for r in 0..n_rounds {
+                for m in 0..5 {
+                    if r >= self.stream_layers[m] {
+                        continue; // this stream sits out the round
+                    }
+                    let ls = states[slot[m]].as_ref().map(|s| &s[r]);
+                    let (xo, v0_out, layer_state) =
+                        self.run_layer(m, r, &x, v0s[m].as_ref(), ls)?;
+                    x = xo;
+                    v0s[m] = Some(v0_out); // STREAM-LOCAL: never threaded across streams
+                    per_stream[slot[m]].push(layer_state);
+                }
+                if dbg {
+                    summ(&format!("round{r}"), &x);
+                }
+            }
+            new = per_stream;
+        } else {
+            new = vec![Vec::new(); 5];
+            for m in 0..5 {
+                let (xo, ns) =
+                    self.run_stream(m, self.stream_layers[m], &x, states[slot[m]].as_ref())?;
+                x = xo;
+                new[slot[m]] = ns;
+                if dbg {
+                    summ(&format!("stream{m}"), &x);
+                }
             }
         }
         let global_encoding = x;

@@ -79,3 +79,15 @@ scratchpad/*/cb_wkv_*.txt
 reference_iter31/*
 !reference_iter31/ref_metrics.json
 preds_iter31/
+
+# reference_iter41/ = the INTERLEAVED champion's parity trace (2026-08-11), the first that
+# certifies RWKV_INTERLEAVE + the _cnd stream order. Same rule as the other reference dirs:
+# only ref_metrics.json is tracked, the bulk artifacts are single-machine and regenerable
+# (RWKV_REF_DIR=reference_iter41 python export_rnn_trace.py with the champion env).
+reference_iter41/*
+!reference_iter41/ref_metrics.json
+# Per-run engine prediction dumps + refactor regression outputs (regenerable in seconds).
+preds_i41/
+preds_i41c/
+scratchpad/i31_regress/
+scratchpad/i31_regress2/
