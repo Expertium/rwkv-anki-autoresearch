@@ -2252,12 +2252,34 @@ impl Model {
         let mut v0: Option<Tensor> = None;
         let mut new_state: BatchedStreamState = Vec::with_capacity(n_layers);
         for l in 0..n_layers {
+            let ls = state.map(|s| &s[l]);
+            let (xo, v0_out, layer_state) =
+                self.run_layer_batched(module_idx, l, &x, v0.as_ref(), ls)?;
+            x = xo;
+            v0 = Some(v0_out);
+            new_state.push(layer_state);
+        }
+        Ok((x, new_state))
+    }
+
+    /// ONE batched layer -- the body `run_stream_batched` used to inline, extracted so the
+    /// interleaved schedule can walk rounds. Mirrors `run_layer`; keep the three in sync
+    /// (this one, `run_layer`, and `fast::FastModel::run_layer`).
+    fn run_layer_batched(
+        &self,
+        module_idx: usize,
+        l: usize,
+        input: &Tensor,
+        v0: Option<&Tensor>,
+        ls: Option<&BatchedLayerState>,
+    ) -> Result<(Tensor, Tensor, BatchedLayerState)> {
+        let x = input;
+        {
             let tp = format!("rwkv_modules.{module_idx}.blocks.{l}.time_mixer");
             let cp = format!("rwkv_modules.{module_idx}.blocks.{l}.channel_mixer");
-            let ls = state.map(|s| &s[l]);
             let t_st = ls.map(|s| (&s.t_xshift, &s.t_state));
             let (xt, v0_out, t_xshift, t_state) =
-                self.time_mixer_batched(&tp, l, &x, v0.as_ref(), t_st)?;
+                self.time_mixer_batched(&tp, l, x, v0, t_st)?;
             // clamp_state is shape-generic: it reduces over the trailing (K,K) and iterates the
             // flattened leading dims, so (B,H,K,K) works exactly as (H,K,K) does.
             let t_state = self.clamp_state(&t_state)?;
@@ -2265,7 +2287,6 @@ impl Model {
                 Some(&qmax) => quant_roundtrip_batched(&t_state, qmax)?,
                 None => t_state,
             };
-            v0 = Some(v0_out);
             let c_st = ls.map(|s| &s.c_xshift);
             // Stripped channel mixer: skip the sublayer and its residual (see run_stream).
             let (xc, c_xshift) = if self.arch.has_cmix[module_idx][l] {
@@ -2277,10 +2298,8 @@ impl Model {
                 };
                 (xt.clone(), carried)
             };
-            x = xc;
-            new_state.push(BatchedLayerState { t_xshift, t_state, c_xshift });
+            Ok((xc, v0_out, BatchedLayerState { t_xshift, t_state, c_xshift }))
         }
-        Ok((x, new_state))
     }
 
     /// Batched forward over all 5 chained streams + heads. feats is (B,92); each state is (B,...).
@@ -2291,12 +2310,35 @@ impl Model {
         states: &[Option<BatchedStreamState>; 5],
     ) -> Result<(Option<Tensor>, CurveOut, Tensor, [BatchedStreamState; 5])> {
         let mut x = self.features2card(feats)?; // (B,C); features2card is last-dim ops -> batch-fine
-        let mut new: Vec<BatchedStreamState> = Vec::with_capacity(5);
-        for m in 0..5 {
-            let (xo, ns) =
-                self.run_stream_batched(m, self.stream_layers[m], &x, states[m].as_ref())?;
-            x = xo;
-            new.push(ns);
+        // GAPS 7 + 8, mirroring Model::review -- keep in sync.
+        let slot = self.stream_slot;
+        let mut new: Vec<BatchedStreamState> = vec![Vec::new(); 5];
+        if self.arch.interleave {
+            let n_rounds = *self.stream_layers.iter().max().unwrap_or(&0);
+            let mut v0s: Vec<Option<Tensor>> = vec![None; 5];
+            for m in 0..5 {
+                new[slot[m]].reserve(self.stream_layers[m]);
+            }
+            for r in 0..n_rounds {
+                for m in 0..5 {
+                    if r >= self.stream_layers[m] {
+                        continue;
+                    }
+                    let ls = states[slot[m]].as_ref().map(|s| &s[r]);
+                    let (xo, v0_out, layer_state) =
+                        self.run_layer_batched(m, r, &x, v0s[m].as_ref(), ls)?;
+                    x = xo;
+                    v0s[m] = Some(v0_out); // STREAM-LOCAL
+                    new[slot[m]].push(layer_state);
+                }
+            }
+        } else {
+            for m in 0..5 {
+                let (xo, ns) =
+                    self.run_stream_batched(m, self.stream_layers[m], &x, states[slot[m]].as_ref())?;
+                x = xo;
+                new[slot[m]] = ns;
+            }
         }
         let xh = self.ln(&x, "prehead_norm", LN_EPS)?;
 
