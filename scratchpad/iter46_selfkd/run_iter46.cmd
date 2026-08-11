@@ -39,6 +39,14 @@ REM   deploy: UNCHANGED. No forward-pass edit, no new parameter (558,212 exactly
 REM           smoke test). rust/rwkv-infer needs NOTHING -- unlike the ranked-#2 variant that
 REM           feeds R(t) into the Again logit, which would have added a 9th port gap.
 REM
+REM ⚠ BETA's EFFECTIVE DOSE DEPENDS ON THE BASE -- work it out before changing KDDECAY. The imm
+REM teacher's share of the ahead target is (1-alpha)*beta, so at beta=0.5:
+REM   KDDECAY=0 (champion base): WS alpha 0.9 -> 5% imm ; decay alpha 0 -> 50% imm ; ~27% average.
+REM   KDDECAY=1 (iter-45 base) : WS alpha 0.9 -> 5% imm ; decay alpha 0.5 -> 25% imm ; ~15% average.
+REM So if iter 45 ACCEPTS, this same beta delivers roughly HALF the dose. Either raise beta to ~0.7
+REM to hold the dose roughly constant, or keep 0.5 and read the result as the weaker point of the
+REM lever -- but do not switch the base and silently assume the dose is unchanged.
+REM
 REM BASE RECIPE -- SET THIS AFTER ITER 45's VERDICT:
 REM   KDDECAY=0 -> iter-41 champion base (KD cleared before decay). Gate vs RWKV-iter41_ilv-s0.
 REM   KDDECAY=1 -> iter-45 base (KD kept through decay at alpha 0.5). Gate vs RWKV-iter45_kddecay.
