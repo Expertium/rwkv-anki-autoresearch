@@ -699,3 +699,69 @@ incremental near-bar work that is most of what we do.
 **The real lesson about throughput:** our ceiling is set by the FIXED 2.9 h eval and the
 dispatch-bound training step, not by the epoch budget. Cutting epochs attacks the half of the
 iteration that is already cheapest to shorten and most expensive to shorten *correctly*.
+
+## When do we stop? The balance sheet (Andrew's question, 2026-08-12)
+
+> "The stopping point should be 'when we are reasonably confident that if we enabled QAT and
+> increased the epoch budget to ~10+2 recipe of the old model, algorithmic improvements + new input
+> features would push log loss below that of the old model'."
+
+That makes stopping arithmetic rather than judgement. The rule:
+
+    still_needed(mode) = (champion - old_model) - budget_credit + QAT_tax
+
+and we stop when we are confident features + remaining algorithmic work cover `still_needed`.
+
+### The three terms, all measured except features
+
+| | ahead | imm | source |
+|---|---|---|---|
+| gap to old model (VAL half) | +0.00309 | +0.00181 | iter 45 champion vs 0.294612 / 0.263561 |
+| **QAT tax** | **+0.00290** | **+0.00445** | `champ5k_plain` vs `champ5k_b1` — matched recipe, QAT env stripped, n=5000, p=0.0 |
+| budget credit at ~12 ep | −0.00373 | −0.00430 | A0 (IDENTICAL arch + params to the old model, our 1-ep recipe) vs baseline |
+| *same, projected* | *−0.00411* | *−0.00424* | *log-linear from the measured 3x step (+0.00196/+0.00202); agrees to 4%* |
+| **STILL NEEDED** | **+0.00225** | **+0.00196** | |
+
+Andrew's guess that QAT "eats 0.0030–0.0050" was right. ⚠ That tax was measured on the **d=32 /
+193,724-param** trunk with the q72u config; the current model has **5x the card state** (2,880 vs
+576 floats), so it is the least trustworthy number here — see the recommended measurement below.
+
+### Why the algorithmic loop alone cannot get there
+
+Post-HP-tuning rate (iter 35 → 45, 10 attempted iterations, 4 accepted): **ahead +0.000112 and imm
++0.000057 per attempted iteration**. Against the requirement:
+
+* ahead: ~20 more iterations ≈ **7.4 days** of continuous GPU
+* imm: ~34 more iterations ≈ **12.6 days**
+
+So "keep iterating until we get there" is a ~2-week GPU commitment with no features and no QAT
+work — and imm is the binding mode, which it was not before.
+
+### ★ TWO CHEAP MEASUREMENTS WORTH MORE THAN WEEKS OF ITERATING
+
+1. **Rectify the baseline (~3 h, eval only, no training).** Our champion's `ahead` is RECTIFIED --
+   it pays the deploy-honest PAVA cost -- and the old model's 0.294612 is not. The cost is
+   model-dependent (A18 +0.003588 never trained under PAVA; iter 31 +0.001893 trained under it),
+   and the old d=128 model was never trained under the constraint, so it would pay near the A18
+   end. Like-for-like:
+   * at +0.0019 -> ahead gap +0.00119
+   * at +0.0036 -> ahead gap **−0.00050, i.e. we are already ahead**
+   Resolving this is one `RWKV_EVAL_PAVA=1` eval of `pretrain/RWKV_trained_on_101_4999.pth` and it
+   is worth ~30 iterations of ahead progress. **Do this before committing to more iterations.**
+   (`imm` is closer to like-for-like already -- the rectifier does not touch the rating head -- but
+   our number does carry ~0.0003 of probe-insertion noise the baseline never paid.)
+2. **Measure the QAT tax on the CURRENT d=80 model (~9 h).** imm now binds *because* of QAT
+   (+0.00445 of a +0.00196 requirement). That figure comes from a 3x-smaller model with a
+   different state-quant config, and it is the single largest term on the sheet.
+
+### The reframe
+
+**The QAT tax on imm is worth more than the entire remaining algorithmic loop.** +0.00445 is ~77
+iterations at the recent imm rate; halving it beats a month of the current loop. It has never been
+a research target because plain-vs-QAT numbers were never comparable -- but the matched pair above
+shows the comparison is available whenever we want it.
+
+And **new input features do not compete with the GPU loop** (CPU-only, LMDB rebuild). The answer to
+"when do we stop" is therefore not "stop, then start features" -- it is **start features now, in
+parallel, and keep the loop running**, then re-evaluate the sheet once the two measurements above
+land and the features are in.
