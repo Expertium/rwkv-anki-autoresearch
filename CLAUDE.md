@@ -871,6 +871,29 @@ and `rust/rwkv-infer` untouched, params still 558,212.** Smokes green (`smoke_se
 `0.55*beta` on the old base -- the SAME beta would deliver barely half the intervention. Launch at
 **beta 0.7** (7% of the WS target, 35% of the decay target) and gate vs
 `RWKV-iter45_kddecay-s0.jsonl` / `RWKV-P-iter45_kddecay-s0.jsonl`.
+**▶ NEXT AFTER ITER 46: THE QAT TAX (Andrew 2026-08-12, "let's re-measure the QAT tax and work on
+reducing it").** Runner staged + CPU-verified: `scratchpad/qat_tax/run_qat_tax.cmd`.
+**WHY IT JUMPED THE QUEUE -- the stopping-point balance sheet** (`research_5k_notes.md`):
+`still_needed = (champion - old model) - budget_credit + QAT_tax` = **+0.00225 ahead / +0.00196 imm**
+today, and **imm now BINDS because of QAT** (+0.00445 of a +0.00196 requirement). At the recent
+algorithmic rate (+0.000112 ahead / +0.000057 imm per attempted iteration) that requirement is 20
+and 34 more iterations = 7.4 and 12.6 days of GPU -- so the QAT tax is worth more than the entire
+remaining loop, and it has never been a research target only because plain-vs-QAT numbers were
+never comparable.
+**THE MEASUREMENT IS A SINGLE-VARIABLE A/B**, reusing iter 45's WS unchanged: ARM B re-runs iter
+45's DECAY from the same WS-final with the q72u QAT env added and nothing else changed (KD stays at
+alpha 0.5), so TAX = ARM B - iter 45. ARM A (PTQ, no training, 500 users) evaluates iter 45's plain
+final under the QAT env, giving the decomposition PTQ-cost vs what the QAT fine-tune recovers.
+**★ THE LIVE HYPOTHESIS:** the +0.00290/+0.00445 on record came from `champ5k_b1`, which ran QAT
+THROUGHOUT WS+decay -- not how QAT is deployed here. The qat_log's decay-only rows say placement
+dominates: #39 (decay-only, warm-started) cost **-0.000127 ahead / +0.000018 imm, essentially
+FREE**, while #40 (from scratch) cost +0.00534/+0.00446. So much of the "tax" may be WHEN QAT is
+applied. If ARM A is bad and ARM B recovers it -> the fine-tune does the work; if both are bad ->
+the q72u codebooks (learned on d=32 states, 5x smaller card state) are the suspect, and
+`RWKV_QAT_PQ_LEARN` exists but its export->eval wiring does not.
+⚠ Python maps QAT scopes BY NAME (verified: `card_id=rank1/fq7.0, note_id=rank1/fq7.0` under the
+_cnd arch), so the Rust-only positional bug fixed 2026-08-11 does not affect these numbers.
+
 **Iters 35-44 are COMPLETE and their narratives are archived** to `HISTORY.md` (2026-08-10). Verdicts: 35 seed pair ACCEPTED · 36 PAVA lambda DIRECTED-ACCEPTED · 37 by-user weighting REJECTED (mechanism refuted in every size quartile) · 38 KD alpha 0.75 rejected (missed by 2e-6) · 39 KD alpha 0.9 ACCEPTED · 40 alpha 1.0 rejected (brackets the peak; lever closed) · 41 interleave+reorder ACCEPTED (champion) · 42 order-only rejected · 43 interleave at the original order rejected as a TIE · 44 spread placement rejected as a TIE. Detail: `research_5k_verbose.md`.
 **★ THE TOPOLOGY FINDING (iters 41-44 together), which supersedes the individual verdicts:** interleaving is worth +0.000216..+0.000611 in both modes, but THREE structurally different arrangements of it (stream order, layer placement) are mutually indistinguishable at |delta| <= 7.5e-5. So the EXISTENCE of a cross-scope information path is what pays; the choreography is not. The rearrangement sub-family is EXHAUSTED -- further topology work must change WHAT is computed (extra rounds via layer reuse, cross-stream fusion), not when. That ±7.5e-5 same-capacity spread is also the measurement that moved the accept bar to a raw 0.0001.
 
@@ -961,7 +984,7 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
 The 2026-08-01 ordering (finish HP tuning -> seed pair -> PAVA lambda) is **COMPLETE** -- those became iters 34, 35 and 36. The ~340-line queue that tracked it, including the speedup phase's ranked list and the per-item DONE annotations, is archived to `HISTORY.md` (2026-08-10). What remains live:
 
 1. **The algorithmic loop** (the endgame's step 1) -- **the ranked proposal queue now lives in `optimization/PROPOSALS.md`**, along with Andrew's 3-agent generation protocol (three subagents with DIFFERENT priors -- literature / domain / reject-log steelman -- each write 5 proposals from >=2 families; rank all 15; implement the top). ⚠ **WRITE THE RANKED LIST TO THAT FILE THE MOMENT IT IS PRODUCED:** the 2026-08-10 ranking lived only in the transcript and a compaction destroyed items 7-15 permanently.
-2. **NEW INPUT FEATURES -- the long-lead item, CPU-only, and it does not compete with the GPU loop.** Fully scoped in `optimization/FUTURE_FEATURES.md`: the four code sites, the F:-side-by-side disk plan (605 GB against 889 GB free -- no delete needed), the measured constants, the ~23 h build, the NaN-clamp landmine, and Andrew's directive that the rebuild DROP Anki's card-state input (dim 22). ⚠ It moves the `size` gate: the filter amplifies a 0.001% raw-row difference into ~30% of users getting a different equalized count, so gate #1 must be read as *within a rebuild generation*.
+2. **NEW INPUT FEATURES -- the long-lead item. ⚠ ONLY THE PREPROCESSING IS CPU-ONLY (corrected by Andrew 2026-08-12: "Pre-processing is CPU-only, sure, but training is obviously not").** This line used to claim features "do not compete with the GPU loop" -- WRONG, and it would have led to planning them as a free parallel track. Only the ~2-4 day LMDB rebuild overlaps the loop. Everything that makes features *count* -- re-basing the champion on the new inputs, then training + evaluating each candidate -- is GPU work on the same single 4070, and every pre-rebuild iteration is gated against a champion the rebuild invalidates. Features are a PHASE that largely DISPLACES the algorithmic loop, not a parallel one. Fully scoped in `optimization/FUTURE_FEATURES.md`: the four code sites, the F:-side-by-side disk plan (605 GB against 889 GB free -- no delete needed), the measured constants, the ~23 h build, the NaN-clamp landmine, and Andrew's directive that the rebuild DROP Anki's card-state input (dim 22). ⚠ It moves the `size` gate: the filter amplifies a 0.001% raw-row difference into ~30% of users getting a different equalized count, so gate #1 must be read as *within a rebuild generation*.
 3. **THEN the 10x-budget run, ONCE, on the final champion** -- see THE ENDGAME above for the two arms (plain, then warm-started QAT), the ~4-day cost, and the three 1-epoch assumptions (warmup 200, augmentation off, wd/dropout) that must be reconsidered first.
 4. **Rust port** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) -- **★ GAPS 7 + 8 CLOSED AND PARITY-VERIFIED 2026-08-11** (`276f379`): both engines (candle + the default fast path) now run the interleaved schedule (`RWKV_INTERLEAVE=1`) and the reordered stream list (`RWKV_STREAM_ORDER=card,note,deck,preset,user`), against a fresh `reference_iter41/` trace that is self-contained at exactly 0.000e+00 -- interleaved PARITY PASS on both paths (max per-review 4.78e-06 / 1.25e-06) and the sequential path BIT-IDENTICAL to the green iter-31 preds on both. **Gap 8 was a LIVE cross-wiring bug the gate caught** (states were assembled positionally, so `_cnd` fed DECK's state into the NOTE module; `name_to_idx` likewise would have quantized card+DECK for `card,note` scopes). ⚠ Front-loaded placement only -- fine today (iter 44's spread was rejected), but a future spread adoption needs `interleave_schedule()`'s table, not `r < depth[m]`. Remaining measured items and the AGPL/SIMD note are in that plan.
 

@@ -739,17 +739,13 @@ work — and imm is the binding mode, which it was not before.
 
 ### ★ TWO CHEAP MEASUREMENTS WORTH MORE THAN WEEKS OF ITERATING
 
-1. **Rectify the baseline (~3 h, eval only, no training).** Our champion's `ahead` is RECTIFIED --
-   it pays the deploy-honest PAVA cost -- and the old model's 0.294612 is not. The cost is
-   model-dependent (A18 +0.003588 never trained under PAVA; iter 31 +0.001893 trained under it),
-   and the old d=128 model was never trained under the constraint, so it would pay near the A18
-   end. Like-for-like:
-   * at +0.0019 -> ahead gap +0.00119
-   * at +0.0036 -> ahead gap **−0.00050, i.e. we are already ahead**
-   Resolving this is one `RWKV_EVAL_PAVA=1` eval of `pretrain/RWKV_trained_on_101_4999.pth` and it
-   is worth ~30 iterations of ahead progress. **Do this before committing to more iterations.**
-   (`imm` is closer to like-for-like already -- the rectifier does not touch the rating head -- but
-   our number does carry ~0.0003 of probe-insertion noise the baseline never paid.)
+1. ~~Rectify the baseline~~ **WITHDRAWN (Andrew, 2026-08-12): "there's no need to rectify the
+   baseline since that's not how the original model works, and we want our numbers to be compared
+   to the srs-benchmark leaderboard's version."** The target is the PUBLISHED leaderboard entry, so
+   the comparison is our deploy-honest (rectified) number against their unrectified one, and we
+   absorb the rectification cost ourselves. The ahead gap stands at **+0.00309**; there is no
+   discount to be had here. Recorded because the tempting version of this argument will come back:
+   a like-for-like rectified comparison would flatter us by ~0.002-0.0036, and it is not the goal.
 2. **Measure the QAT tax on the CURRENT d=80 model (~9 h).** imm now binds *because* of QAT
    (+0.00445 of a +0.00196 requirement). That figure comes from a 3x-smaller model with a
    different state-quant config, and it is the single largest term on the sheet.
@@ -761,7 +757,11 @@ iterations at the recent imm rate; halving it beats a month of the current loop.
 a research target because plain-vs-QAT numbers were never comparable -- but the matched pair above
 shows the comparison is available whenever we want it.
 
-And **new input features do not compete with the GPU loop** (CPU-only, LMDB rebuild). The answer to
-"when do we stop" is therefore not "stop, then start features" -- it is **start features now, in
-parallel, and keep the loop running**, then re-evaluate the sheet once the two measurements above
-land and the features are in.
+⚠ **AND THE "FEATURES ARE FREE, RUN THEM IN PARALLEL" CLAIM WAS WRONG (Andrew, 2026-08-12):
+"Pre-processing is CPU-only, sure, but training is obviously not."** Only the LMDB rebuild is
+CPU-only. Everything that makes features *count* -- re-basing the champion on the new inputs, then
+training and evaluating each candidate -- is GPU work that competes with the algorithmic loop for
+the same single 4070, and every pre-rebuild iteration is measured against a champion the rebuild
+will invalidate. So features are not a free parallel track; they are a PHASE that largely displaces
+the loop, and only their ~2-4 day preprocessing head start can overlap it.
+(The same wrong claim is in CLAUDE.md's ORDER FROM HERE and is corrected there too.)
