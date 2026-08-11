@@ -2141,3 +2141,56 @@ bit-for-bit.
 the RNN deploy mirror, and wiring it exposed a latent trap: **the v0 dummy keyed on the ROUND**,
 which only coincides with the stream-local layer index under front-loading — so any placement
 change would have silently mis-threaded the value residual.
+
+## iter 45 — KD through the decay phase: the distillation family goes 4/4 (ACCEPTED, 2026-08-11)
+
+**What ran.** The champion recipe with the KD env **not cleared** before the decay phase: WS keeps
+its tuned `alpha=0.9`, decay gets `alpha=0.5`. **Zero code** — the entire lever is two lines the
+runner doesn't execute. Winner of the 2026-08-10 15-proposal ranking.
+
+**Why.** Since iter 34 adopted `decay_ratio=1.0`, the decay phase is **half of all training** and
+ran on pure hard labels, while the WS alpha dose curve is monotone up to 0.9 (iters 32/35/38/39/40).
+So half of training received no teacher signal, in the only family with a perfect record.
+
+**Why it is well-defined** (the belief that the dump can't be used in decay is wrong, and our own
+docs contain the reason): decay writes `STEP_OFFSET=1`, `EPOCHS=1.0` over the same db/MAX/seed, and
+`random.seed(12345)` + a single `get_groups` shuffle mean decay step *s* replays byte-identically
+the batch of WS step *s* ("epochs are BYTE-IDENTICAL replays"). Self-validating: the per-step
+`labels_sum` checksum hard-exits 43 on any misalignment, so a stream mismatch aborts at step 1
+rather than training on wrong targets.
+
+**Verdict: ACCEPTED — new champion.** vs iter 41:
+
+| | champion (41) | iter 45 | Δ | p |
+|---|---|---|---|---|
+| ahead | 0.297889 | **0.297697** | **+0.000192** | 3.9e-47 |
+| imm | 0.265479 | **0.265375** | **+0.000104** | 1.4e-82 |
+
+size 0/2500, nan_users 0, params 558,212, card/note/deck state 2,880/1,440/5,760 all unchanged (a
+*schedule* of teacher signal has no weights), throughput 1833.5 rev/s vs 1849.8 — identical within
+noise, as a training-only change must be.
+
+**PERFECTLY CONTROLLED, and verified rather than assumed.** The WS step trace extracted from the
+log is **identical to iter 41's for all 10,935 steps** (`extract_trace.py --compare`). So the two
+runs shared recipe and seed exactly, the entire gain is attributable to the **decay phase alone**,
+and run-to-run reproducibility at seed 4321 is re-confirmed as a free by-product.
+
+**⚠ MARGIN CAVEAT, stated plainly.** imm clears the raw 0.0001 bar by only **4%** (+0.000104) —
+about 1.4× the ±7.5e-5 same-capacity noise floor measured in iter 44, and well inside the ~0.0004
+cross-seed spread the seed-pair doctrine warns about. ahead is more comfortable at +0.000192.
+Accepted because (a) the written gate passes on both modes with overwhelming per-user consistency,
+and (b) single-run-at-seed-4321 has been the operative practice since iter 35 established 4321 as
+the standard — iters 36–44 were all judged that way, including accepts 39 (+0.000158/+0.000153) and
+41. A second-seed confirmation remains the rigorous move before this number is leaned on hard.
+
+**What it means.** Teacher signal is valuable in **both** phases, not just the plateau. The
+annealing intuition — that decay should run on the true objective so the model lands on the real
+loss surface — is wrong here, or at least wrong at `alpha=0.5`.
+
+**Open in-family points, cheap because they reuse the same dump:** `alpha_decay=0.9` (does decay
+want the same dose as WS?) and `alpha_decay=0.25` (is 0.5 already past the peak?). The WS sweep
+peaked at 0.9 and bracketed at 1.0, so the decay curve's shape is not implied by it.
+
+**Chain clean:** `DONE_EXIT_0` 23:30:07, eval 2500/2500 on attempt 1, and the runner's own guards
+confirmed the lever was live where it mattered — the decay log carried `[kd-mix] KD ON` and
+`alpha FIXED at 0.5`, with `DONE_EXIT_NOKD_DECAY` / `_WRONGALPHA_DECAY` as the failure modes.

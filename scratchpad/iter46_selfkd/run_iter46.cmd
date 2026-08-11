@@ -22,15 +22,15 @@ REM ⚠ The gap is an UPPER BOUND, not a target: distillation transfers the vari
 REM (a calibrated target beats a 0/1 draw), never the information part -- the query row sees the
 REM intervening reviews and the exact lag, and predicting cold from history IS the task.
 REM
-REM BETA=0.5, and the composition makes this a curriculum rather than a flat dose. Self-KD runs
+REM BETA=0.7, and the composition makes this a curriculum rather than a flat dose. Self-KD runs
 REM BEFORE the external KD mix and softens only the HARD share, so the target is
 REM     a*d128_teacher + (1-a) * [ b*imm_teacher + (1-b)*hard ]
 REM with alpha keeping its tuned value EXACTLY (verified by autograd: recovered alpha =
-REM 0.899999976 at every beta). During WS (a=0.9) beta therefore touches only the residual 10%;
-REM during decay (a=0, or 0.5 if iter 45 won) it acts at full strength -- i.e. self-distillation
-REM bites late, when the model's own imm head is actually a good teacher. That ordering is
-REM deliberate; softening the POST-KD target instead would drag alpha 0.9 -> 0.9*(1-b) and bundle
-REM two changes into one experiment, which is what iters 42/43/44 were spent un-bundling.
+REM 0.899999976 at every beta). On the iter-45 base that is 7% of the WS target (a=0.9) and 35%
+REM of the decay target (a=0.5) -- self-distillation bites LATE, when the model's own imm head
+REM is actually a good teacher, which is the intended curriculum. That ordering is deliberate;
+REM softening the POST-KD target instead would drag alpha 0.9 -> 0.9*(1-b) and bundle two
+REM changes into one experiment, which is what iters 42/43/44 were spent un-bundling.
 REM
 REM THREE-WAY PARITY (CLAUDE.md sec.9 standing directive) -- train / eval / CPU inference:
 REM   train : ahead objective, target softened as above.
@@ -50,6 +50,7 @@ REM
 REM BASE RECIPE -- SET THIS AFTER ITER 45's VERDICT:
 REM   KDDECAY=0 -> iter-41 champion base (KD cleared before decay). Gate vs RWKV-iter41_ilv-s0.
 REM   KDDECAY=1 -> iter-45 base (KD kept through decay at alpha 0.5). Gate vs RWKV-iter45_kddecay.
+REM   ACTIVE: KDDECAY=1, beta 0.7 -> 7% of the WS target, 35% of the decay target.
 REM Everything else is the champion env, unchanged.
 REM
 REM ⚠ Do NOT git rebase/pull/checkout this path while it runs (iter 43's chain died that way).
@@ -64,9 +65,13 @@ set LOG=%DIR%\iter46.log
 set STAMP=%RANDOM%%RANDOM%
 set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k
 set WSSTEPS=10935
-set BETA=0.5
+set BETA=0.7
 REM ---- BASE: 0 = iter-41 champion, 1 = iter-45 (KD through decay) ----
-set KDDECAY=0
+REM SET TO 1 on 2026-08-11: iter 45 ACCEPTED, so the champion now keeps KD through decay
+REM at alpha 0.5. BETA raised 0.5 -> 0.7 with it, because the imm teacher's share is
+REM (1-alpha)*beta: on this base the average dose is 0.3*beta vs 0.55*beta on the old one,
+REM so an unchanged beta would have delivered barely half the intervention.
+set KDDECAY=1
 
 echo ===== ITER 46 (self-distillation imm-^>ahead, beta=%BETA%, kddecay=%KDDECAY%) START %DATE% %TIME% ===== > "%LOG%"
 
@@ -171,6 +176,19 @@ if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_NOSELFKD_DECAY %DATE% %TIME% >> "%LOG%"
   exit /b 39
 )
+REM The BASE recipe's own decay-KD must also be live (iter 45 is the champion now). Losing it would
+REM silently compare against a different baseline than the one we are gating vs.
+REM ⚠ NOT nested in an if-block: %ERRORLEVEL% inside parentheses expands at PARSE time,
+REM so a nested test reads a stale value and the guard silently never fires. goto keeps both
+REM the condition and the errorlevel test at top level, where line-by-line parsing makes them
+REM correct (the same reason every other guard in this file is written flat).
+if not "%KDDECAY%"=="1" goto :skip_basekd
+findstr /C:"alpha FIXED at 0.5" "%DIR%\decay_%STAMP%.log" >nul
+if not %ERRORLEVEL%==0 (
+  echo DONE_EXIT_NOBASEKD_DECAY %DATE% %TIME% >> "%LOG%"
+  exit /b 40
+)
+:skip_basekd
 echo DECAY OK (selfkd ON) %TIME% >> "%LOG%"
 
 echo === EVAL TOML rect %TIME% === >> "%LOG%"

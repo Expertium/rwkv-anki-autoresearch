@@ -701,27 +701,32 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 41 `iter41_ilv` (INTERLEAVE + fine-to-coarse order on the iter-39 recipe) -- promoted 2026-08-09 15:45
-**RECTIFIED (the gate basis): ahead 0.297889 / imm 0.265479** on the VAL half (n=2500) =
-+0.000291 / +0.000396 vs iter 39 at p=5.1e-24 / 7.5e-95 -- **the largest both-modes
-architectural gain of the phase** (bigger than any single PAVA/GRU/Muon/KD accept). size
-0/2500, nan_users 0, **558,212 params EXACT, card 2,880 / note 1,440 / deck 5,760 state
-floats ALL unchanged** (a schedule has no weights), throughput 1849.8 rev/s, WS wall-clock
-unchanged. ckpt `scratchpad/iter41_ilv/i41_d_10935.pth`; `champion_5k_track2.json` points at
-it (trace extracted from the WS log).
-**★ THE CHAMPION ENV NOW CARRIES TWO NEW PIECES — set BOTH in every run on this trunk:**
-`RWKV_INTERLEAVE=1` and `RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py`
-(the fine-to-coarse card→note→deck→preset→user order; depths [2,1,4,3,3] travel with names).
-Everything else = iter 39's env (seed 4321, KD α=0.9 WS-only, PAVA λ=0.2, tuned HPs).
-**⚠ A 2-CHANGE BUNDLE (Andrew-directed)** — iter 42 (the de-bundle control: sequential +
-reordered order) decides attribution, and it is DEPLOY-relevant: if order alone carries the
-gain, Rust never needs the interleave port. **⚠ DEPLOY: `rust/rwkv-infer` implements NEITHER
-piece** (hardcoded sequential card→deck→note chain) — both are now port-plan items, and the
-pre-ship trace parity (export_rnn_trace vs the BY-NAME RNN mirror, refactored+golden-exact
-this iter) is mandatory. `model_stats.py`'s deck/note LABEL swap under reordered archs is
-FIXED (2026-08-09): labels now come from the config's own module names, verified correct
-under both orders (values were always positional and correct). Family TOPOLOGY opens 1/1.
-Detail: `research_5k_verbose.md` iter 41.
+#### CHAMPION = iter 45 `iter45_kddecay` (KD kept through the DECAY phase, on the iter-41 recipe) -- promoted 2026-08-11 23:45
+**RECTIFIED (the gate basis): ahead 0.297697 / imm 0.265375** on the VAL half (n=2500) =
++0.000192 / +0.000104 vs iter 41 at p=3.9e-47 / 1.4e-82. size 0/2500, nan_users 0, **558,212
+params EXACT, card 2,880 / note 1,440 / deck 5,760 state floats ALL unchanged** (a schedule of
+teacher signal has no weights), throughput 1833.5 rev/s (vs 1849.8 -- identical within noise, as a
+training-only change must be). ckpt `scratchpad/iter45_kddecay/i45_d_10935.pth`;
+`champion_5k_track2.json` points at it.
+**THE LEVER, and it is ZERO CODE:** the runner does NOT clear `RWKV_KD_MIX`/`RWKV_KD_ALPHA` before
+the decay phase; WS keeps the tuned `alpha=0.9`, **decay gets `alpha=0.5`**. Since iter 34 adopted
+decay_ratio=1.0, decay is HALF of all training and had been running on pure hard labels.
+**★ THE CHAMPION ENV = iter 41's, PLUS KD surviving into decay at 0.5.** So every run on this trunk
+sets: `RWKV_INTERLEAVE=1`, `RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py`
+(card→note→deck→preset→user, depths [2,1,4,3,3]), seed 4321, KD alpha 0.9 WS **and 0.5 through
+decay**, PAVA lambda 0.2, tuned HPs, and the speed stack during training only.
+**PERFECTLY CONTROLLED, verified not assumed:** the WS step trace is IDENTICAL to iter 41's for all
+10,935 steps (`scratchpad/iter45_kddecay/extract_trace.py --compare`), so the whole gain is
+attributable to the DECAY phase alone -- and run-to-run reproducibility at seed 4321 is re-confirmed
+free.
+**⚠ MARGIN:** imm clears the raw 0.0001 bar by only **4%** (+0.000104) -- ~1.4x iter 44's ±7.5e-5
+same-capacity noise floor and inside the ~0.0004 cross-seed spread. Accepted because the written
+gate passes both modes and single-run-at-4321 is the practice since iter 35; a second-seed
+confirmation is still the rigorous move before leaning on this number.
+**DEPLOY: nothing to port** -- training-only, no arch change. (And the interleave/order the recipe
+depends on ARE now in `rust/rwkv-infer`, parity-verified 2026-08-11.)
+**Open in-family, cheap (same dump):** alpha_decay 0.9 and 0.25 -- the WS curve peaked at 0.9 and
+bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.md` iter 45.
 
 #### THE CHAMPION LINEAGE (full blocks archived to `optimization/HISTORY.md` 2026-08-10 -- this table replaces ~150 lines of superseded champion detail)
 
@@ -734,7 +739,8 @@ Detail: `research_5k_verbose.md` iter 41.
 | 35 | + KD restored at seed 4321 (the seed pair) | 0.298816 / 0.265946 |
 | 36 | + PAVA lambda 0.1 -> 0.2 (directed accept, a 5.9:1 trade) | 0.298338 / 0.266027 |
 | 39 | + KD alpha 0.5 -> 0.9 | 0.298180 / 0.265875 |
-| **41** | **+ interleaving (and a reorder that iter 43 later showed is free)** | **0.297889 / 0.265479** |
+| 41 | + interleaving (and a reorder that iter 43 later showed is free) | 0.297889 / 0.265479 |
+| **45** | **+ KD kept through the decay phase (alpha 0.5), zero code** | **0.297697 / 0.265375** |
 
 ⚠ iters 32 and 34 are not directly comparable to their neighbours: the gate basis changed to the RECTIFIED metric at iter 33, and iter 34 changed the training budget. Per-iteration detail: `research_5k_verbose.md`. Full superseded champion blocks (env strings, ckpt paths, caveats): `HISTORY.md`.
 
@@ -827,9 +833,21 @@ Detail: `research_5k_verbose.md` iter 41.
 
 #### LIVE
 **✓ BUDGET CALIBRATION DONE 2026-08-11 14:01 -- VERDICT: gating STAYS at full budget; and screening is NOT worth it either (Andrew, follow-up): keep doing FULL RUNS.** Three arms, 15.3 h, `DONE_EXIT_0`. Measured short-budget noise floor (c41 vs c43, a pairing verified null at full budget): **ahead |delta| 9.0e-5, imm 3e-6** -- against the PRE-REGISTERED bar of 4.9e-5, imm passes and **ahead fails by ~1.8x**. Mechanism: on ahead the floor got 1.2x WORSE than full budget's 7.5e-5 while signal compressed to 65%, so signal-to-noise falls ~1.9x and the effective accept bar would become 1.84e-4 vs the 1.0e-4 we accept today -- i.e. short budget would silently make us 2x stricter and discard real candidates. **Screening was checked separately and REJECTED for our pool:** a short run is 54% of a full one (the eval is a fixed 2.9 h), so screening only breaks even at K>2.2 candidates -- and its PAIRWISE noise is 1.96e-4 in full-budget effect size, which leaves **6 of the last 10 iterations inside its noise, including two ACCEPTED champions (35, 39)**. It would pay only on batches with wide spread (new arch family, coarse HP grid), never on near-bar work. **Banked and reusable:** effects are SCALED not scrambled (~65% compression, both p<1e-33) and the **0.65 constant** converts a short delta to full-budget size; the **3x-budget step = +0.002** projects to +0.0042 at 10x vs the +0.0040 recorded upstream gap, corroborating the endgame premise to 4%. ⚠ All three arms were SCHEDULE changes, so this does NOT measure how short budget treats regularization or capacity. Detail: `research_5k_notes.md`.
-**▶ ITER 45 RUNNING at FULL budget** (`scratchpad/iter45_kddecay/run_iter45.cmd`): KD through the DECAY phase -- winner of the 15-proposal ranking, and ZERO code (the runner simply does not clear `RWKV_KD_MIX`, and sets alpha 0.9 -> 0.5 for decay). Since iter 34 adopted decay_ratio=1.0, decay is HALF of all training and runs on pure hard labels. Self-validating: the per-step `labels_sum` checksum hard-exits 43 if the decay batch stream does not match the dump. Launched at FULL budget (`MAXSTEPS=0`) because the calibration ruled the 1/3 budget out for gating; gate vs `RWKV-iter41_ilv-s0.jsonl`.
-**▶ ITER 46 STAGED, ready to launch the moment the GPU frees** (`scratchpad/iter46_selfkd/run_iter46.cmd`, committed `fdeadcd`): **privileged self-distillation, imm -> ahead** -- `RWKV_SELFKD_BETA=0.5` softens the ahead target toward the model's OWN better-informed imm estimate of the same event (the 0.032411 gap; teacher detached, 100.00% coverage verified on real LMDB rows). Runs BEFORE the KD mix and softens only the HARD share, so an active external teacher keeps its tuned alpha EXACTLY (autograd-recovered 0.899999976 at every beta) -- no bundling. **Training-only: eval and `rust/rwkv-infer` untouched, params still 558,212** (that is why it was promoted over the ranked-#2 R(t)-into-Again-logit coupling, which would add a 9th port gap). **SET `KDDECAY` IN THE RUNNER FROM ITER 45's VERDICT** (0 = iter-41 base, 1 = iter-45 base) and gate against that base's jsonls. Smokes green: `smoke_selfkd.py` + `verify_real_data.py`.
-**⚠ NEW OPS RULE (found live during iter 45): do NOT edit `rwkv/*.py` mid-chain.** A chain's DECAY/EVAL phase is a NEW process that imports whatever is on disk THEN -- not what was there at launch. Same family as the never-rebase-a-running-runner rule. Mitigation used here: the iter-46 `prepare_batch` hook is gated on its env flag, so with the flag unset not one new line executes.
+**✓ ITER 45 DONE 2026-08-11 23:30 -- ACCEPTED, NEW CHAMPION** (KD through the decay phase; see the
+champion block above). Distillation is now 4/4.
+**▶ ITER 46 STAGED, launch when the GPU is free** (`scratchpad/iter46_selfkd/run_iter46.cmd`,
+code committed `fdeadcd`): **privileged self-distillation, imm -> ahead** -- `RWKV_SELFKD_BETA`
+softens the ahead target toward the model's OWN better-informed imm estimate of the SAME review
+(the measured 0.032411 gap; teacher DETACHED; 100.00% coverage verified on real LMDB rows). It runs
+BEFORE the KD mix and softens only the HARD share, so an active external teacher keeps its tuned
+alpha EXACTLY (autograd-recovered 0.899999976 at every beta) -- no bundling. **Training-only: eval
+and `rust/rwkv-infer` untouched, params still 558,212.** Smokes green (`smoke_selfkd.py`,
+`verify_real_data.py`).
+**⚠ SET `KDDECAY=1` NOW THAT ITER 45 WON, AND RAISE BETA WITH IT.** The imm teacher's share is
+`(1-alpha)*beta`, so on the iter-45 base (decay alpha 0.5) the average dose is `0.3*beta` versus
+`0.55*beta` on the old base -- the SAME beta would deliver barely half the intervention. Launch at
+**beta 0.7** (7% of the WS target, 35% of the decay target) and gate vs
+`RWKV-iter45_kddecay-s0.jsonl` / `RWKV-P-iter45_kddecay-s0.jsonl`.
 **Iters 35-44 are COMPLETE and their narratives are archived** to `HISTORY.md` (2026-08-10). Verdicts: 35 seed pair ACCEPTED · 36 PAVA lambda DIRECTED-ACCEPTED · 37 by-user weighting REJECTED (mechanism refuted in every size quartile) · 38 KD alpha 0.75 rejected (missed by 2e-6) · 39 KD alpha 0.9 ACCEPTED · 40 alpha 1.0 rejected (brackets the peak; lever closed) · 41 interleave+reorder ACCEPTED (champion) · 42 order-only rejected · 43 interleave at the original order rejected as a TIE · 44 spread placement rejected as a TIE. Detail: `research_5k_verbose.md`.
 **★ THE TOPOLOGY FINDING (iters 41-44 together), which supersedes the individual verdicts:** interleaving is worth +0.000216..+0.000611 in both modes, but THREE structurally different arrangements of it (stream order, layer placement) are mutually indistinguishable at |delta| <= 7.5e-5. So the EXISTENCE of a cross-scope information path is what pays; the choreography is not. The rearrangement sub-family is EXHAUSTED -- further topology work must change WHAT is computed (extra rounds via layer reuse, cross-stream fusion), not when. That ±7.5e-5 same-capacity spread is also the measurement that moved the accept bar to a raw 0.0001.
 
@@ -935,8 +953,11 @@ order-alone is a small NEGATIVE, so INTERLEAVING carries all of it; iter 43 REJE
 interleave at the original order equals the champion (p=0.42/0.098), so the reorder's cost
 VANISHES under interleaving. **ORDER lever CLOSED; SCHEDULE is the productive one** and the
 2×2 is complete) ·
-**distillation 1/1** (iter 32 ACCEPTED — closes 13%/11% of the d=128 teacher gap for ~9% wall-clock;
-⚠ iter 10 was mis-filed under early-training-intervention, which is why this family read as absent) ·
+**distillation 4/4 — the phase's only perfect family** (iter 32 ACCEPTED, the d=128 teacher; iter 35
+the seed pair; iter 39 alpha 0.9; **iter 45 KD through DECAY, the current champion** — teacher signal
+pays in BOTH phases, so the "anneal onto the true objective" intuition is wrong here. Open and cheap
+on the same dump: alpha_decay 0.9 / 0.25. ⚠ iter 10 was mis-filed under early-training-intervention,
+which is why this family once read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
 5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) ·
 objective-alignment **0/1 mechanism-refuted** (iter 37 by-user weighting: worse in every size
