@@ -174,3 +174,27 @@ button one-hot and duration differ) tiled from ONE warm state, so their warm sea
 immediately, whereas the B=4 control holds four independently-random states. Real conclusion, which
 is better news than the split would have been: **serving 4 buttons costs far less than 4 independent
 reviews under compression**, because the probes are mutually coherent.
+
+## Does the iter-41 interleaved schedule cost anything at deploy? (provisional, 2026-08-11)
+
+**Provisionally no.** The schedule reorders *when* layers run, not *how many* — the champion's
+depths `[2,1,4,3,3]` are 13 layer-steps whichever way they are visited, and `interleave_visits()`
+emits exactly `sum(depths)` pairs (unit-tested). So the arithmetic per review is identical and only
+locality changes: the sequential chain finishes one stream's state before touching the next, while
+the interleaved one keeps all five states hot across the whole review.
+
+Observed during the gap-7/8 parity work, on the same machine minutes apart, fast path, B=1:
+
+| model | schedule | rev/s (3 users) |
+|---|---|---|
+| iter 31 (`architecture_d80_lora4`, depths 2/4/1/3/3) | sequential | 1505, 1490, 1519 |
+| iter 41 (`_cnd`, depths 2/1/4/3/3) | interleaved | 1552, 1461, 1533 |
+
+The two are the SAME layer multiset (13), so this is apples-to-apples rather than a size
+comparison. The ranges overlap and no difference is resolvable.
+
+⚠ **This is NOT a speed claim under the protocol** — it is six unpaired single runs, not the
+20-trial paired Wilcoxon at pinned CPU frequency that §11 requires, and they were taken while a
+GPU training chain was resident. Treat it as "no reason to expect a deploy cost", and measure
+properly if interleaving ever needs to be defended on speed. The useful half is the structural
+argument above, which does not depend on the timings.
