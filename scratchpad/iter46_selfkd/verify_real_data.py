@@ -106,4 +106,21 @@ if batch.probe_target is not None and batch.probe_target.numel() > 0:
           f"different questions")
     assert diff == int(both.sum()), "the two joins coincide -- one of them is wrong"
 
+# ---- the two one-line plumbing hops the unit tests cannot reach: PreparedBatch.to(device) must
+# carry the tensor, and get_loss must hand it to _get_loss. A dropped field here is silent -- the
+# model would just see None and train as the champion, and the run would be recorded as a null.
+moved = batch.to("cpu")
+assert moved.ahead_query is not None, "PreparedBatch.to() DROPPED ahead_query"
+assert torch.equal(moved.ahead_query, batch.ahead_query), "ahead_query changed across .to()"
+import inspect  # noqa: E402
+from rwkv.model.srs_model import SrsRWKV  # noqa: E402
+src = inspect.getsource(SrsRWKV.get_loss)
+assert "ahead_query=batch.ahead_query" in src, "get_loss does not forward ahead_query"
+# _get_loss is a script_method, so it is not reachable as a class attribute -- check the source
+# text instead. (It must ACCEPT the kwarg get_loss passes, or every step raises at runtime.)
+mod_src = inspect.getsource(sys.modules["rwkv.model.srs_model"])
+assert "ahead_query: Optional[torch.Tensor] = None," in mod_src, \
+    "_get_loss has no ahead_query parameter -- get_loss's kwarg would raise"
+print("plumbing: PreparedBatch.to() preserves it; get_loss forwards it to _get_loss")
+
 print("\nREAL-DATA VERIFY OK")
