@@ -55,10 +55,10 @@ def main():
                "mean_imm": sum(x["imm"] for x in metas) / len(metas),
                "mean_ahead": sum(x["ahead"] for x in metas) / len(metas),
                "per_user": metas}
-    Path("reference/range_fp32_summary.json").write_text(json.dumps(summary, indent=1))
+    Path(ert.OUT_DIR / "range_fp32_summary.json").write_text(json.dumps(summary, indent=1))
     print(f"\nFP32 by-user mean over {len(metas)} users: "
           f"imm {summary['mean_imm']:.6f} ahead {summary['mean_ahead']:.6f}")
-    print("wrote reference/range_fp32_summary.json")
+    print(f"wrote {ert.OUT_DIR}/range_fp32_summary.json")
 
 
 if __name__ == "__main__":
