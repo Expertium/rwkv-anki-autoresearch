@@ -89,6 +89,28 @@ pub struct ArchFlags {
     pub interleave: bool,
 }
 
+/// GAP 7, single source of truth: the execution order under the interleaved schedule, as
+/// `(module, layer)` pairs. Round `r` runs layer `r` of every stream still deep enough, in module
+/// order — FRONT-LOADED placement, matching the champion (iter 44's endpoint-anchored "spread"
+/// variant was rejected as a tie and is deliberately not implemented).
+///
+/// Exists as one function because the loop is needed by THREE engines (candle B=1, candle batched,
+/// fast). Three transcriptions with "keep in sync" comments is exactly how the fast/candle
+/// divergences this crate is prone to get started, and unlike a numeric drift a schedule bug is
+/// invisible to every shape check — it just computes a different model.
+pub fn interleave_visits(stream_layers: &[usize]) -> Vec<(usize, usize)> {
+    let n_rounds = stream_layers.iter().copied().max().unwrap_or(0);
+    let mut out = Vec::with_capacity(stream_layers.iter().sum());
+    for r in 0..n_rounds {
+        for (m, &depth) in stream_layers.iter().enumerate() {
+            if r < depth {
+                out.push((m, r));
+            }
+        }
+    }
+    out
+}
+
 impl ArchFlags {
     /// One-line summary, printed at load. The whole point of shape-detection is that a
     /// checkpoint/engine mismatch is visible rather than silently numerically wrong.
@@ -1834,26 +1856,19 @@ impl Model {
             // Placement is FRONT-LOADED (stream m runs its layer r in round r, for r < depth_m) --
             // the champion's, and the only one shipped: the endpoint-anchored "spread" variant was
             // iter 44 and was rejected as a tie.
-            let n_rounds = *self.stream_layers.iter().max().unwrap_or(&0);
             let mut v0s: [Option<Tensor>; 5] = Default::default();
             let mut per_stream: Vec<StreamState> = vec![Vec::new(); 5];
             for m in 0..5 {
                 per_stream[slot[m]].reserve(self.stream_layers[m]);
             }
-            for r in 0..n_rounds {
-                for m in 0..5 {
-                    if r >= self.stream_layers[m] {
-                        continue; // this stream sits out the round
-                    }
-                    let ls = states[slot[m]].as_ref().map(|s| &s[r]);
-                    let (xo, v0_out, layer_state) =
-                        self.run_layer(m, r, &x, v0s[m].as_ref(), ls)?;
-                    x = xo;
-                    v0s[m] = Some(v0_out); // STREAM-LOCAL: never threaded across streams
-                    per_stream[slot[m]].push(layer_state);
-                }
+            for (m, l) in interleave_visits(&self.stream_layers) {
+                let ls = states[slot[m]].as_ref().map(|s| &s[l]);
+                let (xo, v0_out, layer_state) = self.run_layer(m, l, &x, v0s[m].as_ref(), ls)?;
+                x = xo;
+                v0s[m] = Some(v0_out); // STREAM-LOCAL: never threaded across streams
+                per_stream[slot[m]].push(layer_state);
                 if dbg {
-                    summ(&format!("round{r}"), &x);
+                    summ(&format!("ilv m{m}l{l}"), &x);
                 }
             }
             new = per_stream;
@@ -2314,23 +2329,17 @@ impl Model {
         let slot = self.stream_slot;
         let mut new: Vec<BatchedStreamState> = vec![Vec::new(); 5];
         if self.arch.interleave {
-            let n_rounds = *self.stream_layers.iter().max().unwrap_or(&0);
             let mut v0s: Vec<Option<Tensor>> = vec![None; 5];
             for m in 0..5 {
                 new[slot[m]].reserve(self.stream_layers[m]);
             }
-            for r in 0..n_rounds {
-                for m in 0..5 {
-                    if r >= self.stream_layers[m] {
-                        continue;
-                    }
-                    let ls = states[slot[m]].as_ref().map(|s| &s[r]);
-                    let (xo, v0_out, layer_state) =
-                        self.run_layer_batched(m, r, &x, v0s[m].as_ref(), ls)?;
-                    x = xo;
-                    v0s[m] = Some(v0_out); // STREAM-LOCAL
-                    new[slot[m]].push(layer_state);
-                }
+            for (m, l) in interleave_visits(&self.stream_layers) {
+                let ls = states[slot[m]].as_ref().map(|s| &s[l]);
+                let (xo, v0_out, layer_state) =
+                    self.run_layer_batched(m, l, &x, v0s[m].as_ref(), ls)?;
+                x = xo;
+                v0s[m] = Some(v0_out); // STREAM-LOCAL
+                new[slot[m]].push(layer_state);
             }
         } else {
             for m in 0..5 {
@@ -2428,4 +2437,71 @@ fn single_timestep_batched(
     let s = (s + col(v)?.matmul(&row(k)?)?)?;
     let out = s.matmul(&col(r)?)?.reshape((B, H, K))?;
     Ok((out, s))
+}
+
+#[cfg(test)]
+mod schedule_tests {
+    use super::interleave_visits;
+
+    /// The champion's depths (card 2, note 1, deck 4, preset 3, user 3) under the `_cnd` order.
+    const CHAMP: [usize; 5] = [2, 1, 4, 3, 3];
+
+    #[test]
+    fn matches_the_python_schedule_for_the_champion() {
+        // Python prints, for these depths:
+        //   sched=[[0,1,-1,-1], [0,-1,-1,-1], [0,1,2,3], [0,1,2,-1], [0,1,2,-1]]
+        // i.e. 4 rounds, 13 layer-steps, hierarchy order within each round. Transcribed by hand
+        // from that banner so the test fails if either side drifts.
+        let expect = vec![
+            (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), // round 0
+            (0, 1), (2, 1), (3, 1), (4, 1),         // round 1: note (depth 1) sits out
+            (2, 2), (3, 2), (4, 2),                 // round 2: card done too
+            (2, 3),                                 // round 3: deck alone
+        ];
+        assert_eq!(interleave_visits(&CHAMP), expect);
+    }
+
+    #[test]
+    fn every_layer_runs_exactly_once() {
+        let v = interleave_visits(&CHAMP);
+        assert_eq!(v.len(), CHAMP.iter().sum::<usize>(), "13 layer-steps total");
+        let mut sorted = v.clone();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), v.len(), "no layer visited twice");
+        for (m, &d) in CHAMP.iter().enumerate() {
+            for l in 0..d {
+                assert!(v.contains(&(m, l)), "module {m} layer {l} never runs");
+            }
+        }
+    }
+
+    #[test]
+    fn a_streams_layers_run_in_ascending_order() {
+        // v0 correctness depends on this: layer 0 PRODUCES the stream's value residual and every
+        // later layer consumes it, so a stream's layer 0 must be its first visit. This is the
+        // property that is invisible to a shape check.
+        let v = interleave_visits(&CHAMP);
+        for m in 0..CHAMP.len() {
+            let layers: Vec<usize> = v.iter().filter(|(mm, _)| *mm == m).map(|(_, l)| *l).collect();
+            assert!(layers.windows(2).all(|w| w[0] < w[1]), "module {m} layers out of order");
+            assert_eq!(layers.first(), Some(&0), "module {m} does not start at layer 0");
+        }
+    }
+
+    #[test]
+    fn uniform_depths_are_a_clean_round_robin() {
+        assert_eq!(
+            interleave_visits(&[2, 2]),
+            vec![(0, 0), (1, 0), (0, 1), (1, 1)]
+        );
+    }
+
+    #[test]
+    fn degenerate_depths_do_not_panic() {
+        assert!(interleave_visits(&[]).is_empty());
+        assert!(interleave_visits(&[0, 0]).is_empty());
+        // A zero-depth stream simply never appears; the others are unaffected.
+        assert_eq!(interleave_visits(&[0, 2]), vec![(1, 0), (1, 1)]);
+    }
 }

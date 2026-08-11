@@ -483,24 +483,18 @@ impl FastModel {
             // Round r runs layer r of every stream that still has one, in module order, threading
             // the single hidden vector through. Front-loaded placement (the champion's; iter 44's
             // spread variant was rejected).
-            let n_rounds = *self.stream_layers.iter().max().unwrap_or(&0);
             let mut v0s: Vec<Option<Vec<f32>>> = vec![None; 5];
             let mut per_stream: Vec<FastStreamState> = vec![Vec::new(); 5];
             for m in 0..5 {
                 per_stream[slot[m]].reserve(self.stream_layers[m]);
             }
-            for r in 0..n_rounds {
-                for m in 0..5 {
-                    if r >= self.stream_layers[m] {
-                        continue; // this stream sits out the round
-                    }
-                    let ls = states[slot[m]].as_ref().map(|s| &s[r]);
-                    let (xo, v0_out, layer_state) =
-                        self.run_layer(m, r, &x, b, v0s[m].as_deref(), ls)?;
-                    x = xo;
-                    v0s[m] = Some(v0_out); // STREAM-LOCAL
-                    per_stream[slot[m]].push(layer_state);
-                }
+            for (m, l) in crate::model::interleave_visits(&self.stream_layers) {
+                let ls = states[slot[m]].as_ref().map(|s| &s[l]);
+                let (xo, v0_out, layer_state) =
+                    self.run_layer(m, l, &x, b, v0s[m].as_deref(), ls)?;
+                x = xo;
+                v0s[m] = Some(v0_out); // STREAM-LOCAL
+                per_stream[slot[m]].push(layer_state);
             }
             new = per_stream;
         } else {
