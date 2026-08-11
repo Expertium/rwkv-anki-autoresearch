@@ -531,6 +531,29 @@ The H=2/K=16 / 193,724-param champion on the 1500-user data-variety recipe, its 
 raw >=0.00005 via 4-dp rounding, and >=0.0003 before that) AND pass the p-gate (a monotonic
 champion).
 [[research-acceptance-gate]]
+**★ EXCEPTION -- CURVE-SIDE changes (Andrew 2026-08-12): "ahead better, imm not (statistically)
+significantly worse."** For levers that touch ONLY the curve/ahead objective, requiring imm to also
+improve by >=0.0001 demands a side effect the mechanism cannot produce. Verified for iter 46's
+self-distillation: the teacher is `.detach()`ed so no gradient reaches the rating head, and the imm
+objective is `p_loss` = cross-entropy on **`label_rating`**, which the lever never touches -- it
+rewrites `label_y`, which feeds only `curve_loss` / `curve_raw_loss` / the PAVA probe target. imm can
+therefore move ONLY through the shared trunk. (§9 already said this in general: "a curve-side change
+moves only one of the two gate modes".)
+⚠ **`label_y` DOES reach one imm-side term** -- `p_binary_loss`, srs_model.py:1128 -- but
+`pbin_scale=0` in this recipe so it is skipped. **If `RWKV_PBIN_SCALE` is ever turned on, a
+curve-side lever starts softening the imm objective too and this exception no longer applies.**
+**THE RULE:** accept iff ahead improves by **raw >=0.0001 with p<0.0001**, AND imm is **not
+significantly worse** = NOT (imm mean declines AND the one-sided paired Wilcoxon for "candidate
+worse" gives p < 0.05). **Both halves of the harm test are load-bearing, and iter 44 is why:** its
+imm mean moved -0.000001 (nominally worse) while the RANK test said candidate BETTER at p=1e-4 --
+most users improved slightly, a few worsened a lot. A rank-only guard fails a magnitude-null
+iteration; a mean-only guard fires on noise. Tool: `paired_pvalue.py --curve-side` (exit 0 = pass;
+`--harm-alpha` tunes the 0.05). It also NOTES, without failing, an imm decline larger than the
+7.5e-5 noise floor that the rank test did not call worse -- look before promoting.
+**SCOPE -- use it only for curve-side levers** (self-distillation, PAVA lambda, ahead-target and
+monotonicity changes, duration handling). Trunk / optimizer / capacity / topology changes keep the
+BOTH-modes rule, because those genuinely can move both. Precedent: iter 36 (PAVA lambda 0.1->0.2)
+was this exact shape and was directed-accepted on a 5.9:1 ahead-for-imm trade.
 **EXCEPTION -- SIZE/SPEED changes** (e.g. H=2/K=16): judged on the **efficiency budget** instead -- accept if
 both modes stay within **+0.0015** of the champion AND the change shrinks state and/or speeds training (it
 Pareto-dominates at accuracy-parity). H=2/K=16 was accepted this way (halved card state, 1.16x faster, accuracy
