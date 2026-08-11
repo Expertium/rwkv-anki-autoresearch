@@ -7,13 +7,28 @@ REM
 REM WHY A SHARED ARM RUNNER: three arms differing in two env vars. Triplicating 40 env lines is
 REM how iter 39 got launched into the wrong directory (a string-replace that missed one line).
 REM
-REM THE BUDGET CUT = RWKV_MAX_STEPS (train_rwkv.py:889 caps total_steps). Safe here because
+REM THE BUDGET CUT, and it takes TWO levers -- one per phase. ⚠ v1 OF THIS FILE GOT IT WRONG AND
+REM THE RUN WAS KILLED 3.5 h IN (2026-08-10): it set only RWKV_MAX_STEPS, which caps the WS phase,
+REM and assumed decay would follow. It does not. `write_decay_setup.py` derives decay length as
+REM   total decay steps = int(decay_epochs * num_groups)
+REM i.e. from EPOCHS x the dataset's group count (10,935 at MAX=65536), NOT from however many steps
+REM WS actually ran. So a 3,645-step WS was followed by a 10,935-step decay: 14,580 total = 2/3
+REM budget at a 1:3 WS:decay ratio -- a differently-SHAPED recipe, not a scaled-down one, which is
+REM exactly what a calibration must not be.
+REM   WS phase   -> RWKV_MAX_STEPS=%SHORTSTEPS%     (caps total_steps, train_rwkv.py:889)
+REM   decay phase-> write_decay_setup arg 8 = %DECAYEPOCHS%  (fraction of an epoch)
+REM ⚠ Do NOT shorten decay with RWKV_MAX_STEPS: decay is a COSINE to zero, so capping it would
+REM stop the schedule mid-curve and leave the model at a high LR -- an unfinished decay, not a
+REM short one. Shrinking decay_epochs keeps the cosine complete and just makes it shorter.
+REM
+REM Capping WS this way is safe because
 REM   (a) WS LR is flat after warmup, so capping shortens the run rather than reshaping the
-REM       schedule -- unlike a cosine phase, where capping would change the LR curve;
+REM       schedule -- unlike the cosine phase above;
 REM   (b) RWKV_KD_ALPHA is FIXED (0.9), so the teacher mix is undistorted -- with the ORIGINAL
 REM       annealed 1->0 ramp, a shortened run would silently train at a different average alpha;
 REM   (c) the end-of-training checkpoint is written at total_steps, so <TAG>_ws_3645.pth exists.
-REM Decay follows at ratio 1.0 => 3645 decay steps, keeping the champion's WS:decay proportions.
+REM Result: WS 3,645 + decay 3,645 = 7,290 = exactly 1/3 of the champion's 21,870, at the SAME
+REM 1:1 WS:decay proportion the champion uses.
 REM EVAL STAYS AT THE FULL 2500 VAL-half users, deliberately: this experiment isolates the
 REM TRAINING-budget axis. Cutting the eval set is a separate (variance-only, bias-free) change.
 REM ===========================================================================================
@@ -26,6 +41,8 @@ set LOG=%DIR%\budgetcal.log
 set STAMP=%RANDOM%%RANDOM%
 set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k
 set SHORTSTEPS=3645
+REM 3645/10935 -- must match SHORTSTEPS/groups so decay equals WS, as at full budget.
+set DECAYEPOCHS=0.3333
 
 echo === ARM %TAG% START %DATE% %TIME% (arch=%ARCHM% interleave=%ILV% max_steps=%SHORTSTEPS%) === >> "%LOG%"
 
@@ -80,10 +97,16 @@ set RWKV_KD_MIX=
 set RWKV_KD_ALPHA=
 set RWKV_MAX_STEPS=
 
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/budgetcal %TAG%_ws %TAG%_d scratchpad/budgetcal/%TAG%_decay.toml train_db_5k_h1 1 5000 1.0 1e-3 65536 > "%DIR%\%TAG%_dsetup_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/budgetcal %TAG%_ws %TAG%_d scratchpad/budgetcal/%TAG%_decay.toml train_db_5k_h1 1 5000 %DECAYEPOCHS% 1e-3 65536 > "%DIR%\%TAG%_dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo ARM %TAG% DSETUPFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   endlocal & exit /b 22
+)
+REM Guard the v1 bug directly: the decay toml must carry the SHORT epoch count, not 1.0.
+findstr /C:"EPOCHS = %DECAYEPOCHS%" "scratchpad\budgetcal\%TAG%_decay.toml" >nul
+if not %ERRORLEVEL%==0 (
+  echo ARM %TAG% DECAYEPOCHS_NOT_APPLIED %DATE% %TIME% >> "%LOG%"
+  endlocal & exit /b 34
 )
 findstr /C:"%TAG%_ws_%SHORTSTEPS%" "%DIR%\%TAG%_dsetup_%STAMP%.log" >nul
 if not %ERRORLEVEL%==0 (

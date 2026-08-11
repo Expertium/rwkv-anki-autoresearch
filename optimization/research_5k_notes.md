@@ -543,3 +543,132 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   1.65x; champion-run training ~4.6 h. Next targets if ever needed: QAT kernels (210 ms, already
   37x-optimized), elementwise mass via compile-all-mixers/recompile-limit raise (PERTURBING — needs
   trajectory revalidation; Dynamo's 8-entry cache cap leaves ~1 of 9 mixer guard-sets eager).
+
+## The ahead-vs-imm information gap (measured 2026-08-11) — the largest quantified headroom on the books
+
+The two scored metrics predict **the same events**, from different information sets. Verified on
+the iter-41 champion's own result jsonls (zero GPU cost): the per-user `size` field is **identical
+for all 2500 users** between `RWKV-*` (ahead, curve head, scored at the *previous* real row) and
+`RWKV-P-*` (imm, rating head, scored at that review's *own* query row). Same event set, same count,
+every user.
+
+| | value |
+|---|---|
+| by-user mean ahead | 0.297889 |
+| by-user mean imm | 0.265479 |
+| **gap** | **0.032411** |
+| imm better than ahead on | **2497 / 2500 users (99.9%)** |
+| per-user gap: median / p10 / p90 | 0.0197 / 0.0056 / 0.0680 |
+
+So the model already emits, for every scored review, a **strictly better-informed estimate of the
+very label the curve head is being trained on** — better on 99.9% of users, by ~100x a typical
+accepted iteration gain. That is what makes privileged self-distillation (imm -> ahead soft
+targets) and retrievability-coupling (feeding logit R(t) into the Again logit) the two
+highest-headroom proposals in the 2026-08-10 ranking.
+
+⚠ **The gap is an UPPER BOUND, not a reachable target.** The query row sees the intervening
+reviews and the exact lag; the ahead head structurally cannot — predicting cold from history *is*
+the task. Distillation can transfer the variance-reduction part of the gap (a calibrated soft
+target beats a 0/1 label, which is why the external-teacher alpha curve peaks at 0.9), not the
+information part. Treat 0.032 as "there is real room here", not as the size of the prize.
+
+## What the training budget is worth — a free corroboration of the endgame premise (2026-08-11)
+
+The budget calibration's c41 arm is the champion recipe at **1/3 budget** (WS 3,645 + decay 3,644
+vs 10,935 + 10,935). Paired against iter 41 at full budget on the same 2500 VAL users:
+
+| | ahead | imm |
+|---|---|---|
+| iter 41 (full) | 0.297889 | 0.265479 |
+| c41 (1/3) | 0.299851 | 0.267502 |
+| **cost of the 3x cut** | **−0.001961** | **−0.002024** |
+
+Two things follow.
+
+**1. It is ~7x a typical accepted iteration gain (+0.0003).** So short-budget models are markedly
+further from convergence — which is fine for *ranking candidates at matched budget*, and exactly
+why the bias caveat matters: effects that only pay off near convergence (regularization, added
+capacity) will be systematically under-measured there.
+
+**2. It independently corroborates the endgame's premise, and this was not designed in.** The
+phase's headline gap — our 1.25-epoch recipe vs upstream's ~12 — is **+0.00373 ahead / +0.00430
+imm (mean +0.00402)**. If returns are ~log-linear in budget, the measured 3x step (+0.00199 mean)
+scales to a 10x step as `0.00199 x ln(10)/ln(3)` = **+0.00418** — within **4%** of the recorded
+gap. Two independent routes to the same number: one from a controlled 3x budget A/B on our own
+trunk, the other from a five-week-old comparison against a differently-trained model.
+
+⚠ Log-linearity is an assumption fitted to a single pair of points, and the two arms differ only
+in budget whereas upstream also differs in augmentation, peak LR, warmup and MAX. Read it as
+"the budget story survives a quantitative check it could have failed", not as a forecast. It does
+raise confidence that the ~4-day 10x endgame run buys roughly what it is predicted to buy.
+
+## Budget calibration — the PRE-REGISTERED decision rule (written 2026-08-11 12:05, before arm c43 reported)
+
+Two of the three arms are in. Recorded here *before* the third so the criterion cannot be fitted
+to the answer.
+
+**Measured so far.** (a) The 1/3 budget costs **−0.00196 ahead / −0.00202 imm** in absolute terms
+(c41 vs iter 41). (b) The known large effect (interleaving) survives the cut with sign and
+significance intact but **compressed to a consistent ~65%**: ahead +0.000315 vs +0.000489 (64.4%),
+imm +0.000402 vs +0.000612 (65.7%), both still p<1e-33. So short-budget effects are **scaled, not
+scrambled** — ordering transfers predictably.
+
+**Still to come.** Arm c43 is the verified full-budget NULL (iter 43 tied iter 41 at p=0.42/0.098),
+so its short-budget |Δ| vs c41 **is** the short-budget noise floor, call it N.
+
+**The rule.** At full budget the floor is 7.5e-5 and the bar is 1.0e-4, i.e. the bar sits 1.33x
+the floor. Holding that evidential standard at 1/3 budget, and correcting for the 0.65 compression
+so the bar means the same thing in full-budget terms:
+
+```
+short-budget bar (full-budget-equivalent) = 1.33 x N / 0.65 = 2.05 x N
+adopt iff 2.05 x N <= 1.0e-4   =>   N <= 4.9e-5   in BOTH modes
+```
+
+**ADOPT 1/3 BUDGET IFF the c41-vs-c43 |Δ| ≤ 4.9e-5 in both modes.** Note what that demands: the
+short-budget floor must be *better* than the full-budget 7.5e-5, when the models are further from
+convergence — so the honest prior is that this FAILS. If it does, the finding is not "the
+calibration was wasted" but "1/3 budget cannot gate 0.0001-class effects", which still licenses
+short budget for **screening** larger effects and for **ranking** batches, just not for accepting
+champions. Cost of learning it: 15.3 h, versus discovering it by promoting a phantom champion.
+
+### VERDICT (2026-08-11 14:01): DO NOT adopt the 1/3 budget for GATING. Use it for screening/ranking only.
+
+All three arms complete, ~15.3 h, chain clean (`DONE_EXIT_0`).
+
+**The measured short-budget noise floor** (c41 vs c43 — a pairing verified NULL at full budget,
+p=0.42/0.098): **ahead |Δ| = 9.0e-5, imm |Δ| = 3e-6** (p=1.00 / 0.71, so both are genuinely null
+in significance — it is the MAGNITUDE that matters here, since that is what a bar must clear).
+
+Against the pre-registered criterion (adopt iff |Δ| ≤ 4.9e-5 in both modes): **imm PASSES at
+3e-6, ahead FAILS at 9.0e-5. Verdict: do not adopt.** Ahead is the binding constraint, and it
+fails by ~1.8x.
+
+**Why, in one line:** on ahead the floor got *worse* (9.0e-5 vs the full-budget 7.5e-5, ~1.2x)
+while the signal shrank to 65% — so **signal-to-noise falls ~1.9x**. The effective accept bar at
+1/3 budget, expressed in full-budget-equivalent units, would be **1.84e-4 on ahead** versus the
+1.0e-4 we accept today. Short budget would silently make us ~2x stricter on ahead and throw away
+real candidates, which is the opposite of the intent (more runs, not fewer accepts).
+
+**The asymmetry is itself a finding.** imm's floor (3e-6) is 30x tighter than ahead's (9.0e-5).
+The rating head reads the query row directly, so its prediction is dominated by well-determined
+current-row features; the curve head is evaluated one review stale, through the recurrence, where
+trajectory differences accumulate. That matches the earlier information-gap measurement (imm beats
+ahead on 99.9% of users) — the same structural asymmetry shows up as *stability*, not just accuracy.
+
+**What the 15.3 h bought, all of it reusable:**
+1. **Gating stays at full budget.** Settled by measurement, not by argument.
+2. **Screening/ranking at 1/3 budget is LICENSED** — effects are scaled, not scrambled (~65%
+   compression, near-identical in both modes, both p<1e-33). A batch of candidates can be ranked
+   short and only the leader confirmed at full budget. That is the two-tier screen, now with a
+   measured transfer function instead of a hope.
+3. **The 0.65 compression constant** — multiply a short-budget delta by 1/0.65 to estimate its
+   full-budget size.
+4. **The budget-scaling corroboration** (3x budget = +0.002, projecting to +0.0042 at 10x vs the
+   +0.0040 recorded gap) — independent support for the endgame run's premise.
+5. **A second null pair** for the noise-floor record: iters 41/43/44 at full budget (±7.5e-5) and
+   c41/c43 at 1/3 (ahead 9.0e-5, imm 3e-6).
+
+⚠ Do NOT read this as "short budget is useless". It is unusable for *accepting champions* at our
+effect sizes; it is fine for triage. And the bias caveat still stands untested: all three arms were
+SCHEDULE changes, so nothing here measures how short budget treats regularization or capacity.
