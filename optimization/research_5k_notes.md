@@ -1119,3 +1119,24 @@ Churn is dataset-wide: **10% of users have MORE reviewed card_ids than collectio
 ⚠ The max assumes state is NEVER pruned. In a real Anki deployment a deleted card's state would go
 with the card, so 5.68 MB is an upper bound and uid 8902's is largely historical. The honest planning
 numbers are the median (146 KB) and p99 (1.77 MB).
+
+### ★ THE QAT WALL-CLOCK TAX AT d=80, MEASURED: 3.8x, not 1.7x and certainly not +13%
+Measured 2026-08-12 on the running qtaxc_m2b12 decay (60 steps in 180 s with the CPU otherwise
+idle): **0.333 steps/s**, against the plain recipe's **1.253 steps/s** (tuner trial 1, same MAX,
+same trunk) = **3.76x slower**. KD is on in BOTH, so the ratio isolates QAT.
+
+This is exactly the re-measurement the endgame section asked for and it lands close to Andrew's
+recollection ("IIRC it ended by being like 3x slower") rather than either recorded figure:
+- **+13%** was a PROFILED GPU KERNEL SHARE (651 vs 578 ms) at d=32, not wall-clock.
+- **1.7x** was d=32 WALL-CLOCK (`champ5k_plain` vs `champ5k_b1`).
+- **3.76x** is d=80 wall-clock — and the growth is expected: **per-card state is 2,880 floats here
+  vs 576 at d=32 (5x)**, and the fake-quant work (rank-1 SVD + PQ search + norm quant) scales with
+  state size, while the rest of the step does not. CLAUDE.md predicted this would need re-measuring
+  "at d=80" for precisely that reason.
+
+**CONSEQUENCE FOR THE 10x-BUDGET ENDGAME.** The plan costs the QAT arm at ~1.7x. At 3.76x, a
+QAT-throughout 10x run would be ~4x the plain arm, not ~2x. This strengthens the already-recommended
+option A (a warm-started ~2-epoch QAT fine-tune on the plain arm's final) over option B (a second
+full 10x run with QAT active throughout): B now costs roughly a week of GPU on its own.
+⚠ Measured on the DECAY phase with KD reading from the dump; a WS-phase measurement could differ
+slightly, but not by enough to change the conclusion.
