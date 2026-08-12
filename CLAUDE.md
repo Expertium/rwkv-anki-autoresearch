@@ -858,19 +858,17 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
 **✓ BUDGET CALIBRATION DONE 2026-08-11 14:01 -- VERDICT: gating STAYS at full budget; and screening is NOT worth it either (Andrew, follow-up): keep doing FULL RUNS.** Three arms, 15.3 h, `DONE_EXIT_0`. Measured short-budget noise floor (c41 vs c43, a pairing verified null at full budget): **ahead |delta| 9.0e-5, imm 3e-6** -- against the PRE-REGISTERED bar of 4.9e-5, imm passes and **ahead fails by ~1.8x**. Mechanism: on ahead the floor got 1.2x WORSE than full budget's 7.5e-5 while signal compressed to 65%, so signal-to-noise falls ~1.9x and the effective accept bar would become 1.84e-4 vs the 1.0e-4 we accept today -- i.e. short budget would silently make us 2x stricter and discard real candidates. **Screening was checked separately and REJECTED for our pool:** a short run is 54% of a full one (the eval is a fixed 2.9 h), so screening only breaks even at K>2.2 candidates -- and its PAIRWISE noise is 1.96e-4 in full-budget effect size, which leaves **6 of the last 10 iterations inside its noise, including two ACCEPTED champions (35, 39)**. It would pay only on batches with wide spread (new arch family, coarse HP grid), never on near-bar work. **Banked and reusable:** effects are SCALED not scrambled (~65% compression, both p<1e-33) and the **0.65 constant** converts a short delta to full-budget size; the **3x-budget step = +0.002** projects to +0.0042 at 10x vs the +0.0040 recorded upstream gap, corroborating the endgame premise to 4%. ⚠ All three arms were SCHEDULE changes, so this does NOT measure how short budget treats regularization or capacity. Detail: `research_5k_notes.md`.
 **✓ ITER 45 DONE 2026-08-11 23:30 -- ACCEPTED, NEW CHAMPION** (KD through the decay phase; see the
 champion block above). Distillation is now 4/4.
-**▶ ITER 46 STAGED, launch when the GPU is free** (`scratchpad/iter46_selfkd/run_iter46.cmd`,
-code committed `fdeadcd`): **privileged self-distillation, imm -> ahead** -- `RWKV_SELFKD_BETA`
-softens the ahead target toward the model's OWN better-informed imm estimate of the SAME review
-(the measured 0.032411 gap; teacher DETACHED; 100.00% coverage verified on real LMDB rows). It runs
-BEFORE the KD mix and softens only the HARD share, so an active external teacher keeps its tuned
-alpha EXACTLY (autograd-recovered 0.899999976 at every beta) -- no bundling. **Training-only: eval
-and `rust/rwkv-infer` untouched, params still 558,212.** Smokes green (`smoke_selfkd.py`,
-`verify_real_data.py`).
-**⚠ SET `KDDECAY=1` NOW THAT ITER 45 WON, AND RAISE BETA WITH IT.** The imm teacher's share is
-`(1-alpha)*beta`, so on the iter-45 base (decay alpha 0.5) the average dose is `0.3*beta` versus
-`0.55*beta` on the old base -- the SAME beta would deliver barely half the intervention. Launch at
-**beta 0.7** (7% of the WS target, 35% of the decay target) and gate vs
-`RWKV-iter45_kddecay-s0.jsonl` / `RWKV-P-iter45_kddecay-s0.jsonl`.
+**✓ ITER 46 DONE 2026-08-12 09:28 -- REJECTED as a TIE** (privileged self-distillation imm->ahead,
+beta 0.7): ahead -0.000023 / imm +0.000016, both inside the noise floor; imm was NOT significantly
+worse (p_worse 0.986) so the curve-side gate failed purely on ahead.
+**★ THE FINDING IS WORTH MORE THAN THE ITERATION: the 0.032 ahead-vs-imm gap is NOT transferable by
+soft targets.** The teacher shares the trunk AND the forward pass -- it is a different head on the
+same representation, not a different function like the d=128 teacher that made iters 32/35/39 work.
+So the soft target only re-expresses what the student already computes. Closing that gap requires
+changing what the ahead path COMPUTES or is FED, not what it is FIT to. Before the self-distillation
+sub-family is deprioritized, the literature-supported variant is a teacher that is NOT the same
+forward pass (past checkpoint / mean-teacher, or a different augmentation view).
+Detail: `research_5k_verbose.md` iter 46.
 **▶ NEXT AFTER ITER 46: THE QAT TAX (Andrew 2026-08-12, "let's re-measure the QAT tax and work on
 reducing it").** Runner staged + CPU-verified: `scratchpad/qat_tax/run_qat_tax.cmd`.
 **WHY IT JUMPED THE QUEUE -- the stopping-point balance sheet** (`research_5k_notes.md`):
@@ -999,7 +997,7 @@ order-alone is a small NEGATIVE, so INTERLEAVING carries all of it; iter 43 REJE
 interleave at the original order equals the champion (p=0.42/0.098), so the reorder's cost
 VANISHES under interleaving. **ORDER lever CLOSED; SCHEDULE is the productive one** and the
 2×2 is complete) ·
-**distillation 4/4 — the phase's only perfect family** (iter 32 ACCEPTED, the d=128 teacher; iter 35
+**distillation 4/5** (external-teacher sub-family 4/4; SELF-distillation 0/1 -- iter 46, a clean null that explains why: a same-forward-pass teacher carries no independent information) (iter 32 ACCEPTED, the d=128 teacher; iter 35
 the seed pair; iter 39 alpha 0.9; **iter 45 KD through DECAY, the current champion** — teacher signal
 pays in BOTH phases, so the "anneal onto the true objective" intuition is wrong here. Open and cheap
 on the same dump: alpha_decay 0.9 / 0.25. ⚠ iter 10 was mis-filed under early-training-intervention,

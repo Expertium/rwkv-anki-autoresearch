@@ -2194,3 +2194,51 @@ peaked at 0.9 and bracketed at 1.0, so the decay curve's shape is not implied by
 **Chain clean:** `DONE_EXIT_0` 23:30:07, eval 2500/2500 on attempt 1, and the runner's own guards
 confirmed the lever was live where it mattered — the decay log carried `[kd-mix] KD ON` and
 `alpha FIXED at 0.5`, with `DONE_EXIT_NOKD_DECAY` / `_WRONGALPHA_DECAY` as the failure modes.
+
+## iter 46 — privileged self-distillation (imm → ahead): a clean null, and it explains the 0.032 gap (REJECTED, 2026-08-12)
+
+**What ran.** `RWKV_SELFKD_BETA=0.7`: the ahead objective's target is softened away from the raw 0/1
+label toward the model's **own** better-informed imm estimate of the *same* review, taken from the
+query row that scores it (join `review_th[q] == label_review_th[r]`; **100.00% coverage** verified on
+real LMDB rows, 388,156/388,156 across 5 users, 0 violations). Teacher **detached**. It runs *before*
+the external KD mix and softens only the HARD share, so the tuned external alpha is preserved exactly
+— autograd-recovered 0.899999976 at every beta. Motivation: the measured ahead-vs-imm information gap
+(identical `size` on all 2500 VAL users, imm better on 2497, mean gap **0.032411**).
+
+**Verdict: REJECTED as a TIE**, under the curve-side gate pre-registered before the run reported.
+
+| | champion (45) | iter 46 | Δ | p |
+|---|---|---|---|---|
+| ahead | 0.297697 | 0.297719 | **−0.000023** | 0.996 (improvement) |
+| imm | 0.265375 | 0.265359 | **+0.000016** | 0.014 |
+
+Both inside the ±7.5e-5 noise floor. imm was **not** significantly worse (p_worse = 0.986), so the
+gate failed purely on ahead — the mode the lever targets. size 0/2500, nan_users 0, params 558,212.
+
+**WHY IT DID NOTHING — the teacher shares the trunk and the forward pass.** The imm head is not an
+independent model; it is a *different head on the same representation, computed in the same pass*.
+Classic distillation transfers "dark knowledge" because the teacher is a genuinely different
+function — the d=128 teacher behind iters 32/35/39 is a separate, better-trained model, and that
+sub-family is 4/4. Here the soft target is a smoothed re-expression of what the student already
+computes, so it carries nothing the hard label plus the student's own representation did not already
+provide. It reweights; it does not inform.
+
+**★ CONSEQUENCE, which is worth more than the iteration cost: the 0.032 gap is NOT transferable
+knowledge.** It is a gap in what the two heads can **see** — the query row has the intervening
+reviews and the exact lag, and the ahead path structurally cannot — plus a difference in head form.
+Closing it therefore requires changing what the ahead path **computes or is fed**, not what it is
+**fit to**. This is strictly stronger than the original "upper bound, not a target" caveat: soft
+targets cannot reach any of it.
+
+**Before the self-distillation sub-family is deprioritized** (conduct rule 2 asks for a second
+implementation of a near-miss idea): the variant with actual literature support is a teacher that is
+*not the same forward pass* — a past checkpoint (mean-teacher / temporal ensembling) or a different
+augmentation view. Those are genuinely independent functions. Not queued: Andrew has directed
+QAT-tax work next.
+
+**Ops.** The WS phase ran under `run_iter46.cmd`, whose chain died `DONE_EXIT_WSFAIL_3` because I
+edited the running runner and "reverted" with `git checkout` — restoring LF as CRLF and shifting
+every byte offset cmd.exe resumes from. The WS **checkpoint survived intact**; phase 2
+(`run_iter46b.cmd`) completed decay+eval normally (`DONE_EXIT_0`, eval 2500/2500 on attempt 1, decay
+guards green for `selfkd 0.7` and base KD `alpha 0.5`). The WS log was truncated, so this iteration
+has no step trace — harmless for a reject.
