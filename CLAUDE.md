@@ -575,10 +575,24 @@ research phase (train 1-5000 / eval 5001-10000; old d=128 model eval'd on 5001-1
 the same >=0.0003-BOTH-modes gate + params <=225,000, and ADDS: (a) **LogLoss recorded WITH (fake)
 card- AND note-state quantization** -- beat the old fp big model *while* quantized. Env UPDATED 2026-07-08
 to the final q72u recipe (fixed champion codebooks, no cb-learning -- that upgrade needs per-run
-cb-export->eval wiring, queued): `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
-RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_q72u.txt
+cb-export->eval wiring, queued).
+**★ BOTH CODEBOOKS REPLACED 2026-08-12 -- THE q72u PAIR IS d=32-SHAPED AND MUST NOT BE USED ON THIS
+TRUNK.** `pq_cb_shift_q72u.txt` is C=32 and hard-FAILS a shape assert at C=80; `pq_cb_wkv_q72u.txt`
+stays dimensionally valid (K=16 either way) and so fails SILENTLY -- it measures **worse than random**
+here (held-out 1.0107 vs 0.9576 for 1024 random directions, against the 1.0 encode-to-zero bound).
+Refits: **`reference/pq_cb_wkv_c80_b10.txt`** (same header/1024 rows -> identical deploy state size;
+error 1.0107 -> 0.3973) and **`reference/pq_cb_shift_c80_m2b12.txt`** (24 b/vector, same bits as
+q72u). The 4-arm probe matrix priced the WKV swap at **+0.003235 ahead / +0.004183 imm of recovered
+PTQ cost for zero extra bytes**, and showed the WKV side is ~14x the shift side (whole shift cost
++0.000365/+0.000720), so m2b12 is the deploy choice and quantization work belongs on the WKV half.
+**CURRENT ENV:** `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
+RWKV_QAT_PQ=reference/pq_cb_wkv_c80_b10.txt RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_c80_m2b12.txt
 RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1` (JIT on the
-grafted q72u paths unverified -- A/B once at champion-run launch); (b) card+note state sizes FIXED, but deck/preset MAY grow
+grafted paths unverified -- A/B once at champion-run launch).
+⚠ **A fitted codebook is validated by SHAPE and used on CONTENT** -- re-fit whenever d_model, H, or
+the state distribution changes, and check it against a random-catalog control (CPU, minutes:
+`scratchpad/qat_tax/wkv_cb_staleness.py`). Nothing in the pipeline warns you.
+(b) card+note state sizes FIXED, but deck/preset MAY grow
 ~5-10x and global up to ~100x; (c) WS FIXED at **1 epoch** (2->1 Andrew 2026-07-09 via the champ5k_b1
 budget A/B: 2nd epoch adds nothing -- ahead -0.00006 p=0.31, imm +0.00043 BETTER p=6e-62), decay = WS x
 ratio, ratio in [1/10, 1/2.5] (ALSO quant-aware), decay_ratio is an `hp_tuner_5k.py` lever; (d) HP-tune FIRST,
