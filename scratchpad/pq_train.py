@@ -22,7 +22,15 @@ def parse_args(argv):
             o[a[2:]] = int(argv[i + 1]); i += 2
         else:
             files.append(a); i += 1
-    return out, files, o
+    # cmd.exe does NOT expand wildcards (unlike a POSIX shell), so a `corpus\wkv_*.txt` argument
+    # arrives here literally. Mirrors pq_train_shift.py; a pattern that matches nothing is passed
+    # through unchanged so the caller still gets a real "no such file" instead of silence.
+    import glob as _glob
+    expanded = []
+    for f in files:
+        hits = sorted(_glob.glob(f))
+        expanded.extend(hits if hits else [f])
+    return out, expanded, o
 
 def load_states(files, h, k):
     hkk = h * k * k; rows = []

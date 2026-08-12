@@ -73,6 +73,31 @@ def encode_err(X, cb, chunk=4096):
     return float(np.concatenate(errs).mean())
 
 
+def split(X, files, opts, h, k):
+    """Train/holdout split. --holdout-user <id> keeps that user's files ENTIRELY out.
+
+    A random-vector split is optimistic here: states from one user's cards are correlated, so a
+    held-out vector usually has a near-twin in training and the refit looks better than it will
+    generalize. The deployed catalog is fitted on a handful of users and applied to thousands, so
+    holding out a whole USER is the honest analogue. Random split stays available as the default
+    because it also works on a single-user corpus.
+    """
+    uid = opts.get("holdout-user")
+    if uid:
+        hold_files = [f for f in files if f"_{uid}_" in os.path.basename(f)]
+        train_files = [f for f in files if f not in hold_files]
+        if not hold_files or not train_files:
+            raise SystemExit(f"--holdout-user {uid}: matched {len(hold_files)} hold / "
+                             f"{len(train_files)} train files")
+        print(f"  holdout = user {uid} ({len(hold_files)} files), train = {len(train_files)} files")
+        hold = collect_joint(load_states(hold_files, h, k), k)
+        train = collect_joint(load_states(train_files, h, k), k)
+        return hold, train
+    rng = np.random.default_rng(0)
+    perm = rng.permutation(len(X))
+    return X[perm[:opts["holdout"]]], X[perm[opts["holdout"]:]]
+
+
 def fit(X, ncent, seed=0):
     from sklearn.cluster import MiniBatchKMeans
     km = MiniBatchKMeans(n_clusters=ncent, random_state=seed, n_init=3, max_iter=100,
@@ -88,7 +113,7 @@ def main():
     i = 0
     while i < len(args):
         if args[i].startswith("--"):
-            opts[args[i][2:]] = int(args[i + 1]); i += 2
+            opts[args[i][2:]] = int(args[i + 1]); i += 2  # every option here is an int (incl. a user id)
         else:
             files.extend(glob.glob(args[i])); i += 1
     if not files:
@@ -103,9 +128,7 @@ def main():
         print(f"  ⚠ thin corpus: {len(X)} vectors for ncent={ncent} "
               f"({len(X) // max(ncent, 1)} per centroid) -- treat REFIT as a lower bound on quality")
 
-    rng = np.random.default_rng(0)
-    perm = rng.permutation(len(X))
-    hold, train = X[perm[:opts["holdout"]]], X[perm[opts["holdout"]:]]
+    hold, train = split(X, files, opts, h, k)
 
     old_cb, old_bits, old_sub = load_joint_cb(OLD_CB)
     if old_sub != X.shape[1]:
