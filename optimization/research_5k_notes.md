@@ -968,6 +968,7 @@ vectors, 189,430 training):
 | 8 | 256 | 0.4580 | |
 | 10 | 1024 (**shipped budget**) | 0.3776 | -17.6% |
 | 12 | 4096 | 0.3224 | -14.6% |
+| 14 | 16384 | 0.2844 | -11.8% |
 | — | OLD q72u, any budget | 1.0107 | (worse than encode-to-zero) |
 
 So the WKV joint-uv scheme is **not saturated** at the shipped budget — unlike the shift scheme.
