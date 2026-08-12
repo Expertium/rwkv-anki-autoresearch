@@ -27,16 +27,20 @@ REM attempts below deliberately have no `del` between them so the resume propert
 REM ⚠ write_decay_setup's folder arg must be RELATIVE (an absolute C:\Users path embeds \U in the
 REM toml and tomli dies with "Invalid hex value").
 REM
-REM WHY 500 USERS (5001-5500) AND NOT THE FULL VAL HALF. A QUANTIZED eval costs ~28 s/user vs
-REM ~4.3 s/user plain -- measured 2026-08-12, and it is expected arithmetic, not a bug: QAT adds
-REM ~73 ms of fixed per-step work (profiled +13% on a 578 ms TRAINING step), which is ~6x on a
-REM much cheaper eval step. The full VAL half would be ~19 h for cell 2 alone. 500 users costs
-REM ~3.9 h and still resolves this easily: the paired noise floor is ~1.7e-4 there (7.5e-5 at
-REM n=2500, scaled by sqrt(5)) against an expected tax of ~0.001-0.005, i.e. 6-30x margin.
-REM ALL cells use the SAME 500 users -- including the PTQ arm -- so every component of the
-REM decomposition is exactly paired and the report's tax == degradation + drift CHECK closes to
-REM zero. If a component lands marginal, extending cell 3 is cheap (it is a PLAIN eval); it is
-REM cell 2 that is expensive, and that is the one 500 users is chosen to afford.
+REM WHY THE FULL VAL HALF (5001-7500), AND WHAT IT COSTS. A QUANTIZED eval runs ~10.4 s/user vs
+REM ~4.3 s/user plain -- MEASURED 2026-08-12 (47 users in 488 s), i.e. 2.4x. That is expected
+REM arithmetic, not a bug: QAT adds a fixed ~73 ms of per-step work (profiled as +13% on a 578 ms
+REM TRAINING step), which is a much larger multiplier on a far cheaper eval step. Budget:
+REM   decay-QAT  2733 steps @ ~0.74 steps/s          ~1.0 h
+REM   cell 2     2500 users quantized @ 10.4 s        ~7.2 h
+REM   cell 3     2500 users plain     @ 4.3 s         ~3.0 h
+REM Cells 1/2/3 therefore all sit on the canonical VAL half, so FULL TAX is stated directly
+REM against iter 45's recorded 0.297697 / 0.265375 with no subsetting, the paired noise floor is
+REM the familiar 7.5e-5, and the report's tax == degradation + drift CHECK closes to exactly zero.
+REM That precision is worth the GPU specifically because PRECISION DEGRADATION is the component
+REM expected to be near-zero (d=32 decay-QAT #39: -0.000127/+0.000018) and it is the one that
+REM decides whether the codebook is even a lever -- at n=500 it would vanish into the noise.
+REM The PTQ arm stays at 500 users: it is diagnostic, and it pairs on the intersection anyway.
 REM ===========================================================================================
 setlocal
 set TAG=%~1
@@ -142,7 +146,7 @@ set RWKV_KD_MIX=
 set RWKV_KD_ALPHA=
 
 REM ================= PHASE B (CELL 2): eval QUANTIZED, full VAL half =================
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_q_eval.toml RWKV-%TAG%q RWKV-P-%TAG%q 5001 5500 > "%DIR%\%TAG%_qetoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_q_eval.toml RWKV-%TAG%q RWKV-P-%TAG%q 5001 7500 > "%DIR%\%TAG%_qetoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo CHAIN %TAG% QTOMLFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_24 >> "%LOG%"
@@ -181,7 +185,7 @@ set RWKV_QAT_SHIFT_SCOPE=
 set RWKV_QAT_NORM_BITS=
 set RWKV_QAT_FUSED=
 set RWKV_NO_JIT=
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_fp_eval.toml RWKV-%TAG%fp RWKV-P-%TAG%fp 5001 5500 > "%DIR%\%TAG%_fpetoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_fp_eval.toml RWKV-%TAG%fp RWKV-P-%TAG%fp 5001 7500 > "%DIR%\%TAG%_fpetoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo CHAIN %TAG% FPTOMLFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_26 >> "%LOG%"
