@@ -991,3 +991,20 @@ tried before spending state bits. The dump is CPU-only and reuses existing trace
    time, once, before any iteration runs. Every per-iteration exit-code guard written that way is
    vacuous. Use `setlocal enabledelayedexpansion` + `!ERRORLEVEL!`, or `call :label` per iteration
    (which is what run_arm.cmd/probe_cbs.cmd already do, and why theirs are sound).
+
+**THE "BEFORE" NUMBER IS IN — PTQ with the BROKEN WKV catalog, 405 users (2026-08-12).** The arm was
+stopped early to free the GPU at Andrew's request; 405 of 500 users were already scored and
+`eval_sharded` writes incrementally, so nothing was lost and the remainder resumes by skipping
+completed users. At n=405 the answer is not in doubt:
+
+| mode | plain (iter 45) | PTQ, old catalog | cost | p | users worse |
+|---|---|---|---|---|---|
+| ahead | 0.297697 | 0.311678 | **+0.012233** | 1.0e-65 | 97% |
+| imm | 0.265375 | 0.282399 | **+0.014456** | 6.2e-68 | 99% |
+
+This is the honest baseline the refit has to beat, and it is ~3-4x the +0.00290/+0.00445 that the
+d=32 era recorded as the QAT tax — consistent with the catalog being not merely imperfect but
+uninformative on this trunk. It is a PTQ cost, so a QAT fine-tune should recover much of it; the
+question the three cells answer is how much, and the question the probe matrix answers is how much
+of it simply disappears when the catalog is correct.
+Resume: relaunch the same arm; the completed users are skipped. **Never delete these jsonls.**
