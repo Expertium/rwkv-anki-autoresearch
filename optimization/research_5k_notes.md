@@ -1043,3 +1043,46 @@ floor and these are paired on identical weights and inputs), but not a gate-grad
 `scratchpad/qat_tax/launch_chain_m2b12.cmd`, ~11 h). PTQ cost is what QAT has to recover; the d=32
 record says a warm-started decay-QAT recovers nearly all of it (precision degradation ~0), and
 whether that still holds at +0.006/+0.0085 is exactly what cells 2 and 3 measure.
+
+## DEPLOY STATE BUDGET ON THE CURRENT TRUNK — bits/card, bits/note, and who actually has state
+(Andrew asked both questions 2026-08-12)
+
+**PER-ENTITY COST: card = 185 bits (23.1 B), note = 105 bits (13.1 B).**
+
+| stream | layers | WKV | shift | total |
+|---|---|---|---|---|
+| card | 2 | 2 x 5 heads x (10-bit joint-uv index + 1-bit norm) = 110 b | 3 vectors x (2x12 + 1) = 75 b | **185 b** |
+| note | 1 | 1 x 5 x 11 = 55 b | 2 vectors x 25 = 50 b | **105 b** |
+
+Shift vectors per state = one per layer plus one more per layer whose channel-mix is live (card
+layer 1 is in `RWKV_STRIP_CMIX`, hence 3 not 4). **The formula is ANCHORED, not derived in a
+vacuum:** applied to the d=32 config (H=2, card 1 layer, note 3) it returns exactly **9 B/card and
+27 B/note**, which is what `champion_5k.json` records as the frozen deploy truth. Compression vs
+fp32 is 484x (card) / 439x (note).
+
+**★ CARD/NOTE DOMINANCE HAS FLIPPED, and the stored guidance was stale.** The old conclusion —
+"note state dominates total deploy memory ~4-5x, so the note target matters more than card" — was a
+property of the d=32 arch (card 1 layer, note 3). The `_cnd` trunk is **card 2, note 1**, and
+reviewed notes are only **0.67x** reviewed cards, so **card state now outweighs note state 3.4:1**
+(it was 0.64:1). Any future state-reduction effort should target CARD first on this trunk. This
+ratio is an architecture property — re-derive it whenever stream depths change.
+
+**WHO HAS STATE: only entities that have been REVIEWED.** Sizing off collection counts is wrong,
+and wrong by ~50x for the users that would set the worst case. 250-user sample: median **5,061 cards
+/ 2,616 notes ever reviewed** against a collection median of 8,866 / 7,461 (72% / 56% reviewed).
+**The million-card users are imported shared decks, not superhuman studying** — user 629 has
+1,256,705 cards and reviewed **25,395 (2.0%)**; user 9528 has 1,170,003 and reviewed **10,974
+(0.9%)**. (Andrew's "that's 150 new cards a day for 20 years" was the right thing to disbelieve.)
+
+Resulting per-user footprint (reviewed entities x the bits above):
+
+| user | rev cards | rev notes | card | note | TOTAL | same user, d=32 cfg |
+|---|---|---|---|---|---|---|
+| median | 5,061 | 2,616 | 114.3 KB | 33.5 KB | **147.8 KB** | 113.5 KB |
+| mean | 9,683 | 5,323 | 218.7 KB | 68.2 KB | 286.9 KB | 225.5 KB |
+| p90 | 24,829 | 13,480 | 560.7 KB | 172.8 KB | 733.5 KB | 573.7 KB |
+| max in sample | 76,312 | 42,267 | 1.68 MB | 0.53 MB | **2.21 MB** | 1.74 MB |
+
+So the d=80 trunk costs ~30% MORE per user than the frozen d=32 deploy config — card state grew
+(1 layer -> 2, H 2 -> 5) faster than note state shrank (3 layers -> 1).
+⚠ "max in sample" is the max of 250 users, not of 10,000; the global worst case is higher.
