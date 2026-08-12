@@ -1008,3 +1008,38 @@ uninformative on this trunk. It is a PTQ cost, so a QAT fine-tune should recover
 question the three cells answer is how much, and the question the probe matrix answers is how much
 of it simply disappears when the catalog is correct.
 Resume: relaunch the same arm; the completed users are skipped. **Never delete these jsonls.**
+
+## ★ THE 4-ARM PTQ PROBE MATRIX — where the quantization cost actually lives (2026-08-12, 16 min GPU)
+
+All four arms evaluate the SAME plain iter-45 checkpoint on the same 10 users (5001-5010), changing
+only what is quantized. Cost = vs iter 45's plain numbers on those users (ahead 0.281997 / imm
+0.263988).
+
+| arm | what is quantized | ahead cost | imm cost |
+|---|---|---|---|
+| `oldwkv` | q72u WKV + m2b12 shift — **today's recipe** | +0.009276 | +0.012690 |
+| `newwkv` | **d=80 refit** WKV + m2b12 shift | **+0.006041** | **+0.008507** |
+| `wkvonly` | refit WKV only, shift left fp32 | +0.005174 | +0.006893 |
+| `shonly` | m2b12 shift only, WKV left fp32 | **+0.000365** | **+0.000720** |
+
+**1. The refit buys +0.003235 ahead / +0.004183 imm** — 35%/33% of the PTQ cost, **for zero extra
+deploy bytes** (identical header, identical 1024 rows). That is a larger effect than any single
+algorithmic iteration in this phase, obtained from ~3 min of CPU k-means.
+
+**2. The WKV side is ~14x the shift side** (+0.005174 vs +0.000365 ahead; 10x on imm). **This
+settles the m2b12-vs-m5b12 question without running it:** the ENTIRE shift-side cost is +0.0004 /
++0.0007, so m5b12's extra ~14 B/card could recover at most a fraction of an already negligible
+term. **m2b12 is the deploy choice**, and the second 87-min arm that was killed to free the GPU
+would have been measuring noise. Quantization work belongs on the WKV side.
+
+**3. The two halves are roughly additive, mildly super-additive:** wkvonly + shonly = +0.005540 /
++0.007613 against +0.006041 / +0.008507 measured together, i.e. the pair costs +0.0005 / +0.0009
+MORE than the sum. So the errors interact slightly but per-side tuning is meaningful rather than
+misleading — worth knowing before optimising either half in isolation.
+
+⚠ n=10 users. Fine for effects of this size (the smallest, shonly, is still ~5x the n=2500 noise
+floor and these are paired on identical weights and inputs), but not a gate-grade number.
+**NEXT: the three-cell chain is running with `pq_cb_wkv_c80_b10.txt` + m2b12** (launched 14:31,
+`scratchpad/qat_tax/launch_chain_m2b12.cmd`, ~11 h). PTQ cost is what QAT has to recover; the d=32
+record says a warm-started decay-QAT recovers nearly all of it (precision degradation ~0), and
+whether that still holds at +0.006/+0.0085 is exactly what cells 2 and 3 measure.

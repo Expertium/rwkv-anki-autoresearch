@@ -85,9 +85,16 @@ set RWKV_ADAMW_BETA2=0.999
 set RWKV_DROPOUT_SCALE=0.5
 set RWKV_EVAL_PAVA=1
 
-REM ---- the q72u QAT recipe, shift catalog swapped for the chosen C=80 refit ----
+REM ---- the q72u QAT recipe with BOTH catalogs refitted for d=80 ----
+REM The WKV catalog is the d=80 refit, NOT q72u: q72u was fitted on d=32/H=2 and measures worse
+REM than random here (1.0107 cross-user vs 0.3973 refitted). The 4-arm probe matrix priced that
+REM swap at +0.003235 ahead / +0.004183 imm of PTQ cost recovered, for zero extra deploy bytes
+REM (identical header, identical 1024 rows).
+REM Shift stays m2b12, the CHEAP one, and the probe is why: the entire shift-side PTQ cost is
+REM +0.000365 / +0.000720, i.e. ~1/14th of the WKV side, so m5b12's extra ~14 B/card could buy
+REM back at most a fraction of an already negligible term.
 set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
-set RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt
+set RWKV_QAT_PQ=reference/pq_cb_wkv_c80_b10.txt
 set RWKV_QAT_SHIFT_PQ=%SHIFT_CB%
 set RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3
 set RWKV_QAT_NORM_BITS=1
