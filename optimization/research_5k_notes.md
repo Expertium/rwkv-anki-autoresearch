@@ -814,3 +814,34 @@ first 400 vectors of each of 14 files equal-weights the small, high-error ones. 
 genuinely heterogeneous (0.16–0.27), which is worth remembering when reading any single-user quant
 diagnostic. Also confirmed en route: both refitted catalogs load and run at C=80, where the shipped
 q72u catalog hard-fails.
+
+## ★ THE QAT ENV IS SILENTLY INERT UNDER RWKV_ARCH_MODULE — found 2026-08-12, blocks all tax work
+
+**The three-cell design (Andrew, 2026-08-12) that the measurement now implements:**
+1. no QAT, full precision — iter 45's numbers (have);
+2. QAT-trained, evaluated quantized — the deploy number;
+3. QAT-trained, evaluated at FULL precision — same checkpoint, QAT env off at eval.
+(2)−(1) = the full tax. (2)−(3) = **precision degradation** (what quantization costs a model
+trained for it). (3)−(1) = **model drift** (what training under fake-quant costs by itself).
+The d=32 record already carries this decomposition (`quant_cost`/`finetune_cost` in qat_log) and
+supports Andrew's recollection that drift dominated: warm-started decay-QAT #39 had precision
+degradation −0.000127/+0.000018 (nothing) vs drift +0.001129/+0.002456.
+
+**But cells 2/3 cannot be produced yet.** Both PTQ probe arms came back with cost **+0.000001 /
+−0.000000 and m2b12 == m5b12 exactly** — a 0.19-reconstruction-error shift code cannot cost zero,
+so the sim never ran. Root cause, verified in source: `rwkv/architecture.py` applies the
+`RWKV_QAT_SCOPE` / `RWKV_QAT_LOWRANK_SCOPE` / `RWKV_QAT_SHIFT_SCOPE` env vars to the DEFAULT
+config's layer objects (lines ~145–190), and THEN the `RWKV_ARCH_MODULE` override (line ~244)
+replaces `DEFAULT_ANKI_RWKV_CONFIG` wholesale with the module's own config — which has no QAT
+fields. The scopes are parsed, their banners print, and the objects they mutated are discarded.
+**Every track-2 run (A0 onward) has had QAT env vars silently ignored.** The banner order is the
+tell: `[QAT-LOWRANK] set:` prints BEFORE `[ARCH-MODULE] ... <-`.
+No historical number is wrong — no track-2 iteration *claimed* to be quant-aware — but the
+5k-methodology (a) "quant-aware logloss" convention has been impossible on this trunk, and my
+runner's banner guard passed for the wrong reason (the banner lies).
+
+**FIX (next action after compaction):** move/refactor the scope application into a function
+applied AFTER the arch-module override, to whatever config is final; the override module's own
+dataclass may lack the QAT fields, so apply via setattr/getattr with defaults. Then verify with
+the same PTQ probe that came back zero — it should come back visibly nonzero (that probe is now
+the regression test). THEN the three-cell chain: decay-QAT (m2b12) → eval quantized → eval fp.
