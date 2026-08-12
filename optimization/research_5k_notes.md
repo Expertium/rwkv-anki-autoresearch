@@ -916,3 +916,20 @@ deploy state size is unchanged) → re-run the cheap PTQ probe → only then the
 ⚠ The 0.3032 refit number is from ONE user's corpus and its holdout is not independent of its
 training split; treat it as directional. The OLD-vs-RANDOM contrast is what is decisive, and that
 one does not depend on the refit at all.
+
+**NO HISTORICAL NUMBER IS INVALIDATED — checked, not assumed.** (a) Every runner that sets
+`RWKV_QAT_PQ=reference/pq_cb_wkv_q72u.txt` (champ5k_b1/r1/t1, iter10-13, …) is **d=32-era**, where
+that catalog matches its model; those loglosses stand. (b) On this d=80 trunk the QAT env was
+*inert* until this morning's fix, so no track-2 accuracy number was ever produced with the bad
+catalog in the first place. (c) `CPU_INFERENCE.md`'s q72u figures are **speed** (ms/rev), and
+codebook-search cost depends on catalog SIZE, not fidelity — they are unaffected. The finding
+therefore changes what the tax measurement should measure; it does not retract anything recorded.
+⚠ The one live document that needs editing is the methodology-(a) env string (CLAUDE.md:579), which
+still names the q72u WKV catalog — hold that edit until the refit is validated by the probe matrix.
+
+**Cross-user honesty check** (train user 101, test user 102; the deployed catalog is fitted on a
+few users and applied to thousands, so this is the analogue that matters): OLD **1.0107** — worse
+than the zero codebook — REFIT 0.4610, ORACLE 0.2717. Cross-user generalization is well short of
+the within-user 0.3032, and even a good WKV catalog stays far lossier than the shift side's 0.19:
+1024 centroids in 32 dims is ~1.24 points per axis. So expect the refit to recover much of the
+cost without making WKV quantization free.
