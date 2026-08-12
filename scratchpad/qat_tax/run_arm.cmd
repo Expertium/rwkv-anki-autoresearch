@@ -75,6 +75,13 @@ set RWKV_QAT_FUSED=1
 set RWKV_NO_JIT=1
 set RWKV_EVAL_PAVA=1
 
+REM ---- PHASE 0: prove the QAT env is NOT inert before spending any GPU (2026-08-12 bug) ----
+.venv\Scripts\python.exe -u scratchpad/qat_tax/assert_qat_live.py > "%DIR%\%TAG%_qatassert_%STAMP%.log" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo ARM %TAG% QATINERT %DATE% %TIME% >> "%LOG%"
+  endlocal & exit /b 44
+)
+
 if "%MODE%"=="ptq" goto :ptq
 goto :qat
 
@@ -90,7 +97,9 @@ if not %ERRORLEVEL%==0 (
   echo ARM %TAG% EVALFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   endlocal & exit /b 25
 )
-findstr /C:"[QAT-SHIFT-PQ] loaded" "%DIR%\%TAG%_eval_%STAMP%.log" >nul
+REM ⚠ the banner lands in the SHARD log, not eval_sharded's parent log -- grep both (cost: one
+REM spurious rc 41 on 2026-08-12, after which the arms had already run).
+findstr /C:"[QAT-SHIFT-PQ] loaded" "%DIR%\%TAG%_eval_%STAMP%.log" scratchpad\eval_shards\shard_*.log >nul
 if not %ERRORLEVEL%==0 (
   echo ARM %TAG% NOQAT %DATE% %TIME% >> "%LOG%"
   endlocal & exit /b 41

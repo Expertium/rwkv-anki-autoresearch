@@ -143,49 +143,68 @@ if _lora_env:
         _c.gate_lora = _lv
 
 # ---- State-QAT scope parsing (set RWKV_NO_JIT=1 too). Mirrors the Rust deploy env vars. ----
+# ⚠ APPLIED AT THE BOTTOM OF THIS FILE, to whatever config is FINAL -- NOT here. Bug found 2026-08-12:
+# these used to mutate `_layers` inline, and RWKV_ARCH_MODULE then replaced DEFAULT_ANKI_RWKV_CONFIG
+# wholesale, discarding every mutation while the banner still printed. Every track-2 run therefore ran
+# with the QAT env SILENTLY INERT. Unlike the capacity hooks above (which the override legitimately
+# owns), QAT scope is an orthogonal deploy-simulation overlay that must survive the override.
 _QMAX = {"int8": 127.0, "int4": 7.0, "int3": 3.0, "int2": 1.0, "fp32": float("inf")}
 _QAT_NAME = {"card": "card_id", "deck": "deck_id", "note": "note_id",
              "preset": "preset_id", "user": "user_id"}
-# RWKV_QAT_SCOPE="card:int2,note:int2": per-step int-N fake-quant of each named stream's WKV state.
-_qat_scope = os.environ.get("RWKV_QAT_SCOPE", "").strip()
-if _qat_scope:
-    _qat = {}
-    for _entry in _qat_scope.split(","):
-        _n, _, _lvl = _entry.strip().partition(":")
-        _qat[_QAT_NAME[_n]] = _QMAX[_lvl]
-    for _name, _cfg in _layers:
-        if _name in _qat:
-            _cfg.state_qmax = _qat[_name]
-    print("[QAT] state_qmax set: " +
-          ", ".join(f"{n}={c.state_qmax}" for n, c in _layers if c.state_qmax != float("inf")))
-# RWKV_QAT_LOWRANK_SCOPE="card:2:int4,note:2:int4": per-step rank-r truncation (+ int-N factor quant)
-# of each named stream's WKV state -- the low-rank deploy analog. Takes precedence over int-N quant.
-_lr_scope = os.environ.get("RWKV_QAT_LOWRANK_SCOPE", "").strip()
-if _lr_scope:
-    _lr = {}
-    for _entry in _lr_scope.split(","):
-        _parts = _entry.strip().split(":")
-        _lr[_QAT_NAME[_parts[0]]] = (int(_parts[1]), _QMAX[_parts[2]] if len(_parts) > 2 else float("inf"))
-    for _name, _cfg in _layers:
-        if _name in _lr:
-            _cfg.state_lowrank_rank, _cfg.state_lowrank_fqmax = _lr[_name]
-    print("[QAT-LOWRANK] set: " +
-          ", ".join(f"{n}=rank{c.state_lowrank_rank}/fq{c.state_lowrank_fqmax}"
-                    for n, c in _layers if c.state_lowrank_rank > 0))
-# RWKV_QAT_SHIFT_SCOPE="card:int3,note:int3": per-step int-N fake-quant of each named stream's token-shift
-# vectors -- the QAT analog of the deploy RWKV_QUANT_SHIFTS + RWKV_STATE_SHIFT_LEVEL. Independent of the WKV
-# factor level, so shifts can be trained robust to a COARSER bit-width than the WKV (e.g. WKV int4 + shift int3).
-_shift_scope = os.environ.get("RWKV_QAT_SHIFT_SCOPE", "").strip()
-if _shift_scope:
-    _sh = {}
-    for _entry in _shift_scope.split(","):
-        _n, _, _lvl = _entry.strip().partition(":")
-        _sh[_QAT_NAME[_n]] = _QMAX[_lvl]
-    for _name, _cfg in _layers:
-        if _name in _sh:
-            _cfg.state_shift_qmax = _sh[_name]
-    print("[QAT-SHIFT] state_shift_qmax set: " +
-          ", ".join(f"{n}={c.state_shift_qmax}" for n, c in _layers if c.state_shift_qmax != float("inf")))
+
+
+def _apply_qat_scopes(layers):
+    """Apply the RWKV_QAT_*_SCOPE env vars to a list of (name, RWKV7Config) pairs, in place.
+
+    Uses setattr/getattr with defaults so an override module carrying an older RWKV7Config
+    (one without the QAT fields) still works instead of raising at import.
+    """
+    def _get(cfg, attr, default):
+        return getattr(cfg, attr, default)
+
+    # RWKV_QAT_SCOPE="card:int2,note:int2": per-step int-N fake-quant of each named stream's WKV state.
+    qat_scope = os.environ.get("RWKV_QAT_SCOPE", "").strip()
+    if qat_scope:
+        qat = {}
+        for entry in qat_scope.split(","):
+            n, _, lvl = entry.strip().partition(":")
+            qat[_QAT_NAME[n]] = _QMAX[lvl]
+        for name, cfg in layers:
+            if name in qat:
+                setattr(cfg, "state_qmax", qat[name])
+        print("[QAT] state_qmax set: " +
+              ", ".join(f"{n}={_get(c, 'state_qmax', float('inf'))}" for n, c in layers
+                        if _get(c, "state_qmax", float("inf")) != float("inf")))
+    # RWKV_QAT_LOWRANK_SCOPE="card:2:int4,note:2:int4": per-step rank-r truncation (+ int-N factor quant)
+    # of each named stream's WKV state -- the low-rank deploy analog. Takes precedence over int-N quant.
+    lr_scope = os.environ.get("RWKV_QAT_LOWRANK_SCOPE", "").strip()
+    if lr_scope:
+        lr = {}
+        for entry in lr_scope.split(","):
+            parts = entry.strip().split(":")
+            lr[_QAT_NAME[parts[0]]] = (int(parts[1]), _QMAX[parts[2]] if len(parts) > 2 else float("inf"))
+        for name, cfg in layers:
+            if name in lr:
+                setattr(cfg, "state_lowrank_rank", lr[name][0])
+                setattr(cfg, "state_lowrank_fqmax", lr[name][1])
+        print("[QAT-LOWRANK] set: " +
+              ", ".join(f"{n}=rank{_get(c, 'state_lowrank_rank', 0)}/fq{_get(c, 'state_lowrank_fqmax', float('inf'))}"
+                        for n, c in layers if _get(c, "state_lowrank_rank", 0) > 0))
+    # RWKV_QAT_SHIFT_SCOPE="card:int3,note:int3": per-step int-N fake-quant of each named stream's token-shift
+    # vectors -- the QAT analog of the deploy RWKV_QUANT_SHIFTS + RWKV_STATE_SHIFT_LEVEL. Independent of the WKV
+    # factor level, so shifts can be trained robust to a COARSER bit-width than the WKV (e.g. WKV int4 + shift int3).
+    shift_scope = os.environ.get("RWKV_QAT_SHIFT_SCOPE", "").strip()
+    if shift_scope:
+        sh = {}
+        for entry in shift_scope.split(","):
+            n, _, lvl = entry.strip().partition(":")
+            sh[_QAT_NAME[n]] = _QMAX[lvl]
+        for name, cfg in layers:
+            if name in sh:
+                setattr(cfg, "state_shift_qmax", sh[name])
+        print("[QAT-SHIFT] state_shift_qmax set: " +
+              ", ".join(f"{n}={_get(c, 'state_shift_qmax', float('inf'))}" for n, c in layers
+                        if _get(c, "state_shift_qmax", float("inf")) != float("inf")))
 
 # ---- State-size-ladder per-stream overrides (2026-07-12, Andrew's deck<=5x/preset<=10x/global<=50x plan).
 # RWKV_STREAM_HEADS="deck:1,preset:1": per-stream n_heads at FIXED d_model. Physics: WKV state per layer
@@ -244,3 +263,7 @@ if _arch_module:
     DEFAULT_ANKI_RWKV_CONFIG = _ns["DEFAULT_ANKI_RWKV_CONFIG"]
     print(f"[ARCH-MODULE] DEFAULT_ANKI_RWKV_CONFIG <- {_arch_module} "
           f"(d_model={DEFAULT_ANKI_RWKV_CONFIG.d_model})")
+
+# ---- QAT scopes are applied HERE, LAST, to the FINAL config -- see the note at _apply_qat_scopes.
+# Banner order is the tell: [QAT*] lines must appear AFTER [ARCH-MODULE], never before.
+_apply_qat_scopes(DEFAULT_ANKI_RWKV_CONFIG.modules)
