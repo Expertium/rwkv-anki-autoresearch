@@ -866,3 +866,53 @@ final config — not the parsing log. That is why the assert imports the module 
 
 **THEN the three-cell chain:** decay-QAT (catalog chosen by the re-run PTQ arms) → eval
 quantized → eval fp.
+
+## ★★ THE WKV CODEBOOK IN THE QAT RECIPE IS WORSE THAN RANDOM ON THIS TRUNK — 2026-08-12
+
+Found while preparing tax-REDUCTION levers, on CPU, with no GPU cost. It reframes the tax
+measurement that was about to run.
+
+`reference/pq_cb_wkv_q72u.txt` (header `1 10 32 16 1024` = joint-uv, 1024 centroids over
+concat(u_unit, v_unit)) is the WKV half of the q72u QAT recipe. It was fitted on the **d=32 / H=2**
+model. It stays *dimensionally* valid here because K=16 either way — which is exactly why nothing
+ever caught it. The shift catalog got refitted for C=80 only because the old one hard-FAILED a
+shape assert; the WKV one fails **silently, by being merely wrong**.
+
+**Mean relative L2 reconstruction error on this trunk's own card-stream WKV states** (user 101,
+23,240 joint (u,v) vectors, held-out split; `scratchpad/qat_tax/wkv_cb_staleness.py`):
+
+| encoder | held-out err |
+|---|---|
+| **OLD — the q72u catalog, in the live recipe** | **0.9985** |
+| 1024 **RANDOM** unit-pair directions | 0.9576 |
+| encode everything to **ZERO** | 1.0000 |
+| REFIT — same budget, fitted on d=80 | 0.3032 |
+| ORACLE — fitted on the holdout itself | 0.2196 |
+
+**The shipped catalog is worse than random and within 0.15% of the zero-codebook bound.** It is
+not "stale", it is uninformative: at 1024 centroids it uses only 454 distinct entries and leaves
+the query at ~60° from its nearest centroid.
+
+**Mechanism — it is aimed at the wrong SUBSPACE, which is why it loses to isotropic noise.** Not a
+per-head story: the five heads are diffuse, not separate blobs (within-head mean cosine 0.13–0.32),
+and the old centroids' mean direction is not badly aligned (median best-cos 0.212). The real split
+is the principal subspace — the d=80 data's **top-8 PCs carry 63.8% of the DATA's variance but only
+22.6% of the OLD CATALOG's**. Random directions are at least unbiased; a catalog concentrated on
+the wrong low-dimensional subspace is actively misaimed.
+
+**THE GENERAL LESSON, and it is the same shape as the QAT-inert bug found the same morning: a
+quantizer artifact is validated by its SHAPE and used on its CONTENT.** K is unchanged, so every
+assert passed. **Any change to d_model, H, or the state distribution silently invalidates a fitted
+codebook, and nothing in the pipeline will say so.** A cheap standing guard: score the catalog's
+held-out reconstruction error against a random-catalog control whenever the arch changes — CPU-only,
+minutes, and it is what turned this up.
+
+**CONSEQUENCE FOR THE TAX.** The +0.00290/+0.00445 on record, and the +0.009276/+0.012690 PTQ probe
+measured this morning, were both taken with this catalog. They are therefore **not the cost of
+quantizing this model — they are substantially the cost of destroying its card/note WKV state**.
+Re-measuring the tax before refitting would have spent ~11 h of GPU characterizing a broken config.
+Revised order: finish the corpus dump → fit a d=80 joint-uv catalog at the SAME 10-bit budget (so
+deploy state size is unchanged) → re-run the cheap PTQ probe → only then the three-cell chain.
+⚠ The 0.3032 refit number is from ONE user's corpus and its holdout is not independent of its
+training split; treat it as directional. The OLD-vs-RANDOM contrast is what is decisive, and that
+one does not depend on the refit at all.
