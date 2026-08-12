@@ -1155,3 +1155,21 @@ executing (cmd.exe resumes from a byte offset); fix it after the run.
 valid** — `eval_sharded` writes incrementally and resumes by skipping completed users, which the
 PTQ arm demonstrated today (stopped at 405/500, answer already at p~1e-65). Cutting both evals to
 1,000 users would save 6.1 h if the GPU is wanted sooner.
+
+**SWEEP FOR THE SAME BUG ELSEWHERE — clean (2026-08-12).** Having found one artifact that was
+validated by shape and wrong by content, the obvious question is whether others are. Checked every
+codebook in `reference/`:
+
+| file | header (m bits sub c ncent) | status |
+|---|---|---|
+| `pq_cb_wkv_q72u.txt` | `1 10 32 16 1024` | **the bug** — K=16 matches at d=80, so it loads and is wrong |
+| `pq_cb_wkv_c80_b10.txt` | `1 10 32 16 1024` | the refit; identical header by design |
+| `pq_cb_shift_q72u.txt` | `2 12 16 32 4096` | c=32 -> hard-FAILS a shape assert at C=80, i.e. self-announcing |
+| `pq_cb_shift_c80_m2b12.txt` | `2 12 40 80 4096` | refit, in use |
+| `pq_cb_shift_c80_m5b12.txt` | `5 12 16 80 4096` | refit, unused (shift side is only ~1/14th of the cost) |
+| `pq_cb_m2b8.txt` | `2 8 8 16 256` | ALSO K=16-compatible, but referenced only by docs and two d=32-era **kernel** bit-exactness goldens (`qat_parity/parity_lr_pq.py`, `qat_speed/golden_gen.py`) — those test the kernel, not accuracy on this trunk, so they stay self-consistent |
+
+Every `.cmd` still naming a q72u catalog (champ5k_b1/r1/t1, iter9-13, jitab) is **d=32-era**, where
+it matches its own model. And `rust/rwkv-infer` applies no codebook unless `RWKV_LOWRANK_PQ` is set,
+so there is no baked-in default waiting to be shipped. **Conclusion: exactly one artifact was
+silently compatible, and it is now replaced.**
