@@ -956,3 +956,37 @@ wildly (0.17 vs 0.31) for that reason alone. **REFIT-vs-OLD is the solid compari
 same holdout scored by two encoders.
 NEXT: the 4-arm PTQ probe matrix (old-WKV / new-WKV / WKV-only / shift-only, 10 users each) turns
 this reconstruction win into a logloss number and localizes the tax to one side.
+
+**WKV CAPACITY CURVE (2026-08-12, CPU) — MY "FLAT CURVE" PREDICTION WAS WRONG, and that matters.**
+I predicted, in the runner, that more bits would buy ~nothing: 1024 centroids in 32 dims is
+1024^(1/32) ~ 1.24 points per axis and 4096 is ~1.30, and that reasoning HELD on the shift side
+(2.5x the bits bought ~9%). It does not hold here. Held-out cross-user (user 102 out, 49,070 held-out
+vectors, 189,430 training):
+
+| bits | centroids | REFIT held-out err | vs previous |
+|---|---|---|---|
+| 8 | 256 | 0.4580 | |
+| 10 | 1024 (**shipped budget**) | 0.3776 | -17.6% |
+| 12 | 4096 | 0.3224 | -14.6% |
+| — | OLD q72u, any budget | 1.0107 | (worse than encode-to-zero) |
+
+So the WKV joint-uv scheme is **not saturated** at the shipped budget — unlike the shift scheme.
+**COST, so this is not mistaken for free:** index bits are per head per layer, and card is 1 layer x
+5 heads, so +2 bits = +10 bits/card ~ **+1.25 B on the frozen 9 B/card budget (+14%)**; note likewise
+on 27 B. bits=12 is a genuine state-size trade and is **Andrew's call**, not an adoption I make.
+**Also visible: the corpus, not just the budget, limits the refit.** At bits=12 the ORACLE reaches
+0.2044 against REFIT's 0.3224, and the training set is only 189k vectors from 6 users (46 per
+centroid at 4096). More users in the corpus is a FREE axis — no deploy cost at all — and should be
+tried before spending state bits. The dump is CPU-only and reuses existing traces.
+⚠ ORACLE remains optimistic throughout (11 holdout pts/centroid at bits=12) and is not a floor.
+
+**TWO PROCESS BUGS THIS RUN, both worth keeping:**
+1. **A non-ASCII character killed a data point.** A `⚠` in a print statement raised
+   `UnicodeEncodeError` under cmd.exe's cp1252 redirect and aborted the bits=14 arm. CLAUDE.md's
+   "plain ASCII in shell-written values" rule applies to **Python that prints into a redirected
+   log**, not only to shell-authored strings.
+2. **`%ERRORLEVEL%` inside a `for` loop is a LIE.** The bits=14 arm crashed and the runner still
+   logged `BITS_14_EXIT_0`, because `%ERRORLEVEL%` inside a parenthesised block expands at PARSE
+   time, once, before any iteration runs. Every per-iteration exit-code guard written that way is
+   vacuous. Use `setlocal enabledelayedexpansion` + `!ERRORLEVEL!`, or `call :label` per iteration
+   (which is what run_arm.cmd/probe_cbs.cmd already do, and why theirs are sound).

@@ -133,7 +133,9 @@ def main():
     print(f"  -> {len(X)} joint (u,v) vectors, dim {X.shape[1]} "
           f"(hold {len(hold)} / train {len(train)})")
     if len(train) < ncent * 20:
-        print(f"  ⚠ thin corpus: {len(train)} training vectors for ncent={ncent} "
+        # ASCII only: this prints into a cmd.exe-redirected log, which is cp1252 -- a non-ASCII
+        # char here raises UnicodeEncodeError and kills the run (it took out the bits=14 point).
+        print(f"  WARNING thin corpus: {len(train)} training vectors for ncent={ncent} "
               f"({len(train) // max(ncent, 1)} per centroid) -- treat REFIT as a lower bound")
 
     old_cb, old_bits, old_sub = load_joint_cb(OLD_CB)
