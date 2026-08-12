@@ -91,3 +91,7 @@ preds_i41/
 preds_i41c/
 scratchpad/i31_regress/
 scratchpad/i31_regress2/
+
+# QAT shift-PQ corpora: ~250 MB of dumped fp32 token-shift vectors, regenerable in minutes from
+# reference_iter45/ via `rwkv-infer --dump-shift-corpus`. One file exceeds GitHub's 100 MB limit.
+scratchpad/qat_tax/corpus/
