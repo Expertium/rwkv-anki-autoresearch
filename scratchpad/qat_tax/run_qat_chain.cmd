@@ -26,6 +26,17 @@ REM users, so old numbers get silently reused. Done from the caller, NOT here: t
 REM attempts below deliberately have no `del` between them so the resume property survives an OOM.
 REM ⚠ write_decay_setup's folder arg must be RELATIVE (an absolute C:\Users path embeds \U in the
 REM toml and tomli dies with "Invalid hex value").
+REM
+REM WHY 500 USERS (5001-5500) AND NOT THE FULL VAL HALF. A QUANTIZED eval costs ~28 s/user vs
+REM ~4.3 s/user plain -- measured 2026-08-12, and it is expected arithmetic, not a bug: QAT adds
+REM ~73 ms of fixed per-step work (profiled +13% on a 578 ms TRAINING step), which is ~6x on a
+REM much cheaper eval step. The full VAL half would be ~19 h for cell 2 alone. 500 users costs
+REM ~3.9 h and still resolves this easily: the paired noise floor is ~1.7e-4 there (7.5e-5 at
+REM n=2500, scaled by sqrt(5)) against an expected tax of ~0.001-0.005, i.e. 6-30x margin.
+REM ALL cells use the SAME 500 users -- including the PTQ arm -- so every component of the
+REM decomposition is exactly paired and the report's tax == degradation + drift CHECK closes to
+REM zero. If a component lands marginal, extending cell 3 is cheap (it is a PLAIN eval); it is
+REM cell 2 that is expensive, and that is the one 500 users is chosen to afford.
 REM ===========================================================================================
 setlocal
 set TAG=%~1
@@ -131,7 +142,7 @@ set RWKV_KD_MIX=
 set RWKV_KD_ALPHA=
 
 REM ================= PHASE B (CELL 2): eval QUANTIZED, full VAL half =================
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_q_eval.toml RWKV-%TAG%q RWKV-P-%TAG%q 5001 7500 > "%DIR%\%TAG%_qetoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_q_eval.toml RWKV-%TAG%q RWKV-P-%TAG%q 5001 5500 > "%DIR%\%TAG%_qetoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo CHAIN %TAG% QTOMLFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_24 >> "%LOG%"
@@ -170,7 +181,7 @@ set RWKV_QAT_SHIFT_SCOPE=
 set RWKV_QAT_NORM_BITS=
 set RWKV_QAT_FUSED=
 set RWKV_NO_JIT=
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_fp_eval.toml RWKV-%TAG%fp RWKV-P-%TAG%fp 5001 7500 > "%DIR%\%TAG%_fpetoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% %TAG%_d %DIR%\%TAG%_fp_eval.toml RWKV-%TAG%fp RWKV-P-%TAG%fp 5001 5500 > "%DIR%\%TAG%_fpetoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo CHAIN %TAG% FPTOMLFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_26 >> "%LOG%"
