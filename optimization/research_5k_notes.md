@@ -802,3 +802,15 @@ at the cheap **~23 B card** and the tax — whatever it measures — is NOT most
 which points the reduction work at the WKV side or at QAT placement instead. If instead the two
 arms differ materially in logloss, then logloss is far more sensitive to shift fidelity than the
 reconstruction error suggests, and that is worth knowing on its own.
+
+**Trainer-vs-runtime encode agreement, checked (2026-08-12).** A catalog is only meaningful if
+`fake_pq_shift`'s runtime encode matches what `pq_train_shift.py` assumed when clustering — a
+mismatch would silently inflate any measured tax, and it is exactly the class the three-way-parity
+rule exists for. Feeding real corpus vectors back through the runtime path and scoring the
+trainer's own metric gives **0.1944 on `103_card`** against the trainer's **0.1902** held-out.
+They agree. An apparent 13% gap on a naive pooled sample was **sampling composition, not a bug**:
+the trainer draws randomly from a pool that `103_card` alone supplies ~1/3 of, whereas taking the
+first 400 vectors of each of 14 files equal-weights the small, high-error ones. Per-user error is
+genuinely heterogeneous (0.16–0.27), which is worth remembering when reading any single-user quant
+diagnostic. Also confirmed en route: both refitted catalogs load and run at C=80, where the shipped
+q72u catalog hard-fails.
