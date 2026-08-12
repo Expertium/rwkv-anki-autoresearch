@@ -933,3 +933,26 @@ than the zero codebook — REFIT 0.4610, ORACLE 0.2717. Cross-user generalizatio
 the within-user 0.3032, and even a good WKV catalog stays far lossier than the shift side's 0.19:
 1024 centroids in 32 dims is ~1.24 points per axis. So expect the refit to recover much of the
 cost without making WKV quantization free.
+
+**THE REFIT IS DONE — `reference/pq_cb_wkv_c80_b10.txt`** (2026-08-12, ~3 min of CPU: 787 MB corpus
+= 47,700 card+note WKV states from 7 train-range users via the Rust engine's `--dump-corpus`, then
+joint-uv k-means at bits=10). **Byte-compatible drop-in:** identical header `1 10 32 16 1024` and
+1024 rows, so the index budget — and therefore deploy state size — is UNCHANGED. Fitted on card and
+note states together because `RWKV_QAT_PQ` is one catalog shared by every scoped stream, and on
+users 101-156 (train range), so no eval-set leakage.
+
+Held-out mean relative L2, full corpus, both splits:
+
+| split | OLD (live) | REFIT | ORACLE |
+|---|---|---|---|
+| hold out USER 156 (cross-user, the honest one) | **1.0051** | 0.3973 | 0.1684 |
+| random-vector holdout | **1.0026** | 0.3512 | 0.3137 |
+
+**OLD sits at ~1.00 in every configuration measured** — single-user, cross-user, random-split — i.e.
+consistently at or past the encode-everything-to-zero bound. The refit cuts error 60-65%.
+⚠ Do NOT read the ORACLE column as a floor: it fits 1024 centroids to the holdout itself (3,205
+vectors for user 156 = ~3 per centroid), so it is near-memorization and the two splits disagree
+wildly (0.17 vs 0.31) for that reason alone. **REFIT-vs-OLD is the solid comparison**; it is the
+same holdout scored by two encoders.
+NEXT: the 4-arm PTQ probe matrix (old-WKV / new-WKV / WKV-only / shift-only, 10 users each) turns
+this reconstruction win into a logloss number and localizes the tax to one side.
