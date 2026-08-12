@@ -1086,3 +1086,36 @@ Resulting per-user footprint (reviewed entities x the bits above):
 So the d=80 trunk costs ~30% MORE per user than the frozen d=32 deploy config — card state grew
 (1 layer -> 2, H 2 -> 5) faster than note state shrank (3 layers -> 1).
 ⚠ "max in sample" is the max of 250 users, not of 10,000; the global worst case is higher.
+
+### FULL REVIEWED-ENTITY CENSUS — all 9,934 users (2026-08-12, `scratchpad/reviewed_entity_counts.py`)
+Per-user CSV: `scratchpad/reviewed_entity_counts_10k.csv` (percentiles recomputable without
+re-reading 745M reviews). Definitions: cards reviewed >=1 time = distinct card_id in that user's
+revlogs; notes = distinct note_id whose card_id appears in the revlogs.
+
+| metric | mean | median | p90 | p99 | max |
+|---|---|---|---|---|---|
+| **cards reviewed >=1 time** | 9,582 | **4,826** | 24,074 | 61,059 | **246,801** |
+| **notes with >=1 reviewed card** | 5,347 | **2,578** | 13,928 | 36,378 | **76,887** |
+| (collection cards) | 20,982 | 8,513 | 55,854 | 128,395 | 1,256,705 |
+| (reviews) | 72,990 | 31,070 | 180,883 | 543,161 | 3,910,718 |
+
+Totals: **95,183,694 reviewed cards / 53,118,620 reviewed notes**. Reviewed notes / reviewed cards
+= **0.690 median** (vs 0.9x for COLLECTION counts — reviewed notes are relatively scarcer).
+
+**★ THE DEPLOY WORST CASE IS A DIFFERENT USER THAN THE DATASET WORST CASE.** The 1.26M-card user
+(629) reviewed 25,395 = 2.0% -> 811 KB of state. The real maximum is **uid 8902: 246,801 reviewed
+cards out of a 15,254-card COLLECTION**, with 2.83M reviews — i.e. heavy deck CHURN, cards reviewed
+then deleted and replaced. Top-5-by-collection and top-5-by-state are nearly disjoint sets, so any
+sizing argument that starts from collection counts targets the wrong users entirely.
+Churn is dataset-wide: **10% of users have MORE reviewed card_ids than collection rows** (p90 ratio
+2.50); reviewed-but-deleted cards median 569/user, mean 3,245, max 231,547.
+
+**Deploy footprint at 185 b/card + 105 b/note:**
+
+| | mean | median | p90 | p99 | max |
+|---|---|---|---|---|---|
+| KB/user | 284.9 | **146.1** | 718.8 | 1,765.4 | **5,678.6** |
+
+⚠ The max assumes state is NEVER pruned. In a real Anki deployment a deleted card's state would go
+with the card, so 5.68 MB is an upper bound and uid 8902's is largely historical. The honest planning
+numbers are the median (146 KB) and p99 (1.77 MB).
