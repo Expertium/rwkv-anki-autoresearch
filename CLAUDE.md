@@ -1076,6 +1076,22 @@ All hooks stay in-repo, env-gated, default off.
   (`claude-automation/telegram_bridge.py`, task `ClaudeTelegramBridge`) additionally injects messages
   AUTHORED BY ANDREW from his authenticated Telegram account + mirrors chat output to his phone -- human
   steering, not self-injection. Master switch `telegram_bridge_active.txt`; see automation README.)
+- **★★ NEVER TOUCH A RUNNING `.cmd` -- AND `git checkout` IS NOT A SAFE UNDO (cost iters 43 AND 46).**
+  cmd.exe re-reads a batch file from a saved BYTE OFFSET every time a command returns, so any edit that
+  shifts bytes past that offset makes it resume mid-garbage. Three things follow, learned the expensive way:
+  (1) A chain's LATER phases are new processes that import whatever is on disk THEN -- so editing
+  `rwkv/*.py` mid-chain silently changes the next phase too (found during iter 45; mitigate by gating new
+  code on its env flag so it is inert when unset).
+  (2) **Reverting an accidental edit with `git checkout --` DOES NOT RESTORE THE BYTES.** git normalizes
+  line endings: a runner written LF (python `newline='\n'`) comes back CRLF, +1 byte per line. Iter 46's
+  runner grew 222 bytes that way; cmd.exe resumed at the wrong offset, re-ran a fragment that re-opened the
+  SAME ws log with `>`, and TRUNCATED the training log to 44 bytes. The WS checkpoint survived, so only the
+  chain and the log were lost -- recovered with a phase-2 runner, same as iter 43.
+  ⚠ The tell was visible and dismissed: `md5sum` of the file vs `git show HEAD:` differed, and it was waved
+  off as "just line endings". It WAS just line endings, and that was exactly the failure.
+  **If a running runner has already been touched, restore from a BYTE-EXACT copy (keep one before editing)
+  or leave it alone and write a phase-2 runner. Never `git checkout` it.**
+  (3) Annotate a running experiment in a SEPARATE file (e.g. `GATE.md`), never in its runner.
 - **ESC-PROOF detached launches:** Esc / session teardown tree-kills Claude's Bash/PowerShell bg jobs INCLUDING
   training. Launch each training as a self-contained `.cmd` via `scratchpad/detach.ps1` (WMI Win32_Process ->
   parented to WmiPrvSE, survives); log to a STABLE repo path (`scratchpad/*.log`, NOT the rotating session
