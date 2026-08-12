@@ -120,15 +120,21 @@ def main():
         raise SystemExit("no corpus files matched")
 
     h, k, ncent = opts["h"], opts["k"], 2 ** opts["bits"]
-    states = load_states(files, h, k)
-    print(f"loaded {len(states)} states (h={h} k={k}) from {len(files)} files")
-    X = collect_joint(states, k)
-    print(f"  -> {len(X)} joint (u,v) vectors, dim {X.shape[1]}")
-    if len(X) < opts["holdout"] * 3:
-        print(f"  ⚠ thin corpus: {len(X)} vectors for ncent={ncent} "
-              f"({len(X) // max(ncent, 1)} per centroid) -- treat REFIT as a lower bound on quality")
-
-    hold, train = split(X, files, opts, h, k)
+    # The corpus runs to ~2 GB of text and every vector costs a 16x16 eigendecomposition, so parse
+    # it EXACTLY once: under --holdout-user the split itself does the loading, per file group.
+    if opts.get("holdout-user"):
+        hold, train = split(None, files, opts, h, k)
+        X = np.concatenate([hold, train])
+    else:
+        states = load_states(files, h, k)
+        print(f"loaded {len(states)} states (h={h} k={k}) from {len(files)} files")
+        X = collect_joint(states, k)
+        hold, train = split(X, files, opts, h, k)
+    print(f"  -> {len(X)} joint (u,v) vectors, dim {X.shape[1]} "
+          f"(hold {len(hold)} / train {len(train)})")
+    if len(train) < ncent * 20:
+        print(f"  ⚠ thin corpus: {len(train)} training vectors for ncent={ncent} "
+              f"({len(train) // max(ncent, 1)} per centroid) -- treat REFIT as a lower bound")
 
     old_cb, old_bits, old_sub = load_joint_cb(OLD_CB)
     if old_sub != X.shape[1]:
