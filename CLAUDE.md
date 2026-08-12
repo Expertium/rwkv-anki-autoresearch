@@ -878,10 +878,33 @@ algorithmic rate (+0.000112 ahead / +0.000057 imm per attempted iteration) that 
 and 34 more iterations = 7.4 and 12.6 days of GPU -- so the QAT tax is worth more than the entire
 remaining loop, and it has never been a research target only because plain-vs-QAT numbers were
 never comparable.
-**THE MEASUREMENT IS A SINGLE-VARIABLE A/B**, reusing iter 45's WS unchanged: ARM B re-runs iter
-45's DECAY from the same WS-final with the q72u QAT env added and nothing else changed (KD stays at
-alpha 0.5), so TAX = ARM B - iter 45. ARM A (PTQ, no training, 500 users) evaluates iter 45's plain
-final under the QAT env, giving the decomposition PTQ-cost vs what the QAT fine-tune recovers.
+**★ THE MEASUREMENT IS ANDREW'S THREE CELLS (2026-08-12):** (1) no QAT, full precision = iter 45,
+already have; (2) QAT-trained, evaluated QUANTIZED = the deploy number; (3) QAT-trained, evaluated
+at FULL PRECISION = same checkpoint, QAT env off at eval. **(2)-(1) = the full tax. (2)-(3) =
+PRECISION DEGRADATION** (what quantization costs a model trained for it). **(3)-(1) = MODEL DRIFT**
+(what training under fake-quant costs by itself). The d=32 `qat_log` already carries this
+decomposition and backs Andrew's recollection that drift dominates: warm-started decay-QAT #39 =
+precision degradation -0.000127/+0.000018 (nothing) vs drift +0.001129/+0.002456.
+Cells 2/3 are a SINGLE-VARIABLE A/B reusing iter 45's WS unchanged: re-run iter 45's DECAY from the
+same WS-final with the q72u QAT env added and nothing else changed (KD stays alpha 0.5). A PTQ arm
+(no training, 500 users) additionally gives the untrained-quantization cost, i.e. what the QAT
+fine-tune recovers.
+**★★ BLOCKER FOUND AND FIXED 2026-08-12 (`70185c7`) -- THE QAT ENV WAS SILENTLY INERT UNDER
+`RWKV_ARCH_MODULE`.** `architecture.py` applied the `RWKV_QAT_*_SCOPE` vars to the DEFAULT config's
+layers, then the arch-module override replaced `DEFAULT_ANKI_RWKV_CONFIG` wholesale and discarded
+them -- **every track-2 run since A0 ignored the QAT env**, symptomless except for a zero
+quantization cost (both PTQ arms returned +0.000001/-0.000000 with m2b12 == m5b12 EXACTLY). No
+recorded number is invalidated (no track-2 iteration claimed quant-awareness), but methodology (a)'s
+"quant-aware logloss" has been unsatisfiable on this trunk. Fix = `_apply_qat_scopes()` called LAST,
+on the FINAL config. Verified: the same 10-user probe went +0.000001/-0.000000 -> **+0.009276 /
++0.012690**.
+**⚠ THE LESSON, worth more than the bug: a banner proves a value was COMPUTED, never that it was
+USED.** `[QAT-LOWRANK] set:` was truthful; the object it mutated was thrown away one line later.
+**Guard added: `scratchpad/qat_tax/assert_qat_live.py`** imports the arch under the run's own env and
+exits 44 unless every scope-named stream is really quantized in the FINAL config -- phase 0 of
+`run_arm.cmd`, ~2 s, before any GPU. Any future env-driven setting should be gated the same way:
+inspect the CONSUMED state, never the parsing log. (Also: eval banner guards must grep the SHARD
+logs -- `eval_sharded`'s parent log never has them, which cost a spurious rc 41 on both arms.)
 **★ THE LIVE HYPOTHESIS:** the +0.00290/+0.00445 on record came from `champ5k_b1`, which ran QAT
 THROUGHOUT WS+decay -- not how QAT is deployed here. The qat_log's decay-only rows say placement
 dominates: #39 (decay-only, warm-started) cost **-0.000127 ahead / +0.000018 imm, essentially
@@ -891,6 +914,14 @@ the q72u codebooks (learned on d=32 states, 5x smaller card state) are the suspe
 `RWKV_QAT_PQ_LEARN` exists but its export->eval wiring does not.
 ⚠ Python maps QAT scopes BY NAME (verified: `card_id=rank1/fq7.0, note_id=rank1/fq7.0` under the
 _cnd arch), so the Rust-only positional bug fixed 2026-08-11 does not affect these numbers.
+**▶ LIVE 2026-08-12 11:54: PTQ arms re-running post-fix** (detached pid 9376,
+`scratchpad/qat_tax/run_ptq_both.cmd`, ~36 min/arm, 500 users each). They pick the C=80 shift
+catalog for the QAT decay: **m2b12** (24 b/vector, same bits as q72u, ~23 B card, held-out
+0.1902/0.1601) vs **m5b12** (60 b/vector, same bits PER DIM, ~37 B card, 0.1734/0.1465). The
+capacity probes say the scheme is chunk-limited, not bit-limited: at a FIXED 24 b, m4b6 (finer
+chunks) is 1.9x WORSE, while 5x the bits (m10b12) barely moves it -- so a large m2-vs-m5 logloss
+gap would itself be the finding. ⚠ Stale result jsonls MUST be deleted before a re-run --
+`eval_sharded` skips completed users, so the vacuous numbers would be silently reused.
 
 **Iters 35-44 are COMPLETE and their narratives are archived** to `HISTORY.md` (2026-08-10). Verdicts: 35 seed pair ACCEPTED · 36 PAVA lambda DIRECTED-ACCEPTED · 37 by-user weighting REJECTED (mechanism refuted in every size quartile) · 38 KD alpha 0.75 rejected (missed by 2e-6) · 39 KD alpha 0.9 ACCEPTED · 40 alpha 1.0 rejected (brackets the peak; lever closed) · 41 interleave+reorder ACCEPTED (champion) · 42 order-only rejected · 43 interleave at the original order rejected as a TIE · 44 spread placement rejected as a TIE. Detail: `research_5k_verbose.md`.
 **★ THE TOPOLOGY FINDING (iters 41-44 together), which supersedes the individual verdicts:** interleaving is worth +0.000216..+0.000611 in both modes, but THREE structurally different arrangements of it (stream order, layer placement) are mutually indistinguishable at |delta| <= 7.5e-5. So the EXISTENCE of a cross-scope information path is what pays; the choreography is not. The rearrangement sub-family is EXHAUSTED -- further topology work must change WHAT is computed (extra rounds via layer reuse, cross-stream fusion), not when. That ±7.5e-5 same-capacity spread is also the measurement that moved the accept bar to a raw 0.0001.

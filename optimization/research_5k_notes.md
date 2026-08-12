@@ -840,8 +840,29 @@ No historical number is wrong — no track-2 iteration *claimed* to be quant-awa
 5k-methodology (a) "quant-aware logloss" convention has been impossible on this trunk, and my
 runner's banner guard passed for the wrong reason (the banner lies).
 
-**FIX (next action after compaction):** move/refactor the scope application into a function
-applied AFTER the arch-module override, to whatever config is final; the override module's own
-dataclass may lack the QAT fields, so apply via setattr/getattr with defaults. Then verify with
-the same PTQ probe that came back zero — it should come back visibly nonzero (that probe is now
-the regression test). THEN the three-cell chain: decay-QAT (m2b12) → eval quantized → eval fp.
+**✓ FIXED 2026-08-12, `70185c7`.** The three scope blocks became `_apply_qat_scopes(layers)`,
+called LAST on `DEFAULT_ANKI_RWKV_CONFIG.modules` — i.e. on whatever config is final — via
+setattr/getattr with defaults so an override module carrying an older `RWKV7Config` still
+imports. The override legitimately owns the *capacity* hooks above it; QAT scope is an
+orthogonal deploy-simulation overlay and must survive it.
+**Regression test, and it is the one that matters: 10 users, iter 45's checkpoint, q72u PTQ env**
+
+| | ahead | imm |
+|---|---|---|
+| before the fix | +0.000001 | −0.000000 |
+| after the fix | **+0.009276** | **+0.012690** |
+
+**Two guards added so this cannot recur silently.** (1) `scratchpad/qat_tax/assert_qat_live.py`
+imports the arch under the run's own env, prints every stream's final
+`lowrank_rank`/`state_qmax`/`shift_qmax`, and exits 44 if a stream *named in a scope env* is not
+really quantized (it also catches a scope naming a stream the arch does not have — a typo or a
+renamed arch). Wired as **phase 0** of `run_arm.cmd`, before any GPU is spent; ~2 s.
+(2) the eval banner guard now greps the **shard** logs too — `eval_sharded`'s parent log never
+contains them, which is why both arms exited rc 41 while still producing results.
+**THE TRANSFERABLE LESSON: a banner proves a value was COMPUTED, never that it was USED.** The
+`[QAT-LOWRANK] set:` line was perfectly truthful about what it set; the object was discarded one
+step later. Any guard for an env-driven setting must inspect the *consumed* state — here, the
+final config — not the parsing log. That is why the assert imports the module instead of grepping.
+
+**THEN the three-cell chain:** decay-QAT (catalog chosen by the re-run PTQ arms) → eval
+quantized → eval fp.
