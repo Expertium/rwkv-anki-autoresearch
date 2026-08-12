@@ -1173,3 +1173,23 @@ Every `.cmd` still naming a q72u catalog (champ5k_b1/r1/t1, iter9-13, jitab) is 
 it matches its own model. And `rust/rwkv-infer` applies no codebook unless `RWKV_LOWRANK_PQ` is set,
 so there is no baked-in default waiting to be shipped. **Conclusion: exactly one artifact was
 silently compatible, and it is now replaced.**
+
+**FREE PREVIEW FROM THE PAIRED TRAINING LOSSES (2026-08-12 23:40, zero GPU).** The QAT decay and
+iter 45's plain decay start from the SAME WS checkpoint with the same seed, db and MAX, so their
+10,935 steps pair exactly (10,935 paired steps, no gaps). Mean train loss, QAT minus plain:
+
+| window | all | ahead | imm |
+|---|---|---|---|
+| first 500 steps | +0.01204 | +0.00340 | +0.00774 |
+| last 1000 steps | +0.01443 | +0.00385 | +0.00970 |
+| last 300 steps | +0.01457 | +0.00398 | +0.00967 |
+
+**The gap is a near-constant OFFSET from step 500 onward, not something the fine-tune closes** — if
+anything it widens slightly (plain improves 0.0042 over the decay, QAT only 0.0019). A cost that is
+present immediately and never trains away looks like fixed PRECISION DEGRADATION rather than
+accumulating MODEL DRIFT — which would **invert the d=32 finding** (decay-QAT #39 was essentially
+free: -0.000127 / +0.000018) and would mean the lever is the quantizer, not the training schedule.
+⚠ Read this as a direction, not a result: it is TRAIN loss measured UNDER fake-quant, so it is the
+analogue of cell 2 alone and cannot produce the split; and it is not the rectified by-user eval
+metric the gate uses. Cells 2 and 3 settle it. What it does establish is that the tax will not be
+~0 with the refit catalog in place.
