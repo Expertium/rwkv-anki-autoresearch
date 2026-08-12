@@ -143,12 +143,20 @@ def main():
 
     e_old = encode_err(hold, old_cb)
     e_refit = encode_err(hold, fit(train, ncent))
-    e_oracle = encode_err(hold, fit(hold, ncent))
+    # The oracle needs more holdout points than centroids to even fit, and it is only meaningful
+    # with several points per centroid -- below that it memorizes and reports a fake floor. Skip
+    # it rather than crash (k-means raises when n_clusters > n_samples) or mislead.
+    e_oracle = None if len(hold) < 4 * ncent else encode_err(hold, fit(hold, ncent))
 
     print(f"\n  OLD    (d=32-fitted, used today) {e_old:.4f}")
     print(f"  REFIT  (fitted on d=80 train)    {e_refit:.4f}   -> refit buys {e_old - e_refit:+.4f} "
           f"({100.0 * (e_old - e_refit) / max(e_old, 1e-12):+.1f}%)")
-    print(f"  ORACLE (fitted on the holdout)   {e_oracle:.4f}   -> irreducible-ish floor at {ncent} centroids")
+    if e_oracle is None:
+        print(f"  ORACLE                           skipped -- holdout {len(hold)} < 4x ncent {ncent}, "
+              f"it would memorize and report a fake floor")
+    else:
+        print(f"  ORACLE (fitted on the holdout)   {e_oracle:.4f}   -> floor-ish at {ncent} centroids "
+              f"({len(hold) // ncent} holdout pts/centroid -- optimistic below ~10)")
     print(f"\n  for scale, the C=80 shift refits scored 0.1902 (m2b12) / 0.1734 (m5b12) held-out")
     return 0
 
