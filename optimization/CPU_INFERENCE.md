@@ -198,3 +198,44 @@ comparison. The ranges overlap and no difference is resolvable.
 GPU training chain was resident. Treat it as "no reason to expect a deploy cost", and measure
 properly if interleaving ever needs to be defended on speed. The useful half is the structural
 argument above, which does not depend on the timings.
+
+## Measurement 5 — ENERGY per user over a lifetime, 2026-08-12
+
+Prompted by a Discord jab ("post metrics for how much electricity RWKV will use ... so we know how
+much people are destroying the planet for marginally improved learning"). Worth having a real
+answer: it is the question an Anki maintainer would reasonably ask before shipping a neural
+scheduler, and both ingredients are now measured rather than guessed.
+
+**Per card shown = 8.51 ms of ONE CPU core** under the shipping config: 1.756 ms state update
+(Measurement 2's honest trace-driven 1,703 rev/s, scaled by Measurement 4's 2.99x q72u cost) +
+6.759 ms to serve the four button intervals (Measurement 4's buttons/review ratio 3.85x). Review
+counts are the full census in `research_5k_notes.md` (all 9,934 users). Marginal power 15 W for one
+busy core on a mainstream desktop CPU.
+
+| user | reviews | CPU time | energy | cost @$0.15/kWh | CO2 @400 g/kWh |
+|---|---|---|---|---|---|
+| median | 31,070 | 4.4 min | **1.10 Wh** | $0.00017 | 0.44 g |
+| mean | 72,989 | 10.4 min | 2.59 Wh | $0.00039 | 1.04 g |
+| p90 | 180,883 | 25.7 min | 6.42 Wh | $0.00096 | 2.57 g |
+| p99 | 543,161 | 77.1 min | 19.27 Wh | $0.00289 | 7.71 g |
+| heaviest of 9,934 | 3,910,718 | 9.3 h | 138.7 Wh | $0.021 | 55.5 g |
+| hypothetical 100/day x 20 yr | 730,000 | 103.6 min | 25.90 Wh | $0.0039 | 10.4 g |
+
+**A median user's ENTIRE lifetime of inference is 1.10 Wh** = 7.4% of a phone charge, 1.1% of
+boiling a litre of water, 1.6% of driving 1 km in an EV, ~half of one LLM chat response.
+
+**★ THE FRAMING THAT SETTLES IT: the model is 0.064% of the energy of the review it serves.** Per
+review, RWKV burns **0.128 J**; the device sits on at ~20 W for the ~10 s the human spends reading
+and answering = **200 J**. Looking at the card costs **1,566x** more than predicting it. Any
+argument that neural scheduling is an environmental cost has to first explain the screen.
+
+**The one-off training is the larger term, and still small.** ~1,000 GPU-hours of research at ~300 W
+= 300 kWh = ~120 kg CO2. Amortized: 3.00 Wh/user at 100k users, **0.30 Wh at 1M** (27% of a median
+user's lifetime inference), 0.03 Wh at 10M. So all-in, ~1.4 Wh per user at 1M users — ~10% of a
+phone charge for a lifetime of scheduling.
+
+⚠ Caveats: measured on this machine (5950X) through the Rust engine, single-threaded — a mainstream
+i5 is the same order, not the same number; 15 W marginal is an estimate, not a measurement; it
+assumes button intervals are served on EVERY card (an upper bound); and the dataset's review counts
+are to-date, not full lifetimes, hence the 20-year hypothetical row. FSRS by comparison is a closed
+form costing microseconds — RWKV is ~1000x its compute, which is still ~1000x of nothing.
