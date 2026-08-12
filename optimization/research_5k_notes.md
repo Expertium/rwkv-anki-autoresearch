@@ -1140,3 +1140,18 @@ option A (a warm-started ~2-epoch QAT fine-tune on the plain arm's final) over o
 full 10x run with QAT active throughout): B now costs roughly a week of GPU on its own.
 ⚠ Measured on the DECAY phase with KD reading from the dump; a WS-phase measurement could differ
 slightly, but not by enough to change the conclusion.
+
+**⚠ CORRECTION to the chain's own runner comment (2026-08-12): the decay is 10,935 steps, not
+2,733.** `decay_ratio` has been **1.0** since iter 34 ("decay is HALF of all training"), and
+`qtaxc_m2b12_decay.toml` carries `EPOCHS = 1.0` — byte-identical in that respect to iter 45's decay
+toml, so the single-variable comparison is intact; only my step-count estimate was wrong (it came
+from the retired 0.25 ratio, which is also where CLAUDE.md's "decay 63 -> 40 min" speedup figure
+comes from — that line predates iter 34 and should not be read as the current decay cost).
+The comment inside `run_qat_chain.cmd` still says 2733/~1.0 h and CANNOT be fixed while the file is
+executing (cmd.exe resumes from a byte offset); fix it after the run.
+**Revised budget at the measured 0.336 steps/s:** phase A 9.0 h, cell 2 7.2 h, cell 3 3.0 h =
+**19.3 h**, not the ~11 h projected. This does not change any verdict, only the wall clock.
+**And it need not be decided in advance: an eval is interruptible and its partial results are
+valid** — `eval_sharded` writes incrementally and resumes by skipping completed users, which the
+PTQ arm demonstrated today (stopped at 405/500, answer already at p~1e-65). Cutting both evals to
+1,000 users would save 6.1 h if the GPU is wanted sooner.
