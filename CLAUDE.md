@@ -914,14 +914,42 @@ the q72u codebooks (learned on d=32 states, 5x smaller card state) are the suspe
 `RWKV_QAT_PQ_LEARN` exists but its export->eval wiring does not.
 ⚠ Python maps QAT scopes BY NAME (verified: `card_id=rank1/fq7.0, note_id=rank1/fq7.0` under the
 _cnd arch), so the Rust-only positional bug fixed 2026-08-11 does not affect these numbers.
-**▶ LIVE 2026-08-12 11:54: PTQ arms re-running post-fix** (detached pid 9376,
-`scratchpad/qat_tax/run_ptq_both.cmd`, ~36 min/arm, 500 users each). They pick the C=80 shift
-catalog for the QAT decay: **m2b12** (24 b/vector, same bits as q72u, ~23 B card, held-out
-0.1902/0.1601) vs **m5b12** (60 b/vector, same bits PER DIM, ~37 B card, 0.1734/0.1465). The
-capacity probes say the scheme is chunk-limited, not bit-limited: at a FIXED 24 b, m4b6 (finer
-chunks) is 1.9x WORSE, while 5x the bits (m10b12) barely moves it -- so a large m2-vs-m5 logloss
-gap would itself be the finding. ⚠ Stale result jsonls MUST be deleted before a re-run --
-`eval_sharded` skips completed users, so the vacuous numbers would be silently reused.
+**★★ SECOND BUG, FOUND THE SAME DAY AND BIGGER: THE WKV CODEBOOK IS WORSE THAN RANDOM ON THIS
+TRUNK.** `reference/pq_cb_wkv_q72u.txt` (`1 10 32 16 1024`, joint-uv) was fitted on the **d=32/H=2**
+model. K=16 is unchanged at d=80, so it stays DIMENSIONALLY valid and every assert passes -- the
+shift catalog got refitted only because it hard-FAILED a shape check; this one fails **silently, by
+being aimed at the wrong subspace**. Held-out mean relative L2 on this trunk's own card/note WKV
+states: **OLD 1.0107 cross-user / 1.0026 random-split -- at or past the encode-everything-to-ZERO
+bound (1.0), and worse than 1024 RANDOM directions (0.9576)**. Mechanism is subspace, not per-head:
+the data's top-8 PCs carry 63.8% of the DATA's variance but only 22.6% of the OLD CATALOG's.
+**✓ REFITTED: `reference/pq_cb_wkv_c80_b10.txt`** (`f3cc719`; ~3 min CPU from a 787 MB corpus =
+47,700 states, 7 train-range users, via the Rust engine's `--dump-corpus`). **Byte-compatible
+drop-in -- same header, same 1024 rows, so deploy state size is UNCHANGED**; error 1.0107 -> 0.3973
+cross-user.
+**=> THE RECORDED TAX MEASURES THE WRONG THING.** The +0.00290/+0.00445 on record and the
++0.009276/+0.012690 PTQ probe were both taken with this catalog, so they are substantially the cost
+of DESTROYING the card/note WKV state, not of quantizing it. Re-measuring before refitting would
+have spent ~11 h of GPU characterizing a broken config.
+**NO HISTORICAL NUMBER IS INVALIDATED (checked):** every runner using q72u is d=32-era where it
+matches its model; track-2 never produced a QAT number (the env was inert); `CPU_INFERENCE.md`'s
+q72u figures are SPEED, and search cost depends on catalog size, not fidelity.
+**WKV CAPACITY CURVE (cross-user, user 102 held out) -- my "flat curve" prediction was REFUTED:**
+bits 8/10/12/14 = 0.4580 / **0.3776 (shipped)** / 0.3224 / 0.2844. The WKV joint-uv scheme is NOT
+saturated, unlike the shift scheme (where 2.5x the bits bought ~9%). ⚠ **NOT FREE and NOT adopted:**
+index bits are per head per layer, so +2 bits ~ **+1.25 B on the frozen 9 B/card budget (+14%)** --
+Andrew's trade to make. **A FREE axis exists first:** at bits=12 the ORACLE hits 0.2044 vs REFIT
+0.3224 on only 189k vectors from 6 users, so CORPUS SIZE also limits the refit, and more users costs
+no deploy state (trace export ~35 min/user, CPU).
+**▶ LIVE 2026-08-12: 500-user PTQ arm on the OLD catalogs** (orphaned eval, ETA ~13:47) = the honest
+"before". Its sequencer was killed deliberately so the second shift-catalog arm never launches.
+Auto-chained after it: **the 4-arm probe matrix** (`probe_cbs.cmd`, ~16 min) = old-WKV / new-WKV /
+WKV-only / shift-only on 10 users, which localizes the cost to one side and tests additivity --
+something the 11 h three-cell chain cannot do. Shift catalogs available: **m2b12** (24 b/vector,
+same bits as q72u, ~23 B card, held-out 0.1902/0.1601) vs **m5b12** (60 b/vector, same bits PER DIM,
+~37 B card, 0.1734/0.1465); on that side capacity is chunk-limited, not bit-limited (at a fixed
+24 b, m4b6 is 1.9x WORSE; 5x the bits barely moves it).
+⚠ Stale result jsonls MUST be deleted before any re-run -- `eval_sharded` skips completed users, so
+old numbers get silently reused.
 
 **Iters 35-44 are COMPLETE and their narratives are archived** to `HISTORY.md` (2026-08-10). Verdicts: 35 seed pair ACCEPTED · 36 PAVA lambda DIRECTED-ACCEPTED · 37 by-user weighting REJECTED (mechanism refuted in every size quartile) · 38 KD alpha 0.75 rejected (missed by 2e-6) · 39 KD alpha 0.9 ACCEPTED · 40 alpha 1.0 rejected (brackets the peak; lever closed) · 41 interleave+reorder ACCEPTED (champion) · 42 order-only rejected · 43 interleave at the original order rejected as a TIE · 44 spread placement rejected as a TIE. Detail: `research_5k_verbose.md`.
 **★ THE TOPOLOGY FINDING (iters 41-44 together), which supersedes the individual verdicts:** interleaving is worth +0.000216..+0.000611 in both modes, but THREE structurally different arrangements of it (stream order, layer placement) are mutually indistinguishable at |delta| <= 7.5e-5. So the EXISTENCE of a cross-scope information path is what pays; the choreography is not. The rearrangement sub-family is EXHAUSTED -- further topology work must change WHAT is computed (extra rounds via layer reuse, cross-stream fusion), not when. That ±7.5e-5 same-capacity spread is also the measurement that moved the accept bar to a raw 0.0001.
