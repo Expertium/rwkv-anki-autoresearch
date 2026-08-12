@@ -765,3 +765,40 @@ the same single 4070, and every pre-rebuild iteration is measured against a cham
 will invalidate. So features are not a free parallel track; they are a PHASE that largely displaces
 the loop, and only their ~2-4 day preprocessing head start can overlap it.
 (The same wrong claim is in CLAUDE.md's ORDER FROM HERE and is corrected there too.)
+
+## The C=80 shift-PQ refit: what a bit budget actually buys (2026-08-12, no GPU)
+
+The shipped q72u shift catalog is C=32-shaped (`2 12 16 32 4096`) and **hard-fails** on the d=80
+model — `RuntimeError: size of tensor a (32) must match b (80)`. So a refit was mandatory before any
+QAT measurement, and the refit has a free choice of capacity. Andrew: do both — then two probe fits
+turned the pair into a curve. All fitted on ONE corpus (190,763 TS + 117,382 CS unit vectors from
+`reference_iter45` traces), MiniBatchKMeans, identical treatment, **held-out** error on 2,000
+withheld vectors per role (at ncent=4096 a fit-set error is meaningless — the catalog memorizes).
+
+| catalog | bits/vector | sub | centroids | card state | TS err | CS err |
+|---|---|---|---|---|---|---|
+| m4b6 | 24 | 20 | 64 | ~23 B | 0.3604 | 0.3132 |
+| **m2b12** | **24** | 40 | 4096 | **~23 B** | **0.1902** | **0.1601** |
+| m5b12 | 60 | 16 | 4096 | ~37 B | 0.1734 | 0.1465 |
+| m10b12 | 120 | 8 | 4096 | ~60 B | 0.1405 | 0.1216 |
+
+**1. At a FIXED budget, catalog size beats chunk count — decisively.** m4b6 and m2b12 both cost 24
+bits, and m4b6 is **1.9x worse**. This independently reconfirms, on the new architecture, the
+archived quant-endgame lesson that "per-card cost is INDEX bits — catalog size is FREE (amortized):
+fewer/bigger chunks + huge learnable catalogs beat the product form". Do not split the shift vector
+more finely to save bits; it is the wrong direction.
+
+**2. Bits do buy fidelity, but at poor and uneven rates.** 24 → 60 b is −8.8% error; 60 → 120 b is
+another −19%. The driver is `sub`, not bits per se: 4096 centroids cover `4096^(1/sub)` points per
+axis = 1.2 at sub=40, 1.65 at sub=16, 2.7 at sub=8. Shrinking sub helps a lot, but at fixed bits you
+can only shrink sub by shrinking the catalog — which finding 1 says costs more than it saves. That
+is the vise the scheme is in.
+⚠ So my first read of the m2-vs-m5 pair ("capacity is not the lever") was **too strong**. Capacity
+IS a lever; it is just an expensive one, and 5x the bits removes only ~26% of the error.
+
+**3. The operative prediction for the QAT arms.** m2b12 and m5b12 differ by only ~9% in
+reconstruction error, so their logloss arms should be close. If that holds, the deploy config stays
+at the cheap **~23 B card** and the tax — whatever it measures — is NOT mostly shift-code starvation,
+which points the reduction work at the WKV side or at QAT placement instead. If instead the two
+arms differ materially in logloss, then logloss is far more sensitive to shift fidelity than the
+reconstruction error suggests, and that is worth knowing on its own.
