@@ -850,6 +850,18 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
      +0.0118`; it MUST warm-start). B is only worth it if the separate question "would QAT-aware
      training from the start be BETTER at 10x?" is also wanted. Put it to Andrew when the run is
      actually scheduled, not before — this is after the features rebuild.
+   **★ WS:DECAY SPLIT DECIDED = 10+2 (Andrew asked Claude to decide, 2026-08-13).** ⚠ And it
+   corrects a belief the record was carrying: **iter 34's `decay_ratio 0.25 -> 1.0` gain (+0.00145)
+   is CONFOUNDED** — it also took total training 1.25 -> 2.0 epochs, and the log-linear budget curve
+   explains +0.00084 of it. So "our tuning prefers a 1:1 ratio" is NOT matched-budget evidence; the
+   ratio itself is worth at most ~+0.0006 from one confounded point. **QAT length does not constrain
+   the split** (closure saturates by ~0.37 epochs, so even 1.5 ep of decay is 4x what QAT needs; the
+   apparent coupling is only that the runners enable QAT for exactly the decay phase). Decided on
+   COST, since arm 2 scales with decay length at the measured 3.76x: 6+6 = 89 h, 8+4 = 71 h,
+   **10+2 = 53 h**, 11+1 = 44 h. 10+2 is 36 h cheaper than 6+6 for a benefit we cannot demonstrate,
+   is standard WSD practice, and is a known-good upstream point. The +0.0006 is being SPENT, not
+   disproven — the de-confounding test (1+1 vs 1.6+0.4 at a FIXED 2-ep budget, ~10 h) is Andrew's
+   call. Full reasoning: `research_5k_notes.md`.
    **Three things that are tuned for 1 epoch and must be RECONSIDERED at 12.5 — write the answers
    down before launching:** (a) **warmup 200 steps** is 0.9% of a 1-ep run but 0.09% of this one;
    upstream used 20,000. (b) **augmentation is OFF** (`RWKV_AUGMENT_SEED=1234`) — a deliberate
