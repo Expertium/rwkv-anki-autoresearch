@@ -1193,3 +1193,39 @@ free: -0.000127 / +0.000018) and would mean the lever is the quantizer, not the 
 analogue of cell 2 alone and cannot produce the split; and it is not the rectified by-user eval
 metric the gate uses. Cells 2 and 3 settle it. What it does establish is that the tax will not be
 ~0 with the refit catalog in place.
+
+### ★★ THE QAT TAX, MEASURED ON THIS TRUNK — and the balance sheet gets WORSE (2026-08-13, partial)
+Cell 2 partial at n=1,572 of 2,500 (p ~ 1e-227 / 1e-257, 93% / 98% of users worse):
+
+**FULL TAX = +0.004238 ahead / +0.006228 imm**, against the d=32-era placeholder of +0.00290 /
++0.00445. **The tax is ~1.5x larger on this trunk than the number the balance sheet was carrying**,
+and the comparison is if anything generous to us: the old figure came from `champ5k_b1`, which ran
+QAT throughout WS+decay, whereas this is the warm-started decay-only placement that the d=32 record
+says is the *cheap* one. So the trunk change dominates — 5x the card state, 5 heads rank-1-encoded
+instead of 2 — not the schedule.
+
+Recomputing Andrew's stopping rule `still_needed = (champion - old) - budget_credit + QAT_tax` with
+the measured term:
+
+| | ahead | imm |
+|---|---|---|
+| gap to old model (VAL half) | +0.00309 | +0.00181 |
+| budget credit at ~12 ep | -0.00373 | -0.00430 |
+| QAT tax — was (d=32 placeholder) | +0.00290 | +0.00445 |
+| **QAT tax — measured, d=80** | **+0.00424** | **+0.00623** |
+| STILL NEEDED — was | +0.00225 | +0.00196 |
+| **STILL NEEDED — now** | **+0.00360** | **+0.00374** |
+
+At the post-tuning rate (+0.000112 ahead / +0.000057 imm per attempted iteration) the requirement
+goes from **20/34 iterations to 32/66** — ~12 and ~24 days of continuous GPU. The stopping point
+moved AWAY.
+
+**★ THE OPERATIVE RATIO: 0.001 off the QAT tax == ~9 algorithmic iterations on ahead and ~18 on
+imm** (~3.3 and ~6.5 GPU-days). That is the argument for continuing quantizer work rather than
+returning to the algorithmic loop, and it is why the WKV refit — +0.003235/+0.004183 of PTQ cost
+recovered for ZERO deploy bytes and ~3 min of CPU — is the highest-value change of the phase so far.
+Without it this tax would be materially worse.
+⚠ Partial (1,572 of 2,500 users) and cell 3 still pending, so the split between precision
+degradation and model drift is not yet in. The train-loss preview says precision; if that holds, the
+remaining levers are quantizer-side (catalog capacity, a larger fitting corpus, a different scheme
+on the WKV half) rather than schedule-side.
