@@ -1406,3 +1406,51 @@ and ~6.9 GPU-days instead of ~12 and ~24). **imm stops being the binding mode**,
 only because of the QAT term.
 ⚠ Partial (569 of 2,500 users); full VAL half pending. Nothing here changes the deploy recipe --
 this is the SAME quantizer per Andrew's 2026-08-13 constraint, trained better.
+
+### ★★ WHERE THE REMAINING QAT TAX LIVES — and a THIRD stale-artifact finding (2026-08-13, CPU only)
+Reconstruction-error ladder on real card/note WKV states (7,500 head-states each), decomposing the
+frozen recipe's error into its three stages:
+
+| stage | CARD | NOTE |
+|---|---|---|
+| exact rank-1 only (the STRUCTURAL floor) | 0.4353 | 0.3049 |
+| + codebook directions | 0.6623 (+0.2269) | 0.5383 (+0.2334) |
+| + 1-bit norm | 0.8148 (+0.1525) | 0.7813 (+0.2431) |
+| **share: rank-1 / codebook / norm** | **53% / 28% / 19%** | **39% / 30% / 31%** |
+
+**★ THE NORM RANGE IS STALE FOR THE NOTE STREAM.** The engine quantizes **√σ** log-uniformly over a
+**hardcoded** [-3,0] octaves (`rwkv_ops.py` -> `rwkv7_set_norm_quant(cb, bits, -3.0, 0.0)`), a range
+the Rust side documents as *"corpus-derived globals (2026-07-04: WKV √σ spans log2 [-2.5,-0.6])"* —
+i.e. derived on the **d=32** model. On this trunk:
+
+| stream | log2(√σ) p1 / median / p99 | inside [-3,0] | 1-bit norm err: hardcoded -> FITTED |
+|---|---|---|---|
+| card | -3.09 / -1.93 / +0.02 | 96.6% | 0.2748 -> 0.2757 (no gain) |
+| **note** | **-3.52 / -2.79 / -1.49** | **67.5%** | **0.5113 -> 0.1756 (2.9x better)** |
+
+**32.4% of note norms are CLAMPED to one value.** Card is fine, which is precisely why a single
+global range survived unnoticed — it was fitted to card-like states. This also explains the ladder
+above (norm = 31% of note's error vs 19% of card's).
+⚠ **Method note: my FIRST pass used the wrong quantity** (σ₁/amax, which is ≥1 by construction, so
+no [-3,0] window could ever contain it) and reported "100% outside". Reading the engine's own
+comment gave the right quantity. Verify what a quantizer quantizes before diagnosing its range.
+
+**RANKED NEXT STEPS, all inside the frozen recipe (Andrew 2026-08-13):**
+1. **Per-stream norm ranges** — zero extra bits (two floats), ~3x less norm error on note. Requires
+   `norm_lo_log2/norm_hi_log2` to become per-scope instead of global. **Testable by a 10-user PTQ
+   probe with no training at all.**
+2. **Learnable norm levels** — the generalization of 1: learn the 2 levels instead of fitting a
+   range, exactly as the catalogs were just learned. Zero bits, subsumes 1.
+3. **Per-stream catalogs** — card and note are visibly different distributions (rank-1 floor 0.435
+   vs 0.305) sharing one catalog. Per-entity INDEX bits unchanged; the d=32 endgame already found
+   catalog size is free because it amortizes.
+4. **Low-rank-friendly regularization** — rank-1 truncation is the largest single term (53%/39%) and
+   is structurally frozen, but the model can be TRAINED to emit more nearly rank-1 states. The only
+   lever that touches the dominant term. Deploy unchanged, no extra forward.
+5. fp32-teacher KD during QAT — classic, now behind the cheaper in-budget items.
+
+**★ THE PATTERN, third instance this week:** an artifact fitted to one state distribution and applied
+to another — stale catalog ACROSS generations (worse than random), stale catalog WITHIN a run (the
+growing QAT penalty, fixed by learnable catalogs, ~45%), and now a stale norm RANGE across
+generations. **Anything in the quantizer that was ever "corpus-derived" must be re-derived when the
+trunk changes, and is better learned than frozen.**
