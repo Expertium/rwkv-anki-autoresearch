@@ -1314,3 +1314,32 @@ satisfying a `DONE_EXIT` grep, and now a stale token from a previous append. The
 **a completion signal must be unambiguous in BOTH content and TIME.** Either scope to the current
 run (above), or write per-run log files (a fresh `%STAMP%` name), which the phase logs already do
 and the summary logs do not.
+
+### ★★ LEARNABLE CODEBOOKS: the QAT penalty is largely CATALOG STALENESS *WITHIN* THE RUN
+Paired train-loss screen at 4,367 of 10,935 steps (three runs from the same WS-final, same seed,
+same batch order: plain / QAT-fixed-catalogs / QAT-learnable-catalogs). Penalty = QAT minus plain.
+
+| steps | ahead: fixed | learn | closed | imm: fixed | learn | closed |
+|---|---|---|---|---|---|---|
+| 0-999 | +0.00334 | +0.00218 | 34.6% | +0.00766 | +0.00514 | 32.9% |
+| 1000-1999 | +0.00388 | +0.00152 | 60.8% | +0.00914 | +0.00389 | 57.4% |
+| 2000-2999 | +0.00461 | +0.00159 | 65.6% | +0.01055 | +0.00400 | 62.1% |
+| 3000-3999 | +0.00470 | +0.00156 | **66.7%** | +0.01077 | +0.00401 | **62.7%** |
+
+**The raw penalty columns carry the mechanism, and they CORRECT an earlier reading.** With FIXED
+catalogs the penalty GROWS monotonically (+0.0033 -> +0.0047 ahead, +0.0077 -> +0.0108 imm); with
+LEARNABLE catalogs it is FLAT (+0.0022 -> +0.0016, +0.0051 -> +0.0040). On 2026-08-12 I read the
+widening fixed-catalog gap as "the QAT fine-tune is not recovering the cost". That was wrong. The
+real cause: **training moves the model's state distribution, so a catalog fitted before the run goes
+progressively stale DURING it.** Learnable catalogs track the drift; fixed ones fall behind.
+
+**This unifies the week's two quantization findings into one root cause** — a catalog fitted to one
+state distribution and applied to another. Across model generations that produced the
+worse-than-random d=32 catalog; within a single run it produces the growing QAT penalty. Both are
+fixed by making the catalog follow the states rather than freezing it.
+
+⚠ Train loss under fake-quant, not the rectified by-user eval; screens rank, they do not gate. Valid
+here because all three runs share quantizer structure, regularization and seed (the documented
+train-loss-prune bias applies to REGULARIZATION levers). **Conditional projection, to be confirmed
+not quoted:** a ~65%/63% cut would move the tax from +0.004185/+0.006219 to roughly
++0.0015/+0.0023, and `still_needed` from +0.00360/+0.00374 to roughly +0.0009/+0.0000.
