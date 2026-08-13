@@ -1232,3 +1232,46 @@ Without it this tax would be materially worse.
 degradation and model drift is not yet in. The train-loss preview says precision; if that holds, the
 remaining levers are quantizer-side (catalog capacity, a larger fitting corpus, a different scheme
 on the WKV half) rather than schedule-side.
+
+### ★★ CELL 3 INVALIDATES ITS OWN LABEL: "model drift" is not measurable for STRUCTURAL quantization
+Cell 3 (the QAT checkpoint evaluated at FULL PRECISION) came back at **0.403091 ahead / 0.547622
+imm** (n=858 partial) against plain's 0.297697 / 0.265375. That is not drift, it is a model being
+fed inputs it has never seen. Verified NOT a harness bug before interpreting: cell 2 and cell 3 name
+the **same** checkpoint in their tomls; the QAT banners are **absent** from cell 3's shard log (0
+matches, so quantization really is off); no exceptions or tracebacks; the `nan`s are `auc` on
+single-class users. Cell 3 measured exactly what it was asked to.
+
+**The decomposition's hidden assumption.** `(3)-(1) = model drift` presumes the QAT weights are a
+valid full-precision model. They are not here. Our config is
+`RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4` — **rank-1 truncation** of each 16x16 WKV state,
+plus PQ codebook and 1-bit norms. Under QAT the recurrence CARRIES the quantized state, so the model
+learns dynamics built around rank-1 states; full-rank input is off-distribution. The signature is
+that **precision degradation comes out NEGATIVE** (-0.101 ahead / -0.276 imm): the model is *better*
+with its quantizer than without. A model that needs its quantizer has no meaningful fp32 score.
+
+**Why the d=32 record disagreed, and why that is consistent.** `qat_log` #39 computed this exact
+split (`quant_cost` = cell2-cell3, `finetune_cost` = cell3-cell1) and got +0.000018/-0.000127 and
++0.002456/+0.001129 — sane, and the origin of "drift dominated". But #39 quantized
+**`card int2 + note int4`, plain int-N ROUNDING with no low-rank**. Removing rounding is a small
+perturbation; removing a rank-1 projection is not. **The three-cell design is sound for VALUE
+quantization and breaks for STRUCTURAL quantization.** Andrew's recollection was right about the
+experiment he remembered; it does not transfer to this config.
+
+**The split that IS meaningful here** — use the PTQ arm as the second axis instead of an fp32 eval:
+
+| | ahead | imm |
+|---|---|---|
+| quantization cost, UNADAPTED (PTQ, refit catalog, n=10) | +0.0060 | +0.0085 |
+| quantization cost, ADAPTED (**FULL TAX**, n=2500) | **+0.0042** | **+0.0062** |
+| **recovered by the QAT fine-tune** | +0.0018 (30%) | +0.0023 (27%) |
+
+There is no separate drift term to report, and none is needed: the deploy number is the full tax.
+
+**WHERE THIS POINTS THE REMAINING WORK.** At d=32 with int-N, QAT *dissolved* the quant penalty to
+~0. With rank-1+PQ the residual after adaptation is still +0.0042/+0.0062, so this quantizer is much
+harder to adapt to — the lever is its STRUCTURE, not the schedule. Concrete candidate: **rank-2
+instead of rank-1** (11 -> 22 bits/head, i.e. card ~23 B -> ~37 B) — a real state-size trade and
+therefore Andrew's call, not an adoption. Precedent is favourable: the d=32 ladder found rank-2 int4
+BEAT int2, "smaller AND more accurate". ⚠ Also note cell 3 cost ~3 h of GPU to produce a number that
+cannot be used; a 10-user version would have exposed the negative-degradation signature in minutes.
+**Cheap-probe-before-long-run applies to VALIDITY, not just to cost.**
