@@ -81,3 +81,36 @@ Recorded because they generalize, not as iteration narrative.
   gives **100.00% coverage** of ahead-scored rows (388,156/388,156 over 5 users, 0 violations) —
   `ahead_rows == query_rows == teachers` exactly, which is the structural reason the two metrics
   report identical per-user `size`.
+
+## QAT-IMPROVEMENT SUB-QUEUE (Andrew 2026-08-13: "keep the current quantization recipe... let's try improving QAT first")
+
+Constraint: the quantizer's STRUCTURE is FROZEN (rank-1 int4 card/note + PQ b10 WKV + m2b12 shift +
+1-bit norms => 185 b/card, 105 b/note). Levers are the training procedure only. Baseline to beat =
+qtaxc_m2b12 cell 2: **0.301882 / 0.271594** on the VAL half (tax +0.004185 / +0.006219 vs iter 45).
+
+1. **LEARNABLE CODEBOOKS (running first).** Andrew's own doctrine, and the d=32 quant endgame's
+   winning lever ("huge learnable catalogs beat the product form"). Infrastructure is COMPLETE
+   contrary to CLAUDE.md's "queued" note: PQ_LEARN envs train both catalogs (kernel-side grads,
+   wd=0 groups, resume-safe), and exports fire at every ckpt save. The only missing wiring was the
+   eval pointing at the exported files — runner-level. Zero deploy-size change (values change, not
+   structure). Single-variable vs qtaxc: only `RWKV_QAT_PQ_LEARN=1 RWKV_QAT_SHIFT_PQ_LEARN=1`.
+   Extra rationale on this trunk: the k-means catalogs are fitted on the PLAIN model's states, and
+   the state distribution shifts during QAT — co-training tracks it.
+2. **KD from the PLAIN iter-45 teacher.** The classic fp32-teacher QAT recipe. Distinct from the
+   current d=128 teacher: it targets "what the plain model would predict", which IS the deploy
+   objective (minimize the tax), not just low logloss. Needs a new dump (forward-only pass over the
+   decay window, ~2-3 h) — the dump/mix infra exists. Could stack with the d=128 teacher (mix) or
+   replace it; run as replace first (cleaner attribution).
+3. **RWKV_CB_LR_MULT sweep** — only if #1 helps; the champion cb_lr=1x is a d=32-era HP.
+4. **Longer/rescheduled QAT fine-tune — DEPRIORITIZED by evidence:** the paired train-loss trace
+   shows the QAT-vs-plain gap is a constant offset from step ~500 (adaptation saturates fast);
+   more steps of the same schedule will not close it.
+5. Quantization-strength annealing (stochastic quant ramp) — real code; only if 1-2 disappoint.
+
+Screening tool for all of these: the paired train-loss gap vs qtaxc's decay trace (same WS start,
+seed, db => steps pair exactly; visible by step ~1000, i.e. ~50 min in, zero GPU beyond the run
+itself). ⚠ Valid here because candidates share the quantizer and regularization — the documented
+train-loss-prune bias applies to REGULARIZATION levers, not matched-config QAT variants.
+Gate for accepting a QAT improvement: cell-2-style eval on the FULL VAL half beats qtaxc_m2b12's
+0.301882 / 0.271594 with the usual paired Wilcoxon; there is no cell 3 (meaningless for structural
+quant — see research_5k_notes 2026-08-13).
