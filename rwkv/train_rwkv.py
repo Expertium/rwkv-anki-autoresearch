@@ -1207,17 +1207,27 @@ def main_loop(config, task_queue, batch_queue):
                     if stats is None:
                         print(f"[kd-dump] teacher forward returned None (NaN) at step {step} -- ABORT")
                         sys.exit(44)
-                    torch.save(
-                        {
-                            "step": step,
-                            "shape": list(stats.p_curve.shape),
-                            "labels_sum": float(
-                                prepared_batch.labels.detach().cpu().double().sum().item()),
-                            "p_curve": stats.p_curve.to(torch.float16).cpu(),
-                            "p_imm_all": stats.p_imm_all.to(torch.float16).cpu(),
-                        },
-                        os.path.join(_kd_dump_dir, f"step_{step}.pt"),
-                    )
+                    _dump_obj = {
+                        "step": step,
+                        "shape": list(stats.p_curve.shape),
+                        "labels_sum": float(
+                            prepared_batch.labels.detach().cpu().double().sum().item()),
+                        "p_curve": stats.p_curve.to(torch.float16).cpu(),
+                        "p_imm_all": stats.p_imm_all.to(torch.float16).cpu(),
+                    }
+                    # RWKV_KD_DUMP_LABELS=1 (2026-08-13): also store the targets + row masks, so a
+                    # dump can be analysed OFFLINE against another model's dump on the identical
+                    # batch stream (labels_sum is the identity check). Purely additive and inert
+                    # when unset -- the KD consumer reads p_curve/p_imm_all by key and ignores the
+                    # rest, so existing dumps and runs are unaffected.
+                    if os.environ.get("RWKV_KD_DUMP_LABELS", "") == "1":
+                        _dump_obj.update({
+                            "p_imm": stats.p_imm.to(torch.float16).cpu(),
+                            "label_rating": stats.label_rating.to(torch.int16).cpu(),
+                            "has_label": stats.has_label.to(torch.bool).cpu(),
+                            "is_query": stats.is_query.to(torch.bool).cpu(),
+                        })
+                    torch.save(_dump_obj, os.path.join(_kd_dump_dir, f"step_{step}.pt"))
                     print(f"[kd-dump] step {step}/{_kd_dump_steps} saved "
                           f"(ahead {stats.ahead_avg.item():.4f}, imm {stats.imm_avg.item():.3f})")
                     if step >= _kd_dump_steps:
