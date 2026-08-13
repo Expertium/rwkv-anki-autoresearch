@@ -1195,9 +1195,12 @@ metric the gate uses. Cells 2 and 3 settle it. What it does establish is that th
 ~0 with the refit catalog in place.
 
 ### ★★ THE QAT TAX, MEASURED ON THIS TRUNK — and the balance sheet gets WORSE (2026-08-13, partial)
-Cell 2 partial at n=1,572 of 2,500 (p ~ 1e-227 / 1e-257, 93% / 98% of users worse):
+**FINAL, cell 2 complete on the full VAL half n=2,500 (p below float precision; 92% / 98% of
+users worse): FULL TAX = +0.004185 ahead / +0.006219 imm.**
+(The partial read at n=1,572 gave +0.004238 / +0.006228 — it moved by 5e-5 / 1e-5, so the early
+call was sound.)
 
-**FULL TAX = +0.004238 ahead / +0.006228 imm**, against the d=32-era placeholder of +0.00290 /
+**FULL TAX = +0.004185 ahead / +0.006219 imm**, against the d=32-era placeholder of +0.00290 /
 +0.00445. **The tax is ~1.5x larger on this trunk than the number the balance sheet was carrying**,
 and the comparison is if anything generous to us: the old figure came from `champ5k_b1`, which ran
 QAT throughout WS+decay, whereas this is the warm-started decay-only placement that the d=32 record
@@ -1212,7 +1215,7 @@ the measured term:
 | gap to old model (VAL half) | +0.00309 | +0.00181 |
 | budget credit at ~12 ep | -0.00373 | -0.00430 |
 | QAT tax — was (d=32 placeholder) | +0.00290 | +0.00445 |
-| **QAT tax — measured, d=80** | **+0.00424** | **+0.00623** |
+| **QAT tax — measured, d=80 (final, n=2500)** | **+0.00419** | **+0.00622** |
 | STILL NEEDED — was | +0.00225 | +0.00196 |
 | **STILL NEEDED — now** | **+0.00360** | **+0.00374** |
 
