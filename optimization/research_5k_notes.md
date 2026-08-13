@@ -1343,3 +1343,37 @@ here because all three runs share quantizer structure, regularization and seed (
 train-loss-prune bias applies to REGULARIZATION levers). **Conditional projection, to be confirmed
 not quoted:** a ~65%/63% cut would move the tax from +0.004185/+0.006219 to roughly
 +0.0015/+0.0023, and `still_needed` from +0.00360/+0.00374 to roughly +0.0009/+0.0000.
+
+### ★ WS:DECAY SPLIT FOR THE 10x ENDGAME RUN = **10+2** (Andrew asked Claude to decide, 2026-08-13)
+
+**The evidence that appears to favour a long decay is CONFOUNDED — this corrects a belief I had been
+carrying.** iter 34's `decay_ratio 0.25 -> 1.0` (+0.00145) was never a pure ratio change;
+`research_5k_verbose.md` records the caveat at the time: it also took **total training from 1.25 to
+2.0 epochs**. Against the log-linear budget curve (calibrated on the measured 3x step, +0.00196),
+pure budget explains **+0.00084** of it. So the ratio itself is worth at most ~**+0.0006, from a
+single confounded point**. **We have NO matched-budget evidence that a long decay beats a short
+one**, and "our tuning prefers ratio 1.0" should not be quoted as if we did.
+
+**QAT length does not constrain the choice.** With learnable catalogs the penalty closure saturates
+by step ~4,000 = **0.37 epochs**, so even a 1.5-epoch decay gives QAT ~4x what it needs. QAT only
+*looks* coupled to the decay because the runners happen to enable it for exactly that phase; the two
+are separable and should be reasoned about separately.
+
+**So the decision is made on cost, where the spread is large** (arm 2's QAT window scales with the
+decay, at the measured 3.76x QAT slowdown):
+
+| split | arm 1 plain | arm 2 QAT | total |
+|---|---|---|---|
+| 6+6 | 30.3 h | 58.9 h | 89.2 h |
+| 8+4 | 30.3 h | 40.8 h | 71.1 h |
+| **10+2** | 30.3 h | **22.7 h** | **53.0 h** |
+| 11+1 | 30.3 h | 13.6 h | 43.9 h |
+
+**10+2 chosen:** 36 h cheaper than 6+6 for a benefit we cannot demonstrate; it is standard WSD
+practice (decay 10-20% of total); and it is the configuration upstream actually used at ~12 epochs,
+i.e. a known-good point rather than an extrapolation from our unusual 1-epoch regime. 11+1 is
+rejected — it saves 9 h but drops below the conventional range with nothing behind it.
+⚠ **The +0.0006 excess is being SPENT, not disproven.** If it should be settled instead, the
+de-confounding test is two runs at a FIXED 2-epoch budget — 1+1 vs 1.6+0.4 — for ~10 h plus evals.
+Against a one-shot 53 h run that is a defensible insurance premium; it is Andrew's call whether the
+delay is worth it.
