@@ -1377,3 +1377,32 @@ rejected — it saves 9 h but drops below the conventional range with nothing be
 de-confounding test is two runs at a FIXED 2-epoch budget — 1+1 vs 1.6+0.4 — for ~10 h plus evals.
 Against a one-shot 53 h run that is a defensible insurance premium; it is Andrew's call whether the
 delay is worth it.
+
+### ★★★ QAT IMPROVEMENT #1 CONFIRMED: LEARNABLE CODEBOOKS CUT THE TAX ~45% (partial, n=569)
+Single-variable vs `qtaxc_m2b12`: the ONLY difference is `RWKV_QAT_PQ_LEARN=1` +
+`RWKV_QAT_SHIFT_PQ_LEARN=1`. Same WS-final, same KD alpha 0.5, same starting catalogs, same
+schedule. Paired on the same users:
+
+| | plain | tax, fixed cb | tax, LEARNABLE cb | cut | p |
+|---|---|---|---|---|---|
+| ahead | 0.298669 | +0.004274 | **+0.002264** | **47.0%** | 1.9e-68 |
+| imm | 0.266444 | +0.006229 | **+0.003551** | **43.0%** | 1.1e-91 |
+
+Consistent with the 10-user validity probe (44.7% / 39.3%), so the effect is stable across samples.
+**Costs nothing:** deploy size is unchanged (catalog VALUES move, not structure) and wall-clock is
+unchanged (0.3333 vs 0.335 steps/s). It also closes the export->eval wiring gap CLAUDE.md had
+listed as queued -- the eval consumed the catalogs exported at the final checkpoint.
+
+**Effect on the stopping-point balance sheet:**
+
+| | ahead | imm |
+|---|---|---|
+| still_needed with the d=32 placeholder tax | +0.00225 | +0.00196 |
+| still_needed with the measured fixed-cb tax | +0.00360 | +0.00374 |
+| **still_needed with learnable catalogs** | **+0.00162** | **+0.00106** |
+
+At the post-tuning algorithmic rate that is **~15 and ~19 more iterations, not 32 and 66** (~5.4
+and ~6.9 GPU-days instead of ~12 and ~24). **imm stops being the binding mode**, which it became
+only because of the QAT term.
+⚠ Partial (569 of 2,500 users); full VAL half pending. Nothing here changes the deploy recipe --
+this is the SAME quantizer per Andrew's 2026-08-13 constraint, trained better.
