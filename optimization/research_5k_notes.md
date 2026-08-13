@@ -1298,3 +1298,19 @@ kill, i.e. the documented WDDM-paging deadlock at ~11.7/12 GB.
    that a feature is slow, confirm the GPU is exclusively yours** — `nvidia-smi` plus a command-line
    survivor check costs seconds. This is the same class as the qat-inert and stale-codebook bugs
    found this week: a measurement that is self-consistent and answers a question you did not ask.
+
+**⚠ WAITLOOP TRAP, THIRD VARIANT (2026-08-13): an APPENDED log lets a PREVIOUS run's terminal token
+satisfy the wait.** `cblearn.log` is opened with `>>`, so the aborted first attempt's
+`DONE_EXIT_23` sat in the file when the relaunch began; a watcher grepping `^DONE_EXIT_` fired
+instantly and reported the run finished. The documented fix for the earlier variant — ANCHOR the
+pattern with `/B` so prose cannot match — does not help here, because this IS a real terminal line,
+just from a run that is over.
+**The fix that works: scope the search to lines AFTER the current run's START marker.**
+
+    awk '/CHAIN START/{buf=""} {buf=buf$0"\n"} END{printf "%s", buf}' run.log | grep -qE "^DONE_EXIT_"
+
+Three variants of this trap are now on record — prose mentioning the token, `DONE_EXIT_WSFAIL`
+satisfying a `DONE_EXIT` grep, and now a stale token from a previous append. The general rule:
+**a completion signal must be unambiguous in BOTH content and TIME.** Either scope to the current
+run (above), or write per-run log files (a fresh `%STAMP%` name), which the phase logs already do
+and the summary logs do not.
