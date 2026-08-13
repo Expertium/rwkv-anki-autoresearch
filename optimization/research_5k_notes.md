@@ -1275,3 +1275,26 @@ therefore Andrew's call, not an adoption. Precedent is favourable: the d=32 ladd
 BEAT int2, "smaller AND more accurate". ⚠ Also note cell 3 cost ~3 h of GPU to produce a number that
 cannot be used; a 10-user version would have exposed the negative-degradation signature in minutes.
 **Cheap-probe-before-long-run applies to VALIDITY, not just to cost.**
+
+### ⚠ INCIDENT 2026-08-13: an incomplete kill produced a symptom that looked like an algorithmic finding
+The learnable-codebook run (`run_cblearn.cmd`) advanced **8 steps in 55 minutes** and I diagnosed it
+as "the learnable shift codebook is computationally infeasible" — 1.31M trainable centroids in a
+non-fused PyTorch path, a plausible story. **It was wrong.** With the GPU exclusive the same run
+does **0.3333 steps/s, identical to the plain QAT decay's 0.333** — learnable codebooks are free in
+wall-clock. The stall was a co-tenant `get_result` from the previous chain that I had failed to
+kill, i.e. the documented WDDM-paging deadlock at ~11.7/12 GB.
+
+**Three transferable lessons:**
+1. **Killing a `cmd.exe` wrapper does NOT kill its python children.** They survive, reparented, and
+   a process-tree walk rooted at the (now dead) wrapper no longer finds them. **Kill deepest-first
+   and then VERIFY BY COMMAND-LINE**, never by tree membership alone — `Get-CimInstance Win32_Process
+   ... | Where CommandLine -match 'rwkv|eval_sharded|get_result'` is the check that actually closes.
+2. **The runners RETRY.** `run_qat_chain.cmd` / `run_arm.cmd` launch a second eval attempt on
+   nonzero exit, so killing an eval's python while the wrapper lives makes the wrapper *relaunch* it.
+   A partial kill can actively resurrect the work you meant to stop.
+3. **★ A resource-contention symptom impersonated an algorithmic property.** "1 step/hour" reads
+   exactly like "this feature is too expensive", and acting on it would have silently changed the
+   experiment (dropping shift-codebook learning) on the basis of an artefact. **Before concluding
+   that a feature is slow, confirm the GPU is exclusively yours** — `nvidia-smi` plus a command-line
+   survivor check costs seconds. This is the same class as the qat-inert and stale-codebook bugs
+   found this week: a measurement that is self-consistent and answers a question you did not ask.
