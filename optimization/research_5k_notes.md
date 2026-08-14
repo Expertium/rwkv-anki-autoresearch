@@ -1507,6 +1507,21 @@ ratio is lopsided enough that not surfacing it would be the error.
 ⚠ n=10 users -- fine for ranking levers of this size, but confirm on ~500 before any state-size
 change.
 
+> **★★ SUPERSEDED SAME DAY -- ITEMS 1 AND 2 ARE CLOSED, AND THE REASONING ABOVE IS THE INSTRUCTIVE
+> PART.** Everything in this block was measured under FROZEN catalogs. Under learnable catalogs the
+> 2-bit norm came back NULL, and the mechanism falsifies item 2's stated premise directly: **learned
+> centroids are not unit-norm.** They absorb magnitude into their own length (length spread widened
+> **2.43x**), so "catalogs learn DIRECTIONS only" stopped being true the moment they became learnable,
+> and the norm grid is no longer the sole carrier of magnitude. Item 1 falls the same way -- a range
+> fitted per stream re-encodes what centroid length already encodes -- and item 3's +1-bit trade
+> should be re-priced against the LEARNABLE baseline before ever being put to Andrew, since the
+> +0.003 it was meant to buy was measured against the frozen one. Item 4 (rank-1 regularization) is
+> unaffected and is the live `qtaxf_r1reg` run.
+> **The transferable lesson, which is why this block is kept rather than deleted: a learnable
+> component silently absorbs the levers around it.** The offline reconstruction numbers above were
+> not wrong -- they were measured on a configuration that no longer exists. Before adding a lever
+> beside something that learns, measure what it has ALREADY absorbed.
+
 **⚠ THE FIRST imm-independence RESULT WAS VOID -- masking bug, caught by a sanity number (2026-08-14).**
 It printed a verdict ("the independence mechanism is real, incremental R^2 = 0.0100") that must NOT
 be quoted: **`p_curve` is valid ONLY on ahead rows (`has_label & ~is_query`) and `p_imm` ONLY on
@@ -1535,10 +1550,27 @@ backward does
 upper-bound check** -- into `__device__ float g_pq_cb_grad[32768]`, a fixed buffer that exactly fits
 the joint-uv shape (1024 centroids x 32 dims = 32,768). So ANY out-of-range centroid index writes out
 of bounds, and a NaN in the distance search (argmin over NaNs returns garbage) is a plausible route
-to one. Two consequences worth acting on if the learnable path is adopted permanently, which it now
-looks likely to be: (a) add `ci < c_pq_ncent` to the guard, (b) the buffer is sized for ncent<=1024
-at subdim 32 -- a larger catalog would silently overflow it, which matters because "bigger catalogs"
-is exactly the direction the d=32 endgame recommends.
+to one.
+
+> **⚠ AUDITED 2026-08-14 -- THIS WAS OVERSTATED, and the real defect is a different one.** Reading the
+> kernel end to end: `ci` **cannot** be out of range. It is `sc_best`, which is either a `c` from the
+> `c < c_pq_ncent` scan or the literal 0 all-bad fallback (`rwkv7_cuda.cu:536,579`), the recording is
+> initialized to `-1` **unconditionally before any degenerate-norm bail** (`:482-485`), and upload
+> already enforces `n == want` and `n <= 32768` (`:1180-1181`). The NaN route is closed too: an
+> all-NaN distance set hits the `fi == 0x7fffffff` fallback to centroid 0. So (a) and (b) as written
+> were not the risk, and chasing them would have been wasted work.
+> **THE REAL LATENT DEFECT, narrower and genuinely silent:** the recording buffer is
+> `__shared__ int rec_idx_chunk[CHUNK_LEN * 8]` -- a **hardcoded 8-int stride per timestep** -- but
+> the kernel writes `2*c_pq_m` entries per slot (`:483`) and reads `[c*8 + c_pq_m + p]`
+> (`:1114,:1136`). **Role-mode `m > 4` spills slot `c` into slot `c+1`**, so one timestep's centroid
+> picks overwrite the next one's: wrong gradients, no fault, no warning. Joint mode is exempt
+> (`m == 1`, enforced kernel-side). It binds only on the LEARN path, which is exactly the path now
+> adopted as default, and `m` is a natural thing to raise when experimenting with catalog structure.
+> **Guarded at upload in `rwkv_ops.maybe_upload_pq_codebook`** -- deliberately Python-side, so it
+> needed no `.pyd` rebuild and could not disturb the live chain -- plus a comment at the declaration.
+> **The lesson is about the audit, not the bug: a hazard reported from a single suspicious line was
+> wrong in both directions** -- it named a risk the surrounding invariants already excluded, and
+> missed a real one three lines away. Trace the invariant to its source before filing the hazard.
 
 **EARLY SIGNAL (step-50 validation, identical batch):** 2-bit norm **0.3259 / 0.3101** vs the 1-bit
 run's 0.3269 / 0.3110 -- the expected direction, though 50 steps proves nothing on its own.
@@ -1673,3 +1705,29 @@ its known blunt edge.
 would be the same experiment with more force behind an answer already given. A larger lambda is only
 indicated in the other branch (floor unmoved despite the proxy collapsing), which would mean the
 proxy and the floor are decoupled and the LEVER, not the dose, is wrong.
+
+**★★ THE BASELINE FOR THAT CHECK WAS WRONG, AND IT WOULD HAVE MANUFACTURED A FAKE WIN (2026-08-14).**
+Building the measurement tool (`scratchpad/qat_tax/rank1_floor.py`, CPU, ~1 min, now saved and
+re-runnable) and pointing it at the EXISTING iter-45 corpus does not reproduce the ladder's
+"card 0.4353 / note 0.3049". It gives:
+
+| | card | note |
+|---|---|---|
+| ladder (2026-08-13, ad-hoc script, 7,500 head-states, NOT saved) | 0.4353 | 0.3049 |
+| **`rank1_floor.py` (183,480 / 55,020 head-states, 7 users)** | **0.3733** | **0.3729** |
+
+**The disagreement is not sampling: it goes in OPPOSITE directions on the two streams** (card lower,
+note higher), and per-user card means span only 0.353-0.439. The new number is the trustworthy one --
+its formula, `sqrt(1 - sigma_1^2 / sum sigma_i^2)`, was checked against an EXPLICIT rank-1 truncation
+and agrees to **2.4e-07** -- while the ladder's script no longer exists to interrogate.
+**Why this mattered more than a bookkeeping fix:** the decisive check was going to compare the r1reg
+floor against **0.4353**. Any r1reg value near the true control (~0.373) would then have read as a
+**-0.06 improvement, i.e. a large regularizer win that is entirely a change of metric** -- and it
+would have landed in the same write-up as a null logloss, producing the maximally confusing
+conclusion "the states became much more rank-1 and it bought nothing", *stated with a fabricated
+magnitude*. The lesson is the cheap one: **re-measure the baseline with the same tool you will
+measure the candidate with, before the candidate exists.**
+⚠ **One downstream claim loses its stated support:** per-stream catalogs were ranked partly on "card
+and note are visibly different distributions (rank-1 floor 0.435 vs 0.305)". They are NOT different
+on this measure -- 0.3733 vs 0.3729. That lever is still closed, but on the disjoint-centroid
+evidence (0.78% shared mass), which is independent and measured.

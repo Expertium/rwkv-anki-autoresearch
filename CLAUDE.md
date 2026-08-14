@@ -897,11 +897,21 @@ rank-1 could lower log loss, the model would learn to do that anyway."* The coun
 the only reason to run it -- the **STE passes dL/dS backward as if the truncation were the identity**,
 so the gradient the model actually receives contains **no term for reducing truncation error**; the
 model is not declining to be rank-1, it is blind to the benefit. **THE DECISIVE CHEAP CHECK, which
-makes even a null informative:** dump states from the new ckpt and re-measure the exact-rank-1 floor
-(today card 0.4353 / note 0.3049). Floor moves + logloss doesn't => **Andrew's objection is confirmed
+makes even a null informative:** `scratchpad/qat_tax/rank1_floor.py` (CPU, ~1 min) over a
+`--dump-corpus` state dump. Floor moves + logloss doesn't => **Andrew's objection is confirmed
 empirically** (rank-1-ness is achievable but worthless). Floor doesn't move => the regulariser is
 simply too weak/blunt, and the lever is untested rather than closed. Distinguishing those two is the
 point; do not report a bare null.
+**★ USE THE VERIFIED BASELINE, NOT THE OLD LADDER'S: control (iter45) = card 0.3733 / note 0.3729**
+(183,480 + 55,020 head-states, 7 users). ⚠ The ladder's "card 0.4353 / note 0.3049" measures
+something ELSE: it is not reproducible (its script was ad-hoc and never saved) and it disagrees in
+OPPOSITE directions on the two streams, so it is not a sampling difference. `rank1_floor.py`'s
+formula is verified against explicit rank-1 truncation to 2.4e-07. **Comparing an r1reg floor against
+0.4353 would have shown a large FAKE improvement that is purely a change of metric** -- compare only
+control-vs-candidate, both measured with this tool.
+⚠ Knock-on: card and note in fact have the SAME rank-1 floor, so the old "card and note are visibly
+different distributions (rank-1 floor 0.435 vs 0.305)" argument for per-stream catalogs is
+unsupported. The lever stays closed on the disjoint-centroid evidence, not on that.
 **✓ BUDGET CALIBRATION DONE 2026-08-11 14:01 -- VERDICT: gating STAYS at full budget; and screening is NOT worth it either (Andrew, follow-up): keep doing FULL RUNS.** Three arms, 15.3 h, `DONE_EXIT_0`. Measured short-budget noise floor (c41 vs c43, a pairing verified null at full budget): **ahead |delta| 9.0e-5, imm 3e-6** -- against the PRE-REGISTERED bar of 4.9e-5, imm passes and **ahead fails by ~1.8x**. Mechanism: on ahead the floor got 1.2x WORSE than full budget's 7.5e-5 while signal compressed to 65%, so signal-to-noise falls ~1.9x and the effective accept bar would become 1.84e-4 vs the 1.0e-4 we accept today -- i.e. short budget would silently make us 2x stricter and discard real candidates. **Screening was checked separately and REJECTED for our pool:** a short run is 54% of a full one (the eval is a fixed 2.9 h), so screening only breaks even at K>2.2 candidates -- and its PAIRWISE noise is 1.96e-4 in full-budget effect size, which leaves **6 of the last 10 iterations inside its noise, including two ACCEPTED champions (35, 39)**. It would pay only on batches with wide spread (new arch family, coarse HP grid), never on near-bar work. **Banked and reusable:** effects are SCALED not scrambled (~65% compression, both p<1e-33) and the **0.65 constant** converts a short delta to full-budget size; the **3x-budget step = +0.002** projects to +0.0042 at 10x vs the +0.0040 recorded upstream gap, corroborating the endgame premise to 4%. ⚠ All three arms were SCHEDULE changes, so this does NOT measure how short budget treats regularization or capacity. Detail: `research_5k_notes.md`.
 **✓ ITER 45 DONE 2026-08-11 23:30 -- ACCEPTED, NEW CHAMPION** (KD through the decay phase; see the
 champion block above). Distillation is now 4/4.
