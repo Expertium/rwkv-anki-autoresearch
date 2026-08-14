@@ -85,10 +85,12 @@ echo. >> "%LOG%"
 echo ---- CANDIDATE %LABEL% ---- >> "%LOG%"
 %PY% scratchpad\qat_tax\rank1_floor.py "%OUT%/wkv_*_card.txt" --label "%LABEL% card" --json "%DIR%\rank1_%LABEL%_card.json" >> "%LOG%" 2>&1
 %PY% scratchpad\qat_tax\rank1_floor.py "%OUT%/wkv_*_note.txt" --label "%LABEL% note" --json "%DIR%\rank1_%LABEL%_note.json" >> "%LOG%" 2>&1
-echo. >> "%LOG%"
-echo ---- CONTROL iter45, same users ---- >> "%LOG%"
-%PY% scratchpad\qat_tax\rank1_floor.py "%DIR%/corpus/wkv_101_card.txt" "%DIR%/corpus/wkv_102_card.txt" "%DIR%/corpus/wkv_136_card.txt" --label "control card" >> "%LOG%" 2>&1
-%PY% scratchpad\qat_tax\rank1_floor.py "%DIR%/corpus/wkv_101_note.txt" "%DIR%/corpus/wkv_102_note.txt" "%DIR%/corpus/wkv_136_note.txt" --label "control note" >> "%LOG%" 2>&1
+REM (!) NO built-in control here, deliberately. The right control is the MATCHED TWIN at the SAME
+REM     training step -- qtaxd_cblearn_d_50 for r1reg_d_50, qtaxd_cblearn_d_10935 for the final --
+REM     because those differ from the candidate ONLY by RWKV_QAT_RANK1_REG. An earlier version of
+REM     this runner compared against iter45's FINAL corpus, which also differs by 10,885 steps of
+REM     training, so the whole gap was confounded. Run this script once per checkpoint and diff the
+REM     two JSON outputs.
 
 echo. >> "%LOG%"
 echo ===== RANK1 CHECK %LABEL% END %DATE% %TIME% ===== >> "%LOG%"

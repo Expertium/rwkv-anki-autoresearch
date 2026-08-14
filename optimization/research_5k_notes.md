@@ -1731,3 +1731,24 @@ measure the candidate with, before the candidate exists.**
 and note are visibly different distributions (rank-1 floor 0.435 vs 0.305)". They are NOT different
 on this measure -- 0.3733 vs 0.3729. That lever is still closed, but on the disjoint-centroid
 evidence (0.78% shared mass), which is independent and measured.
+
+**★ AND THE SECOND HALF OF THE SAME MISTAKE, caught one step later: THE CONTROL WAS THE WRONG
+CHECKPOINT.** With the baseline metric fixed, the first end-to-end run compared `qtaxf_r1reg_d_50`
+(50 steps into the regularized decay) against **iter45's FINAL** corpus. Paired entity-for-entity
+(12,268 card / 3,547 note states, identical counts) it looked emphatic -- card 0.3681 -> 0.3328,
+note 0.3538 -> 0.2767, i.e. -10% and -22% relative after only 50 steps. **But those two checkpoints
+also differ by 10,885 steps of ordinary training**, so the gap is not attributable to the
+regularizer. The matched control is `qtaxd_cblearn_d_50` -- same WS-final, same step, differing
+ONLY by `RWKV_QAT_RANK1_REG` -- and it exists, as does `qtaxd_cblearn_d_10935` for the final
+comparison. The runner's built-in control phase was removed; it now measures ONE checkpoint and the
+comparison is made by diffing two runs.
+**Note the direction, because it is a live hypothesis rather than a nuisance:** iter45's FINAL states
+have a HIGHER rank-1 error (0.3681 card) than step-50 states (0.3328), which suggests **decay
+training pushes states toward HIGHER rank over time**. If that is real, it is itself interesting --
+it would mean the model spends the decay phase moving *away* from the structure the deploy quantizer
+wants, and it would also mean any "floor improvement" measured against a late checkpoint is
+systematically overstated. The matched control settles both.
+**The pattern across both catches is one sentence: a difference is only attributable to the variable
+you changed if the comparison holds everything else fixed -- the METRIC (same tool) and the
+TRAJECTORY (same step).** Each was individually capable of manufacturing a large fake effect, and
+they compound.
