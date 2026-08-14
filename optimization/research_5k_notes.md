@@ -1781,6 +1781,39 @@ error the week has already made three times in both directions (shift catalog ov
 catalog under-predicted, norm bits under-predicted ~2.6x). Reconstruction generates hypotheses; only
 the eval scores them.
 
+**★★ THE PENALTY IS NOT MONOTONE -- IT BOTTOMS OUT AND CLIMBS BACK (step 6,800 read, 2026-08-14
+20:00).** Paired window means of `r1reg - cblearn` on the logged training loss (the twins share a
+checkpoint and their task components are ~identical, so `d_all / lambda` estimates r1reg's own
+penalty):
+
+| step window | d_all | ~penalty | d_ahead | d_imm |
+|---|---|---|---|---|
+| 1-200 | +0.01087 | 0.2175 | +0.00001 | -0.00001 |
+| 200-600 | +0.00351 | 0.0702 | +0.00001 | -0.00006 |
+| 600-1200 | +0.00161 | 0.0323 | -0.00004 | -0.00019 |
+| **1200-2400** | +0.00125 | **0.0249 (min)** | -0.00003 | -0.00030 |
+| 2400-4000 | +0.00179 | 0.0357 | -0.00005 | -0.00027 |
+| 4000-5600 | +0.00294 | 0.0588 | +0.00001 | -0.00008 |
+| 5600-6800 | +0.00323 | 0.0646 | -0.00004 | -0.00003 |
+
+**Reading it.** (1) The states are driven hard toward rank-1 (0.32 at step 0 -> 0.025 by ~1,800), and
+then the system gives ground back: the penalty is **2.6x its minimum** by step 6,800 and still
+rising. At fixed lambda that is a moving equilibrium, and the plausible driver is that this recipe is
+non-stationary by construction -- **the PQ catalogs are LEARNING** (cblearn is the base), so the
+quantization error surface the task loss sits on keeps changing underneath. (2) The task components
+are flat throughout: `d_ahead` within +/-5e-5 all run, `d_imm` reaching -0.0003 mid-run and returning
+to ~0. On TRAIN loss, under quantization, the regularized model is indistinguishable from its twin.
+**★ THIS RETRACTS AN EXTRAPOLATION I MADE FROM THE STEP-50 RESULT.** I reported the floor moving
+-13% / -22% "with 10,885 steps still to run", which implied it would move further. The penalty
+trajectory says the opposite is likely: most of the rank-1 structure was imposed in the first ~1,800
+steps and is being partially surrendered thereafter. **The step-50 floor is therefore NOT a
+lower bound on the final model's floor, and must not be quoted as the run's result.** The final
+matched measurement (`qtaxf_r1reg_d_10935` vs `qtaxd_cblearn_d_10935`) is mandatory, not
+confirmatory. The step-50 number retains exactly one job: proving the lever ENGAGES, which kills the
+"try a larger lambda" escape hatch regardless of where the floor ends up.
+⚠ The flat `d_ahead`/`d_imm` predict a null at the gate, but train loss is not eval logloss and this
+is a quantized forward -- treat it as a prior, not a result.
+
 **PRE-REGISTERED DECISION RULE (written 2026-08-14 17:30, BEFORE the eval exists).** Recording this
 now because the floor result is suggestive and the temptation to pick a favourable framing afterwards
 is exactly what pre-registration is for.
