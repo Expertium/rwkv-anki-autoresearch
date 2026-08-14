@@ -1780,3 +1780,24 @@ quantizer actually pays -- by 13% and 22% relative after **fifty steps**, with 1
 error the week has already made three times in both directions (shift catalog over-predicted, WKV
 catalog under-predicted, norm bits under-predicted ~2.6x). Reconstruction generates hypotheses; only
 the eval scores them.
+
+**PRE-REGISTERED DECISION RULE (written 2026-08-14 17:30, BEFORE the eval exists).** Recording this
+now because the floor result is suggestive and the temptation to pick a favourable framing afterwards
+is exactly what pre-registration is for.
+* **Comparison:** `qtaxf_r1reg` vs **`qtaxd_cblearn`** -- the single-variable twin, both quant-aware,
+  both on the VAL half 5001-7500. NOT vs iter 45 (that is the plain-vs-QAT tax, a different question)
+  and NOT vs the old frozen-catalog arms. Paired jsonls are already on disk for the control.
+* **Gate:** the STANDARD both-modes research rule -- raw improvement >= 0.0001 in BOTH ahead and imm,
+  each with paired one-sided Wilcoxon p < 0.0001. **The curve-side exception does NOT apply**: this
+  lever changes the WKV state itself, i.e. the shared trunk, so it genuinely can move both modes and
+  must be held to both. (Contrast iter 46, where `.detach()` and an untouched `p_loss` made the
+  one-sided rule mechanically justified.)
+* **What a null means:** given the floor DID move, a null is a substantive result, not a failed
+  experiment -- Andrew's objection confirmed in its strong form. File it as such, close the
+  low-rank-friendly-regularization family (item 4 of the ranked list), and do NOT retry at a larger
+  lambda; the dose is not the issue.
+* **What a WIN means:** the STE-blindness mechanism is real AND worth exploiting, which would make
+  lambda a tunable and open the sub-family (schedule it like KD, apply it only in decay, etc.).
+* **The seed-pair doctrine still binds:** a margin under ~0.0005 needs the recipe re-run at
+  `RWKV_AUGMENT_SEED=4321` before it is leaned on. In-seed p-values measure per-user consistency,
+  never cross-seed robustness.
