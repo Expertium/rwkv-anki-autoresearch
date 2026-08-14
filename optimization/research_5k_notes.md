@@ -1839,6 +1839,48 @@ the truth is the OPPOSITE direction. The difference between that guess and this 
 solely that this one holds config, tool, users and entities fixed and varies ONLY the step -- which
 is the same discipline the two earlier traps came down to.
 
+### ★★★★ THE FINAL FLOOR: -43% CARD / -75% NOTE, AND THE TRAIN LOSS DOES NOT MOVE (2026-08-15 01:20)
+Matched finals, `qtaxf_r1reg_d_10935` vs `qtaxd_cblearn_d_10935`, same tool/users/entities:
+
+| stream | control | r1reg | change | r1reg median | r1reg concentration |
+|---|---|---|---|---|---|
+| card | 0.3594 | **0.2043** | **-43.2%** | 0.1115 | 0.8637 |
+| note | 0.2689 | **0.0660** | **-75.4%** | **0.0152** | 0.9681 |
+
+The note stream is **essentially exactly rank-1** (median error 1.5%). Against that, the paired train
+loss over the last 1,500 steps is `d_ahead +0.000048 / d_imm +0.000057` -- both inside the +/-7.5e-5
+noise floor, both marginally on the WRONG side.
+
+**★ MY PREDICTION WAS WRONG, AND THE ERROR IS THE FINDING.** I predicted r1reg would land NEAR the
+control because the penalty climbed from 0.025 back to 0.077 in the second half, which I read as the
+model surrendering rank-1 structure. It was not. **The proxy and the truth DECOUPLED, in opposite
+directions**: the proxy (k/v alignment, measured on kernel INPUTS) got 3x worse while the state's
+actual rank-1 error kept falling (r1reg's own floor: 0.3328 at step 50 -> 0.2043 final). The
+mechanism is the blunt edge documented when the penalty was built -- **it ignores the decay
+weighting** -- and the model exploited exactly that gap: a decayed sum of outer products can be
+near-rank-1 without the k vectors being mutually aligned. The regularizer worked as an early NUDGE
+and the model then found solutions the proxy never asked for.
+**LESSON, and it generalizes past this iteration:** when a regularizer's proxy and its target
+diverge, the proxy trace is worthless as a progress signal -- I spent two updates reasoning
+confidently from it. Measure the TARGET, or state explicitly that the proxy is only an engagement
+detector.
+
+**★★ THE SUBSTANTIVE RESULT: RANK-1 TRUNCATION DESTROYS ALMOST NO USEFUL INFORMATION.** This pairing
+is what makes the iteration worth its 11 hours regardless of the gate. The deploy quantizer truncates
+to rank 1. The control pays a 0.3594 / 0.2689 truncation error; r1reg pays 0.2043 / 0.0660 -- less
+than a QUARTER as much on note -- and the quantization-aware training loss is **identical**. So the
+rank-2-and-higher components the truncation was throwing away carried **nothing the task needed**.
+**=> The reconstruction ladder's attribution is misleading where it matters most.** It ranks rank-1
+truncation as the LARGEST term (53% card / 39% note) and it is the term that costs the least. That is
+the FOURTH time this week reconstruction error has mispredicted logloss -- and the first time it has
+done so about the term the whole ladder was built to prioritize.
+**=> ACTIONABLE REDIRECTION:** the remaining QAT tax (+0.002286 / +0.003486) lives in the CODEBOOK
+and NORM terms, not in rank-1 truncation. Item 4 of the ranked list (low-rank-friendly
+regularization) is not merely a null -- it is aimed at a term with almost no logloss in it. Do not
+spend further iterations attacking the rank-1 term by any route (rank-2 states, softer lambda,
+scheduled lambda); the information is not there to recover.
+⚠ Pending the eval (ETA ~09:50) for the gate verdict; train loss is a strong prior, not the result.
+
 **PRE-REGISTERED DECISION RULE (written 2026-08-14 17:30, BEFORE the eval exists).** Recording this
 now because the floor result is suggestive and the temptation to pick a favourable framing afterwards
 is exactly what pre-registration is for.

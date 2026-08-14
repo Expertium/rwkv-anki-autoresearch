@@ -1,0 +1,11 @@
+{
+  "label": "r1reg_final note",
+  "files": 3,
+  "states": 3547,
+  "head_states": 17735,
+  "rank1_err_mean": 0.0659618005156517,
+  "rank1_err_median": 0.015156394802033901,
+  "rank1_err_p90": 0.2183387130498886,
+  "energy_in_rank1_mean": 0.9798855185508728,
+  "spectral_concentration_mean": 0.9680932760238647
+}

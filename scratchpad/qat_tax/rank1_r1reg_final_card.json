@@ -1,0 +1,11 @@
+{
+  "label": "r1reg_final card",
+  "files": 3,
+  "states": 12268,
+  "head_states": 61340,
+  "rank1_err_mean": 0.2043026089668274,
+  "rank1_err_median": 0.11153793334960938,
+  "rank1_err_p90": 0.5593700408935547,
+  "energy_in_rank1_mean": 0.9106557965278625,
+  "spectral_concentration_mean": 0.8637250065803528
+}
