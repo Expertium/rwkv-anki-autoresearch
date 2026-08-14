@@ -54,6 +54,18 @@ set RWKV_KD_DUMP_LABELS=1
 
 echo ===== IMMCORR DUMP START %DATE% %TIME% ===== > "%LOG%"
 .venv\Scripts\python.exe -u -m rwkv.train_rwkv --config %DIR%\immcorr_dump.toml >> "%LOG%" 2>&1
-echo DUMP_EXIT_%ERRORLEVEL% %TIME% >> "%LOG%"
+REM ⚠ GATE ON THE EXIT CODE. The first version echoed DONE_EXIT_0 unconditionally, so a toml parse
+REM error (DUMP_EXIT_1) still reported success to the caller and the chain marched on to an
+REM analysis with no data. "Gate every phase on exit codes AND artifacts" applies to the small
+REM helper runners too, not just the long training chains.
+if not %ERRORLEVEL%==0 (
+  echo DUMP FAILED %ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  endlocal & exit /b 1
+)
+dir /b "%OUTDIR%\step_*.pt" >nul 2>&1
+if not %ERRORLEVEL%==0 (
+  echo DUMP PRODUCED NO STEP FILES %DATE% %TIME% >> "%LOG%"
+  endlocal & exit /b 2
+)
 echo IMMCORRDUMP_DONE_EXIT_0 %DATE% %TIME% >> "%LOG%"
 endlocal & exit /b 0

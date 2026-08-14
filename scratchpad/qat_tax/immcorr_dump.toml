@@ -1,5 +1,5 @@
 # IMMCORR DUMP -- OUR champion walking the SAME batch stream as the d=128 teacher dump
-# (C:wkv_kd_dump	128_seedpair_65k), so the two dumps can be compared per-review offline.
+# (rwkv_kd_dump/t128_seedpair_65k), so the two dumps can be compared per-review offline.
 #
 # EVERY data-affecting field is copied VERBATIM from scratchpad/seedpair65k/spdump.toml, the toml
 # that produced the teacher dump. That is the correctness condition, not tidiness: alignment is
@@ -8,34 +8,35 @@
 #
 # The dump block forwards in eval-mode no_grad and exits after RWKV_KD_STEPS with no optimizer,
 # scheduler, checkpoint or validation side effects; SAVE_MODEL_* below are inert but required.
+#
+# NOTE: paths in comments use FORWARD slashes on purpose. The first version of this file was
+# generated through a shell heredoc with a Windows path in the header, and the backslashes in
+# "C:\rwkv..." / "\t128..." were written out as literal CR and TAB control characters -- tomli
+# then died with "Found invalid character '\r' at line 2". Never put backslash paths in generated
+# file content.
 TRAIN_USERS_START = 1
 TRAIN_USERS_END = 5000
 VALIDATE_USERS_START = 5001
 VALIDATE_USERS_END = 5010
-
 TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
 TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
 VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
 VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
 LABEL_FILTER_LMDB_PATH = "label_filter_db"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
-
 NUM_FETCH_PROCESSES = 2
 MAX_TRAIN_GLOBAL_LEN = 65536
-
 TRAIN_MODE = "WS"
 STEP_OFFSET = 1
 WARMUP_STEPS = 400
 EPOCHS = 1
 VALIDATE_EVERY = 1000
 PEAK_LR = 1e-3
-
 LOAD_MODEL = false
 SAVE_MODEL_FOLDER = "scratchpad/seedpair65k"
 SAVE_MODEL_PREFIX = "immcorr_inert"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
-
 USE_WANDB = false
 WANDB_PROJECT_NAME = "rwkv"
 WANDB_RESUME = false

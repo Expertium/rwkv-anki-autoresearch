@@ -1458,3 +1458,17 @@ to another — stale catalog ACROSS generations (worse than random), stale catal
 growing QAT penalty, fixed by learnable catalogs, ~45%), and now a stale norm RANGE across
 generations. **Anything in the quantizer that was ever "corpus-derived" must be re-derived when the
 trunk changes, and is better learned than frozen.**
+
+**⚠ TWO SELF-INFLICTED BUGS IN THE IMMCORR HELPER (2026-08-14), both cheap but worth the rule:**
+1. **A Windows path inside GENERATED file content became control characters.** The toml was written
+   through a shell heredoc whose header comment contained `C:\rwkv_kd_dump\t128_seedpair_65k`; the
+   `\r` and `\t` were emitted as a literal CR and TAB, and tomli died with
+   *"Found invalid character '\r' (at line 2, column 6)"*. **Never put backslash paths in generated
+   file content** -- use forward slashes, or write the file with the Write tool instead of a
+   heredoc. (Verify with `sorted({c for c in open(f,'rb').read() if c<32 and c!=10})` == [].)
+2. **The helper runner did not gate on its exit code**, echoing `DONE_EXIT_0` unconditionally. So a
+   hard toml failure reported success, the chain proceeded, and the analysis ran against an empty
+   dump. The repo rule *"gate every phase on exit codes AND artifacts"* was written for the long
+   training chains; it applies to three-line helper runners too, and this is the second time this
+   week a runner reported success for work that did not happen (the first was the QAT-inert banner).
+Both fixed; the dump runner now gates on `%ERRORLEVEL%` AND on step files existing.
