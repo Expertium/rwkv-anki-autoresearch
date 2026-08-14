@@ -587,8 +587,16 @@ PTQ cost for zero extra bytes**, and showed the WKV side is ~14x the shift side 
 +0.000365/+0.000720), so m2b12 is the deploy choice and quantization work belongs on the WKV half.
 **CURRENT ENV:** `RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
 RWKV_QAT_PQ=reference/pq_cb_wkv_c80_b10.txt RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_c80_m2b12.txt
-RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1` (JIT on the
-grafted paths unverified -- A/B once at champion-run launch).
+RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1
+**RWKV_QAT_PQ_LEARN=1 RWKV_QAT_SHIFT_PQ_LEARN=1**` (JIT on the grafted paths unverified -- A/B once at
+champion-run launch).
+**★ THE TWO LEARN FLAGS ARE ADOPTED AS DEFAULT (2026-08-13) -- put them in EVERY quant-aware run
+including the endgame's arm 2.** They cut the measured QAT tax **45.4% / 43.9%** (+0.004185/+0.006219
+-> **+0.002286/+0.003486**, n=2500) for **zero deploy bytes and zero wall-clock** (0.3333 steps/s,
+identical to frozen catalogs -- the learning is kernel-side atomicAdd). Mechanism: most of the "tax"
+is the catalog going stale *within the run* as QAT moves the weights, which a frozen catalog cannot
+track. ⚠ Shape invariant enforced at upload: role-mode learnable catalogs need `m <= 4` (the kernel's
+`rec_idx_chunk` slot stride is 8 ints); joint mode is `m == 1` and exempt.
 ⚠ **A fitted codebook is validated by SHAPE and used on CONTENT** -- re-fit whenever d_model, H, or
 the state distribution changes, and check it against a random-catalog control (CPU, minutes:
 `scratchpad/qat_tax/wkv_cb_staleness.py`). Nothing in the pipeline warns you.
@@ -881,6 +889,19 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**▶ LIVE 2026-08-14: `qtaxf_r1reg`** (`scratchpad/qat_tax/run_r1reg.cmd`, launched 14:15, decay
+~10 h -> probe -> VAL-half eval). Single-variable vs `qtaxd_cblearn`: `RWKV_QAT_RANK1_REG=0.05`, a
+penalty on `1 - max(participation ratio of k, of v)` that pushes the WKV state toward rank-1 so the
+deploy truncation costs less. **Andrew expects a null, on a good prior:** *"if making states more
+rank-1 could lower log loss, the model would learn to do that anyway."* The counter is narrow and is
+the only reason to run it -- the **STE passes dL/dS backward as if the truncation were the identity**,
+so the gradient the model actually receives contains **no term for reducing truncation error**; the
+model is not declining to be rank-1, it is blind to the benefit. **THE DECISIVE CHEAP CHECK, which
+makes even a null informative:** dump states from the new ckpt and re-measure the exact-rank-1 floor
+(today card 0.4353 / note 0.3049). Floor moves + logloss doesn't => **Andrew's objection is confirmed
+empirically** (rank-1-ness is achievable but worthless). Floor doesn't move => the regulariser is
+simply too weak/blunt, and the lever is untested rather than closed. Distinguishing those two is the
+point; do not report a bare null.
 **✓ BUDGET CALIBRATION DONE 2026-08-11 14:01 -- VERDICT: gating STAYS at full budget; and screening is NOT worth it either (Andrew, follow-up): keep doing FULL RUNS.** Three arms, 15.3 h, `DONE_EXIT_0`. Measured short-budget noise floor (c41 vs c43, a pairing verified null at full budget): **ahead |delta| 9.0e-5, imm 3e-6** -- against the PRE-REGISTERED bar of 4.9e-5, imm passes and **ahead fails by ~1.8x**. Mechanism: on ahead the floor got 1.2x WORSE than full budget's 7.5e-5 while signal compressed to 65%, so signal-to-noise falls ~1.9x and the effective accept bar would become 1.84e-4 vs the 1.0e-4 we accept today -- i.e. short budget would silently make us 2x stricter and discard real candidates. **Screening was checked separately and REJECTED for our pool:** a short run is 54% of a full one (the eval is a fixed 2.9 h), so screening only breaks even at K>2.2 candidates -- and its PAIRWISE noise is 1.96e-4 in full-budget effect size, which leaves **6 of the last 10 iterations inside its noise, including two ACCEPTED champions (35, 39)**. It would pay only on batches with wide spread (new arch family, coarse HP grid), never on near-bar work. **Banked and reusable:** effects are SCALED not scrambled (~65% compression, both p<1e-33) and the **0.65 constant** converts a short delta to full-budget size; the **3x-budget step = +0.002** projects to +0.0042 at 10x vs the +0.0040 recorded upstream gap, corroborating the endgame premise to 4%. ⚠ All three arms were SCHEDULE changes, so this does NOT measure how short budget treats regularization or capacity. Detail: `research_5k_notes.md`.
 **✓ ITER 45 DONE 2026-08-11 23:30 -- ACCEPTED, NEW CHAMPION** (KD through the decay phase; see the
 champion block above). Distillation is now 4/4.
@@ -895,15 +916,26 @@ changing what the ahead path COMPUTES or is FED, not what it is FIT to. Before t
 sub-family is deprioritized, the literature-supported variant is a teacher that is NOT the same
 forward pass (past checkpoint / mean-teacher, or a different augmentation view).
 Detail: `research_5k_verbose.md` iter 46.
-**▶ NEXT AFTER ITER 46: THE QAT TAX (Andrew 2026-08-12, "let's re-measure the QAT tax and work on
-reducing it").** Runner staged + CPU-verified: `scratchpad/qat_tax/run_qat_tax.cmd`.
+**▶ THE QAT TAX WAS THE RIGHT TARGET, AND IT IS NOW 45% SMALLER (Andrew 2026-08-12, "let's re-measure
+the QAT tax and work on reducing it").** Runner: `scratchpad/qat_tax/run_qat_tax.cmd`.
 **WHY IT JUMPED THE QUEUE -- the stopping-point balance sheet** (`research_5k_notes.md`):
-`still_needed = (champion - old model) - budget_credit + QAT_tax` = **+0.00225 ahead / +0.00196 imm**
-today, and **imm now BINDS because of QAT** (+0.00445 of a +0.00196 requirement). At the recent
-algorithmic rate (+0.000112 ahead / +0.000057 imm per attempted iteration) that requirement is 20
-and 34 more iterations = 7.4 and 12.6 days of GPU -- so the QAT tax is worth more than the entire
-remaining loop, and it has never been a research target only because plain-vs-QAT numbers were
-never comparable.
+`still_needed = (champion - old model) - budget_credit + QAT_tax`. At the recent algorithmic rate
+(+0.000112 ahead / +0.000057 imm per attempted iteration) every 0.001 of tax is ~9 ahead-iterations
+or ~18 imm-iterations, i.e. days of GPU -- so the tax was worth more than the entire remaining loop,
+and it had never been a research target only because plain-vs-QAT numbers were never comparable.
+**THE LEDGER, in order:**
+
+| when | QAT tax (ahead / imm) | still_needed (ahead / imm) |
+|---|---|---|
+| pre-measurement, using the d=32 placeholder | +0.00290 / +0.00445 | +0.00225 / +0.00196 |
+| MEASURED on this trunk (n=2500) | +0.004185 / +0.006219 | +0.00360 / +0.00374 |
+| **+ learnable catalogs (adopted)** | **+0.002286 / +0.003486** | **+0.00165 / +0.00100** |
+
+So the placeholder understated the real tax by ~1.5x, and one adopted change then more than repaid
+it: the remaining requirement fell from ~32 and ~66 iterations to **~15 and ~18**, and **imm stopped
+being the binding mode**. ⚠ Neither the tax nor `still_needed` is a gate -- they are the
+stopping-point estimate, i.e. how much further the loop must run before this model beats the old
+d=128 one *as deployed*.
 **★ THE MEASUREMENT IS ANDREW'S THREE CELLS (2026-08-12):** (1) no QAT, full precision = iter 45,
 already have; (2) QAT-trained, evaluated QUANTIZED = the deploy number; (3) QAT-trained, evaluated
 at FULL PRECISION = same checkpoint, QAT env off at eval. **(2)-(1) = the full tax. (2)-(3) =
@@ -936,8 +968,11 @@ THROUGHOUT WS+decay -- not how QAT is deployed here. The qat_log's decay-only ro
 dominates: #39 (decay-only, warm-started) cost **-0.000127 ahead / +0.000018 imm, essentially
 FREE**, while #40 (from scratch) cost +0.00534/+0.00446. So much of the "tax" may be WHEN QAT is
 applied. If ARM A is bad and ARM B recovers it -> the fine-tune does the work; if both are bad ->
-the q72u codebooks (learned on d=32 states, 5x smaller card state) are the suspect, and
-`RWKV_QAT_PQ_LEARN` exists but its export->eval wiring does not.
+the q72u codebooks (learned on d=32 states, 5x smaller card state) are the suspect.
+**BOTH suspicions were confirmed and BOTH are now fixed** -- the catalogs were stale (refit, above)
+AND staleness kept accruing during the run (learnable catalogs, adopted). ⚠ The old note that
+"`RWKV_QAT_PQ_LEARN` exists but its export->eval wiring does not" was WRONG: the wiring is complete
+on both catalogs and was exercised end-to-end; that line cost a day of treating the lever as blocked.
 ⚠ Python maps QAT scopes BY NAME (verified: `card_id=rank1/fq7.0, note_id=rank1/fq7.0` under the
 _cnd arch), so the Rust-only positional bug fixed 2026-08-11 does not affect these numbers.
 **★★ SECOND BUG, FOUND THE SAME DAY AND BIGGER: THE WKV CODEBOOK IS WORSE THAN RANDOM ON THIS
@@ -966,16 +1001,24 @@ index bits are per head per layer, so +2 bits ~ **+1.25 B on the frozen 9 B/card
 Andrew's trade to make. **A FREE axis exists first:** at bits=12 the ORACLE hits 0.2044 vs REFIT
 0.3224 on only 189k vectors from 6 users, so CORPUS SIZE also limits the refit, and more users costs
 no deploy state (trace export ~35 min/user, CPU).
-**▶ LIVE 2026-08-12: 500-user PTQ arm on the OLD catalogs** (orphaned eval, ETA ~13:47) = the honest
-"before". Its sequencer was killed deliberately so the second shift-catalog arm never launches.
-Auto-chained after it: **the 4-arm probe matrix** (`probe_cbs.cmd`, ~16 min) = old-WKV / new-WKV /
-WKV-only / shift-only on 10 users, which localizes the cost to one side and tests additivity --
-something the 11 h three-cell chain cannot do. Shift catalogs available: **m2b12** (24 b/vector,
-same bits as q72u, ~23 B card, held-out 0.1902/0.1601) vs **m5b12** (60 b/vector, same bits PER DIM,
-~37 B card, 0.1734/0.1465); on that side capacity is chunk-limited, not bit-limited (at a fixed
-24 b, m4b6 is 1.9x WORSE; 5x the bits barely moves it).
+Shift catalogs available: **m2b12** (24 b/vector, same bits as q72u, ~23 B card, held-out
+0.1902/0.1601) vs **m5b12** (60 b/vector, same bits PER DIM, ~37 B card, 0.1734/0.1465); on that side
+capacity is chunk-limited, not bit-limited (at a fixed 24 b, m4b6 is 1.9x WORSE; 5x the bits barely
+moves it).
 ⚠ Stale result jsonls MUST be deleted before any re-run -- `eval_sharded` skips completed users, so
 old numbers get silently reused.
+
+**★ FOUR NORM/CATALOG LEVERS ARE CLOSED ON MECHANISM, NOT ON NULL RESULTS -- do NOT rebuild them
+(2026-08-13):** 2-bit norm, per-stream norm ranges, learnable norm levels, per-stream catalogs. Each
+wanted to do a job the LEARNED catalog already does. Two measurements settle all four: (1) learned
+centroids are **not unit-norm** -- they absorb magnitude in their length (spread widened **2.43x**),
+so extra norm bits re-encode information already carried, and 1-bit norm is an INTERIOR optimum, not
+a floor we were pinned against (this independently explains the d=32 sibling's 1-bit choice, reached
+from the opposite direction); (2) card and note already occupy **disjoint** regions of the shared
+catalog -- 501 vs 220 centroids with 25 shared (3.6%), Bhattacharyya 0.0219, **0.78% shared mass** --
+so splitting the catalog per stream buys nothing, and with only 721/1024 centroids in use capacity is
+not binding either. **The generalizable lesson: a learnable component silently absorbs the levers
+around it, so measure what it has ALREADY absorbed before adding a lever beside it.**
 
 **Iters 35-44 are COMPLETE and their narratives are archived** to `HISTORY.md` (2026-08-10). Verdicts: 35 seed pair ACCEPTED · 36 PAVA lambda DIRECTED-ACCEPTED · 37 by-user weighting REJECTED (mechanism refuted in every size quartile) · 38 KD alpha 0.75 rejected (missed by 2e-6) · 39 KD alpha 0.9 ACCEPTED · 40 alpha 1.0 rejected (brackets the peak; lever closed) · 41 interleave+reorder ACCEPTED (champion) · 42 order-only rejected · 43 interleave at the original order rejected as a TIE · 44 spread placement rejected as a TIE. Detail: `research_5k_verbose.md`.
 **★ THE TOPOLOGY FINDING (iters 41-44 together), which supersedes the individual verdicts:** interleaving is worth +0.000216..+0.000611 in both modes, but THREE structurally different arrangements of it (stream order, layer placement) are mutually indistinguishable at |delta| <= 7.5e-5. So the EXISTENCE of a cross-scope information path is what pays; the choreography is not. The rearrangement sub-family is EXHAUSTED -- further topology work must change WHAT is computed (extra rounds via layer reuse, cross-stream fusion), not when. That ±7.5e-5 same-capacity spread is also the measurement that moved the accept bar to a raw 0.0001.

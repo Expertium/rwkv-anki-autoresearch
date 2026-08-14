@@ -962,6 +962,10 @@ __global__ void rwkv7_wkv_qat_lr_backward_kernel(
     __shared__ float K_a[32];
     // learnable WKV cb (c_pq_learn): per-step recorded centroid picks + recon norms from the chunk
     // re-run, a staging tile for dL/dQ_t and the step's reconstructed factors (see grad block below).
+    // ⚠ The `8` is a per-timestep SLOT STRIDE, not a bound the code respects: qat_lr_rank1 writes 2*c_pq_m
+    // entries per slot and the grad block below indexes [c*8 + c_pq_m + p]. Role-mode m > 4 therefore spills
+    // slot c into slot c+1 -- silent gradient corruption, no fault. Guarded Python-side at upload
+    // (rwkv_ops.maybe_upload_pq_codebook); raise this 8 if that limit is ever lifted. Joint mode is m == 1.
     __shared__ int rec_idx_chunk[CHUNK_LEN * 8];
     __shared__ float rec_norm_chunk[CHUNK_LEN * 2];
     __shared__ float KK_G[32 * (32 + 1)];

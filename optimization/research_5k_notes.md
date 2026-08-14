@@ -1636,3 +1636,40 @@ the new checkpoint and re-measure the exact-rank-1 floor (today: **card 0.4353 /
   already as rank-1 as is useful, and the STE blindness does not bind.
 * both move -> the STE-blindness mechanism was real.
 This is what makes the run worth its 18 h even under a low prior: every outcome answers something.
+
+**★ EARLY READ AT STEP 225 (2026-08-14 14:28) -- THE PROXY IS MOVING HARD AND THE TASK LOSS IS NOT.**
+Both runs start from the SAME WS-final checkpoint and are deterministic single-variable twins, so at
+step 0 the gap in the logged `all` is EXACTLY the penalty term (lambda x penalty, lambda = 0.05).
+Reading it off the paired logs, no extra compute:
+
+| step | cblearn `all` | r1reg `all` | diff | => penalty | => max concentration |
+|---|---|---|---|---|---|
+| 0 | 0.676316 | 0.692383 | +0.016067 | 0.3213 | 0.679 |
+| 5 | 0.807554 | 0.825557 | +0.018003 | 0.3601 | 0.640 |
+| 50 | 1.080769 | 1.094608 | +0.013839 | 0.2768 | 0.723 |
+| 100 | 0.956799 | 0.968196 | +0.011397 | 0.2279 | 0.772 |
+| 200 | 0.628888 | 0.633642 | +0.004754 | 0.0951 | 0.905 |
+
+(past step ~0 the diff also carries a little task-loss divergence, but at step 200 that is only
+~0.0009 on ahead, so the penalty dominates.)
+
+**Three things this already establishes.** (1) **The regularizer is NOT inert** -- it drives its own
+objective 0.321 -> 0.095, a 3.4x reduction, in 200 of 10,935 steps. So outcome (a) above is already
+ruled out and a null cannot be explained away as "the lever never engaged". (2) **The states were far
+from rank-1 to begin with**: concentration 0.679 at the champion checkpoint, not the ~0.95 one might
+assume from "rank-1 truncation is cheap". (3) **The task loss is unmoved while the proxy collapses**
+-- at step 225 ahead is 0.1773 vs the control's 0.1782 and imm is identical to 3 dp. If that holds to
+the gate, it is **Andrew's objection confirmed, in a STRONGER form than he stated it**: not merely
+"the model would have learned it anyway", but "the states can be driven MUCH more rank-1 and the task
+loss does not care" -- i.e. rank-1-ness is achievable, cheap, and worthless, so the STE blindness is
+real but does not bind on anything that matters.
+⚠ **What this does NOT yet establish, and why the state dump still runs:** the penalty falling is the
+r1reg model's own trajectory; the control's penalty is never computed (lambda = 0 there), so part of
+the fall could be the decay phase's natural drift rather than the regularizer. The dump measures the
+exact-rank-1 floor for BOTH checkpoints and settles it. Also, a proxy at 0.905 concentration need not
+translate into a lower truncation floor -- the proxy ignores the decay weighting, which is exactly
+its known blunt edge.
+⚠ **If the floor DOES move and logloss still does not, do NOT re-run at a larger lambda** -- that
+would be the same experiment with more force behind an answer already given. A larger lambda is only
+indicated in the other branch (floor unmoved despite the proxy collapsing), which would mean the
+proxy and the floor are decoupled and the LEVER, not the dose, is wrong.

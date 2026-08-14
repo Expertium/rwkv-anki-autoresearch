@@ -460,6 +460,18 @@ def maybe_upload_pq_codebook():
         vals.extend(float(x) for x in ln.split())
     need = ncent * sub if joint else 2 * m * ncent * sub  # role mode: roles 0,1 only (rank-1)
     assert len(vals) >= need, f"PQ codebook {path}: {len(vals)} floats < {need}"
+    # ⚠ KERNEL SHAPE INVARIANT, enforced here because violating it CORRUPTS SILENTLY. The learnable-cb
+    # recording buffer is `__shared__ int rec_idx_chunk[CHUNK_LEN * 8]` (rwkv7_cuda.cu:965) -- a hardcoded
+    # stride of 8 ints per timestep -- but the kernel writes 2*m entries per slot (:483) and reads
+    # rec_idx_chunk[c*8 + c_pq_m + p] (:1114,:1136). At m > 4 that runs off the end of slot c into slot
+    # c+1, so one timestep's centroid picks overwrite the next one's: wrong gradients, no crash, no
+    # warning. Joint mode is exempt (m == 1 by construction, enforced kernel-side). Only the LEARN path
+    # touches rec_idx, so a frozen codebook of any m is fine. Raise the 8 in the .cu (and rebuild) if a
+    # role-mode catalog with m > 4 is ever wanted.
+    assert joint or not _PQ_LEARN or 2 * m <= 8, (
+        f"PQ codebook {path}: role-mode m={m} exceeds the kernel's 8-int rec_idx slot stride "
+        f"(needs 2*m<=8). Learnable role-mode catalogs are limited to m<=4; joint mode is m==1."
+    )
     cb = torch.tensor(vals[:need], dtype=torch.float32, device="cuda")
     _set_pq_cb(cb, m, sub, ncent, joint)
     print(f"[QAT-PQ] uploaded rank-1 codebook {path}: m={m} sub={sub} ncent={ncent} joint={joint} ({need} floats)")
