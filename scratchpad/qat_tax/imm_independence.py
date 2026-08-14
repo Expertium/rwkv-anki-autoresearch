@@ -90,13 +90,32 @@ def main():
             continue
         if "has_label" not in o:
             raise SystemExit("our dump lacks labels -- regenerate with RWKV_KD_DUMP_LABELS=1")
-        m = o["has_label"].numpy().astype(bool)
-        if m.sum() == 0:
+        # ⚠ p_curve is valid ONLY on ahead rows and p_imm ONLY on query rows -- DISJOINT sets.
+        # The eval joins them by label_review_th (srs_model.py ~1352) and so must we; the first
+        # version of this script masked both to has_label and silently compared different reviews
+        # (its tell was "our ahead" scoring 1.98 logloss against an eval value of 0.298).
+        if "label_review_th" not in o:
+            raise SystemExit("dump lacks label_review_th -- regenerate (RWKV_KD_DUMP_LABELS=1)")
+        hl = o["has_label"].numpy().astype(bool)
+        isq = o["is_query"].numpy().astype(bool)
+        a_m, q_m = hl & ~isq, hl & isq
+        if a_m.sum() == 0 or q_m.sum() == 0:
             continue
-        oa = o["p_curve"].float().numpy()[m]
-        oi = p_recall_from_imm(o["p_imm_all"])[m]
-        ti = p_recall_from_imm(t["p_imm_all"])[m]
-        y = (o["label_rating"].numpy()[m] >= 2).astype(np.float64)
+        rth = o["label_review_th"].numpy()
+        oa_p = o["p_curve"].float().numpy()
+        oi_p = p_recall_from_imm(o["p_imm_all"])
+        ti_p = p_recall_from_imm(t["p_imm_all"])
+        rat = o["label_rating"].numpy()
+        # join ahead-row -> query-row by review index (the teacher shares the row layout exactly,
+        # since both dumps walk the identical batch stream, so its query rows are the same rows)
+        qidx = {int(r): i for i, r in zip(np.flatnonzero(q_m), rth[q_m])}
+        ai = np.flatnonzero(a_m)
+        pair = [(i, qidx[int(rth[i])]) for i in ai if int(rth[i]) in qidx]
+        if not pair:
+            continue
+        ia = np.array([p[0] for p in pair]); iq = np.array([p[1] for p in pair])
+        oa = oa_p.reshape(-1)[ia]; oi = oi_p.reshape(-1)[iq]; ti = ti_p.reshape(-1)[iq]
+        y = (rat.reshape(-1)[ia] >= 2).astype(np.float64)
         ok = np.isfinite(oa) & np.isfinite(oi) & np.isfinite(ti)
         O_A.append(oa[ok]); O_I.append(oi[ok]); T_I.append(ti[ok]); Y.append(y[ok])
     if mismatch:

@@ -1506,3 +1506,17 @@ ratio is lopsided enough that not surfacing it would be the error.
 3. Only if 1-2 leave most of the +0.003 on the table, put the +1 bit trade to Andrew.
 ⚠ n=10 users -- fine for ranking levers of this size, but confirm on ~500 before any state-size
 change.
+
+**⚠ THE FIRST imm-independence RESULT WAS VOID -- masking bug, caught by a sanity number (2026-08-14).**
+It printed a verdict ("the independence mechanism is real, incremental R^2 = 0.0100") that must NOT
+be quoted: **`p_curve` is valid ONLY on ahead rows (`has_label & ~is_query`) and `p_imm` ONLY on
+query rows (`has_label & is_query`) -- DISJOINT row sets.** The eval joins the two heads by
+`label_review_th` (srs_model.py ~1352); my script masked both to `has_label` and so compared
+predictions from DIFFERENT reviews.
+**The tell was a sanity line I had put in for exactly this reason: "our ahead 1.98285" against an
+eval value of 0.298.** A 6.6x impossible number is what stopped the verdict being believed --
+without that row the analysis would have looked plausible and shipped a wrong conclusion. Keep
+printing quantities whose correct magnitude is known.
+Fixed: the dump now stores `label_review_th` and the analysis joins ahead-row -> query-row per
+review (the teacher shares the row layout exactly, both dumps walking the identical stream).
+Re-queued behind the 2-bit-norm run -- it needs a fresh dump and must not run co-tenant with it.

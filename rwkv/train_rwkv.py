@@ -1226,6 +1226,13 @@ def main_loop(config, task_queue, batch_queue):
                             "label_rating": stats.label_rating.to(torch.int16).cpu(),
                             "has_label": stats.has_label.to(torch.bool).cpu(),
                             "is_query": stats.is_query.to(torch.bool).cpu(),
+                            # label_review_th is REQUIRED to align the two heads: p_curve is valid
+                            # only on ahead rows (has_label & ~is_query) and p_imm only on query
+                            # rows (has_label & is_query) -- DISJOINT row sets. The eval joins them
+                            # by review_th (srs_model.py ~1352); without it, comparing "our ahead"
+                            # to "our imm" per review is impossible and silently compares different
+                            # reviews.
+                            "label_review_th": stats.label_review_th.to(torch.int64).cpu(),
                         })
                     torch.save(_dump_obj, os.path.join(_kd_dump_dir, f"step_{step}.pt"))
                     print(f"[kd-dump] step {step}/{_kd_dump_steps} saved "
