@@ -1202,6 +1202,13 @@ All hooks stay in-repo, env-gated, default off.
   `DONE_EXIT_WSFAIL`-satisfies-the-grep gotcha.
 - ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
   relative script path exits instantly, silently, and still returns a pid.
+- ⚠ **NO `< > & | ^` IN `REM` COMMENTS** — cmd.exe processes REDIRECTION *before* it honours `REM`,
+  so a comment containing an arrow (`->`) or a usage line with placeholder brackets is parsed as a
+  redirect. Symptom is baffling and points nowhere near the comment: `'M' is not recognized as an
+  internal or external command` (cmd resumes mid-`REM`) plus `< was unexpected at this time`. Cost
+  one dead launch 2026-08-14. Write `CKPT_PATH LABEL`, not bracketed placeholders, and `==` not
+  `->`. Same family as the backslash-in-generated-content and BOM traps: **content destined for a
+  shell needs escaping discipline even when it is "just a comment".**
 
 ### Ops
 - **Compaction (ONLY sanctioned way):** run `claude-automation/request_compact.ps1 -Focus "<carry-through>"`
