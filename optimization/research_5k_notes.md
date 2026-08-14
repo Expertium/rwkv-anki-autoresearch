@@ -1542,3 +1542,29 @@ is exactly the direction the d=32 endgame recommends.
 
 **EARLY SIGNAL (step-50 validation, identical batch):** 2-bit norm **0.3259 / 0.3101** vs the 1-bit
 run's 0.3269 / 0.3110 -- the expected direction, though 50 steps proves nothing on its own.
+
+### ★★ THE 2-BIT NORM BUYS ~NOTHING UNDER LEARNABLE CATALOGS -- and the PTQ probe over-promised
+Paired train-loss screen at 2,980 of 10,935 steps (both runs from the same WS-final, same seed and
+batch order; the ONLY difference is `RWKV_QAT_NORM_BITS` 1 -> 2):
+
+| window | ahead pen 1-bit | 2-bit | closed | imm pen 1-bit | 2-bit | closed |
+|---|---|---|---|---|---|---|
+| 0-999 | +0.00218 | +0.00208 | 4.7% | +0.00514 | +0.00489 | 5.0% |
+| 1000-1999 | +0.00152 | +0.00161 | **-5.5%** | +0.00389 | +0.00393 | **-1.1%** |
+
+Noise around zero in both modes. The same screen showed the learnable-catalog change at 34.6% in its
+FIRST window and 60.8% in its second, so it resolves effects of this size easily.
+
+**★ WHY THE PTQ PROBE OVER-PROMISED (+0.003044 / +0.003566, "half the quantization cost").** It
+measured a model that had never trained under quantization. Under QAT with **learnable** catalogs the
+centroids are free parameters and are NOT unit-normalized, so the catalog can carry magnitude in
+centroid LENGTH and substitute for norm precision. The coarse norm is absorbed. This also predicts
+the gap should SHRINK with further training (the catalogs keep adapting), not grow.
+
+**THE GENERAL LESSON, and it is the counterpart to the reconstruction-vs-logloss one: PTQ cost does
+not predict QAT cost when another part of the quantizer can adapt to compensate.** The norm penalty
+was real for a frozen model and largely illusory for a trained one. Any future "component X is N% of
+the cost" probe must be re-asked under QAT before it justifies spending deploy bits.
+=> **the +5.4% card-state bit looks unjustified**; recommend NOT adopting the 2-bit norm.
+⚠ Train loss at 27% of the run, not an eval. The run continues (killing it would idle the GPU while
+the free fixes are implemented -- both need kernel changes) and will land a definitive number.
