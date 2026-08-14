@@ -1472,3 +1472,37 @@ trunk changes, and is better learned than frozen.**
    training chains; it applies to three-line helper runners too, and this is the second time this
    week a runner reported success for work that did not happen (the first was the QAT-inert banner).
 Both fixed; the dump runner now gates on `%ERRORLEVEL%` AND on step files existing.
+
+### ★★★ THE 1-BIT NORM IS ~HALF THE QUANTIZATION COST (norm probe, 2026-08-14, 12 min GPU)
+Three PTQ arms, same plain iter-45 checkpoint, refit catalogs, 10 users, only `RWKV_QAT_NORM_BITS`
+changing:
+
+| | norm OFF (exact fp32) | **1 bit (DEPLOY)** | 2 bits |
+|---|---|---|---|
+| ahead cost vs plain | +0.002997 | **+0.006041** | +0.003774 |
+| imm cost vs plain | +0.004941 | **+0.008507** | +0.005718 |
+
+**The 1-bit norm alone costs +0.003044 ahead (50% of the whole PTQ cost) and +0.003566 imm (42%).**
+**One more bit recovers ~75% of it** (+0.002267 / +0.002789).
+
+**★ RECONSTRUCTION ERROR MISPREDICTED THIS, in the UNFAVOURABLE direction.** The ladder put the norm
+at 19% (card) / 31% (note) of reconstruction error; in logloss it is ~half the cost. Third
+mispredict of the week -- shift catalog (9% error gap -> ~0.0004 logloss, over-predicted), WKV
+catalog (collapse -> ~0.006, under-predicted), now the norm. **Treat reconstruction error as a
+generator of hypotheses to probe, never as a proxy for logloss, in EITHER direction.**
+
+**THE PRICE OF THE SECOND BIT:** +1 bit per head per layer = **+10 bits/card, +5 bits/note** ->
+185 -> 195 b/card (23.1 -> 24.4 B, **+5.4%**) and 105 -> 110 b/note (+4.8%). At the measured
+algorithmic rate that +0.0023/+0.0028 is worth roughly **20 and 49 iterations**. ⚠ It DOES break
+Andrew's 2026-08-13 "keep the current quantization recipe" constraint, so it is his call -- but the
+ratio is lopsided enough that not surfacing it would be the error.
+
+**ORDER OF WORK (free first):**
+1. **Per-stream norm ranges** -- zero bits. Offline: note's 1-bit norm error 0.5113 -> 0.1756 (2.9x)
+   from fitting the range; 32.4% of note norms currently clamp.
+2. **Learnable norm levels** -- zero bits, the same move that bought 45% on the direction catalog.
+   The norm grid is FIXED even in the learnable-codebook run (catalogs learn DIRECTIONS only), so
+   this is complementary to that win, not overlapping.
+3. Only if 1-2 leave most of the +0.003 on the table, put the +1 bit trade to Andrew.
+⚠ n=10 users -- fine for ranking levers of this size, but confirm on ~500 before any state-size
+change.
