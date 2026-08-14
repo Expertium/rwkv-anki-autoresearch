@@ -1865,15 +1865,32 @@ diverge, the proxy trace is worthless as a progress signal -- I spent two update
 confidently from it. Measure the TARGET, or state explicitly that the proxy is only an engagement
 detector.
 
-**★★ THE SUBSTANTIVE RESULT: RANK-1 TRUNCATION DESTROYS ALMOST NO USEFUL INFORMATION.** This pairing
-is what makes the iteration worth its 11 hours regardless of the gate. The deploy quantizer truncates
-to rank 1. The control pays a 0.3594 / 0.2689 truncation error; r1reg pays 0.2043 / 0.0660 -- less
-than a QUARTER as much on note -- and the quantization-aware training loss is **identical**. So the
-rank-2-and-higher components the truncation was throwing away carried **nothing the task needed**.
-**=> The reconstruction ladder's attribution is misleading where it matters most.** It ranks rank-1
-truncation as the LARGEST term (53% card / 39% note) and it is the term that costs the least. That is
-the FOURTH time this week reconstruction error has mispredicted logloss -- and the first time it has
-done so about the term the whole ladder was built to prioritize.
+**★★ THE SUBSTANTIVE RESULT.** State it at the level the evidence supports, because two readings fit
+and only one of them is safe:
+* **SAFE (this is what was measured):** the control pays a 0.3594 / 0.2689 rank-1 truncation error,
+  r1reg pays 0.2043 / 0.0660 -- under a QUARTER as much on note -- and their quantization-aware
+  training loss is IDENTICAL. **Making the states dramatically more rank-1 does not improve the
+  DEPLOYED loss.** That is the gate question, and it is answered.
+* **TEMPTING BUT NOT ESTABLISHED:** "therefore the rank-2+ components carried nothing the task
+  needed." That is one explanation. The other is a **WASH of two real effects** -- the rank-1
+  constraint costs the underlying model roughly what the reduced truncation damage gives back. Flat
+  net loss is equally consistent with (better model + more truncation damage) and (worse model + less
+  truncation damage), and a capacity-constraining regularizer is a natural way to get the second.
+⚠ **The obvious disambiguation is BLOCKED, by a finding from earlier in this same phase.** Scoring
+each checkpoint at full precision (QAT env off) would separate model quality from truncation damage
+-- except that Andrew's cell-3 arm already showed a QAT-trained model is **not a valid fp32 model**
+when the quantization is STRUCTURAL rather than value-based: the iter-45 QAT checkpoint scored
+0.403 / 0.548 at fp32 against ~0.27 quantized. Rank-1 truncation is exactly that structural case, and
+it applies to BOTH arms here. So the fp32 route cannot decide it, and no cheap substitute is
+currently known. Left open and labelled, not quietly resolved in favour of the nicer story.
+**★ THE ACTION IS UNCHANGED EITHER WAY, which is why the ambiguity is tolerable:** under both
+readings, driving states toward rank-1 does not buy deployed accuracy, so the lever is spent.
+**=> The reconstruction ladder's attribution does not survive as a LOGLOSS ranking.** It ranks rank-1
+truncation as the LARGEST term (53% card / 39% note); cutting that term by 43% / 75% moves the
+deployed loss by nothing. That is the FOURTH time this week reconstruction error has mispredicted
+logloss -- and the first time about the term the whole ladder was built to prioritize. (Note this
+conclusion holds under BOTH readings above: whether the truncation was harmless or the constraint
+merely cost what it saved, the ladder's implied "attack rank-1 first" is wrong either way.)
 **=> ACTIONABLE REDIRECTION:** the remaining QAT tax (+0.002286 / +0.003486) lives in the CODEBOOK
 and NORM terms, not in rank-1 truncation. Item 4 of the ranked list (low-rank-friendly
 regularization) is not merely a null -- it is aimed at a term with almost no logloss in it. Do not
