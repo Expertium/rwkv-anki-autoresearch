@@ -1605,3 +1605,34 @@ fp32-teacher KD during QAT is second.
 ⚠ Corpus states come from the PLAIN model and are encoded with the LEARNED catalog; under QAT the
 states shift. The disjointness (0.78% shared mass) is far too stark for that to overturn, but the
 centroid-usage counts themselves are from 900 states/stream and would rise with more data.
+
+### RANK-1 REGULARIZER (iter qtaxf_r1reg, launched 2026-08-14 14:15) -- and Andrew's objection
+`RWKV_QAT_RANK1_REG=0.05`, single-variable vs `qtaxd_cblearn`. Training-only, no kernel change, no
+deploy change. Penalty = 1 - max(conc(k), conc(v)) where conc = the participation ratio
+||M^T M||_F^2 / ||M||_F^4 (1 for rank-1, 1/r for r equal directions).
+
+**Why a proxy on (k,v) and not on the state:** the true state S lives inside a custom CUDA autograd
+Function whose backward accepts only the OUTPUT gradient, so a loss on the returned checkpoints
+would not reach the weights at all; the differentiable Python path materializes S but loops per
+timestep (T up to 65536). Since S is a decay-weighted sum of outer products k_i v_i^T, it is near
+rank-1 exactly when the per-head k (or v) vectors align -- computable from the kernel INPUTS.
+Verified on synthetic cases: all-parallel k -> penalty 0.000000; random k,v -> 0.9209 against the
+theoretical 1-1/K = 0.9375; gradients flow; skip rows excluded; **inert when the env is unset**.
+
+**★ ANDREW'S OBJECTION (2026-08-14), which is the right one to raise:** *"if making states more
+rank-1 could lower log loss, the model would learn to do that anyway."*
+**The mechanistic counter: the STE is structurally blind to the truncation error.** The
+straight-through estimator passes dL/dS backward AS IF the truncation were identity, so the model
+sees the truncation's consequence in the forward loss but its gradient never contains a term for
+"reduce the truncation error" -- only "given this mangling, do better". SGD cannot find what the
+gradient does not point at; this is exactly why quantization-friendly regularization exists as a
+technique. ⚠ But the objection retains force and the proxy is blunt (k-alignment is sufficient, not
+necessary, and ignores the decay weighting), so a null is quite plausible. Prior: low.
+
+**THE DECISIVE INTERMEDIATE MEASUREMENT (~10 min CPU, once a checkpoint exists).** Dump states from
+the new checkpoint and re-measure the exact-rank-1 floor (today: **card 0.4353 / note 0.3049**):
+* floor does NOT move -> the regularizer is inert; kill early; the objection is untested.
+* floor moves but logloss does not -> **Andrew's objection is CONFIRMED empirically**: the model was
+  already as rank-1 as is useful, and the STE blindness does not bind.
+* both move -> the STE-blindness mechanism was real.
+This is what makes the run worth its 18 h even under a low prior: every outcome answers something.

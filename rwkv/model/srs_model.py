@@ -4,7 +4,8 @@ import math
 import numpy as np
 from rwkv.config import RWKV_SUBMODULES
 from rwkv.data_processing import RWKVSample
-from rwkv.model.rwkv_model import RWKV7
+from rwkv.model.rwkv_model import RWKV7, take_rank1_penalty
+from rwkv.model.rwkv_model import _RANK1_REG as _RANK1_REG_LAMBDA
 import torch
 from typing import NamedTuple, Optional, Tuple
 
@@ -1176,6 +1177,12 @@ class SrsRWKV(ModuleType):
             loss_avg = loss_avg + self.pava_lambda * pava_loss
             pava_loss_avg = pava_loss.detach()
             pava_pool_frac = pava_frac.detach()
+        # RWKV_QAT_RANK1_REG (2026-08-14): rank-1-friendly regularizer. The rank-truncated streams
+        # accumulate a per-layer proxy penalty during their forward; drain it here and add it once.
+        # Returns None when the lever is off, so the default path adds no term at all.
+        _r1 = take_rank1_penalty()
+        if _r1 is not None:
+            loss_avg = loss_avg + _RANK1_REG_LAMBDA * _r1
         # KD (RWKV_QAT_KD, task22): distill from the un-quantized fp32 champion during QAT. Anchors the
         # base against drift while the net learns quant robustness. kd = (teacher_p_logits,
         # teacher_curve_probs, lambda), computed in train_rwkv under no_grad. Soft-label CE on the 4-way

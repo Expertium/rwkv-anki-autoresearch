@@ -350,6 +350,67 @@ def windowed_clamped_wkv(
     return torch.cat(outs, dim=1)
 
 
+# ---- RANK-1-FRIENDLY REGULARIZER (RWKV_QAT_RANK1_REG=<lambda>, 2026-08-14) -------------------
+# WHY. The reconstruction ladder puts rank-1 TRUNCATION at 53% (card) / 39% (note) of the deploy
+# error -- the largest single term, and the one the codebook provably cannot touch (the catalog
+# adapts direction and magnitude; it cannot make a rank-2 state rank-1). The recipe freezes rank-1,
+# but the MODEL can be trained to emit states that survive it.
+#
+# WHY A PROXY ON (k, v) RATHER THAN ON THE STATE. The true penalty wants ||S - rank1(S)||/||S||, but
+# S is produced inside a custom CUDA autograd Function whose backward accepts only the OUTPUT
+# gradient -- a loss on the returned checkpoints would not propagate to the weights at all. The
+# differentiable Python path materializes S but loops per timestep (T up to 65536), so it cannot
+# train. Hence a proxy computable from the kernel INPUTS:
+#   S_t is a decay-weighted sum of outer products k_i v_i^T, so S is near rank-1 exactly when the
+#   per-head k vectors are near-parallel over time (or the v vectors are). Aligning either suffices.
+# Concentration measure = the participation ratio of the Gram spectrum, ||M^T M||_F^2 / ||M||_F^4,
+# which is 1 for a rank-1 M and 1/r for r equal directions -- no SVD, two small matmuls, smooth.
+# Penalty = 1 - max(conc_k, conc_v): "make EITHER factor family align", the weaker and more honest
+# constraint, since forcing both would over-restrict.
+#
+# ⚠ This is a PROXY: it ignores the decay weighting and the `a`-deformation, and alignment is
+# sufficient but not necessary for a rank-1 state. It is also a real restriction on the model --
+# though note the deploy state is ALREADY capped at rank 1, so this asks the model to live inside a
+# budget it is already being truncated to, rather than imposing a new one.
+# Default unset = 0.0 = completely inert (no accumulation, no loss term, byte-identical).
+_RANK1_REG = float(os.environ.get("RWKV_QAT_RANK1_REG", "0") or 0)
+_RANK1_ACC: list = []
+
+
+@torch.jit.ignore
+def accum_rank1_penalty(k_BTHK: torch.Tensor, v_BTHK: torch.Tensor, skip_BT: torch.Tensor) -> None:
+    """Accumulate one layer's rank-1-deficiency proxy. Called only for streams that are actually
+    rank-truncated (card/note) and only in training."""
+    k = k_BTHK.float()
+    v = v_BTHK.float()
+    # drop skipped rows (query duplicates): they are not part of the carried state's history
+    keep = (~skip_BT).to(k.dtype).unsqueeze(-1).unsqueeze(-1)
+    k = k * keep
+    v = v * keep
+
+    def conc(m_BTHK: torch.Tensor) -> torch.Tensor:
+        # m: (B,T,H,K) -> per (B,H) Gram over the K axis, then the participation ratio
+        m = m_BTHK.permute(0, 2, 1, 3)                      # B,H,T,K
+        g = torch.matmul(m.transpose(-1, -2), m)            # B,H,K,K  (= M^T M)
+        num = (g * g).sum(dim=(-1, -2))                     # ||M^T M||_F^2 = sum sigma^4
+        den = torch.diagonal(g, dim1=-2, dim2=-1).sum(-1) ** 2   # (trace)^2 = (sum sigma^2)^2
+        return num / (den + 1e-12)
+
+    pen = 1.0 - torch.maximum(conc(k), conc(v))             # B,H
+    _RANK1_ACC.append(pen.mean())
+
+
+@torch.jit.ignore
+def take_rank1_penalty():
+    """Sum and CLEAR the accumulated per-layer penalties. Returns None when the lever is off or
+    nothing accumulated, so the caller adds no term at all (keeps the default path byte-identical)."""
+    if not _RANK1_ACC:
+        return None
+    out = torch.stack(_RANK1_ACC).mean()
+    _RANK1_ACC.clear()
+    return out
+
+
 @torch.jit.ignore
 def fake_pq_shift(x_BTC: torch.Tensor, role: int) -> torch.Tensor:
     """Shift-PQ round-trip of (B,T,C), role 0 = t_xshift / 1 = c_xshift. Compute in f32 like deploy.
@@ -855,6 +916,8 @@ class RWKV7TimeMixer(ModuleType):
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
                 self.state_qmax, self.state_lowrank_rank, self.state_lowrank_fqmax,
             )
+            if _RANK1_REG > 0.0 and self.state_lowrank_rank > 0 and self.training:
+                accum_rank1_penalty(k_BTHK, v_BTHK, skip_BT)
         elif r_BTHK.is_cuda and self.state_clamp_tau > 0.0 and T > self.state_clamp_window:
             # long-recurrence stream + clamp enabled: windowed stateful WKV with inter-window
             # soft state shrink (A3-instability fix; tau huge = measurement/record mode)
