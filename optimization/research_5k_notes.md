@@ -1520,3 +1520,25 @@ printing quantities whose correct magnitude is known.
 Fixed: the dump now stores `label_review_th` and the analysis joins ahead-row -> query-row per
 review (the teacher shares the row layout exactly, both dumps walking the identical stream).
 Re-queued behind the 2-bit-norm run -- it needs a fresh dump and must not run co-tenant with it.
+
+**⚠ TRANSIENT CUDA FAULT, NOT A 2-BIT BUG (2026-08-14).** The first 2-bit-norm launch died at the
+step-50 validation with `CUDA error: an illegal memory access` on validation user 5008. The relaunch
+walked the SAME users and passed cleanly (5008 -> 0.346), so **it did not reproduce even under
+`RWKV_DETERMINISTIC=1`**. Treat isolated illegal-access crashes here as transient first and re-run
+once before diagnosing -- this machine also has a history of hard black-screen hangs, so GPU-level
+transients have precedent. ⚠ Determinism flags do NOT protect against them: they fix the numerics,
+not the hardware.
+
+**LATENT HAZARD FOUND WHILE DIAGNOSING (unproven as the cause, but real).** The learnable-codebook
+backward does
+`atomicAdd(&g_pq_cb_grad[ci * c_pq_subdim + x], ...)` guarded only by `ci >= 0` -- **there is no
+upper-bound check** -- into `__device__ float g_pq_cb_grad[32768]`, a fixed buffer that exactly fits
+the joint-uv shape (1024 centroids x 32 dims = 32,768). So ANY out-of-range centroid index writes out
+of bounds, and a NaN in the distance search (argmin over NaNs returns garbage) is a plausible route
+to one. Two consequences worth acting on if the learnable path is adopted permanently, which it now
+looks likely to be: (a) add `ci < c_pq_ncent` to the guard, (b) the buffer is sized for ncent<=1024
+at subdim 32 -- a larger catalog would silently overflow it, which matters because "bigger catalogs"
+is exactly the direction the d=32 endgame recommends.
+
+**EARLY SIGNAL (step-50 validation, identical batch):** 2-bit norm **0.3259 / 0.3101** vs the 1-bit
+run's 0.3269 / 0.3110 -- the expected direction, though 50 steps proves nothing on its own.
