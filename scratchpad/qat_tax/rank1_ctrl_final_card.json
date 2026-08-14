@@ -1,0 +1,11 @@
+{
+  "label": "ctrl_final card",
+  "files": 3,
+  "states": 12268,
+  "head_states": 61340,
+  "rank1_err_mean": 0.359414279460907,
+  "rank1_err_median": 0.401130735874176,
+  "rank1_err_p90": 0.6778636574745178,
+  "energy_in_rank1_mean": 0.8043485879898071,
+  "spectral_concentration_mean": 0.7233456969261169
+}

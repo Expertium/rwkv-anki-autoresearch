@@ -1,0 +1,11 @@
+{
+  "label": "ctrl_final note",
+  "files": 3,
+  "states": 3547,
+  "head_states": 17735,
+  "rank1_err_mean": 0.26891395449638367,
+  "rank1_err_median": 0.20101018249988556,
+  "rank1_err_p90": 0.623966634273529,
+  "energy_in_rank1_mean": 0.8694416880607605,
+  "spectral_concentration_mean": 0.8077990412712097
+}

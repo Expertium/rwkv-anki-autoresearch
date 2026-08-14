@@ -1814,6 +1814,31 @@ confirmatory. The step-50 number retains exactly one job: proving the lever ENGA
 ⚠ The flat `d_ahead`/`d_imm` predict a null at the gate, but train loss is not eval logloss and this
 is a quantized forward -- treat it as a prior, not a result.
 
+**★★★ THE CONTROL BECOMES RANK-1 ON ITS OWN -- measured, properly controlled (2026-08-14 22:38).**
+`qtaxd_cblearn_d_50` vs `qtaxd_cblearn_d_10935`: same config, same tool, same 3 users, same entities,
+**no regularizer in either** -- only the training step differs.
+
+| stream | control @ step 50 | control @ step 10,935 | change |
+|---|---|---|---|
+| card | 0.3831 | 0.3594 | **-6.2%** |
+| note | 0.3556 | 0.2689 | **-24.4%** |
+
+**Ordinary training moves the states toward rank-1 by itself, and on the note stream it moves them as
+far as the regularizer did in its first 50 steps (-22.2%).** This is the sharpest evidence yet for
+Andrew's objection, and it arrived from the CONTROL arm rather than the treatment arm: the model is
+not blind to rank-1 structure and does not need to be pushed toward it -- it gets there.
+**The prediction this licenses, recorded before the candidate is measured:** `qtaxf_r1reg_d_10935`
+will land NEAR `qtaxd_cblearn_d_10935` (0.3594 / 0.2689), i.e. the regularizer's early advantage will
+have largely evaporated because the control caught up unaided. That is consistent with the penalty
+trajectory (imposed early, partly surrendered later, plateauing ~0.075) and with the flat train-loss
+components. If instead r1reg lands far below the control, the lever really does reach structure
+training cannot, and a null at the gate would then be the strong "achievable but worthless" result.
+⚠ **This also supersedes, correctly, the trajectory guess I retracted earlier.** From the confounded
+pair I had guessed "decay training pushes states toward HIGHER rank"; the retraction was right and
+the truth is the OPPOSITE direction. The difference between that guess and this measurement is
+solely that this one holds config, tool, users and entities fixed and varies ONLY the step -- which
+is the same discipline the two earlier traps came down to.
+
 **PRE-REGISTERED DECISION RULE (written 2026-08-14 17:30, BEFORE the eval exists).** Recording this
 now because the floor result is suggestive and the temptation to pick a favourable framing afterwards
 is exactly what pre-registration is for.
