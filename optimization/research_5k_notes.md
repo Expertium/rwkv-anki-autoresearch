@@ -1568,3 +1568,40 @@ the cost" probe must be re-asked under QAT before it justifies spending deploy b
 => **the +5.4% card-state bit looks unjustified**; recommend NOT adopting the 2-bit norm.
 ⚠ Train loss at 27% of the run, not an eval. The run continues (killing it would idle the GPU while
 the free fixes are implemented -- both need kernel changes) and will land a definitive number.
+
+### ★★★ THE LEARNABLE CATALOG ALREADY DOES PER-STREAM MAGNITUDE ADAPTATION -- norm/catalog levers CLOSED
+Two CPU checks, prompted by the 2-bit norm null and done BEFORE building per-stream norm ranges.
+
+**1. The catalog spends real capacity on LENGTH.** Learned (10,935 steps) vs its k-means init:
+
+| | joint-norm min / med / max | spread | std/med |
+|---|---|---|---|
+| initial | 1.0867 / 1.3005 / 1.4116 | 1.30x | 0.0454 |
+| learned | 1.1178 / 1.5165 / 2.1281 | 1.90x | **0.1101 (2.43x wider)** |
+
+Median centroid grew 16.9% (p90 +37%), and the movement splits about evenly into DIRECTION
+(med 19.85 deg) and LENGTH (med 16.9%). The catalog is encoding magnitude in centroid length --
+exactly what a 1-bit norm is too coarse to express.
+
+**2. Card and note use DISJOINT parts of the catalog**, so one shared table can specialise per
+stream: card 501 distinct centroids, note 220, **only 25 shared (3.6%)**; Bhattacharyya overlap
+**0.0219**; shared probability mass **0.78%**.
+
+**=> THREE LEVERS CLOSE AT ONCE, on mechanism rather than on a null result:**
+* **per-stream norm ranges** -- the catalog already adapts per stream AND per centroid, which is
+  strictly finer than a per-stream range;
+* **learnable norm levels** -- same mechanism, same redundancy;
+* **per-stream catalogs** (my own earlier item 3) -- the streams are ALREADY disjoint in one table.
+A fourth signal agrees: only **721 of 1024 centroids are used at all**, so catalog CAPACITY is not
+binding either. This also retro-explains the 2-bit null and the sibling's "norm axis bottoms out at
+1 bit": 1 bit is an interior optimum because the catalog covers what the norm cannot -- confirmed
+now from BOTH sides (below 1 bit = +0.004 cliff; above 1 bit = nothing).
+
+**WHAT REMAINS: the term the catalog provably cannot touch.** Rank-1 truncation is 53% (card) /
+39% (note) of the reconstruction error and is structurally frozen by the recipe -- but the MODEL can
+be trained to emit more nearly rank-1 states. A penalty on the state's off-top-singular energy is
+training-only, needs no kernel or deploy change, and is now the top remaining QAT lever;
+fp32-teacher KD during QAT is second.
+⚠ Corpus states come from the PLAIN model and are encoded with the LEARNED catalog; under QAT the
+states shift. The disjointness (0.78% shared mass) is far too stark for that to overturn, but the
+centroid-usage counts themselves are from 900 states/stream and would rise with more data.
