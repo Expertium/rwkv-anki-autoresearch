@@ -1,0 +1,11 @@
+{
+  "label": "smoke_s50 card",
+  "files": 3,
+  "states": 12268,
+  "head_states": 61340,
+  "rank1_err_mean": 0.33275896310806274,
+  "rank1_err_median": 0.3163986802101135,
+  "rank1_err_p90": 0.6521403193473816,
+  "energy_in_rank1_mean": 0.8377376794815063,
+  "spectral_concentration_mean": 0.7600758075714111
+}

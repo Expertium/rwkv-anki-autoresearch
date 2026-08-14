@@ -902,13 +902,25 @@ makes even a null informative:** `scratchpad/qat_tax/rank1_floor.py` (CPU, ~1 mi
 empirically** (rank-1-ness is achievable but worthless). Floor doesn't move => the regulariser is
 simply too weak/blunt, and the lever is untested rather than closed. Distinguishing those two is the
 point; do not report a bare null.
-**★ USE THE VERIFIED BASELINE, NOT THE OLD LADDER'S: control (iter45) = card 0.3733 / note 0.3729**
-(183,480 + 55,020 head-states, 7 users). ⚠ The ladder's "card 0.4353 / note 0.3049" measures
-something ELSE: it is not reproducible (its script was ad-hoc and never saved) and it disagrees in
-OPPOSITE directions on the two streams, so it is not a sampling difference. `rank1_floor.py`'s
-formula is verified against explicit rank-1 truncation to 2.4e-07. **Comparing an r1reg floor against
-0.4353 would have shown a large FAKE improvement that is purely a change of metric** -- compare only
-control-vs-candidate, both measured with this tool.
+**✓ THE FLOOR CHECK IS ALREADY DONE, AT STEP 50, AND IT MOVED HARD.** `qtaxf_r1reg_d_50` vs the
+matched twin `qtaxd_cblearn_d_50` (same WS-final, same step, same 3 users, same tool, identical state
+counts -- paired entity-for-entity): **card 0.3831 -> 0.3328 (-13.1%), note 0.3556 -> 0.2767
+(-22.2%)**, with 10,885 steps still to run. **So "the regulariser was too weak, try a bigger lambda"
+is DEAD as an explanation for any null**, and the gate now tests exactly one proposition: *does
+markedly more rank-1 structure improve the quantized logloss?* A null = **Andrew's objection
+confirmed in its strong form** (achievable, cheap, worthless), with the STE-blindness argument true
+mechanically but refuted practically.
+⚠ Do NOT convert -13%/-22% reconstruction into an expected logloss gain -- that error has been made
+three times this week in BOTH directions.
+**★ TWO CONTROL TRAPS THIS CHECK WALKED INTO, both capable of manufacturing a large fake effect, and
+they COMPOUND.** (1) **Wrong metric:** the ladder's "card 0.4353 / note 0.3049" is NOT reproducible
+(ad-hoc script, never saved) and disagrees in OPPOSITE directions per stream; `rank1_floor.py` is
+verified against explicit truncation to 2.4e-07 and reads 0.3733 / 0.3729 on the same corpus.
+(2) **Wrong checkpoint:** the first run compared step-50 against iter45's FINAL, which differs by
+10,885 training steps too. **The rule: a difference is attributable only if the METRIC (same tool)
+and the TRAJECTORY (same step) are both held fixed.** Confounded comparisons also spawn confident
+side-observations that are artifacts -- one about training raising state rank died on contact with
+the matched control.
 ⚠ Knock-on: card and note in fact have the SAME rank-1 floor, so the old "card and note are visibly
 different distributions (rank-1 floor 0.435 vs 0.305)" argument for per-stream catalogs is
 unsupported. The lever stays closed on the disjoint-centroid evidence, not on that.

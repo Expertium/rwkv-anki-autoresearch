@@ -1,0 +1,11 @@
+{
+  "label": "smoke_s50 note",
+  "files": 3,
+  "states": 3547,
+  "head_states": 17735,
+  "rank1_err_mean": 0.27674758434295654,
+  "rank1_err_median": 0.26322391629219055,
+  "rank1_err_p90": 0.5461872220039368,
+  "energy_in_rank1_mean": 0.887174665927887,
+  "spectral_concentration_mean": 0.818960964679718
+}

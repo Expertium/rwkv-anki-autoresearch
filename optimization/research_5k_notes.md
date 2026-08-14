@@ -1742,13 +1742,41 @@ regularizer. The matched control is `qtaxd_cblearn_d_50` -- same WS-final, same 
 ONLY by `RWKV_QAT_RANK1_REG` -- and it exists, as does `qtaxd_cblearn_d_10935` for the final
 comparison. The runner's built-in control phase was removed; it now measures ONE checkpoint and the
 comparison is made by diffing two runs.
-**Note the direction, because it is a live hypothesis rather than a nuisance:** iter45's FINAL states
-have a HIGHER rank-1 error (0.3681 card) than step-50 states (0.3328), which suggests **decay
-training pushes states toward HIGHER rank over time**. If that is real, it is itself interesting --
-it would mean the model spends the decay phase moving *away* from the structure the deploy quantizer
-wants, and it would also mean any "floor improvement" measured against a late checkpoint is
-systematically overstated. The matched control settles both.
 **The pattern across both catches is one sentence: a difference is only attributable to the variable
 you changed if the comparison holds everything else fixed -- the METRIC (same tool) and the
 TRAJECTORY (same step).** Each was individually capable of manufacturing a large fake effect, and
 they compound.
+⚠ I briefly wrote down a third claim from the confounded pair -- "decay training pushes states toward
+HIGHER rank over time" -- and it does not survive either: the matched control `qtaxd_cblearn_d_50`
+reads 0.3831 card against iter45-final's 0.3681, i.e. the opposite direction, and those two differ in
+CONFIG (QAT + learnable catalogs) as well as step. **There is no supported trajectory claim here in
+either direction; do not quote one.** Confounded comparisons do not just inflate the effect you were
+looking for, they also generate confident side-observations that are artifacts.
+
+### ★★ THE RANK-1 REGULARIZER DEMONSTRABLY MOVES THE DEPLOY QUANTITY (matched, 2026-08-14)
+`qtaxf_r1reg_d_50` vs `qtaxd_cblearn_d_50` -- same WS-final, same step 50, same 3 users, same tool,
+differing ONLY by `RWKV_QAT_RANK1_REG=0.05`. Identical state counts (12,268 card / 3,547 note), so it
+is paired entity-for-entity:
+
+| stream | control | r1reg | delta | relative |
+|---|---|---|---|---|
+| card | 0.3831 | 0.3328 | -0.0503 | **-13.1%** |
+| note | 0.3556 | 0.2767 | -0.0789 | **-22.2%** |
+
+**This settles the branch the whole check existed to settle, and it settles it EARLY.** The
+regularizer does not merely drive its own proxy (k/v alignment, penalty 0.3213 -> 0.0951 over 200
+steps); it moves the **exact rank-1 truncation error of the state** -- the quantity the deploy
+quantizer actually pays -- by 13% and 22% relative after **fifty steps**, with 10,885 still to run.
+**Consequences, both worth acting on:**
+1. **"The regularizer was too weak / try a larger lambda" is DEAD as an explanation** for any null
+   that follows. It engaged, hard, at lambda=0.05. A null now means the thing itself does not pay.
+2. **The gate therefore tests exactly one proposition**, cleanly: *does making the states markedly
+   more rank-1 improve the quantized logloss?* If the eval comes back null, that is **Andrew's
+   objection confirmed empirically in its strong form** -- rank-1-ness is achievable, cheap in
+   training terms, and worthless -- and the STE-blindness counter-argument is refuted as a
+   *practical* matter even though it remains true as a *mechanical* one (the gradient really does
+   lack the term; the term simply is not worth having).
+⚠ **Do NOT convert -13% / -22% reconstruction into an expected logloss gain.** That is precisely the
+error the week has already made three times in both directions (shift catalog over-predicted, WKV
+catalog under-predicted, norm bits under-predicted ~2.6x). Reconstruction generates hypotheses; only
+the eval scores them.

@@ -1,0 +1,11 @@
+{
+  "label": "ctrl_s50 card",
+  "files": 3,
+  "states": 12268,
+  "head_states": 61340,
+  "rank1_err_mean": 0.3831486999988556,
+  "rank1_err_median": 0.39123696088790894,
+  "rank1_err_p90": 0.6815544366836548,
+  "energy_in_rank1_mean": 0.7990509867668152,
+  "spectral_concentration_mean": 0.7092549204826355
+}

@@ -95,3 +95,7 @@ scratchpad/i31_regress2/
 # QAT shift-PQ corpora: ~250 MB of dumped fp32 token-shift vectors, regenerable in minutes from
 # reference_iter45/ via `rwkv-infer --dump-shift-corpus`. One file exceeds GitHub's 100 MB limit.
 scratchpad/qat_tax/corpus/
+# ...and every per-checkpoint corpus the rank-1 floor check dumps (run_rank1_check.cmd
+# writes corpus_<label>/). The bare `corpus/` line above did NOT match these and ~700 MB
+# of state dumps reached a commit; the push bounced on GitHub's 100 MB file limit.
+scratchpad/qat_tax/corpus_*/
