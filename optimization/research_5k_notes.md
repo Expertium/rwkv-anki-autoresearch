@@ -1378,17 +1378,19 @@ de-confounding test is two runs at a FIXED 2-epoch budget — 1+1 vs 1.6+0.4 —
 Against a one-shot 53 h run that is a defensible insurance premium; it is Andrew's call whether the
 delay is worth it.
 
-### ★★★ QAT IMPROVEMENT #1 CONFIRMED: LEARNABLE CODEBOOKS CUT THE TAX ~45% (partial, n=569)
+### ★★★ QAT IMPROVEMENT #1 CONFIRMED: LEARNABLE CODEBOOKS CUT THE TAX ~45% (FINAL, n=2500)
 Single-variable vs `qtaxc_m2b12`: the ONLY difference is `RWKV_QAT_PQ_LEARN=1` +
 `RWKV_QAT_SHIFT_PQ_LEARN=1`. Same WS-final, same KD alpha 0.5, same starting catalogs, same
 schedule. Paired on the same users:
 
 | | plain | tax, fixed cb | tax, LEARNABLE cb | cut | p |
 |---|---|---|---|---|---|
-| ahead | 0.298669 | +0.004274 | **+0.002264** | **47.0%** | 1.9e-68 |
-| imm | 0.266444 | +0.006229 | **+0.003551** | **43.0%** | 1.1e-91 |
+| ahead | 0.297697 | +0.004185 | **+0.002286** | **45.4%** | 4.3e-269 |
+| imm | 0.265375 | +0.006219 | **+0.003486** | **43.9%** | < float precision |
 
-Consistent with the 10-user validity probe (44.7% / 39.3%), so the effect is stable across samples.
+**FINAL on the full VAL half (n=2500).** The effect was stable at every sample size measured --
+10-user probe 44.7%/39.3%, n=569 47.0%/43.0%, n=1186 46.1%/43.0%, n=2500 45.4%/43.9% -- so the
+early reads were trustworthy and the partial-eval habit is vindicated again.
 **Costs nothing:** deploy size is unchanged (catalog VALUES move, not structure) and wall-clock is
 unchanged (0.3333 vs 0.335 steps/s). It also closes the export->eval wiring gap CLAUDE.md had
 listed as queued -- the eval consumed the catalogs exported at the final checkpoint.
@@ -1399,13 +1401,15 @@ listed as queued -- the eval consumed the catalogs exported at the final checkpo
 |---|---|---|
 | still_needed with the d=32 placeholder tax | +0.00225 | +0.00196 |
 | still_needed with the measured fixed-cb tax | +0.00360 | +0.00374 |
-| **still_needed with learnable catalogs** | **+0.00162** | **+0.00106** |
+| **still_needed with learnable catalogs (FINAL)** | **+0.00165** | **+0.00100** |
 
-At the post-tuning algorithmic rate that is **~15 and ~19 more iterations, not 32 and 66** (~5.4
-and ~6.9 GPU-days instead of ~12 and ~24). **imm stops being the binding mode**, which it became
+At the post-tuning algorithmic rate that is **~15 and ~18 more iterations, not 32 and 66** (~5.5
+and ~6.5 GPU-days instead of ~12 and ~24). **imm stops being the binding mode**, which it became
 only because of the QAT term.
-⚠ Partial (569 of 2,500 users); full VAL half pending. Nothing here changes the deploy recipe --
-this is the SAME quantizer per Andrew's 2026-08-13 constraint, trained better.
+Nothing here changes the deploy recipe -- this is the SAME quantizer per Andrew's 2026-08-13
+constraint, trained better. **Recommend adopting learnable catalogs as the DEFAULT for every
+quant-aware run, and especially for the 10x endgame**, where the state distribution moves far more
+over 12.5 epochs than over 1 and a frozen catalog would decay correspondingly further.
 
 ### ★★ WHERE THE REMAINING QAT TAX LIVES — and a THIRD stale-artifact finding (2026-08-13, CPU only)
 Reconstruction-error ladder on real card/note WKV states (7,500 head-states each), decomposing the
