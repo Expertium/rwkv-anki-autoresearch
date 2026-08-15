@@ -1,0 +1,38 @@
+# ITER 48 = RETRIEVABILITY-COUPLED RATING HEAD (RWKV_RCOUPLE=1), on the iter-45 CHAMPION recipe.
+# Clone of iter45's WS toml with only the save prefix changed; the lever is one env var in the .cmd.
+# ⚠ Unlike iter 45 (whose lever was decay-only, so its WS was a byte-identical replay of iter 41's),
+# this lever is a MODEL change and applies to BOTH phases -- WS must be rerun, not reused.
+# Data-affecting fields (db, users, MAX, fetch) stay identical to the t128_seedpair_65k dump's, since
+# KD consumes it in both phases and its per-step labels_sum checksum hard-exits 43 on any divergence.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/iter48_rcouple"
+SAVE_MODEL_PREFIX = "i48_ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
