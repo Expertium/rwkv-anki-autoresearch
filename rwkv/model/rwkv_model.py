@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import math
 import os
 import torch
+from typing import Optional
 
 from rwkv.model.rwkv_ops import RWKV7_WKV, RWKV7_WKV_Stateful, reference_rwkv7, quant_aware_rwkv7
 
@@ -401,9 +402,19 @@ def accum_rank1_penalty(k_BTHK: torch.Tensor, v_BTHK: torch.Tensor, skip_BT: tor
 
 
 @torch.jit.ignore
-def take_rank1_penalty():
+def take_rank1_penalty() -> Optional[torch.Tensor]:
     """Sum and CLEAR the accumulated per-layer penalties. Returns None when the lever is off or
-    nothing accumulated, so the caller adds no term at all (keeps the default path byte-identical)."""
+    nothing accumulated, so the caller adds no term at all (keeps the default path byte-identical).
+
+    ⚠ THE RETURN ANNOTATION IS LOAD-BEARING -- do not remove it. An unannotated `@torch.jit.ignore`
+    function is typed by TorchScript as returning a plain `Tensor`. Returning None then hands the
+    scripted caller an UNDEFINED tensor, `_r1 is not None` refines to True (an undefined Tensor is
+    not None), and the next op dies with
+        "op.is_output INTERNAL ASSERT FAILED ... Found type undefined input tensor!"
+    pointing at a builtin `mul(float, Tensor)` -- i.e. nowhere near this function.
+    It COMPILES either way, so scripting alone does not catch it; only running the scripted forward
+    does. That is how it reached iter 48's eval after 6.5 h of training (2026-08-15).
+    """
     if not _RANK1_ACC:
         return None
     out = torch.stack(_RANK1_ACC).mean()
