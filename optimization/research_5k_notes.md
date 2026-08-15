@@ -1896,7 +1896,28 @@ and NORM terms, not in rank-1 truncation. Item 4 of the ranked list (low-rank-fr
 regularization) is not merely a null -- it is aimed at a term with almost no logloss in it. Do not
 spend further iterations attacking the rank-1 term by any route (rank-2 states, softer lambda,
 scheduled lambda); the information is not there to recover.
-⚠ Pending the eval (ETA ~09:50) for the gate verdict; train loss is a strong prior, not the result.
+⚠ Pending the eval (ETA ~09:40) for the gate verdict; train loss is a strong prior, not the result.
+
+**INTERIM EVAL READ, n=1,006 of 2,500 (2026-08-15 03:45) -- headed for REJECT, and NOT as a tie.**
+size-mismatch 0 (data-integrity gate passes). Paired vs `qtaxd_cblearn`, positive = candidate better:
+
+| mode | r1reg | control | delta | cand better on | two-sided p |
+|---|---|---|---|---|---|
+| ahead | 0.298676 | 0.298569 | **-0.000107** | 450/1006 (44.7%) | 2.0e-03 |
+| imm | 0.267207 | 0.267032 | **-0.000176** | 389/1006 (38.7%) | 1.6e-13 |
+
+Same SIGN as the train-loss prior (+0.000048 / +0.000057 worse) and 2-3x its magnitude, which is the
+consistency one wants between a train screen and an eval.
+**★ THIS SHARPENS THE AMBIGUITY FLAGGED ABOVE, in the direction of the less flattering reading.** A
+pure "rank-2+ components carry nothing" world predicts an exact TIE. What we see is a small,
+highly consistent REGRESSION -- imm wins on only 38.7% of users at p=1.6e-13. So the rank-1
+constraint **does** cost the underlying model something, and the reduced truncation damage does
+**not** fully repay it; the shortfall is ~0.0001-0.0002. Equivalently: **the truncation saving is
+real but is worth LESS than the constraint that buys it**, which bounds how much logloss was ever
+sitting in the rank-1 term -- a bound the reconstruction ladder (53% / 39% of error) badly overstated.
+⚠ Users 5001-~6006 only, i.e. the numerically-first 40% processed in order -- a SYSTEMATIC subset,
+not random, and the tune-eval lesson (a +0.0008 subset win that INVERTED at n=5000) says subsets can
+flip sub-0.001 effects. Direction and consistency are informative; the number is not final.
 
 **PRE-REGISTERED DECISION RULE (written 2026-08-14 17:30, BEFORE the eval exists).** Recording this
 now because the floor result is suggestive and the temptation to pick a favourable framing afterwards
