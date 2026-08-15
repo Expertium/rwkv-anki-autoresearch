@@ -206,6 +206,19 @@ deltas so dead ends aren't re-run.
 
 ## 9. Working norms
 
+- **★ STANDING AUTHORIZATION: RUN EXPERIMENTS WITHOUT ASKING (Andrew 2026-08-15, verbatim:
+  *"you don't have to ask for permission to run more experiments"*).** Launching the next iteration
+  off the ranked queue -- writing its runner, training, evaluating, logging the verdict, and moving
+  to the next -- is ORDINARY WORK, not a decision needing sign-off. Do not end a turn with "say the
+  word and I'll launch"; launch it and report the result. This is what [[work-autonomously]] already
+  said and the loop had drifted from.
+  **What still needs Andrew:** (a) anything that changes the DEPLOY CONTRACT or state-size budget
+  (e.g. spending bits on the +1 norm/index bit), (b) the ~4-day 10x endgame run, (c) deleting the
+  LMDBs / starting the features rebuild, (d) anything that breaks a stated constraint of his
+  ("keep the current quantization recipe", the two hard invariants), (e) a genuine fork in research
+  DIRECTION where the queue is empty or exhausted. Cost alone does not require asking -- a 5.5 h or
+  13 h queued iteration is routine.
+
 - **Be self-reliant on RWKV internals** — Andrew didn't write the net. The source in
   `srs-benchmark/rwkv` is ground truth; verify facts against it, not memory.
 - **Parity discipline:** verify against the reference on a **small fixed verification
