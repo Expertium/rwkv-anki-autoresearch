@@ -2242,3 +2242,81 @@ every byte offset cmd.exe resumes from. The WS **checkpoint survived intact**; p
 (`run_iter46b.cmd`) completed decay+eval normally (`DONE_EXIT_0`, eval 2500/2500 on attempt 1, decay
 guards green for `selfkd 0.7` and base KD `alpha 0.5`). The WS log was truncated, so this iteration
 has no step trace — harmless for a reject.
+
+## iter 47 — the rank-1 regulariser: the floor moves 43%/75% and the loss does not (REJECTED, 2026-08-15)
+
+**The lever.** `RWKV_QAT_RANK1_REG=0.05` adds `lambda * (1 - max(conc(k), conc(v)))` to the loss,
+where `conc` is the participation ratio `||M^T M||_F^2 / ||M||_F^4` (1 for rank-1, 1/r for r equal
+directions), computed per head over the chunk's k and v. Single-variable vs `qtaxd_cblearn`: same
+WS-final, same seed, same batch order, both quant-aware with learnable catalogs. Training-only — no
+architecture, parameter, state-size or deploy change, and nothing to port.
+
+**Why a proxy on the kernel INPUTS rather than the state.** The state S lives inside a custom CUDA
+autograd Function whose backward accepts only the output gradient, so a loss on the returned
+checkpoints reaches no weights; the differentiable Python path materialises S but loops per timestep
+(T up to 65,536). Since S is a decay-weighted sum of outer products `k_i v_i^T`, it is near rank-1
+exactly when the per-head k (or v) vectors align — computable from the inputs. Verified on synthetic
+cases (all-parallel k → 0.000000; random k,v → 0.9209 vs the theoretical 1−1/K = 0.9375), gradients
+flow, skip rows excluded, inert when the env is unset.
+
+**Andrew's objection, which framed the whole iteration:** *"if making states more rank-1 could lower
+log loss, the model would learn to do that anyway."* The counter was narrow and was the only reason
+to run it: the STE passes dL/dS backward as if the truncation were the identity, so the gradient
+contains no term for reducing truncation error — the model is not declining to be rank-1, it is
+blind to the benefit.
+
+### The verdict
+| mode | control (`qtaxd_cblearn`) | iter 47 | delta | gate |
+|---|---|---|---|---|
+| ahead | 0.299983 | 0.300018 | **−0.000035** | FAIL |
+| imm | 0.268861 | 0.269041 | **−0.000180** | FAIL |
+
+n=2500, size 0/2500, nan_users 0. Pre-registered as the **both-modes** rule (the curve-side exception
+does not apply: this lever changes the WKV state, i.e. the shared trunk). ahead is inside the ±7.5e-5
+noise floor — a tie; imm is outside it — a small real regression.
+
+### What makes the iteration worth its 11 hours
+**The floor moved enormously and the loss did not.** Matched finals, same tool/users/entities:
+
+| stream | control | iter 47 | change | iter 47 median |
+|---|---|---|---|---|
+| card | 0.3594 | **0.2043** | −43.2% | 0.1115 |
+| note | 0.2689 | **0.0660** | −75.4% | **0.0152** |
+
+The note stream ends essentially exactly rank-1. **So the reconstruction ladder's ranking of rank-1
+truncation as the LARGEST term (53% card / 39% note) does not survive as a logloss ranking** — the
+remaining QAT tax lives in the codebook and norm terms. This is the fourth reconstruction-vs-logloss
+misprediction of the week and the first about the term the ladder was built to prioritise.
+
+**Andrew was right, and the CONTROL arm is the strongest evidence.** With no regulariser at all the
+control drifts 0.3831 → 0.3594 card and 0.3556 → **0.2689** note (−24.4%) across the same decay: the
+model moves toward rank-1 unaided, as far in note as the regulariser managed in its first 50 steps.
+Because what appeared was a small *regression* rather than an exact tie, the rank-1 constraint does
+cost the model slightly more than the reduced truncation damage repays.
+
+**Do not retry at another lambda.** The step-50 check proved the lever engages hard (−13% card /
+−22% note after fifty steps), so dose is not the issue. Family closed.
+
+### Three method failures, all the same shape
+1. **Wrong metric.** The floor check was going to compare against the ladder's "card 0.4353 / note
+   0.3049", which is not reproducible (ad-hoc script, never saved) and disagrees in *opposite*
+   directions per stream. The saved tool (`rank1_floor.py`, verified against explicit truncation to
+   2.4e-07) reads 0.3733 / 0.3729 on the same corpus. Comparing to the old value would have shown a
+   ~0.06 fake improvement printed next to a null logloss.
+2. **Wrong checkpoint.** The first run compared step-50 against iter45's *final*, which also differs
+   by 10,885 training steps. It looked emphatic and meant nothing — and spawned a confident
+   side-claim about training raising state rank that the matched control reversed.
+3. **Wrong signal.** I read the penalty climbing (0.025 → 0.077) as the model surrendering rank-1
+   structure and predicted the final floor would land near the control. It was the opposite: proxy
+   and target **decoupled**, via exactly the blunt edge documented when the penalty was built (it
+   ignores the decay weighting — a decayed sum of outer products can be near-rank-1 without aligned
+   k). **A proxy that can diverge from its target is an engagement detector, not a progress signal.**
+
+**Ops.** `run_r1reg.cmd`, decay 14:15→23:32 (10,935 steps, 0.328 steps/s), probe SANE
+(+0.002193 / +0.003540 on n=10), eval 23:36→10:15 (2500/2500, first attempt). The ~10 h eval is
+NORMAL for this quant-aware config — the control's was 10h18m; the "~2.9 h" figure in the queue is a
+plain eval. Two dead launches while staging the CPU floor check: cmd.exe parses redirection *before*
+`REM`, so `->` and `<placeholder>` in comments became redirects (leaving two 0-byte files named
+`Andrew's` and `proxy` in the repo root); and a weights export needs the structural flags
+(`RWKV_STRIP_CMIX` / `RWKV_STRIP_L0_VLORA` / `RWKV_GRU_HEAD`) because the checkpoint stores 1×1
+dummies for stripped components.

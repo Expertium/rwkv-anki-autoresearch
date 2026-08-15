@@ -889,41 +889,46 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
-**▶ LIVE 2026-08-14: `qtaxf_r1reg`** (`scratchpad/qat_tax/run_r1reg.cmd`, launched 14:15, decay
-~10 h -> probe -> VAL-half eval). Single-variable vs `qtaxd_cblearn`: `RWKV_QAT_RANK1_REG=0.05`, a
-penalty on `1 - max(participation ratio of k, of v)` that pushes the WKV state toward rank-1 so the
-deploy truncation costs less. **Andrew expects a null, on a good prior:** *"if making states more
-rank-1 could lower log loss, the model would learn to do that anyway."* The counter is narrow and is
-the only reason to run it -- the **STE passes dL/dS backward as if the truncation were the identity**,
-so the gradient the model actually receives contains **no term for reducing truncation error**; the
-model is not declining to be rank-1, it is blind to the benefit. **THE DECISIVE CHEAP CHECK, which
-makes even a null informative:** `scratchpad/qat_tax/rank1_floor.py` (CPU, ~1 min) over a
-`--dump-corpus` state dump. Floor moves + logloss doesn't => **Andrew's objection is confirmed
-empirically** (rank-1-ness is achievable but worthless). Floor doesn't move => the regulariser is
-simply too weak/blunt, and the lever is untested rather than closed. Distinguishing those two is the
-point; do not report a bare null.
-**✓ THE FLOOR CHECK IS ALREADY DONE, AT STEP 50, AND IT MOVED HARD.** `qtaxf_r1reg_d_50` vs the
-matched twin `qtaxd_cblearn_d_50` (same WS-final, same step, same 3 users, same tool, identical state
-counts -- paired entity-for-entity): **card 0.3831 -> 0.3328 (-13.1%), note 0.3556 -> 0.2767
-(-22.2%)**, with 10,885 steps still to run. **So "the regulariser was too weak, try a bigger lambda"
-is DEAD as an explanation for any null**, and the gate now tests exactly one proposition: *does
-markedly more rank-1 structure improve the quantized logloss?* A null = **Andrew's objection
-confirmed in its strong form** (achievable, cheap, worthless), with the STE-blindness argument true
-mechanically but refuted practically.
-⚠ Do NOT convert -13%/-22% reconstruction into an expected logloss gain -- that error has been made
-three times this week in BOTH directions.
-**★ TWO CONTROL TRAPS THIS CHECK WALKED INTO, both capable of manufacturing a large fake effect, and
-they COMPOUND.** (1) **Wrong metric:** the ladder's "card 0.4353 / note 0.3049" is NOT reproducible
-(ad-hoc script, never saved) and disagrees in OPPOSITE directions per stream; `rank1_floor.py` is
-verified against explicit truncation to 2.4e-07 and reads 0.3733 / 0.3729 on the same corpus.
-(2) **Wrong checkpoint:** the first run compared step-50 against iter45's FINAL, which differs by
-10,885 training steps too. **The rule: a difference is attributable only if the METRIC (same tool)
-and the TRAJECTORY (same step) are both held fixed.** Confounded comparisons also spawn confident
-side-observations that are artifacts -- one about training raising state rank died on contact with
-the matched control.
-⚠ Knock-on: card and note in fact have the SAME rank-1 floor, so the old "card and note are visibly
-different distributions (rank-1 floor 0.435 vs 0.305)" argument for per-stream catalogs is
-unsupported. The lever stays closed on the disjoint-centroid evidence, not on that.
+**✓ ITER 47 DONE 2026-08-15 10:15 -- REJECTED** (`qtaxf_r1reg`, the rank-1-friendly regulariser
+`RWKV_QAT_RANK1_REG=0.05`; single-variable vs `qtaxd_cblearn`, both quant-aware). ahead 0.300018 vs
+0.299983 = **-0.000035** (inside the +/-7.5e-5 noise floor, a tie); imm 0.269041 vs 0.268861 =
+**-0.000180** (outside it, a small REAL regression). size 0/2500, nan_users 0. Both-modes gate
+(pre-registered; the curve-side exception does NOT apply -- this lever changes the WKV state, i.e.
+the shared trunk).
+**★★ THE FINDING IS WORTH FAR MORE THAN THE VERDICT: THE FLOOR MOVED 43%/75% AND THE LOSS DID NOT.**
+Matched finals, same tool/users/entities: **card 0.3594 -> 0.2043 (-43.2%), note 0.2689 -> 0.0660
+(-75.4%, MEDIAN 0.0152 = essentially exactly rank-1)**. So **the reconstruction ladder's ranking of
+rank-1 truncation as the LARGEST term (53% card / 39% note) does NOT survive as a logloss ranking** --
+the remaining QAT tax (+0.002286/+0.003486) lives in the CODEBOOK and NORM terms. Fourth
+reconstruction-vs-logloss misprediction of the week, and the first about the term the ladder was
+built to prioritise. **Do NOT attack the rank-1 term by any further route** (rank-2 states, softer or
+scheduled lambda): the step-50 check proved the lever ENGAGES hard (-13%/-22% after fifty steps), so
+dose is not the issue. **Family CLOSED.**
+**★ ANDREW'S OBJECTION CONFIRMED, and the CONTROL arm is the strongest evidence:** with NO regulariser
+the control drifts 0.3831 -> 0.3594 card and 0.3556 -> **0.2689** note (**-24.4%**) over the same
+decay -- the model moves toward rank-1 unaided, as far on note as the regulariser managed in its
+first 50 steps. Because a small REGRESSION appeared rather than an exact tie, the rank-1 constraint
+costs the model slightly MORE than the reduced truncation damage repays. (The stronger claim
+"rank-2+ components carry nothing" is NOT established and its fp32 disambiguation is blocked -- a
+QAT-trained model is not a valid fp32 model when the quantisation is STRUCTURAL; see
+`research_5k_notes.md`.)
+**★ THREE METHOD FAILURES, ALL THE SAME SHAPE -- a difference is attributable only if the METRIC, the
+TRAJECTORY and the SIGNAL are each held fixed.** (1) *Wrong metric:* the ladder's "0.4353 / 0.3049"
+is not reproducible and disagrees in OPPOSITE directions per stream; the saved tool
+`scratchpad/qat_tax/rank1_floor.py` (verified against explicit truncation to 2.4e-07) reads
+0.3733 / 0.3729 on the same corpus -- comparing to the old value would have printed a ~0.06 FAKE
+improvement next to a null. (2) *Wrong checkpoint:* the first run compared step-50 against iter45's
+FINAL, differing by 10,885 training steps as well; it also spawned a confident side-claim about
+training raising state rank that the matched control reversed. (3) *Wrong signal:* the penalty
+climbing 0.025 -> 0.077 was read as the model surrendering structure and drove a WRONG prediction --
+proxy and target had DECOUPLED via the blunt edge documented when the penalty was built (it ignores
+the decay weighting). **A proxy that can diverge from its target is an ENGAGEMENT DETECTOR, not a
+progress signal.**
+⚠ Knock-on: card and note in fact have the SAME rank-1 floor (0.3733 vs 0.3729), so the old "visibly
+different distributions (0.435 vs 0.305)" argument for per-stream catalogs is unsupported; that lever
+stays closed on the disjoint-centroid evidence instead.
+⚠ Ops: the ~10 h quant-aware eval is NORMAL (the control's was 10h18m) -- the "~2.9 h" in the queue
+is a PLAIN eval. Detail: `research_5k_verbose.md` iter 47.
 **✓ BUDGET CALIBRATION DONE 2026-08-11 14:01 -- VERDICT: gating STAYS at full budget; and screening is NOT worth it either (Andrew, follow-up): keep doing FULL RUNS.** Three arms, 15.3 h, `DONE_EXIT_0`. Measured short-budget noise floor (c41 vs c43, a pairing verified null at full budget): **ahead |delta| 9.0e-5, imm 3e-6** -- against the PRE-REGISTERED bar of 4.9e-5, imm passes and **ahead fails by ~1.8x**. Mechanism: on ahead the floor got 1.2x WORSE than full budget's 7.5e-5 while signal compressed to 65%, so signal-to-noise falls ~1.9x and the effective accept bar would become 1.84e-4 vs the 1.0e-4 we accept today -- i.e. short budget would silently make us 2x stricter and discard real candidates. **Screening was checked separately and REJECTED for our pool:** a short run is 54% of a full one (the eval is a fixed 2.9 h), so screening only breaks even at K>2.2 candidates -- and its PAIRWISE noise is 1.96e-4 in full-budget effect size, which leaves **6 of the last 10 iterations inside its noise, including two ACCEPTED champions (35, 39)**. It would pay only on batches with wide spread (new arch family, coarse HP grid), never on near-bar work. **Banked and reusable:** effects are SCALED not scrambled (~65% compression, both p<1e-33) and the **0.65 constant** converts a short delta to full-budget size; the **3x-budget step = +0.002** projects to +0.0042 at 10x vs the +0.0040 recorded upstream gap, corroborating the endgame premise to 4%. ⚠ All three arms were SCHEDULE changes, so this does NOT measure how short budget treats regularization or capacity. Detail: `research_5k_notes.md`.
 **✓ ITER 45 DONE 2026-08-11 23:30 -- ACCEPTED, NEW CHAMPION** (KD through the decay phase; see the
 champion block above). Distillation is now 4/4.
@@ -1141,6 +1146,14 @@ The 2026-08-01 ordering (finish HP tuning -> seed pair -> PAVA lambda) is **COMP
 **⚠ CPU-INFERENCE REALITY CHECK:** in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and plateaus -- that path is overhead-bound, so cost tracks op count (layers x streams), not width. **1 thread beats 3 and 6 -> deploy single-threaded.** The Rust path DOES convert the cut: **2.39x** measured. Full numbers: `optimization/CPU_INFERENCE.md`.
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+**low-rank-friendly regularization 0/1 -- CLOSED ON MECHANISM, and the single reject is enough**
+(iter 47). Conduct rule 5 normally forbids closing a family on one result; this is the exception it
+allows for, because the iteration did not merely fail, it **measured that the target term has almost
+no logloss in it**: the exact rank-1 truncation error fell 43% card / 75% note (note median 0.0152 =
+essentially exactly rank-1) and the deployed loss did not improve. Any other route to the same term
+-- rank-2 states, softer/scheduled lambda, a different proxy -- is aimed at the same empty term, and
+the step-50 check already proved engagement is not the bottleneck. **The QAT tax lives in the CODEBOOK
+and NORM terms.**
 **TOPOLOGY 1/3, and both rejects are CONTROLS that changed what we believe** (iter 41 ACCEPTED
 — interleave + reorder bundle, the phase's largest architectural gain; iter 42 REJECTED —
 order-alone is a small NEGATIVE, so INTERLEAVING carries all of it; iter 43 REJECTED AS A TIE —
