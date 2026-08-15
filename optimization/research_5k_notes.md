@@ -1497,6 +1497,21 @@ algorithmic rate that +0.0023/+0.0028 is worth roughly **20 and 49 iterations**.
 Andrew's 2026-08-13 "keep the current quantization recipe" constraint, so it is his call -- but the
 ratio is lopsided enough that not surfacing it would be the error.
 
+> **★★ SUPERSEDED -- THE 2-BIT NORM WAS TESTED AND IS A NULL. DO NOT RE-PROPOSE IT.** (Andrew caught
+> me re-proposing it on 2026-08-15, quoting these very numbers.) `qtaxe_norm2` ran the single-variable
+> A/B (`RWKV_QAT_NORM_BITS` 1 -> 2) under LEARNABLE catalogs and the paired train screen showed noise
+> around zero in BOTH modes -- on a screen that resolved the learnable-catalog effect at 34.6% / 60.8%,
+> so it easily resolves effects of this size. **The +0.0023/+0.0028 above is a PTQ number measured on
+> FROZEN catalogs and does not survive**: learned centroids are not unit-normalized (length spread
+> widened 2.43x), so the catalog carries the magnitude the extra norm bit was paying for. Verdict:
+> the +5.4% card-state bit is NOT justified. Detail two sections below.
+> ⚠ Evidence is a paired train screen at 27% of the run plus the mechanism, NOT a full eval -- the run
+> was killed at Andrew's direction once the mechanism was clear. That is a deliberate close, not an
+> oversight; re-opening it needs a reason beyond "we never ran the eval".
+> **The re-proposal happened because this block reads as a live recommendation and sits ~80 lines from
+> its own refutation.** Superseded numbers must be struck where they are STATED, not only answered
+> later -- a reader (including me) stops at the first confident figure.
+
 **ORDER OF WORK (free first):**
 1. **Per-stream norm ranges** -- zero bits. Offline: note's 1-bit norm error 0.5113 -> 0.1756 (2.9x)
    from fitting the range; 32.4% of note norms currently clamp.

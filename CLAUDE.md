@@ -1024,10 +1024,16 @@ q72u figures are SPEED, and search cost depends on catalog size, not fidelity.
 **WKV CAPACITY CURVE (cross-user, user 102 held out) -- my "flat curve" prediction was REFUTED:**
 bits 8/10/12/14 = 0.4580 / **0.3776 (shipped)** / 0.3224 / 0.2844. The WKV joint-uv scheme is NOT
 saturated, unlike the shift scheme (where 2.5x the bits bought ~9%). ⚠ **NOT FREE and NOT adopted:**
-index bits are per head per layer, so +2 bits ~ **+1.25 B on the frozen 9 B/card budget (+14%)** --
-Andrew's trade to make. **A FREE axis exists first:** at bits=12 the ORACLE hits 0.2044 vs REFIT
-0.3224 on only 189k vectors from 6 users, so CORPUS SIZE also limits the refit, and more users costs
-no deploy state (trace export ~35 min/user, CPU).
+index bits are per head per layer, so +2 bits ~ **+1.25 B on the frozen 9 B/card budget (+14%)**.
+**★★ AND THIS WHOLE CURVE IS RECONSTRUCTION-ONLY, WHICH 2026-08-15 SHOWED CANNOT EVEN RANK CATALOGS**
+-- the learned catalog that cut the QAT tax 45% reconstructs WORSE than the frozen one it started
+from (0.513 vs 0.334 on champion states), because centroids train on the TASK loss and nothing
+optimizes them for reconstruction. So neither the bits ladder NOR the "free axis" (oracle 0.2044 vs
+refit 0.3224 => fit on more users) has any demonstrated link to logloss. **Both are UNMOTIVATED
+rather than refuted: do not spend an ~11 h run on either without a logloss A/B justified on its own
+terms.** Same trap as the 2-bit NORM, which was PTQ-motivated at +0.0023/+0.0028 and measured a null
+under learnable catalogs -- **DO NOT RE-PROPOSE THAT ONE; it is tested and closed** (Andrew caught it
+being re-proposed 2026-08-15).
 Shift catalogs available: **m2b12** (24 b/vector, same bits as q72u, ~23 B card, held-out
 0.1902/0.1601) vs **m5b12** (60 b/vector, same bits PER DIM, ~37 B card, 0.1734/0.1465); on that side
 capacity is chunk-limited, not bit-limited (at a fixed 24 b, m4b6 is 1.9x WORSE; 5x the bits barely
