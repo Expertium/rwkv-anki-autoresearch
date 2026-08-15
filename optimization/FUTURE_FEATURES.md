@@ -455,3 +455,48 @@ mean users review uniformly round the clock and "deviation from the usual hour" 
 means a clear preferred window with real spread. The p10 of 0.197 says ~10% of users are near-uniform,
 which is an argument for **also** feeding the raw phase (the recurrent user stream can then learn the
 per-user concentration itself) rather than the deviation alone.
+
+---
+
+## ★★ DECK TREE: THE NO-REBUILD PATH IS CONFIRMED AT SCALE (2026-08-15)
+
+Andrew asked for the real thing: `card->note->deck->preset->global` becomes
+`card->note->(deck, depth_level)->preset->global`, i.e. the shared-weight ancestor loop sketched
+above, not the fixed-parent control.
+
+**Two contradictory claims in this file are now settled in favour of NO REBUILD.** The design sketch
+says the tree "needs `parent_id` through preprocessing -> LMDB rebuild"; the 2026-07-26 correction
+says it is "usable on the CURRENT LMDBs, unmodified". The correction is right, and the reason is
+structural rather than empirical: `data_processing.get_rwkv_data` drops `parent_id` (:228) but
+**never factorizes or remaps `deck_id`** -- the only rewrite is NaN -> `ID_PLACEHOLDER` (:243-245).
+So the parquet's own `deck_id -> parent_id` mapping applies directly to ids already in the LMDB.
+The sketch's rebuild line is superseded; it was written before that was checked.
+
+**Measured, `scratchpad/deck_tree/` (40 users, ALL chunks, 3.67 M reviews):**
+
+| | distinct deck ids | reviews |
+|---|---|---|
+| no deck row (deleted/filtered; `df_decks` merges how="left") | 0.65% | 17.21% |
+| known root, no parent | — | 33.58% |
+| **has an ancestor** | **95.26%** | **49.21%** |
+
+**49.21% review-weighted independently corroborates the design sketch's 50.7%**, which was measured
+by a different route entirely (`deck_depth_by_review.py`, 80 users, on the `-id` dataset). Agreement
+to 1.5pp across two unrelated measurements is the confirmation the one-user 14/14 spot check could
+not give. Distinct-id resolve (95.26%) likewise matches the recorded 94.5%.
+
+**⚠ AND A SAMPLING TRAP, caught before it became a wrong conclusion.** The first pass read only
+`keys[0]` -- each user's EARLIEST chunk -- and reported **34.16%** review-weighted with 3.81% of
+distinct ids unknown. Both are artifacts: a user's earliest decks are the most likely to have been
+deleted since, so the earliest chunk maximally over-represents deck-row-less rows. Sampling across
+all chunks moved distinct-id-unknown 3.81% -> 0.65% and reach 34.16% -> 49.21%. Reporting the first
+number would have said the tree reaches 1.5x less of the corpus than the sketch predicted, and would
+have argued for dropping the idea. **Same family as the control/metric traps of 2026-08-14: the
+sample has to span the axis you are integrating over.**
+
+**Rows with no deck row are NOT a correctness problem** -- they bypass exactly like roots. They only
+bound reach, and the bound is already priced in: ~half the corpus can move, which is what the sketch
+assumed.
+
+Tools: `build_parent_maps.py` (emits `(user_id, deck_id, parent_id)`, `-1` = no resolvable parent;
+0.1 MB per 60 users, with a cycle guard) and `verify_lmdb_link.py` (the LMDB-side check above).
