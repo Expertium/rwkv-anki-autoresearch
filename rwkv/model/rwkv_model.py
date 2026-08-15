@@ -709,6 +709,14 @@ class RWKV7TimeMixer(ModuleType):
         self.K = C // config.n_heads
         self.state_qmax = config.state_qmax  # QAT: inf = off (fp32 kernel path)
         self.state_lowrank_rank = config.state_lowrank_rank      # low-rank QAT: 0 = off
+        # ⚠ MUST be an instance attribute, not the module-level _RANK1_REG read directly in
+        # forward. TorchScript cannot resolve a module-level Python global, so referencing it in
+        # forward makes the whole SrsRWKV FAIL TO SCRIPT -- and that failure is INVISIBLE to every
+        # QAT run, because QAT sets RWKV_NO_JIT=1. It would have surfaced only on the next PLAIN
+        # (JIT-on) run, i.e. the next algorithmic iteration. Exactly the hazard already on record
+        # for the QAT-lowrank torch.linalg.svd, which "SILENTLY broke TorchScript -> would crash
+        # plain WS/eval". Found 2026-08-15 by constructing the model with JIT enabled.
+        self.rank1_reg = _RANK1_REG
         self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
         # State-norm clamp (2026-07-18, A3-instability fix; see windowed_clamped_wkv).
@@ -916,7 +924,7 @@ class RWKV7TimeMixer(ModuleType):
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
                 self.state_qmax, self.state_lowrank_rank, self.state_lowrank_fqmax,
             )
-            if _RANK1_REG > 0.0 and self.state_lowrank_rank > 0 and self.training:
+            if self.rank1_reg > 0.0 and self.state_lowrank_rank > 0 and self.training:
                 accum_rank1_penalty(k_BTHK, v_BTHK, skip_BT)
         elif r_BTHK.is_cuda and self.state_clamp_tau > 0.0 and T > self.state_clamp_window:
             # long-recurrence stream + clamp enabled: windowed stateful WKV with inter-window

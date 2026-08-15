@@ -565,6 +565,46 @@ class SrsRWKV(ModuleType):
             torch.nn.init.zeros_(self.p_linear.weight)
             self.p_linear.bias.copy_(torch.tensor([-0.3512, -0.0802, 0.4297, -0.2041]))
 
+            # ---- RETRIEVABILITY-COUPLED RATING HEAD (RWKV_RCOUPLE=1; PROPOSALS.md item #2) -------
+            # Feed the curve head's logit R(t) into the 4 rating logits. Two mechanisms, both wanted:
+            #   (a) the rating head gains R(t) as an INPUT -- it currently predicts the rating with no
+            #       explicit notion of how due the card is, though the curve head computes exactly
+            #       that at the SAME t (label_elapsed_seconds on a query row IS the elapsed time of
+            #       the review being scored; data_processing.py:301-303 shifts elapsed_seconds by -1);
+            #   (b) a GRADIENT PATH from the better-conditioned imm objective back into the curve
+            #       head. iter 46 showed the ahead/imm gap is NOT transferable by soft targets
+            #       because a same-forward-pass teacher re-expresses what the student computes; the
+            #       stated remedy was to change what the ahead path COMPUTES or is FED. This does.
+            # 4 coefficients, not 1: softmax is shift-invariant so an Again-only scalar is the
+            # special case (g,0,0,0), while the general form can express "more retrievable shifts
+            # mass Again->Easy", which is the actual domain structure. 4 params on 558,212.
+            # ZERO INIT => byte-identical to the champion at step 0; the coupling is learned or not
+            # at all, so a null result cannot be blamed on a bad initialisation.
+            # module-level global -> instance attribute, so the scripted forward can see it
+            self.rank1_reg_lambda = _RANK1_REG_LAMBDA
+            self.rcouple_on = os.environ.get("RWKV_RCOUPLE", "") == "1"
+            self.rcouple_detach = os.environ.get("RWKV_RCOUPLE_DETACH", "") == "1"
+            # clamp before use: curve_logits = logit(p) can saturate, and an inf here would poison
+            # the rating head (which is the DEPLOYED head, retrievability_head = 1 - P(Again)).
+            self.rcouple_clip = float(os.environ.get("RWKV_RCOUPLE_CLIP", "8.0"))
+            # Gated on the flag (like pava_theta): an unconditional Parameter would add a 422nd key
+            # to a 421-key state dict and break strict loading of every existing champion.
+            if self.rcouple_on:
+                self.rcouple_w = torch.nn.Parameter(torch.zeros(4))
+                print(f"[RCOUPLE] retrievability-coupled rating head ON "
+                      f"(detach={self.rcouple_detach} clip={self.rcouple_clip})")
+                # ⚠ INCOMPATIBLE WITH RWKV_SELFKD_BETA, and silently so. The self-KD block builds
+                # its teacher from `out_p_logits` BEFORE the coupling is applied (it runs earlier in
+                # forward, since the coupling needs curve_logits), so the teacher would read the
+                # UNCOUPLED rating head while the loss uses the coupled one -- two different
+                # functions inside one step. Fail loudly instead: iter 46 rejected self-KD, so
+                # nothing is lost, and this is the exact mismatch class that cost 8 iterations of
+                # trained-but-not-evaluated PAVA.
+                assert os.environ.get("RWKV_SELFKD_BETA", "0") in ("0", "0.0", ""), (
+                    "RWKV_RCOUPLE + RWKV_SELFKD_BETA compute inconsistent rating logits "
+                    "(self-KD reads out_p_logits before the coupling). Enable only one."
+                )
+
             # ⚠ CONDITIONAL LEARNABLES BEHIND jit.ignore MUST BE Parameters, NOT submodules
             # (iter-16 hollow-run lesson, 2026-07-15): calling a SUBMODULE from a
             # @torch.jit.ignore method invoked THROUGH scripted code fails at runtime with
@@ -626,6 +666,26 @@ class SrsRWKV(ModuleType):
         s = torch.nn.functional.linear(x_w, self.gru_s_weight, self.gru_s_bias)
         d = torch.nn.functional.linear(x_w, self.gru_d_weight, self.gru_d_bias)
         return w, s, d
+
+    @torch.jit.ignore
+    def _apply_rcouple(
+        self, out_p_logits: torch.Tensor, curve_logits: torch.Tensor
+    ) -> torch.Tensor:
+        """Retrievability coupling, applied to the 4 rating logits (RWKV_RCOUPLE).
+
+        ⚠ MUST live behind @torch.jit.ignore: `rcouple_w` is a CONDITIONAL Parameter (it exists
+        only when the flag is on, so that a 421-key champion checkpoint still loads strictly), and
+        TorchScript refuses to compile a forward that touches an attribute which may not exist.
+        Same rule as the PAVA thetas. Body uses a ROOT Parameter only -- never a submodule call,
+        which crashes when scripted code enters an ignored body (the iter-16 hollow-run lesson).
+        ⚠ Root Parameters are invisible to selective_cast's module walk, so `rcouple_w` stays fp32
+        while `out_p_logits` is bf16 under autocast; cast explicitly, or the product silently
+        promotes the rating logits to fp32 and changes every downstream dtype.
+        """
+        rc = torch.clamp(curve_logits, -self.rcouple_clip, self.rcouple_clip)
+        if self.rcouple_detach:
+            rc = rc.detach()
+        return out_p_logits + rc.unsqueeze(-1) * self.rcouple_w.to(out_p_logits.dtype)
 
     @torch.jit.ignore
     def _pava_rectify_eval(
@@ -1047,6 +1107,15 @@ class SrsRWKV(ModuleType):
         curve_logits = curve_logits_raw + ahead_logit_residual
         curve_probs = torch.sigmoid(curve_logits)
 
+        # ---- RETRIEVABILITY COUPLING (see __init__). Placed HERE, after curve_logits and before
+        # the rating softmax, so the rating head sees R(t) at the SAME t it is predicting at.
+        # NOT gated on is_query: the coupling is a property of the MODEL, not of the loss, so it
+        # must apply on every row or train/eval/deploy would compute different functions (the §9
+        # three-way-parity rule -- PAVA was trained-but-not-evaluated for 8 iterations exactly
+        # because a model-side transform lived inside the loss).
+        if self.rcouple_on:
+            out_p_logits = self._apply_rcouple(out_p_logits, curve_logits)
+
         out_p_probs = torch.softmax(out_p_logits, dim=-1)
         out_p_again, out_p_1, out_p_2, out_p_3 = out_p_probs.unbind(dim=-1)
         out_p_binary = torch.clamp(1.0 - out_p_again, min=1e-5, max=1.0 - 1e-5)
@@ -1180,9 +1249,13 @@ class SrsRWKV(ModuleType):
         # RWKV_QAT_RANK1_REG (2026-08-14): rank-1-friendly regularizer. The rank-truncated streams
         # accumulate a per-layer proxy penalty during their forward; drain it here and add it once.
         # Returns None when the lever is off, so the default path adds no term at all.
+        # ⚠ self.rank1_reg_lambda, NOT the module-level global: TorchScript cannot resolve a
+        # Python global in a scripted forward, and referencing one here made the WHOLE SrsRWKV
+        # fail to script -- invisible to every QAT run (QAT forces RWKV_NO_JIT=1) and fatal on the
+        # next plain JIT-on run. Found 2026-08-15; see the twin fix in rwkv_model.py.
         _r1 = take_rank1_penalty()
         if _r1 is not None:
-            loss_avg = loss_avg + _RANK1_REG_LAMBDA * _r1
+            loss_avg = loss_avg + self.rank1_reg_lambda * _r1
         # KD (RWKV_QAT_KD, task22): distill from the un-quantized fp32 champion during QAT. Anchors the
         # base against drift while the net learns quant robustness. kd = (teacher_p_logits,
         # teacher_curve_probs, lambda), computed in train_rwkv under no_grad. Soft-label CE on the 4-way

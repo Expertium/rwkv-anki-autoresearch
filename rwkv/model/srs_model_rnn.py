@@ -169,6 +169,16 @@ class SrsRWKVRnn(ModuleType):
 
         self.p_linear = torch.nn.Linear(self.p_head_dim, 4)
 
+        # RWKV_RCOUPLE: the coupling's 4 coefficients are MODEL parameters, so they must exist here
+        # or load_state_dict(strict) rejects a checkpoint trained with the coupling -- the same
+        # failure mode the PAVA thetas note below records. Gated on the flag, exactly like
+        # pava_theta: declaring it UNCONDITIONALLY would break the reverse direction, since every
+        # existing champion checkpoint has 421 keys and would gain an unexpected 422nd.
+        self.rcouple_on = os.environ.get("RWKV_RCOUPLE", "") == "1"
+        self.rcouple_clip = float(os.environ.get("RWKV_RCOUPLE_CLIP", "8.0"))
+        if self.rcouple_on:
+            self.rcouple_w = torch.nn.Parameter(torch.zeros(4))
+
         # RWKV_PAVA_LAMBDA: the rectifier's 3 junction thetas are MODEL parameters, not a
         # loss detail (Andrew 2026-07-26). They must exist here or load_state_dict (strict)
         # rejects any checkpoint trained with PAVA -- the deploy path could not even open
@@ -232,18 +242,42 @@ class SrsRWKVRnn(ModuleType):
             )
         return self.interp(out_ahead_logits.expand(t.shape[0], -1).contiguous(), t)
 
-    def curve_p(self, out_ahead_logits, out_w, out_s_raw, out_d_raw, t):
-        """Recall probability at each elapsed time in t (T, 1) -> (T,).
+    def curve_logit(self, out_ahead_logits, out_w, out_s_raw, out_d_raw, t):
+        """Pre-sigmoid curve logit at each elapsed time in t (T, 1) -> (T,).
 
-        The single curve formula for this file: run() and the deploy button API both go
-        through it, so the two can never drift apart.
+        Split out of curve_p so the retrievability coupling (RWKV_RCOUPLE) can consume the LOGIT
+        that srs_model.py's training path uses, rather than re-deriving it as logit(curve_p).
+        The round trip sigmoid->logit is not exact in fp32 and this file is held to ~1e-6 parity.
         """
         if self.gru_on:
             curve_probs_raw = self.gru_forgetting_curve(out_w, out_s_raw, out_d_raw, t)
         else:
             curve_probs_raw = self.forgetting_curve(out_w, t)
         curve_logits_raw = torch.log(curve_probs_raw / (1 - curve_probs_raw))
-        return torch.sigmoid(curve_logits_raw + self.ahead_residual(out_ahead_logits, t))
+        return curve_logits_raw + self.ahead_residual(out_ahead_logits, t)
+
+    def curve_p(self, out_ahead_logits, out_w, out_s_raw, out_d_raw, t):
+        """Recall probability at each elapsed time in t (T, 1) -> (T,).
+
+        The single curve formula for this file: run() and the deploy button API both go
+        through it, so the two can never drift apart.
+        """
+        return torch.sigmoid(
+            self.curve_logit(out_ahead_logits, out_w, out_s_raw, out_d_raw, t)
+        )
+
+    def rating_logits(self, out_p_logits, curve_logits):
+        """Apply the retrievability coupling (RWKV_RCOUPLE) -- the DEPLOY-side mirror of
+        srs_model.py. `retrievability_head` is 1 - P(Again), i.e. the rating head IS the deployed
+        p(recall) head, so this must exist here or train/eval and CPU inference compute different
+        functions (the §9 three-way-parity rule).
+
+        Shapes: out_p_logits (..., 4), curve_logits (T,) or scalar-broadcastable.
+        """
+        if not self.rcouple_on:
+            return out_p_logits
+        _rc = torch.clamp(curve_logits, -self.rcouple_clip, self.rcouple_clip)
+        return out_p_logits + _rc.reshape(-1)[0] * self.rcouple_w
 
     @torch.inference_mode()
     def button_heads(
@@ -522,17 +556,22 @@ class SrsRWKVRnn(ModuleType):
                     preset_states[preset_id] = next_preset_state
                     global_state = next_global_state
 
-                curve_prob = self.curve_p(
+                _curve_logit = self.curve_logit(
                     out_ahead_logits,
                     out_w,
                     out_s_raw,
                     out_d_raw,
                     label_elapsed_seconds_all[:, i].unsqueeze(0),
                 )
+                curve_prob = torch.sigmoid(_curve_logit)
 
                 if row["has_label"]:
                     if row["is_query"]:
-                        out_p_probs = torch.softmax(out_p_logits, dim=-1)
+                        # coupling applied at the SAME t the rating is predicted at -- on a query
+                        # row label_elapsed_seconds IS the elapsed time of the review being scored
+                        out_p_probs = torch.softmax(
+                            self.rating_logits(out_p_logits, _curve_logit), dim=-1
+                        )
                         out_p_again, out_p_1, out_p_2, out_p_3 = out_p_probs.unbind(
                             dim=-1
                         )
