@@ -889,6 +889,33 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**✓ ITER 48 DONE 2026-08-15 20:48 -- REJECTED as an exact TIE** (`iter48_rcouple`,
+`RWKV_RCOUPLE=1`: the curve logit R(t) added to the 4 rating logits via 4 zero-init coefficients,
+before the softmax so `out_p_binary` is coupled; undetached). ahead +0.000009 (p=0.19), imm
++0.000013 (p=0.37) vs iter 45 -- both ~7x INSIDE the +/-7.5e-5 floor. size 0/2500, nan_users 0.
+**★ THE DIAGNOSTIC, not the verdict, is the result: the coupling WAS learned and sign-correct**
+(Again **-0.0138** -- higher retrievability lowers P(Again) -- then +0.0074/-0.0044/+0.0043) **but
+negligible**: max shift 8*|w| = 0.110 vs a `p_linear` bias spread of 0.772, and only at the clamp.
+So the model used R(t) and gained nothing => **the trunk already carries the retrievability
+information the rating head needs; supplying it explicitly is redundant, not missing.**
+**★★ WITH ITER 46 THIS CLOSES THE AHEAD-VS-IMM-GAP FAMILY (0/2).** Two structurally different ways
+to move information between the heads both return exact nulls -- soft targets (iter 46, -0.000023/
++0.000016) and an architectural path (iter 48). **The 0.032411 gap is NOT an information-routing
+deficiency**, exactly as `PROPOSALS.md` warned in advance ("an UPPER BOUND, not a target": the query
+row sees the intervening reviews and the exact lag, the ahead row structurally cannot, and predicting
+cold from history IS the task). Demonstrated twice now, not merely argued -- **do not propose a third
+routing variant.** Still open: changing what the ahead path is FED (new input features), which
+attacks information CONTENT rather than routing.
+⚠ OPS -- **COMPILING IS NOT RUNNING, and it cost this iteration's eval.** The first eval died on a
+TorchScript RUNTIME bug unrelated to the lever: `take_rank1_penalty()` (iter 47) had
+`@torch.jit.ignore` with no return annotation, so TorchScript typed it `-> Tensor`; returning `None`
+handed scripted code an UNDEFINED tensor and the next `float * Tensor` aborted with
+`op.is_output INTERNAL ASSERT FAILED ... Found type undefined input tensor!` pointing at a builtin,
+nowhere near the cause. The COMPILE half of the same bug was fixed a day earlier and reported as
+done. **Training was intact; only the eval re-ran.** Guard: **`scratchpad/parity3/smoke_scripted_eval.sh`**
+(~90 s, one user, refuses to run under `RWKV_NO_JIT=1`) -- run it before ANY launch touching
+`srs_model.py` / `rwkv_model.py`. Note a PLAIN eval is the ONLY path that scripts the model, so this
+bug class is invisible to training AND to QAT evals. Detail: `research_5k_verbose.md` iter 48.
 **✓ ITER 47 DONE 2026-08-15 10:15 -- REJECTED** (`qtaxf_r1reg`, the rank-1-friendly regulariser
 `RWKV_QAT_RANK1_REG=0.05`; single-variable vs `qtaxd_cblearn`, both quant-aware). ahead 0.300018 vs
 0.299983 = **-0.000035** (inside the +/-7.5e-5 noise floor, a tie); imm 0.269041 vs 0.268861 =
@@ -1152,6 +1179,11 @@ The 2026-08-01 ordering (finish HP tuning -> seed pair -> PAVA lambda) is **COMP
 **⚠ CPU-INFERENCE REALITY CHECK:** in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and plateaus -- that path is overhead-bound, so cost tracks op count (layers x streams), not width. **1 thread beats 3 and 6 -> deploy single-threaded.** The Rust path DOES convert the cut: **2.39x** measured. Full numbers: `optimization/CPU_INFERENCE.md`.
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+**ahead-vs-imm-gap exploitation 0/2 -- CLOSED ON MECHANISM** (iters 46, 48). Both attempts to route
+the better-conditioned imm signal into the ahead/rating path returned exact nulls, by structurally
+DIFFERENT routes (soft targets; an architectural coupling), and iter 48 showed the coupling was
+learned yet negligible -- the trunk already carries the information. The 0.032 gap is intrinsic
+difficulty, not a routing deficiency. Attack CONTENT (new input features), never routing again.
 **low-rank-friendly regularization 0/1 -- CLOSED ON MECHANISM, and the single reject is enough**
 (iter 47). Conduct rule 5 normally forbids closing a family on one result; this is the exception it
 allows for, because the iteration did not merely fail, it **measured that the target term has almost

@@ -36,7 +36,7 @@ Andrew also asked how idea generation itself could be improved; that discussion 
 | # | proposal | family | status |
 |---|---|---|---|
 | 1 | **KD through the decay phase** — since iter 34 adopted decay_ratio=1.0, decay is half of all training and runs on pure hard labels. Zero code: the runner simply does not clear `RWKV_KD_MIX`. | distillation | **iter 45**, ran 2026-08-11 |
-| 2 | **Retrievability-coupled rating head** — feed logit R(t) from the curve head into the Again logit. | architecture | **deprioritized below #3** — see below |
+| 2 | **Retrievability-coupled rating head** — feed logit R(t) from the curve head into the Again logit. | architecture | **iter 48**, REJECTED as an exact tie 2026-08-15 — and with iter 46 it CLOSES the ahead-vs-imm-gap family (see below) |
 | 3 | **Privileged self-distillation (imm → ahead)** — soften the ahead target toward the model's own better-informed imm estimate of the same event. | distillation | **iter 46**, implemented 2026-08-11 |
 | 4 | Duration dropout — per-row Bernoulli dropout of the duration feature (the corrected retry of iter 33's intent). | input-robustness | queued |
 | 5 | NorMuon / PolarExpress — refinements to the accepted Muon optimizer; the Newton-Schulz orthogonality error was measured real (0.19–0.31 RMS). | optimizer | queued |
@@ -92,7 +92,7 @@ algorithmic loop is where the wall-clock goes and cheap iterations matter.
 
 | rank | item | queue | cost | why here |
 |---|---|---|---|---|
-| 1 | **#2 retrievability-coupled rating head** | algorithmic | 5.5 h + port | top-ranked untried; its demotion argument is refuted; iter 46 points AT it |
+| ~~1~~ | ~~#2 retrievability-coupled rating head~~ | algorithmic | DONE | **iter 48, REJECTED (exact tie).** The coupling was LEARNED and sign-correct but negligible — the trunk already carries retrievability. Family CLOSED with iter 46. |
 | 2 | #6 restore user/preset L0 cmix | algorithmic | 5.5 h, zero code | free to try, capacity family untested at this trunk |
 | 3 | QAT#2 KD from the PLAIN iter-45 teacher | QAT | 13 h + 2-3 h dump | targets the deploy objective directly; distillation is 4/5 |
 | 4 | #4 duration dropout | algorithmic | 5.5 h | training-only, no deploy debt |
@@ -155,3 +155,23 @@ train-loss-prune bias applies to REGULARIZATION levers, not matched-config QAT v
 Gate for accepting a QAT improvement: cell-2-style eval on the FULL VAL half beats qtaxc_m2b12's
 0.301882 / 0.271594 with the usual paired Wilcoxon; there is no cell 3 (meaningless for structural
 quant — see research_5k_notes 2026-08-13).
+
+## ★★ THE AHEAD-VS-IMM-GAP FAMILY IS CLOSED (0/2, on mechanism) — 2026-08-15
+
+Both routes into the 0.032411 gap are now measured and both are exact nulls:
+
+| iter | route | ahead / imm delta |
+|---|---|---|
+| 46 | soft targets (privileged self-distillation imm→ahead) | −0.000023 / +0.000016 |
+| 48 | an architectural path (R(t) into the rating logits) | +0.000009 / +0.000013 |
+
+Iter 48 is the decisive one because its coefficients were **zero-init**, so the null is separable:
+the model **learned a sign-correct coupling** (Again −0.0138) and it bought nothing, i.e. it USED
+R(t) and gained nothing. **The trunk representation already carries the retrievability information
+the rating head needs.**
+
+**This file predicted it.** The standing caveat above — *"the gap is an UPPER BOUND, not a target"*,
+because the query row sees the intervening reviews and the exact lag while the ahead row structurally
+cannot — is now demonstrated twice rather than argued once. **Do not rank a third routing variant.**
+What remains legitimately open is changing what the ahead path is **FED** (new input features, the
+endgame's step 2), which attacks information CONTENT rather than its routing.

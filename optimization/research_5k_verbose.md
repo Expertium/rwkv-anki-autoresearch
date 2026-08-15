@@ -2320,3 +2320,51 @@ plain eval. Two dead launches while staging the CPU floor check: cmd.exe parses 
 `Andrew's` and `proxy` in the repo root); and a weights export needs the structural flags
 (`RWKV_STRIP_CMIX` / `RWKV_STRIP_L0_VLORA` / `RWKV_GRU_HEAD`) because the checkpoint stores 1×1
 dummies for stripped components.
+
+## iter 48 — retrievability-coupled rating head (REJECTED, exact tie)
+
+`RWKV_RCOUPLE=1`, single-variable vs iter 45. The curve head's logit R(t), clamped to ±8, is added
+to the 4 rating logits through 4 zero-init coefficients, placed **before** the rating softmax so
+`out_p_binary` is genuinely coupled (§9 three-way parity: the coupling is a model property, applied
+on every row, not a loss-side transform — the mistake PAVA made for 8 iterations). Undetached, so
+the better-conditioned imm objective also gains a gradient path into the curve head.
+
+**Result (n=2500, VAL half):** ahead 0.297688 vs 0.297697 (**+0.000009**, p=0.19), imm 0.265362 vs
+0.265375 (**+0.000013**, p=0.37). size 0/2500, nan_users 0. Both ~7× inside the ±7.5e-5 noise floor
+— a clean tie, rejected on the both-modes gate.
+
+**THE DIAGNOSTIC IS WORTH MORE THAN THE VERDICT.** `rcouple_w` was zero-init, so reading it back
+separates "the model declined to use R(t)" from "it used R(t) and gained nothing":
+
+| | Again | Hard | Good | Easy |
+|---|---|---|---|---|
+| learned `rcouple_w` | **−0.01380** | +0.00739 | −0.00442 | +0.00431 |
+
+It learned a **sign-correct** coupling — higher retrievability lowers the Again logit, which is the
+physically right direction — so the lever engaged. But the magnitude is negligible: the maximum
+possible shift is 8·|w| = **0.110** against a `p_linear` bias spread of **0.772**, and that maximum
+only occurs at the clamp boundary. **=> The rating head is not MISSING retrievability information;
+the trunk representation already carries it.** Supplying it explicitly is redundant.
+
+**★★ TAKEN WITH ITER 46, THIS CLOSES THE AHEAD-VS-IMM-GAP FAMILY.** Two structurally different ways
+of moving information between the heads both return exact nulls:
+* iter 46 — **soft targets** (privileged self-distillation imm→ahead): −0.000023 / +0.000016.
+* iter 48 — **an architectural path** (R(t) into the rating logits): +0.000009 / +0.000013.
+
+So the 0.032411 ahead-vs-imm gap is **not an information-routing deficiency**. This is exactly what
+`PROPOSALS.md` warned in advance — *"the gap is an UPPER BOUND, not a target"*, because the query row
+sees the intervening reviews and the exact lag while the ahead row structurally cannot, and
+predicting cold from history **is** the task. That caveat is now demonstrated twice rather than
+merely argued. **Do not propose a third routing variant.**
+⚠ What is NOT closed: changing what the ahead path is FED (new input features) or what it can
+represent. Those attack the information content, not its routing.
+
+**OPS.** The first eval attempt died on a TorchScript **runtime** bug unrelated to this lever:
+`take_rank1_penalty()` (iter 47's regulariser) carried `@torch.jit.ignore` with no return
+annotation, so TorchScript typed it `-> Tensor`; returning `None` handed scripted code an undefined
+tensor and the next `float * Tensor` aborted. Training was intact and only the eval re-ran (~10 min
+of GPU lost, not 6.5 h). Root lesson: **compiling is not running** — the compile half of this same
+bug was fixed a day earlier and reported as complete. Guard added:
+`scratchpad/parity3/smoke_scripted_eval.sh`, a ~90 s one-user scripted eval that refuses to run
+under `RWKV_NO_JIT=1`. A plain eval is the ONLY path that scripts the model, which is why this
+class of bug is invisible to training and to QAT evals alike.
