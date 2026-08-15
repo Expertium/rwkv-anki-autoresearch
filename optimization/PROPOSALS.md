@@ -63,6 +63,47 @@ exact lag; the ahead head structurally cannot, and predicting cold from history 
 Distillation can transfer the variance-reduction part (a calibrated target beats a 0/1 draw — which
 is exactly why the external-teacher α peaks at 0.9), never the information part.
 
+### ★★ RE-RANK 2026-08-15: #2 IS PROMOTED TO THE TOP OF THE UNTRIED LIST — iter 46 killed the
+### argument that demoted it
+
+Of the three reasons above, **reason 3 was the load-bearing one and it is now refuted by the very
+experiment it justified.** #3 ran as **iter 46** and was a clean null (ahead -0.000023 / imm
++0.000016, both inside the noise floor). Its diagnosis: the teacher shares the trunk AND the forward
+pass, so its soft target only re-expresses what the student already computes. **So #3 did NOT subsume
+#2's mechanism — it demonstrated that the substitute does not work**, and iter 46's own stated
+conclusion is the argument FOR #2: *"Closing that gap requires changing what the ahead path COMPUTES
+or is FED, not what it is FIT to."* #2 is exactly a change to what it computes.
+Reason 2 (prior evidence favours soft targets) is also weaker now: the external-teacher sub-family is
+4/4, but the SELF-teacher variant is 0/1, and #2 is not a distillation idea at all.
+**Reason 1 stands and is the only real objection: #2 edits the forward pass**, so it adds a Rust port
+gap and needs a fresh parity trace. That is a cost to schedule, not a reason to keep skipping it —
+and the two gaps that prompted the warning (interleave schedule, stream order) were CLOSED
+2026-08-11, so the port is no longer behind.
+⚠ Keep the upper-bound caveat in view: the 0.032 ahead-vs-imm gap is NOT a target. The query row sees
+the intervening reviews and the exact lag; predicting cold from history IS the task. #2's mechanism is
+to give the rating head a better-conditioned input, not to import information the ahead path cannot
+have.
+
+**REVISED ORDER OF UNTRIED WORK (2026-08-15).** Two queues with very different unit costs, which
+should drive the choice: an ALGORITHMIC iteration is ~2.6 h train + ~2.9 h plain eval ≈ **5.5 h**; a
+QAT iteration needs the quant-aware eval, measured at **10 h 18 m**, so ≈ **13 h**. At the measured
+algorithmic rate the remaining `still_needed` (+0.00165 / +0.00100) is ~15-18 iterations, i.e. the
+algorithmic loop is where the wall-clock goes and cheap iterations matter.
+
+| rank | item | queue | cost | why here |
+|---|---|---|---|---|
+| 1 | **#2 retrievability-coupled rating head** | algorithmic | 5.5 h + port | top-ranked untried; its demotion argument is refuted; iter 46 points AT it |
+| 2 | #6 restore user/preset L0 cmix | algorithmic | 5.5 h, zero code | free to try, capacity family untested at this trunk |
+| 3 | QAT#2 KD from the PLAIN iter-45 teacher | QAT | 13 h + 2-3 h dump | targets the deploy objective directly; distillation is 4/5 |
+| 4 | #4 duration dropout | algorithmic | 5.5 h | training-only, no deploy debt |
+| 5 | #5 NorMuon / PolarExpress | algorithmic | 5.5 h | measured orthogonality error 0.19-0.31 RMS |
+| 6 | QAT#3 `RWKV_CB_LR_MULT` sweep | QAT | 13 h/point | now motivated (catalogs ARE the active lever) but expensive per point |
+
+⚠ **The QAT items are NOT dead** — a 2026-08-15 summary called the QAT vein "worked out", which was
+wrong: items 3 and 6 here were never tried and neither is reconstruction-motivated. What IS closed is
+rank-1 regularization (measured), the four norm/catalog levers (mechanism), and anything justified by
+reconstruction error alone (catalog init, index bits) — see `research_5k_notes.md`.
+
 ### Two traps found while implementing #3 — both would have wasted a full run
 
 Recorded because they generalize, not as iteration narrative.
