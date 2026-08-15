@@ -27,13 +27,13 @@ REM ⚠ NO del of result jsonls (fresh tag; retries resume from banked users).
 REM ⚠ No angle brackets or arrows in REM lines -- cmd parses redirection before REM.
 REM ===========================================================================================
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
-set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter49_rcouple
+set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter49_cmix
 set LOG=%DIR%\iter49.log
 set STAMP=%RANDOM%%RANDOM%
 set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k
 set WSSTEPS=10935
 
-echo ===== ITER 49 (retrievability-coupled rating head) START %DATE% %TIME% ===== > "%LOG%"
+echo ===== ITER 49 (restore user/preset L0 channel mixers) START %DATE% %TIME% ===== > "%LOG%"
 
 setlocal
 set PYTHONUNBUFFERED=1
@@ -133,7 +133,7 @@ if not %ERRORLEVEL%==0 (
 echo DECAY OK (cmix restored, KD ON, alpha 0.5) %TIME% >> "%LOG%"
 
 echo === EVAL TOML rect %TIME% === >> "%LOG%"
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/iter49_cmix i49_d scratchpad/iter49_cmix/i49_eval.toml RWKV-iter49_rcouple RWKV-P-iter49_rcouple 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/iter49_cmix i49_d scratchpad/iter49_cmix/i49_eval.toml RWKV-iter49_cmix RWKV-P-iter49_cmix 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_TOMLFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 24
