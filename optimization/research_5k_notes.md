@@ -1919,6 +1919,44 @@ sitting in the rank-1 term -- a bound the reconstruction ladder (53% / 39% of er
 not random, and the tune-eval lesson (a +0.0008 subset win that INVERTED at n=5000) says subsets can
 flip sub-0.001 effects. Direction and consistency are informative; the number is not final.
 
+### ★★★ A LEARNED CATALOG RECONSTRUCTS WORSE THAN ITS OWN STARTING POINT -- and still cuts the tax 45%
+(2026-08-15, CPU minutes, `scratchpad/qat_tax/catalog_absorption.py`.) Asked as the cheap gate on the
+one surviving QAT lever: with rank-1 closed and the norm levers closed, is the "free axis" -- refit
+the WKV catalog on more users, since at bits=12 the ORACLE hit 0.2044 vs a REFIT of 0.3224 for zero
+deploy bytes -- actually open, or has catalog LEARNING already absorbed it (the pattern that closed
+four norm levers)? Held-out mean relative L2, 1024 centroids, user-level holdout:
+
+| corpus | INITIAL `pq_cb_wkv_c80_b10` | LEARNED (`qtaxd_cblearn` final) |
+|---|---|---|
+| iter45 champion states (what b10 was fitted on) | 0.334 | **0.513** |
+| cblearn QAT-final states | 0.877 | **0.907** |
+
+**The learned catalog is WORSE on both corpora than the catalog it started from -- and it is the
+catalog that cut the QAT tax 45.4% / 43.9%.** Direction-only error (nearest by cosine, optimal
+rescale) tracks raw L2 closely, so this is not a scale artifact of the measurement; the learned
+centroids' halves do drift ~16% longer, but that cannot move 0.33 to 0.51.
+**MECHANISM, and it is structural rather than a bug:** the centroids are trained by `dL/dcentroid` on
+the **TASK loss**. Nothing anywhere optimizes them for reconstruction. They are therefore free to
+move somewhere that serves the task and reconstructs worse -- and empirically they do.
+**=> RECONSTRUCTION CANNOT EVEN RANK TWO CATALOGS, let alone price one.** That is a stronger claim
+than the four earlier mispredictions, which were about magnitude; this one inverts the ORDER. It
+directly voids the free-axis argument: "oracle 0.2044 vs refit 0.3224, so fitting on more users is a
+free win" is a reconstruction argument with no demonstrated link to logloss, and the one catalog we
+know improves logloss moves that number the WRONG way.
+**=> DECISION: do NOT spend an ~11 h run on a better-initialised catalog on this evidence.** The
+lever is not refuted -- it is UNMOTIVATED, which is different and is why it stays on the queue rather
+than in the closed list. Pricing it honestly needs a logloss A/B (same recipe, two initial catalogs),
+and that is a real run to be justified on its own terms, not on 0.2044-vs-0.3224.
+⚠ Second-order observation, recorded but NOT chased: the QAT-final states are much harder for ANY
+pre-fitted catalog (0.877 / 0.907) than the champion's are (0.334 / 0.513), while an oracle on those
+same QAT-final states still reaches 0.3854. So the model+catalog co-adaptation moves the state
+distribution somewhere a pre-fit catalog does not follow. Interesting; not actionable without a
+logloss link, which is exactly the trap above.
+⚠ **The first version of this script printed "A better-fitted initial catalog is worth a run."** It
+was reasoning purely from reconstruction, i.e. exactly the inference this measurement invalidates.
+The verdict strings are now removed. **A script that prints a recommendation will be believed --
+do not let one draw a conclusion the surrounding evidence says it cannot support.**
+
 **PRE-REGISTERED DECISION RULE (written 2026-08-14 17:30, BEFORE the eval exists).** Recording this
 now because the floor result is suggestive and the temptation to pick a favourable framing afterwards
 is exactly what pre-registration is for.
