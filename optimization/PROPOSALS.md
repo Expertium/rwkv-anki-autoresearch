@@ -273,3 +273,33 @@ similar.
 also the fastest to reject: if extending Muon's coverage does nothing, the "Muon = regularizer"
 reading loses its most direct prediction, which is worth knowing early.
 
+### Queue state 2026-08-17 — the first two are BUILT and CHAINED behind the running QAT job
+
+| # | iter | lever | cost | status |
+|---|---|---|---|---|
+| 1 | **52** | KD `alpha_decay` 0.5 -> 0.9 | **~3.5 h** | armed behind QAT#2 |
+| 2 | **53** | `RWKV_MUON_INCLUDE_LORA=1` | ~6.2 h | armed behind iter 52 |
+
+**★ A COST DISCOVERY WORTH MORE THAN EITHER ITERATION: a decay-only lever costs ~3.5 h, not ~5.5 h.**
+Iter 52 warm-starts from the champion's own `i45_ws_10935` — the same checkpoint the QAT arms use —
+which is EXACT rather than an approximation, because the lever cannot touch WS. Any future candidate
+that only changes the decay phase (KD schedule, decay LR shape, decay-phase regularization) gets the
+same 36% discount. Iter 53 does NOT: an optimizer change acts from step 1.
+
+**Iter 53's lever, in one line:** `get_optimizer` excludes any param whose name contains `lora`, so
+**27,520 params in 94 tensors (4.9%)** have always run on AdamW — and after the A18 width ladder made
+LoRA rank load-bearing, those are the most anisotropic matrices in the model. If Muon pays through
+spectral regularization, that is exactly where it is missing. Kept single-variable by giving them
+their own group at wd=0.0 (the value they already had); dropping them into `decay_params` would have
+moved the optimizer AND the weight decay at once. Smoke: `scratchpad/iter53_muonlora/smoke_muon_lora.py`
+verifies by param IDENTITY, not by count — 94 tensors move, nothing leaves Muon, wd unchanged, and
+with the flag off the partition is exactly the historical one.
+⚠ **The counter-hypothesis is pre-registered**: flattening the update of a deliberately low-rank
+factorization may destroy what the factorization is for. A regression would bound the regularizer
+reading more sharply than a win would confirm it.
+
+⚠ **Chaining accepts a known basis subtlety.** Iter 53 is built on the ITER-45 recipe, so if iter 52
+wins and promotes, iter 53's controlled comparison stays iter-53-vs-iter-45 while the champion it
+must beat has moved. Accepted deliberately: the levers are orthogonal, iter 53's value is the
+mechanism test, and chaining keeps the GPU busy rather than idling until a human reads a verdict.
+

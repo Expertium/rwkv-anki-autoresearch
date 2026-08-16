@@ -130,6 +130,20 @@ def get_optimizer(config, model):
     channel_mixer_params = []
     decay_head_params = []
     other_params = []
+    # RWKV_MUON_INCLUDE_LORA (iter 53): the grouping below excludes any param whose name contains
+    # "lora", so the LoRA projections have always run on AdamW -- 29,120 params in 104 tensors on
+    # this trunk, shapes like (4, 80) and (80, 2). The 2026-08-16 measurement says Muon pays here
+    # through SPECTRAL REGULARIZATION rather than faster descent (its train-loss edge decays to
+    # zero over a run while its held-out edge holds at +0.0019), and these deliberately low-rank
+    # matrices are the most anisotropic in the model -- i.e. exactly where that mechanism predicts
+    # the largest effect. They get their OWN group so weight decay stays at the 0.0 they already
+    # had: without that, moving them into `decay_params` would change the optimizer AND the wd in
+    # one iteration. Unset == byte-identical.
+    # ⚠ The LR is not separable and is not a bug: a Muon group runs at RWKV_MUON_LR on a
+    # norm-normalised update, which has no comparable scale to AdamW's PEAK_LR. "Use Muon on these"
+    # is the treatment; there is no version of it that holds the step size fixed.
+    lora_matrix_params = []
+    _muon_lora = os.environ.get("RWKV_MUON_INCLUDE_LORA", "0") == "1"
     head_targets = [
         "head",
         "p_linear",
@@ -164,6 +178,14 @@ def get_optimizer(config, model):
                 channel_mixer_params.append(param)
             else:
                 decay_params.append(param)
+        elif (
+            _muon_lora
+            and "weight" in name
+            and "lora" in name
+            and "scale" not in name
+            and len(param.squeeze().shape) >= 2
+        ):
+            lora_matrix_params.append(param)
         else:
             other_params.append(param)
 
@@ -184,8 +206,15 @@ def get_optimizer(config, model):
             "lr": config.PEAK_LR,
         },
         {"params": encode_params, "weight_decay": 1e-2, "lr": config.PEAK_LR},
-        {"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR},
     ]
+    # The LoRA group sits INSIDE the Muon prefix (see n_muon_groups below) but keeps wd=0.0, which
+    # is what those params already had in `other_params`. Only added when non-empty, so an arch
+    # with no LoRA tensors cannot hand the optimizer an empty group.
+    n_muon_groups = 4
+    if lora_matrix_params:
+        groups.append({"params": lora_matrix_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
+        n_muon_groups = 5
+    groups.append({"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
     # Research iter 29 (2026-07-21): RWKV_MUON=1 -> hybrid Muon+AdamW (rwkv/muon.py).
     # The four MATRIX groups (decay/channel_mixer/head/encode -- exactly the current wd
     # groups) switch to Muon at RWKV_MUON_LR (their own base lr; the LR schedulers scale
@@ -199,16 +228,18 @@ def get_optimizer(config, model):
         # Research iter 30: RWKV_MUON_CAUTIOUS_WD=1 -> masked (cautious) weight decay
         # on the Muon groups (which hold ALL the wd mass; other_params run wd=0).
         cautious_wd = os.environ.get("RWKV_MUON_CAUTIOUS_WD", "0") == "1"
-        for g in groups[:4]:
+        for g in groups[:n_muon_groups]:
             g["use_muon"] = True
             g["wd_lr_scale"] = config.PEAK_LR / muon_lr
             g["lr"] = muon_lr
             g["cautious_wd"] = cautious_wd
-        n_muon = sum(p.numel() for g in groups[:4] for p in g["params"])
-        n_adam = sum(p.numel() for p in groups[4]["params"])
+        n_muon = sum(p.numel() for g in groups[:n_muon_groups] for p in g["params"])
+        n_adam = sum(p.numel() for p in groups[-1]["params"])
+        _lora_note = (f", incl {sum(p.numel() for p in lora_matrix_params):,} LoRA in a wd=0 group"
+                      if lora_matrix_params else "")
         print(f"[muon] hybrid Muon+AdamW ON: muon_lr={muon_lr} momentum={muon_momentum} "
               f"cautious_wd={cautious_wd} "
-              f"({n_muon:,} matrix params on Muon, {n_adam:,} on AdamW)")
+              f"({n_muon:,} matrix params on Muon{_lora_note}, {n_adam:,} on AdamW)")
         return MuonAdamW(groups, betas=ADAMW_BETAS, eps=ADAMW_EPS,
                          muon_momentum=muon_momentum)
     return torch.optim.AdamW(groups, eps=ADAMW_EPS, betas=ADAMW_BETAS)
