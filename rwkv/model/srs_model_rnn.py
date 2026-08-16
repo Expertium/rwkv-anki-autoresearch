@@ -96,10 +96,22 @@ class SrsRWKVRnn(ModuleType):
         # RWKV_STRIP_CMIX matches on "<stream_name>:<layer_id>", so without this the deploy
         # path would silently strip NOTHING and quietly diverge from the trained model
         for _name, _cfg in anki_rwkv_config.modules:
-            _cfg.stream_name = _name
-        self.rwkv_modules = torch.nn.ModuleList(
-            [RWKV7RNN(config=config) for _, config in anki_rwkv_config.modules]
-        )
+            # BASE name: a RWKV_DECK_TREE level is the deck stream at another depth, so
+            # RWKV_STRIP_CMIX / the QAT scopes must treat `deck_id@2` as `deck_id`.
+            _cfg.stream_name = _name.split("@")[0]
+        # RWKV_DECK_TREE: `deck_id@k` reuses the `deck_id` MODULE OBJECT -- the deploy mirror of
+        # the training path's sharing, and the reason the lever adds no RWKV weights.
+        _built = {}
+        _mods = []
+        for _name, config in anki_rwkv_config.modules:
+            _base = _name.split("@")[0]
+            if _base != _name and _base in _built:
+                _mods.append(_built[_base])
+            else:
+                _m = RWKV7RNN(config=config)
+                _built[_name] = _m
+                _mods.append(_m)
+        self.rwkv_modules = torch.nn.ModuleList(_mods)
         # iter 41 (RWKV_INTERLEAVE): deploy mirror of srs_model.py's round-robin layer
         # schedule -- same flag, same order, or the deploy path silently computes a
         # different model (the exact failure class the three-way-parity rule exists for).
@@ -111,6 +123,18 @@ class SrsRWKVRnn(ModuleType):
         # correct for every historical arch file, but a silent state-swap bug for any
         # reordered one.
         self.stream_names = [name for name, _ in anki_rwkv_config.modules]
+        # RWKV_DECK_TREE deploy mirror. tree_level[i] = -1 for an ordinary stream, else the
+        # 0-based ancestor level. Created conditionally for the same reason as in SrsRWKV: an
+        # always-present Parameter would add a state_dict key and break every older checkpoint.
+        self.tree_level = [
+            (int(n.split("@")[1]) - 1 if "@" in n else -1) for n in self.stream_names
+        ]
+        self.tree_on = any(l >= 0 for l in self.tree_level)
+        if self.tree_on:
+            assert self.interleave_on, "RWKV_DECK_TREE requires RWKV_INTERLEAVE=1"
+            self.tree_level_emb = torch.nn.Parameter(
+                torch.zeros(max(self.tree_level) + 1, self.d_model)
+            )
         # iter 44 (RWKV_ILV_SPREAD): same schedule helper as the training path, so the two
         # cannot drift -- see interleave_schedule()'s docstring for the placement rule.
         self.ilv_spread = os.environ.get("RWKV_ILV_SPREAD", "0") == "1"
@@ -397,6 +421,12 @@ class SrsRWKVRnn(ModuleType):
         deck_state,
         preset_state,
         global_state,
+        # RWKV_DECK_TREE (deploy): one state per ancestor level, in level order, plus a bool per
+        # level saying whether THIS card's deck actually has an ancestor there. An inactive level
+        # is skipped entirely -- x is not updated and neither is its state -- which is exactly
+        # what the training path's scatter filter does. Empty lists = lever off.
+        deck_ancestor_states=None,
+        deck_ancestor_active=None,
     ):
         assert len(card_features.shape) == 2
 
@@ -413,6 +443,17 @@ class SrsRWKVRnn(ModuleType):
             "preset_id": preset_state,
             "user_id": global_state,
         }
+        active_by_stream = {}
+        if self.tree_on:
+            assert deck_ancestor_states is not None and                 len(deck_ancestor_states) == max(self.tree_level) + 1,                 "RWKV_DECK_TREE: review() needs one state per ancestor level"
+            for _i, _nm in enumerate(self.stream_names):
+                _lv = self.tree_level[_i]
+                if _lv >= 0:
+                    state_by_entity[_nm] = deck_ancestor_states[_lv]
+                    active_by_stream[_nm] = (
+                        True if deck_ancestor_active is None
+                        else bool(deck_ancestor_active[_lv])
+                    )
         next_by_entity = {}
         if self.interleave_on:
             import copy as _copy
@@ -431,14 +472,27 @@ class SrsRWKVRnn(ModuleType):
                     # keys on the LAYER index, not the round -- under spread a stream's layer 0
                     # (the one that SETS v0) can land in a later round.
                     _lj = self.ilv_sched[_i][_r]
-                    if _lj >= 0:
+                    if _lj >= 0 and active_by_stream.get(self.stream_names[_i], True):
                         v0_in = torch.empty_like(x_il) if _lj == 0 else v0s[_i]
+                        _x_in = x_il
+                        _lv = self.tree_level[_i]
+                        if _lv >= 0 and _lj == 0:
+                            _x_in = _x_in + self.tree_level_emb[_lv]
                         x_il, v0s[_i] = self.rwkv_modules[_i].forward_layer(
-                            _lj, x_il, v0_in, states[_i]
+                            _lj, _x_in, v0_in, states[_i]
                         )
             global_encoding = x_il
             for _nm, _st in zip(self.stream_names, states):
                 next_by_entity[_nm] = _st
+            if self.tree_on:
+                # The ancestor levels' next states are handed back THROUGH THE CALLER'S LIST.
+                # review()'s 5-tuple of named states is the deploy API's shape and adding a
+                # variable number of returns to it would break every caller; a per-deck state
+                # store is what the caller must keep for these anyway.
+                for _i, _nm in enumerate(self.stream_names):
+                    _lv = self.tree_level[_i]
+                    if _lv >= 0:
+                        deck_ancestor_states[_lv] = next_by_entity[_nm]
         else:
             x_seq = card_rwkv_input
             for _i, _nm in enumerate(self.stream_names):

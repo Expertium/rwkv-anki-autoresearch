@@ -103,3 +103,5 @@ scratchpad/qat_tax/corpus_*/
 # derived deck-tree artifact: rebuildable in ~4 min by scratchpad/deck_tree/build_parent_maps.py
 scratchpad/deck_tree/parent_maps.parquet
 scratchpad/deck_tree/*.log
+scratchpad/deck_tree/*.parquet
+scratchpad/deck_tree/smoke_out.txt

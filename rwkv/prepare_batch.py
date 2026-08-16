@@ -14,6 +14,11 @@ from rwkv.data_processing import CARD_FEATURE_COLUMNS, ModuleData, RWKVSample
 from rwkv.model.srs_model import PreparedBatch
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 from rwkv.utils import load_tensor
+from rwkv import deck_tree as _deck_tree
+
+# The STREAM CHAIN prepare() builds gathers for. Equals RWKV_SUBMODULES unless
+# RWKV_DECK_TREE inserts the deck-ancestor levels after deck_id.
+_CHAIN = _deck_tree.chain_submodules(RWKV_SUBMODULES)
 
 # ---- iter 23 probe rows (MONOTONICITY_PLAN.md stage 2; scratchpad/iter23_pava/BUILD_NOTES.md)
 # RWKV_PROBE_DENSITY > 0 inserts, per selected ahead-labeled real row, 4 counterfactual
@@ -155,28 +160,12 @@ def insert_probes(data: RWKVSample, density: float, base_seed,
     for sub in RWKV_SUBMODULES:
         ids_sub = data.ids[sub][src_t].clone()
         ids_new[sub] = ids_sub
-        arr = ids_sub.numpy()
-        order = np.argsort(arr, kind="stable")  # groups by id, row order kept in-group
-        sorted_ids = arr[order]
-        starts = np.concatenate(([0], np.nonzero(np.diff(sorted_ids))[0] + 1))
-        ends = np.concatenate((starts[1:], [new_n]))
-        lens = ends - starts
-        buckets = {}
-        for s, e, l in zip(starts, ends, lens):
-            buckets.setdefault(int(l), []).append(order[s:e])
-        locs_parts = []
-        split_len = []
-        split_B = []
-        for l in sorted(buckets):
-            split_len.append(l)
-            split_B.append(len(buckets[l]))
-            locs_parts.extend(buckets[l])
-        from_perm = np.concatenate(locs_parts)
-        to_perm = np.empty(new_n, dtype=np.int64)
-        to_perm[from_perm] = np.arange(new_n)
+        split_len, split_B, from_perm, to_perm = _deck_tree.build_module_data(
+            ids_sub.numpy(), new_n
+        )
         modules_new[sub] = ModuleData(
-            split_len=np.array(split_len, dtype=np.int32),
-            split_B=np.array(split_B, dtype=np.int32),
+            split_len=split_len,
+            split_B=split_B,
             from_perm=torch.tensor(from_perm, dtype=torch.int32),
             to_perm=torch.tensor(to_perm, dtype=torch.int32),
         )
@@ -254,6 +243,36 @@ def build_ahead_query(data, base: int) -> np.ndarray:
     return out
 
 
+def add_deck_levels(data: RWKVSample):
+    """Derive the deck-ancestor streams for one chunk, in place. Returns {name: active mask}.
+
+    Called AFTER probe insertion, so the ancestor ids are derived from the already-expanded
+    deck_id column and every derived stream lines up row-for-row with the real ones.
+
+    Rows with no k-th ancestor get a row-unique negative id (=> a singleton sequence, T=1) and
+    active=False. They MUST still be grouped -- prepare() chains each stream's gather against the
+    previous stream's layout, so a row absent from a stream has no slot for the next stream to
+    reference. The bypass is therefore "compute and discard" (the model never scatters an
+    inactive row back), not "omit".
+    """
+    n = data.card_features.size(0)
+    deck = data.ids["deck_id"].numpy().astype(np.int64)
+    active = {}
+    for k in range(1, _deck_tree.num_levels()):
+        name = _deck_tree.stream_name(k)
+        ids_k, act = _deck_tree.ancestor_ids(data.user_id, deck, k)
+        data.ids[name] = torch.from_numpy(ids_k)
+        split_len, split_B, from_perm, to_perm = _deck_tree.build_module_data(ids_k, n)
+        data.modules[name] = ModuleData(
+            split_len=split_len,
+            split_B=split_B,
+            from_perm=torch.tensor(from_perm, dtype=torch.int32),
+            to_perm=torch.tensor(to_perm, dtype=torch.int32),
+        )
+        active[name] = act
+    return active
+
+
 def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
             probe_density: float = 0.0, probe_equalize_only: bool = False) -> PreparedBatch:
     if seed is not None:
@@ -270,6 +289,12 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
             new_list.append(data2)
             probe_metas.append(meta)
         data_list = new_list
+
+    # RWKV_DECK_TREE: derive the ancestor streams. AFTER probes (ids must be row-aligned with the
+    # expanded chunk) and BEFORE greedy_splits (which now sizes the whole chain).
+    tree_active = None
+    if _deck_tree.enabled():
+        tree_active = [add_deck_levels(d) for d in data_list]
 
     with torch.no_grad():
         global_T = max([data.card_features.size(0) for data in data_list])
@@ -530,9 +555,24 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
             probe_target_t = torch.cat(tgts).long()
             probe_pressed_t = torch.cat(prs).long()
             probe_query_t = torch.cat(qs).long()
+        # Per-stream row-activity, in the SAME order as sub_gather (config module order, which is
+        # NOT RWKV_SUBMODULES order -- the default arch runs card->deck->note). An empty tensor
+        # means "every row active", i.e. the ordinary streams, so the model's fast path is a
+        # numel() check rather than an Optional (TorchScript-friendly).
+        stream_active = []
+        for _name, _ in DEFAULT_ANKI_RWKV_CONFIG.modules:
+            if tree_active is None or _name not in tree_active[0]:
+                stream_active.append(torch.empty(0, dtype=torch.bool))
+                continue
+            m = torch.zeros(len(data_list) * global_T, dtype=torch.bool)
+            for _i, _act in enumerate(tree_active):
+                a = _act[_name]
+                m[_i * global_T : _i * global_T + a.shape[0]] = torch.from_numpy(a)
+            stream_active.append(m)
         return PreparedBatch(
             num_data=len(data_list),
             start=start_tensor,
+            stream_active=stream_active,
             sub_gather=sub_gather,
             sub_gather_lens=sub_gather_lens,
             skips=sub_skip_gather,
@@ -555,8 +595,8 @@ def greedy_splits(
     example: if we are given [1, 1e6] then it would be worse to pad the 1 just to fit within the same batch.
     """
     splits_dict = {}
-    for submodule in RWKV_SUBMODULES:
-        if submodule == RWKV_SUBMODULES[-1]:
+    for submodule in _CHAIN:
+        if submodule == _CHAIN[-1]:
             longest = 0
             for data in data_list:
                 module_data = data.modules[submodule]
@@ -604,13 +644,13 @@ def greedy_splits(
 
 def naive_splits(data_list: list[RWKVSample]):
     splits_dict = {}
-    for submodule in RWKV_SUBMODULES:
+    for submodule in _CHAIN:
         longest = 0
         for data in data_list:
             module_data = data.modules[submodule]
             longest = max(longest, module_data.split_len.max().item())
 
-        if submodule == RWKV_SUBMODULES[-1]:
+        if submodule == _CHAIN[-1]:
             splits_dict[submodule] = [longest]
             continue
 

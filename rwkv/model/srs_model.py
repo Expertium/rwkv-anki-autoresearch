@@ -180,6 +180,10 @@ class PreparedBatch:
     # by the fetch workers -- that keeps the data stream byte-identical, so the KD dump's
     # per-step labels checksum still matches. None => unweighted, bit-identical to pre-iter-37.
     user_weight: "torch.Tensor | None" = None
+    # RWKV_DECK_TREE: one entry per stream, in CONFIG MODULE ORDER (the same order as sub_gather),
+    # canonical-order bool over num_data*global_T rows. An EMPTY tensor = every row active, which
+    # is what the five ordinary streams always get; None = the lever is off entirely.
+    stream_active: "list[torch.Tensor] | None" = None
 
     def to(self, device):
         start = self.start.to(device)
@@ -205,6 +209,8 @@ class PreparedBatch:
             probe_query=None if self.probe_query is None else self.probe_query.to(device),
             user_weight=None if self.user_weight is None else self.user_weight.to(device),
             ahead_query=None if self.ahead_query is None else self.ahead_query.to(device),
+            stream_active=(None if self.stream_active is None
+                           else [t.to(device) for t in self.stream_active]),
         )
 
 
@@ -453,7 +459,9 @@ class SrsRWKV(ModuleType):
             # stamp each stream's name onto its config (works for every RWKV_ARCH_MODULE
             # without editing the arch files) -- consumed by RWKV_STRIP_CMIX (A6)
             for _name, _cfg in anki_rwkv_config.modules:
-                _cfg.stream_name = _name
+                # BASE name: a deck-tree level is the deck stream at another depth, so every
+                # per-stream env hook (RWKV_STRIP_CMIX, the QAT scopes) must treat it as `deck_id`.
+                _cfg.stream_name = _name.split("@")[0]
             # Classic-RNN baselines (Andrew 2026-07-23): RWKV_BASELINE_CELL=gru|lstm
             # swaps ONLY the per-stream recurrent stacks (same hierarchy/depths, same
             # trunk + heads + pipeline). Default unset = RWKV7, byte-identical.
@@ -472,9 +480,21 @@ class SrsRWKV(ModuleType):
                      for name, config in anki_rwkv_config.modules]
                 )
             else:
-                self.rwkv_modules = torch.nn.ModuleList(
-                    [RWKV7(config=config) for _, config in anki_rwkv_config.modules]
-                )
+                # RWKV_DECK_TREE: `deck_id@k` reuses the `deck_id` MODULE OBJECT, so the ancestor
+                # levels add ZERO RWKV parameters -- depth becomes a loop count over the user's
+                # deck tree, not an architecture constant. nn.ModuleList dedupes a repeated object
+                # in parameters()/state_dict(), so the checkpoint carries one copy.
+                _built = {}
+                _mods = []
+                for _name, config in anki_rwkv_config.modules:
+                    _base = _name.split("@")[0]
+                    if _base != _name and _base in _built:
+                        _mods.append(_built[_base])
+                    else:
+                        _m = RWKV7(config=config)
+                        _built[_name] = _m
+                        _mods.append(_m)
+                self.rwkv_modules = torch.nn.ModuleList(_mods)
             # iter 41 (RWKV_INTERLEAVE=1): round-robin the EXISTING layers across scopes --
             # round r runs layer r of every stream that has one, in the hierarchy order the
             # config already defines. Same params, same per-entity states, same per-layer ops;
@@ -484,6 +504,33 @@ class SrsRWKV(ModuleType):
             # Default unset = the sequential branch below runs untouched (bit-identical).
             self.interleave_on = os.environ.get("RWKV_INTERLEAVE", "0") == "1"
             self.stream_depths = [config.n_layers for _, config in anki_rwkv_config.modules]
+            # RWKV_DECK_TREE metadata. tree_level[i] = -1 for an ordinary stream, else the 0-based
+            # ancestor distance minus one (the index into tree_level_emb). The embedding is the
+            # ONLY new parameter the lever adds: (L-1, d_model), zero-init so the levels start
+            # indistinguishable and differentiate under gradient.
+            _names = [n for n, _ in anki_rwkv_config.modules]
+            self.tree_level = [
+                (int(n.split("@")[1]) - 1 if "@" in n else -1) for n in _names
+            ]
+            self.tree_on = any(l >= 0 for l in self.tree_level)
+            # ⚠ CREATED ONLY WHEN THE LEVER IS ON. A Parameter that always exists would add a
+            # state_dict key, which is NOT inert: every checkpoint written before this change
+            # would fail to load (missing key) -- including the one an in-flight run is about to
+            # evaluate. The dead branch is safe because the reference lives in a
+            # @torch.jit.ignore helper, whose body TorchScript never compiles.
+            if self.tree_on:
+                _n_lvl = max(self.tree_level) + 1
+                self.tree_level_emb = torch.nn.Parameter(
+                    torch.zeros(_n_lvl, self.d_model)
+                )
+                assert self.interleave_on, (
+                    "RWKV_DECK_TREE requires RWKV_INTERLEAVE=1: the sequential branch rebuilds x "
+                    "as cat(y) per stream, so a row that is not written back has no defined value "
+                    "there. The interleaved branch keeps x canonical and simply does not scatter "
+                    "an inactive row, which IS the bypass.")
+                print(f"[deck-tree] streams={_names} levels={self.tree_level} "
+                      f"(deck module SHARED across levels; "
+                      f"+{_n_lvl * self.d_model} embedding params)")
             # iter 44 (RWKV_ILV_SPREAD=1): distribute each stream's layers across ALL rounds
             # (endpoints anchored) instead of front-loading them. Motivated by iter 43's
             # result -- the schedule is the productive lever, the order is not -- and by a
@@ -847,6 +894,9 @@ class SrsRWKV(ModuleType):
         batch_time_shift_selects: list[list[torch.Tensor]],
         batch_skips: list[list[torch.Tensor]],
         batch_num_data: int,
+        # RWKV_DECK_TREE: per-stream row-activity in canonical order; an EMPTY tensor means
+        # "every row active". None (the default) = the lever is off for every stream.
+        batch_stream_active: Optional[list[torch.Tensor]] = None,
     ):
         if self.input_feat_mask_on:
             batch_start = self._apply_input_feat_mask(batch_start)
@@ -862,6 +912,7 @@ class SrsRWKV(ModuleType):
                 batch_sub_gather_lens,
                 batch_time_shift_selects,
                 batch_skips,
+                batch_stream_active,
             )
             x = x.view(batch_num_data, -1, self.d_model)
             return self.head_and_out(x)
@@ -915,6 +966,14 @@ class SrsRWKV(ModuleType):
     # layer_id==0 and SETS v0 (the incoming empty tensor is ignored); it is stored per
     # (stream, split) in the STREAM'S layout and re-fed to that stream's later rounds --
     # identical threading to the sequential form, just spread across rounds.
+    # ⚠ THE RETURN ANNOTATION IS LOAD-BEARING (iter 47's bug: an unannotated @torch.jit.ignore
+    # is typed `-> Tensor`, and this one is only ever reached when tree_level_emb exists).
+    # It lives in an ignored body so that scripting a model WITHOUT the deck tree never has to
+    # resolve `self.tree_level_emb`, which does not exist there.
+    @torch.jit.ignore
+    def _add_level_emb(self, x_in: torch.Tensor, lvl: int) -> torch.Tensor:
+        return x_in + self.tree_level_emb[lvl]
+
     @FunctionType
     def _interleaved_streams(
         self,
@@ -923,6 +982,7 @@ class SrsRWKV(ModuleType):
         batch_sub_gather_lens: list[list[int]],
         batch_time_shift_selects: list[list[torch.Tensor]],
         batch_skips: list[list[torch.Tensor]],
+        batch_stream_active: Optional[list[torch.Tensor]] = None,
     ):
         # -- 1) compose canonical-anchored gathers + their scatter halves, once per batch --
         n_rows = x.size(0)
@@ -942,10 +1002,21 @@ class SrsRWKV(ModuleType):
                     torch.index_select(cur, 0, torch.clamp(pl, min=0)),
                     torch.full_like(pl, -1),
                 )
-                pos = torch.nonzero(g >= 0).squeeze(-1)
+                keep = g >= 0
+                if batch_stream_active is not None:
+                    act = batch_stream_active[i]
+                    if act.numel() > 0:
+                        # RWKV_DECK_TREE bypass: a row with no ancestor at this level is still
+                        # GATHERED and computed (it has to be -- the chain gives every row a slot
+                        # in every stream's layout), but it is never scattered back, so x keeps
+                        # its incoming value exactly. Cheap because such rows are singletons.
+                        keep = keep & torch.index_select(act, 0, torch.clamp(g, min=0))
+                pos = torch.nonzero(keep).squeeze(-1)
                 gi.append(g)
                 pi.append(pos)
                 ti.append(torch.index_select(g, 0, pos))
+                # ⚠ `parts` keeps the UNFILTERED g. The next stream indexes into THIS stream's
+                # layout, so dropping a slot here would delete the row from every later stream.
                 parts.append(g)
             gath.append(gi)
             spos.append(pi)
@@ -984,6 +1055,12 @@ class SrsRWKV(ModuleType):
                         # SETS v0 (the passed tensor is ignored there).
                         if lj == 0:
                             v0_in = torch.empty_like(x_in)
+                            # RWKV_DECK_TREE: tell the SHARED deck module which ancestor level it
+                            # is running at. Added once per stream (at its layer 0), not per
+                            # round -- later layers read it through the residual stream.
+                            lvl = self.tree_level[i]
+                            if lvl >= 0:
+                                x_in = self._add_level_emb(x_in, lvl)
                         else:
                             v0_in = v0s[i][s]
                         x_out, v0_out = submodule.forward_layer(
@@ -1033,6 +1110,8 @@ class SrsRWKV(ModuleType):
         # iter 46 (RWKV_SELFKD_BETA): (B,T) int64 index of each row's self-distillation teacher
         # row, -1 = none. Ignored at beta=0.
         ahead_query: Optional[torch.Tensor] = None,
+        # RWKV_DECK_TREE per-stream row-activity (see forward_batch)
+        stream_active: Optional[list[torch.Tensor]] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits, out_s_raw, out_d_raw = self.forward_batch(
             batch_start,
@@ -1041,6 +1120,7 @@ class SrsRWKV(ModuleType):
             batch_time_shift_selects,
             batch_skips,
             batch_num_data,
+            stream_active,
         )
         # NaN probe: with the residual disabled, out_ahead_logits is constant zeros and can
         # never NaN -- probe the (live) rating head instead, so a trunk NaN still returns
@@ -1353,6 +1433,7 @@ class SrsRWKV(ModuleType):
             probes=probes,
             user_weight=batch.user_weight,
             ahead_query=batch.ahead_query,
+            stream_active=batch.stream_active,
         )
 
     def copy_downcast_(self, master_model, dtype):

@@ -170,8 +170,10 @@ def _apply_qat_scopes(layers):
             n, _, lvl = entry.strip().partition(":")
             qat[_QAT_NAME[n]] = _QMAX[lvl]
         for name, cfg in layers:
-            if name in qat:
-                setattr(cfg, "state_qmax", qat[name])
+            # base name: a RWKV_DECK_TREE level (`deck_id@2`) IS the deck stream, so it must
+            # quantize exactly like it -- they share the module and therefore the state.
+            if name.split("@")[0] in qat:
+                setattr(cfg, "state_qmax", qat[name.split("@")[0]])
         print("[QAT] state_qmax set: " +
               ", ".join(f"{n}={_get(c, 'state_qmax', float('inf'))}" for n, c in layers
                         if _get(c, "state_qmax", float("inf")) != float("inf")))
@@ -184,7 +186,8 @@ def _apply_qat_scopes(layers):
             parts = entry.strip().split(":")
             lr[_QAT_NAME[parts[0]]] = (int(parts[1]), _QMAX[parts[2]] if len(parts) > 2 else float("inf"))
         for name, cfg in layers:
-            if name in lr:
+            if name.split("@")[0] in lr:
+                name = name.split("@")[0]
                 setattr(cfg, "state_lowrank_rank", lr[name][0])
                 setattr(cfg, "state_lowrank_fqmax", lr[name][1])
         print("[QAT-LOWRANK] set: " +
@@ -200,8 +203,8 @@ def _apply_qat_scopes(layers):
             n, _, lvl = entry.strip().partition(":")
             sh[_QAT_NAME[n]] = _QMAX[lvl]
         for name, cfg in layers:
-            if name in sh:
-                setattr(cfg, "state_shift_qmax", sh[name])
+            if name.split("@")[0] in sh:
+                setattr(cfg, "state_shift_qmax", sh[name.split("@")[0]])
         print("[QAT-SHIFT] state_shift_qmax set: " +
               ", ".join(f"{n}={_get(c, 'state_shift_qmax', float('inf'))}" for n, c in layers
                         if _get(c, "state_shift_qmax", float("inf")) != float("inf")))
@@ -263,6 +266,19 @@ if _arch_module:
     DEFAULT_ANKI_RWKV_CONFIG = _ns["DEFAULT_ANKI_RWKV_CONFIG"]
     print(f"[ARCH-MODULE] DEFAULT_ANKI_RWKV_CONFIG <- {_arch_module} "
           f"(d_model={DEFAULT_ANKI_RWKV_CONFIG.d_model})")
+
+# ---- RWKV_DECK_TREE: insert the deck-ancestor levels into the FINAL module list, for exactly
+# the reason the QAT scopes are applied last -- an RWKV_ARCH_MODULE override replaces the config
+# wholesale, so anything applied to the default config before that line is silently discarded
+# (the 2026-08-12 "QAT env was inert under RWKV_ARCH_MODULE" bug). Unset == untouched list.
+from rwkv import deck_tree as _deck_tree  # noqa: E402
+
+if _deck_tree.enabled():
+    DEFAULT_ANKI_RWKV_CONFIG.modules = _deck_tree.expand_modules(
+        DEFAULT_ANKI_RWKV_CONFIG.modules
+    )
+    print(f"[deck-tree] ON: {_deck_tree.num_levels()} deck levels -> chain "
+          f"{[n for n, _ in DEFAULT_ANKI_RWKV_CONFIG.modules]}")
 
 # ---- QAT scopes are applied HERE, LAST, to the FINAL config -- see the note at _apply_qat_scopes.
 # Banner order is the tell: [QAT*] lines must appear AFTER [ARCH-MODULE], never before.
