@@ -39,7 +39,7 @@ Andrew also asked how idea generation itself could be improved; that discussion 
 | 2 | **Retrievability-coupled rating head** — feed logit R(t) from the curve head into the Again logit. | architecture | **iter 48**, REJECTED as an exact tie 2026-08-15 — and with iter 46 it CLOSES the ahead-vs-imm-gap family (see below) |
 | 3 | **Privileged self-distillation (imm → ahead)** — soften the ahead target toward the model's own better-informed imm estimate of the same event. | distillation | **iter 46**, implemented 2026-08-11 |
 | 4 | Duration dropout — per-row Bernoulli dropout of the duration feature (the corrected retry of iter 33's intent). | input-robustness | queued |
-| 5 | NorMuon / PolarExpress — refinements to the accepted Muon optimizer; the Newton-Schulz orthogonality error was measured real (0.19–0.31 RMS). | optimizer | queued |
+| 5 | NorMuon / PolarExpress — refinements to the accepted Muon optimizer; the Newton-Schulz orthogonality error was measured real (0.19–0.31 RMS). | optimizer | **PolarExpress = iter 51, FAILED (NaN at step 411), closed on mechanism 2026-08-16. NorMuon untried but DEMOTED — see "Muon is a regularizer" below.** |
 | 6 | Restore user/preset L0 channel-mixers (`RWKV_STRIP_CMIX`) — zero code, just a shorter strip list. | capacity | **iter 49**, REJECTED 2026-08-16 — +0.000067 ahead at p=0.11 (a coin flip) / +0.000087 imm; both under the bar |
 
 ### Why #3 was promoted over #2 (2026-08-11)
@@ -96,7 +96,7 @@ algorithmic loop is where the wall-clock goes and cheap iterations matter.
 | 2 | #6 restore user/preset L0 cmix | algorithmic | 5.5 h, zero code | free to try, capacity family untested at this trunk |
 | 3 | QAT#2 KD from the PLAIN iter-45 teacher | QAT | 13 h + 2-3 h dump | targets the deploy objective directly; distillation is 4/5 |
 | 4 | #4 duration dropout | algorithmic | 5.5 h | training-only, no deploy debt |
-| 5 | #5 NorMuon / PolarExpress | algorithmic | 5.5 h | measured orthogonality error 0.19-0.31 RMS |
+| ~~5~~ | ~~#5 NorMuon / PolarExpress~~ | algorithmic | — | **PolarExpress ran as iter 51 and FAILED structurally; NorMuon DEMOTED on mechanism (it refines descent, and descent is the half of Muon that has stopped paying at our budget). Do not rank it without a new argument.** |
 | 6 | QAT#3 `RWKV_CB_LR_MULT` sweep | QAT | 13 h/point | now motivated (catalogs ARE the active lever) but expensive per point |
 
 ⚠ **The QAT items are NOT dead** — a 2026-08-15 summary called the QAT vein "worked out", which was
@@ -219,3 +219,26 @@ the parent level -- most distinct scope, widest reach (49.21%) -- is a coin flip
 worse bet, not a better one. Do NOT rank L=3 as "we only tested the shallow case".
 **And it closes the topology family's last open direction:** existence of cross-scope paths pays
 (iter 41), choreography does not (42-44), more scopes do not (50).
+
+## ★★ MUON IS A REGULARIZER AT OUR BUDGET — this demotes the rest of the optimizer family (2026-08-16)
+
+Full measurement + tables: `research_5k_notes.md`. Prompted by Andrew's recollection that Muon was
+"way better than Adam initially, but only mildly better at the end", which the archive confirms and
+sharpens. On the matched pair iter 29 (Muon) vs iter 26 (AdamW) — the only difference is the three
+`RWKV_MUON_*` env vars — the **train**-loss advantage decays across 6,554 paired steps from
++0.01446 / +0.09809 (first decile) to **−0.00058 / +0.00097** (last), i.e. on `ahead` it INVERTS,
+while the **held-out** advantage holds at **+0.001909 / +0.001913**.
+
+Training to a higher train loss and a lower eval loss is the signature of a regularizer. **Muon's
+value here is generalization, not speed of descent.**
+
+**Ranking consequence.** PolarExpress and NorMuon are both refinements of the *descent* — more
+accurate orthogonalization, better per-neuron scaling. They target the half that has already stopped
+paying. PolarExpress additionally failed structurally (iter 51: an accurate polynomial has p(1)→1,
+but production's `a+b+c`=0.7010 makes p(1)=0.70 a *contraction*, which is what keeps thin rank-1
+momentum matrices stable at σ_max≈1). **A future optimizer proposal must name which half it attacks**,
+and one aimed at descent quality has to say why it would move held-out loss when the existing descent
+advantage does not.
+
+⚠ Demotion on mechanism, not closure (conduct rule 5). And the measurement is one matched pair at the
+older 6,554-step / MAX=32768 budget; the current recipe runs 10,935 steps with an 8× lower Muon LR.

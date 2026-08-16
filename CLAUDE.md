@@ -945,6 +945,38 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**✗ ITER 51 FAILED 2026-08-16 20:31 -- NOT a reject, no number produced** (`iter51_muon`,
+`RWKV_MUON_POLAR=1`: a per-step Polar-Express Newton-Schulz schedule replacing Muon's single fixed
+triple). Died hollow -- 410 good steps, then `Nan from RWKV-7` on all 3,684 remaining batches. ~0.5 h
+GPU, no eval, no champion impact. **Optimizer family stays 1/2** (a failed launch is not a rejected
+iteration).
+**★ THE MECHANISM INVERTS HOW THE RECORD DESCRIBED THE PRODUCTION CONSTANTS:** `a+b+c = 0.7010`,
+so **p(1) = 0.70 < 1 -- the production triple CONTRACTS anything at or above 1**. That is a STABILITY
+GUARANTEE, not the "deliberate sloppiness" I called it in the runner header. A (3,320) momentum
+matrix of effective rank 1 has all its energy in sigma_max after Frobenius normalisation, so
+sigma_max ~ 1 and bf16 rounding puts it at **1.0012** -- just past the fixed point. The fitted
+schedule then ran 1.229 / 1.835 / 2.860 / 47.9 / **1.9e8**; production runs 0.696 / 1.118 / 0.726 /
+1.082 / 0.701. **Accuracy at the top of the spectrum IS p(1)->1, so any revival must keep p(1)
+strictly below 1 -- forfeiting accuracy exactly where the energy is.** A constrained refit (peak
+capped at production's own 1.20) ALSO diverged (2.75e8), promoting the diagnosis to structural. The
+flag now raises at import with this reason inline.
+**★★ THE VALIDATION ERROR IS THE REUSABLE LESSON: I FITTED AND CHECKED ON THE WRONG DISTRIBUTION.**
+Fitted on step-10935 momentum, deployed from step 1; early momentum is differently conditioned
+(median sigma_min 2.8e-6 vs 6.6e-5 late) and produced an update **1.76e7x** baseline. Two compounding
+mistakes: (1) a late-training checkpoint is NOT a sample of the training run; (2) I reassured myself
+with a **MEDIAN** ||O||_F ratio (+2.6%) when the early-buffer **MAX** was 1.76e7. **A MEDIAN CANNOT
+SEE A BLOW-UP; ONLY A MAX CAN -- report the max in every future numerical-stability check.**
+**★★ AND THE FOLLOW-UP MEASUREMENT DEMOTES THE REST OF THE FAMILY (no GPU, from Andrew's own
+recollection):** on the matched pair iter 29 (Muon) vs iter 26 (AdamW) -- the only difference is the
+three `RWKV_MUON_*` vars -- the **TRAIN**-loss advantage decays over 6,554 paired steps from
++0.01446/+0.09809 to **-0.00058/+0.00097** (it INVERTS on ahead), while the **HELD-OUT** advantage
+holds at **+0.001909/+0.001913**. **=> at our budget Muon is a REGULARIZER, not a faster optimizer.**
+PolarExpress and NorMuon both refine the DESCENT, i.e. the half that has stopped paying, so **NorMuon
+is demoted on mechanism** and any future optimizer proposal must name which half it attacks. Tool
+`scratchpad/optimizer_regime/muon_gap_over_training.py`; detail `research_5k_notes.md`.
+⚠ The obvious AdamW control (`champ5k_plain`) is the WRONG one -- it also differs in PAVA lambda and
+the GRU head. Diff the runners, do not read the labels. Third instance of that shape after iter 47's
+wrong checkpoint and iter 50's compile-warmup timing.
 **✓ ITER 50 DONE 2026-08-16 19:20 -- REJECTED as an EXACT TIE** (deck tree, `RWKV_DECK_TREE=2`):
 ahead **+0.000007 at p=0.52** (a literal coin flip) / imm **-0.000024 at p=0.86**, both 3-10x INSIDE
 the +/-7.5e-5 floor. size 0/2500, nan_users 0, 558,292 params, 12.5 h.
@@ -1327,8 +1359,11 @@ which is why this family once read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
 5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) ·
 objective-alignment **0/1 mechanism-refuted** (iter 37 by-user weighting: worse in every size
-quartile incl. its intended beneficiaries — do not retry milder doses) · optimizer **1/2** (Muon ACCEPTED iter 29, the phase's
-largest imm gain; cautious wd REJECTED iter 30 — a pure trade) · GRU-head N-sweep **peaks at
+quartile incl. its intended beneficiaries — do not retry milder doses) · **optimizer 1/2, and the
+REMAINDER IS DEMOTED ON MECHANISM** (Muon ACCEPTED iter 29, the phase's largest imm gain; cautious wd
+REJECTED iter 30 — a pure trade; iter 51 PolarExpress FAILED structurally, p(1)<1 is load-bearing.
+**Muon is a REGULARIZER here** — its train-loss edge decays to −0.00058/+0.00097 while eval holds at
++0.0019 — so descent-quality refinements incl. NorMuon target the half that stopped paying) · GRU-head N-sweep **peaks at
 N=3** (N=4 worse, closed) · readout/xhead **0/3** with real signal but negative under the GRU
 head (iter 28), closed pending new ideas · loss-reweighting **0/2** (pbin scale lever closed by
 dose-response — a linear imm/ahead trade through zero) · early-training-intervention **0/2** ·

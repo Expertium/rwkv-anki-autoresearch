@@ -1992,3 +1992,78 @@ is exactly what pre-registration is for.
 * **The seed-pair doctrine still binds:** a margin under ~0.0005 needs the recipe re-run at
   `RWKV_AUGMENT_SEED=4321` before it is leaned on. In-seed p-values measure per-user consistency,
   never cross-seed robustness.
+
+## ★★ WHAT MUON ACTUALLY BUYS US: IT IS A REGULARIZER, NOT A FASTER OPTIMIZER (2026-08-16, no GPU)
+
+Andrew, 2026-08-16: *"I remember the first time we tried Muon, it was way better than Adam initially,
+but only mildly better at the end. Muon seems to be optimized for speedrunning: getting to a fixed
+loss value in as few epochs as possible, whereas we do the opposite: lower the loss value during a
+fixed (large) number of epochs."*
+
+That is a testable claim and the archive settles it for free. **Iter 29 (Muon) and iter 26 (AdamW)
+are a matched pair** — diffing the two runners shows the only difference is the three `RWKV_MUON_*`
+env vars: same arch, PAVA lambda, GRU head, data, peak LR, wd, clip, seed and budget. Tool:
+`scratchpad/optimizer_regime/muon_gap_over_training.py` (reads the two WS step traces; seconds).
+
+### The measurement — 6,554 paired steps, `+` = Muon better on TRAIN loss
+
+| steps | ahead gap | imm gap |
+|---|---|---|
+| 1–655 | **+0.01446** | **+0.09809** |
+| 656–1310 | +0.00278 | +0.00828 |
+| 1311–1966 | +0.00202 | +0.00493 |
+| 1967–2621 | +0.00106 | +0.00338 |
+| 2622–3277 | +0.00054 | +0.00270 |
+| 3278–3932 | −0.00024 | +0.00160 |
+| 3933–4587 | +0.00006 | +0.00161 |
+| 4588–5243 | −0.00010 | +0.00137 |
+| 5244–5898 | −0.00005 | +0.00081 |
+| 5899–6554 | **−0.00058** | **+0.00097** |
+
+**Andrew is right, and the effect is stronger than "mildly better at the end": on `ahead` the
+optimization advantage does not merely shrink, it INVERTS.** By the last decile Muon is training to a
+*higher* train loss than AdamW (−0.00058), and on `imm` it retains ~1% of its initial edge
+(+0.00097 from +0.09809).
+
+### The eval endpoints, which are what makes this a finding rather than a curiosity
+
+| | ahead | imm |
+|---|---|---|
+| iter 26, AdamW | 0.303942 | 0.273353 |
+| iter 29, Muon | 0.302033 | 0.271440 |
+| **Muon advantage** | **+0.001909** | **+0.001913** |
+
+So the train-loss advantage decays to zero (or past it) while the **held-out** advantage sits at
+**+0.0019 in both modes**. Training to a higher train loss and a lower eval loss is the textbook
+signature of a regularizer. **At our budget Muon is not buying faster descent — it is buying
+generalization.** (Both eval numbers are pre-iter-33 and therefore UNRECTIFIED; they are compared
+only to each other, which is valid, and neither is comparable to a current champion number.)
+
+### ★ THE CONSEQUENCE, and it demotes the remaining item in this family
+
+`PROPOSALS.md` #5 bundles PolarExpress and **NorMuon** as "refinements to the accepted Muon
+optimizer". Both are refinements of the **descent** — they make the orthogonalization more accurate
+(PolarExpress) or better-scaled per neuron (NorMuon). **That is a refinement of the half of Muon
+that our measurement says has already stopped paying.** The mechanism argument for NorMuon at this
+budget is therefore much weaker than the family's 1/2 record suggests, and it should not be ranked
+on "Muon worked, so Muon variants should work".
+
+⚠ This is a demotion on mechanism, not a closure — conduct rule 5 forbids closing a family on
+inference. What it does mean is that the next optimizer proposal needs to name which half it
+attacks, and a proposal that attacks descent quality has to explain why that would show up in
+held-out loss when the existing descent advantage does not.
+
+⚠ Scope: measured on ONE matched pair, at the iter-26/29 budget (6,554 WS steps, MAX=32768 era). The
+current recipe is 10,935 steps at MAX=65536 with a Muon LR 8x lower (iter 34) — a *lower* Muon LR
+means a *weaker* version of whatever Muon is doing, so the sign of this result is if anything more
+conservative today, but the magnitude is not transferable. And the trend is monotone and large
+(7x–100x decay across deciles), so it is not a noise artifact.
+
+### The trap this measurement nearly fell into, which is the third instance of the same shape
+
+The obvious AdamW control is **`champ5k_plain`** — and it is the WRONG one: it lacks
+`RWKV_PAVA_LAMBDA` and `RWKV_GRU_HEAD`, so it differs in the ahead objective AND the head, which
+inflates the early `imm` gap and yields a confident wrong story. The correct partner (`iter26_gru3`)
+was found by diffing runners. Same family as iter 47's wrong-checkpoint control and iter 50's
+compile-warmup timing: **a difference is attributable only if everything except the named variable is
+held fixed — verify that by diffing the runners, not by reading the labels.**
