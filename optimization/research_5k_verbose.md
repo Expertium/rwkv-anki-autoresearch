@@ -2614,3 +2614,54 @@ that has already been banked.
 
 **Cost:** WS 4h33m (6:51→11:24), decay 4h27m (11:24→15:51), eval 3h29m (15:51→19:20) ≈ **12.5 h** at
 0.66–0.67 steps/s throughout — 1.35× the champion's 0.893, matching the shape prediction.
+
+## iter 51 — Polar-Express Newton-Schulz schedule for Muon (FAILED: NaN at step 411; lever CLOSED on mechanism, 2026-08-16)
+
+`PROPOSALS.md` #5, chosen after Andrew preferred the Muon variations to duration dropout. The run
+died hollow — 410 good steps, then `Exception caught. Nan from RWKV-7? Skipping batch.` on every
+batch thereafter (3,684 of them). Killed at ~0.5 h; no eval.
+
+### The pre-work was right and is worth keeping
+The proposal's motivation reproduces and decomposes cleanly (`scratchpad/iter51_muon/`):
+* RMS|σ−1| over all singular values = **0.274**, matching the recorded 0.19–0.31;
+* **not precision** — bf16 0.289 vs fp32 0.301;
+* **~half is the near-null tail** (median condition number 1.2e4), unliftable in 5 steps and
+  undesirable to lift (noise amplification);
+* **0.161 remains on the top-90%-energy directions**, which is the attackable part;
+* a greedy-minimax per-step schedule cut that to **0.0251 (−84.4%)**, with the control that merely
+  rescaling to σ_max≈1 buys only 5.8%.
+
+### ★ WHY IT FAILED, and it inverts how this file described the production constants
+The offender is a **(3, 320)** momentum matrix of effective rank 1. Frobenius normalisation
+concentrates a thin matrix's energy into σ_max, so σ_max ≈ 1 — and bf16 rounding puts it at
+**1.0012**, just above. From there:
+
+| step | 0 | 1 | 2 | 3 | 4 |
+|---|---|---|---|---|---|
+| fitted schedule | 1.229 | 1.835 | 2.860 | 47.9 | **1.9e8** |
+| production triple | **0.696** | 1.118 | 0.726 | 1.082 | 0.701 |
+
+**`a+b+c = 0.7010` means p(1) = 0.70 < 1: the production triple CONTRACTS anything at or above 1.**
+That is a stability guarantee, not the "deliberate sloppiness" I called it in the runner header and
+the commit message. Accuracy at the top of the spectrum *is* p(1) → 1, which converts a contraction
+into a marginally stable map — and thin matrices sit exactly on that fixed point by construction.
+**Any revival must keep p(1) strictly below 1, which forfeits accuracy precisely where the energy
+is.** The flag now raises at import with this reason inline.
+
+### ★★ THE VALIDATION ERROR IS THE REUSABLE LESSON: I FITTED AND CHECKED ON THE WRONG DISTRIBUTION
+The schedule was fitted on **step-10935** momentum and deployed from **step 1**. Early momentum is
+differently conditioned (median σ_min **2.8e-6** vs **6.6e-5** late), and on it the schedule produced
+an update **1.76e7×** baseline. Two compounding mistakes:
+1. **Wrong distribution.** A late-training checkpoint is not a sample of the training run.
+2. **Wrong statistic.** I reassured myself with a **median** ‖O‖_F ratio (+2.6%, "far below any LR
+   sensitivity"). On early buffers the median was a benign 0.87 while the **max** was 1.76e7. *A
+   median cannot see a blow-up; only a max can.* Every future numerical-stability check on this
+   project should report the max.
+
+A constrained refit (v2, peak capped at the production triple's own 1.20) was tried and **also
+diverged** (max ratio 2.75e8) — which is what promoted the diagnosis from "bad fit" to "structural".
+
+### Cost and disposition
+~0.5 h GPU, no eval, no champion impact. **Optimizer family stays 1/2** — this never produced a
+number, so it is a failed launch rather than a rejected iteration. The lever is closed on mechanism;
+`NorMuon` (per-neuron second-moment normalisation) is a *different* mechanism and remains open.

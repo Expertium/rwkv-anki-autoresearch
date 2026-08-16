@@ -63,6 +63,17 @@ _MUON_BATCHED = os.environ.get("RWKV_MUON_BATCHED", "0") == "1"
 #
 # Training-only: no parameter, no state, no deploy path is touched. Default OFF = byte-identical.
 _MUON_POLAR = os.environ.get("RWKV_MUON_POLAR", "0") == "1"
+if _MUON_POLAR:
+    raise RuntimeError(
+        "RWKV_MUON_POLAR is DISABLED -- it NaN'd iter 51 at step 411 and the cause is structural, "
+        "not a bad fit. The production triple has a+b+c = 0.7010, i.e. p(1) = 0.70 < 1, so it "
+        "CONTRACTS any singular value at or above 1. That is a stability margin, not sloppiness. "
+        "Making the polynomial accurate means p(1) -> 1, which turns the contraction into a "
+        "marginally stable map; a THIN matrix (the offender was 3x320, effective rank 1) has "
+        "sigma_max ~ 1 after Frobenius normalisation and bf16 rounding puts it at 1.0012, from "
+        "which an accurate schedule diverges 1.23 -> 1.83 -> 2.86 -> 47.9 -> 1.9e8. Any revival "
+        "must keep p(1) strictly below 1 -- which forfeits accuracy exactly at the top of the "
+        "spectrum, where most of the energy is. See scratchpad/iter51_muon/.")
 _FIXED_NS = (3.4445, -4.7750, 2.0315)
 _POLAR_SCHEDULE = [
     (7.372480, -20.782051, 15.190877),
