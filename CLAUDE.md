@@ -898,10 +898,16 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    call. Full reasoning: `research_5k_notes.md`.
    **Three things that are tuned for 1 epoch and must be RECONSIDERED at 12.5 — write the answers
    down before launching:** (a) **warmup 200 steps** is 0.9% of a 1-ep run but 0.09% of this one;
-   upstream used 20,000. (b) **augmentation is OFF** (`RWKV_AUGMENT_SEED=1234`) — a deliberate
-   workbench choice for ~0 run-to-run variance, but at 12.5 epochs over the SAME 5,000 users it is
-   repetition, not variety, and augmentation is exactly the regularizer that regime wants; the
-   variance argument no longer applies to a one-off final run.
+   upstream used 20,000. (b) **augmentation: DECIDED — IT STAYS OFF (Andrew 2026-08-16: "screw
+   augmentation (at least that particular kind)").** This item previously recommended turning it ON
+   for the 10x run; that recommendation is WITHDRAWN, not merely qualified. `RWKV_AUGMENT_SEED=1234`
+   stays. Scope of the decision: the per-batch **random ID codes + random cycle phase** specifically
+   — Andrew's parenthetical leaves other regularizers open, so do not read this as closing
+   regularization as a family.
+   Three things made it a bad trade even before the preference: it carries ~0.0024 run-to-run
+   variance against a 0.0001 gate (so it could never be validated by an ordinary iteration), it is
+   structurally incompatible with KD-from-dump (see below), and dropping KD to buy it would forfeit
+   the ~0.0019 that iters 32/35/39/45 banked.
    **★ CONFIRMED IN CODE 2026-07-27, and it is stronger than "repetition": epochs are BYTE-IDENTICAL
    replays.** `prepare()` calls `torch.manual_seed(seed)` per batch (`prepare_batch.py:210-211`) and
    `prepare_data_train_test` passes the SAME constant every batch (`:655`) — so the two augmentations
@@ -909,18 +915,27 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    only dropout differs. **=> the `champ5k_b1` budget A/B that fixed WS at 1 epoch ("2nd epoch adds
    nothing", ahead -0.00006 p=0.31) was measured in the one configuration where extra epochs CANNOT
    help. It says "more IDENTICAL epochs don't help" — never quote it as "more epochs don't help".**
-   Turn augmentation ON for the 10x run, or it risks reproducing that null at 40x the cost.
+   ⚠ The obvious worry — "with augmentation off, does 10x epochs buy anything at all, or does it
+   reproduce that null at 40x the cost?" — **is already answered by our own data, and the answer is
+   that it buys plenty.** The 2026-08-11 budget calibration ran at 1/3 budget WITH AUGMENTATION OFF
+   and measured a **3x-budget step worth +0.002**, which projects to **+0.0042 at 10x** against the
+   +0.0040 upstream gap — corroborating the endgame premise to 4%. So byte-identical replays are not
+   the blocker; what more epochs buy here is optimization steps under the WSD schedule (and dropout
+   does still differ per epoch), not data variety. The `champ5k_b1` null remains correctly read as
+   "a 2nd IDENTICAL epoch adds nothing at THAT budget", and it does not generalise to 12.5.
    **★★ BUT AUGMENTATION-ON AND KD-FROM-DUMP ARE MUTUALLY EXCLUSIVE (found 2026-08-16; the plan as
    written above would hit this SILENTLY).** `RWKV_AUGMENT_SEED=none` makes the fetch children
    UNSEEDED, so the ID-encoding and time-phase draws are not reproducible run to run. The KD dump
    stores the teacher's OUTPUT LOGITS plus `labels_sum` as its ONLY identity check -- and
    augmentation changes INPUTS, not labels. A KD run with augmentation on therefore PASSES the
    checksum while distilling toward teacher predictions computed on different inputs, and
-   regenerating the dump cannot fix it (the next run draws differently again). Three options, each
-   with a real cost: (a) augmentation ON, NO KD -- forfeits the ~0.0019 iters 32/35/39/45 banked;
-   (b) a LIVE teacher forward per step instead of a dump -- exact, but adds the d=128 forward to
-   every step; (c) augmentation OFF, accepting byte-identical replays. **Decide before launching,
-   not during.** Same family as the QAT-inert bug: the checksum proves LABEL alignment and was being
+   regenerating the dump cannot fix it (the next run draws differently again). **RESOLVED (Andrew 2026-08-16): option (c) --
+   augmentation OFF, KD KEPT.** The alternatives were (a) augmentation ON with no KD, forfeiting the
+   ~0.0019 iters 32/35/39/45 banked, and (b) a LIVE teacher forward per step instead of a dump --
+   exact, but adds the teacher's forward to every step. Neither is needed now. This entry stays
+   because the TRAP is still live for any future dump-based KD: the checksum proves LABEL alignment
+   and says nothing about inputs, so ANY input-side change (not just augmentation) silently
+   invalidates a dump while the checksum keeps passing. Same family as the QAT-inert bug: the checksum proves LABEL alignment and was being
    read as proving BATCH alignment.
    ⚠ Augmentation-on also carries **~0.0024 run-to-run variance against a 0.0001 accept gate** (24x
    the bar), so it can never be validated as an ordinary research iteration -- it is an endgame-only

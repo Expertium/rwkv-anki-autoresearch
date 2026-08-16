@@ -96,6 +96,18 @@ add anything. It establishes "more **identical** epochs don't help", not "more e
 don't help", and must not be quoted as the latter. This is the same point CLAUDE.md's
 endgame item (b) raises for the 10x run, now confirmed in code rather than suspected.
 
+**★ UPDATE 2026-08-16 — the fix is NOT "turn augmentation on", and the premise survives anyway.**
+Andrew decided augmentation stays OFF ("screw augmentation, at least that particular kind"), so
+epochs remain byte-identical replays by choice. That does not leave "more epochs" unevidenced,
+because the **2026-08-11 budget calibration measured it directly, with augmentation off**: a
+3x-budget step is worth **+0.002**, projecting to **+0.0042 at 10x** against the +0.0040 upstream
+gap. So what extra epochs buy in this setup is optimization steps under the WSD schedule (plus
+per-epoch dropout variation), not data variety — and the `champ5k_b1` null is a statement about
+2 epochs at that budget, not about 12.5.
+⚠ Two further reasons augmentation-on was a bad trade regardless: ~0.0024 run-to-run variance
+against a 0.0001 accept gate, and structural incompatibility with KD-from-dump (the dump's
+`labels_sum` checksum proves LABEL alignment and is blind to input-side changes).
+
 ## The cheap experiment that settles the data-vs-epochs question
 
 Neither "more users" nor "more epochs" is currently supported by evidence. Hold total
