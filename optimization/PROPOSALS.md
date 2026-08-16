@@ -40,7 +40,7 @@ Andrew also asked how idea generation itself could be improved; that discussion 
 | 3 | **Privileged self-distillation (imm → ahead)** — soften the ahead target toward the model's own better-informed imm estimate of the same event. | distillation | **iter 46**, implemented 2026-08-11 |
 | 4 | Duration dropout — per-row Bernoulli dropout of the duration feature (the corrected retry of iter 33's intent). | input-robustness | queued |
 | 5 | NorMuon / PolarExpress — refinements to the accepted Muon optimizer; the Newton-Schulz orthogonality error was measured real (0.19–0.31 RMS). | optimizer | queued |
-| 6 | Restore user/preset L0 channel-mixers (`RWKV_STRIP_CMIX`) — zero code, just a shorter strip list. | capacity | queued |
+| 6 | Restore user/preset L0 channel-mixers (`RWKV_STRIP_CMIX`) — zero code, just a shorter strip list. | capacity | **iter 49**, REJECTED 2026-08-16 — +0.000067 ahead at p=0.11 (a coin flip) / +0.000087 imm; both under the bar |
 
 ### Why #3 was promoted over #2 (2026-08-11)
 
@@ -175,3 +175,37 @@ because the query row sees the intervening reviews and the exact lag while the a
 cannot — is now demonstrated twice rather than argued once. **Do not rank a third routing variant.**
 What remains legitimately open is changing what the ahead path is **FED** (new input features, the
 endgame's step 2), which attacks information CONTENT rather than its routing.
+
+
+## ★ AFTER ITER 49: capacity-at-5k is 0/3 — a standing constraint on new proposals (2026-08-16)
+
+Three structurally different capacity adds now agree:
+
+| iter | where the params went | ahead / imm |
+|---|---|---|
+| — | num_curves/points 64→128, channel_mixer 1.0→1.5 (100-user era) | rejected |
+| — | WS 18 epochs / 8-epoch decay (100-user era) | rejected |
+| 49 | user/preset **layer-0** channel mixers, +26,070 params (+4.7%) | +0.000067 (p=0.11) / +0.000087 |
+
+Iter 49 is the sharpest of the three because it put the params back **exactly where the cmix
+ablations had removed the most**, and got noise on ahead. **Do not rank a fourth width/depth add
+without a mechanism argument that distinguishes it from these three.** The consistent reading, now
+confirmed at 5k on a 4.95x smaller trunk, is the 100-user era's: this model is **data-limited, not
+capacity-limited**, and training/topology levers are where the wins have come from.
+
+## Off-queue: the DECK TREE (Andrew's direct ask, iter 50, running 2026-08-16)
+
+Not from the ranked list — Andrew asked for it directly: `card->note->deck->preset->global` becomes
+`card->note->(deck, depth_level)->preset->global`. Running at **L=2** (parent level only, 49.21% of
+reviews, 17 layer-steps, 558,292 params). **L=3 is the better test in principle** — the deck-depth
+histogram peaks at 4, not 1 — and is the natural follow-up **if L=2 shows signal**, but it needs the
+memory addressed first: L=3 sits at 95% VRAM, which is this machine's documented WDDM paging cliff,
+with a GPU co-tenant.
+
+**Two implementation lessons for anyone proposing another stream:**
+1. **Cost it on B, not on rows.** The WKV state is per SEQUENCE, so a grouping that produces many
+   short sequences is expensive even when padded volume and kernel-launch counts look fine (they
+   both did; neither counts B). Giving inactive rows singleton sequences cost ~780 MB of extra
+   state before backward saves.
+2. **Do not time it until compile warmup is provably over** — several HUNDRED steps on this stack.
+   Three early windows said 2.5-4x slower; steady state was 1.35x, matching the shape prediction.
