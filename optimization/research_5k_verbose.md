@@ -2431,8 +2431,19 @@ whole trick.
 - The **scripted `forward_batch` RUNS**, not merely compiles — iter 48's lesson.
 - The phase-0 param assert was validated in both directions: 558,372 with the tree, 558,212 without.
 
+### The cost is 1.60x, MEASURED not projected (`scratchpad/deck_tree/shape_cost.py`)
+Padded kernel volume (`B*T` x layers, 4 users, 58,644 real rows) goes **1,344,210 -> 2,151,182 =
+1.60x**, matching the naive layer-step ratio 21/13 exactly. Two things that could have broken that
+model were checked and did NOT:
+- **Padding waste FELL.** Ancestor streams waste 45.5% / 37.8% against the deck stream's own 50.1%
+  -- the ~50% singleton rows pack into a length-1 bucket with zero padding.
+- **Parallelism ROSE.** `deck_id@1` has **13,533 sequences vs deck's 203** (maxT 8,296 vs 12,022),
+  because singletons dominate the sequence count. The worry was that ancestor decks pool many child
+  decks into fewer, longer sequences and cost wall-clock at equal work; the opposite happens.
+So ~1.6x on both time and activation memory is the honest estimate, and 12 GB should hold it.
+
 ### ⚠ The confound, stated in advance
-13 layer-steps become **21**, i.e. ~1.6× the model compute of the champion. **A win is therefore
+13 layer-steps become **21**, i.e. ~1.6x the model compute of the champion. **A win is therefore
 "the tree helps" OR "more deck compute helps"**, and disambiguating needs the L=2 arm (17
 layer-steps) plus a depth-matched control (e.g. ancestor levels at depth 1, which is compute-neutral
 at 15 steps). A tie needs no disambiguation — the usual asymmetry, and the reason this is worth
