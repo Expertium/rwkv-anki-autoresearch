@@ -955,6 +955,34 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**★★★ ANDREW 2026-08-17 — AT LEAST 10 MORE ALGORITHMIC ITERATIONS, AND THE FEATURES PHASE WAITS.**
+*"It seems a bit too early to give up on algorithmic improvements, give it at least 10 more iters.
+There is no way the current architecture and training are so optimal that no improvement is possible."*
+This OVERRIDES the reading that closed families + a 0-for-6 run meant the loop was done. The features
+code stays implemented-and-inert; the GPU goes back to algorithmic iterations. **Ranked queue of 5
+mechanism-motivated candidates is in `optimization/PROPOSALS.md`** (Muon on the excluded LoRA
+matrices; ensemble teacher; spacing-effect monotonicity; the fixed-budget WS:decay de-confound; hint
+distillation). Re-rank after the cheap ones report.
+**★ AND HIS SECOND POINT IS ALREADY SATISFIED — VERIFIED TWO WAYS, NOT QUOTED FROM THE DOC.**
+*"make sure in the new dataset review duration is subtracted from review ID, so that review ID is
+time when the user glanced at the card's front."* It is: `build_parquet_id.py:70` computes
+`review_time = entry.id - entry.taken_millis` with `duration = entry.taken_millis`. Confirmed IN THE
+DATA (user 333, 296,001 rows): SHOW times are monotone while ANSWER times (`review_time + duration`)
+are NOT -- which can only happen if the stored column is the show time and durations vary.
+**⚠ ONE CONSEQUENCE WORTH KNOWING, found while checking:** `elapsed_seconds` is a diff **in protobuf
+order** (per-card blocks), and the frame is sorted by `review_time` only afterwards -- so the
+show-time correction can reorder two adjacent reviews of one card and leave a NEGATIVE
+`elapsed_seconds`. Example: a 56.3 s review's show time lands 45 s before its predecessor's. That is
+the true origin of the NaN landmine (0.04% of rows on user 333), and it confirms the clamp-to-0
+choice: the real gap is tens of seconds, not "unknown". Inherited from upstream's formula, so NOT
+being changed unilaterally.
+**⚠ REBUILD COST IS NOW UNCERTAIN, NOT CHEAPER -- do not quote either number.** A 2-point fit
+(20 and 100 users, back to back) gives fixed 5.3 s + 84,666 rev/s => **1.8 h for train+test**,
+against the recorded **~23 h**. But the two disagree ~8x **on the identical 20 users**, and I have
+not identified why; my own cache-cold control was INVALID (I read the parquet to count reviews
+*before* timing, warming the cache for both arms). The honest statement is that the rebuild's real
+cost is unmeasured at scale -- 5 M reviews fit in page cache and 372 M do not. It gates nothing now
+that the features phase is deferred.
 **▶ THE FEATURES PHASE IS NOW CODE, NOT A PLAN (2026-08-16, CPU-only, zero GPU).** The endgame's
 step 2 -- previously "scoped" -- is implemented behind **`RWKV_ID_FEATURES=1`, default OFF and
 structurally inert**: `rwkv/id_features.py` + four hooks in `data_processing.py`. 21 real-timestamp

@@ -242,3 +242,34 @@ advantage does not.
 
 ⚠ Demotion on mechanism, not closure (conduct rule 5). And the measurement is one matched pair at the
 older 6,554-step / MAX=32768 budget; the current recipe runs 10,935 steps with an 8× lower Muon LR.
+
+## ★★★ ANDREW 2026-08-17: AT LEAST 10 MORE ALGORITHMIC ITERATIONS BEFORE THE FEATURES PHASE
+
+> *"It seems a bit too early to give up on algorithmic improvements, give it at least 10 more iters.
+> There is no way the current architecture and training are so optimal that no improvement is
+> possible. Well, it's possible that there won't be any improvement over 10 iters, but still."*
+
+This **overrides** the reading that closed families + a 0-for-6 run meant the loop was done. The
+features work stays where it is (implemented, inert, waiting) and the GPU goes back to algorithmic
+iterations. Note this is also the standing conduct rule's spirit — ">= 50 research iterations before
+even considering declaring nothing left to improve" — applied to a phase that had quietly started
+behaving as if the number were a ceiling rather than a floor.
+
+**The generation problem is real and worth stating**, because it is what made the loop look dry: the
+families with a hit rate are mostly closed *as families*, so the next 10 candidates have to come from
+mechanisms rather than from "one more variant of X". The list below is built that way — each entry
+names the measurement that motivates it and what would distinguish it from the reject that looks
+similar.
+
+| rank | candidate | family | mechanism, and what makes it NOT a repeat | cost |
+|---|---|---|---|---|
+| 1 | **Muon on the LoRA matrices** (`RWKV_MUON_INCLUDE_LORA`) | optimizer / regularization | The Muon group rule excludes any param whose name contains `lora` or `scale` (`train_rwkv.py:150-153`), so ~10.3% of params (57,412) run on AdamW — and on this trunk that group is dominated by the rank-4/rank-2 LoRA projections the A18 width ladder introduced. If Muon pays through **spectral regularization** (measured 2026-08-16), the most anisotropic matrices in the model are exactly the ones currently not getting it. Distinct from iter 51: no schedule change, the production triple and its p(1)=0.70 contraction are untouched. ⚠ Pre-register the counter-hypothesis — flattening a deliberately low-rank factorization's update may destroy what the factorization is for. | 5.5 h, ~2 lines |
+| 2 | **Ensemble teacher: d=128 + a frozen past champion** | distillation | Distillation is 4/5 and is the only family with a real hit rate. Iter 46's null is NOT a precedent against this: its teacher shared the trunk AND the forward pass, so the soft target re-expressed what the student already computed. A frozen iter-41/45 checkpoint is a genuinely different function evaluated in a separate pass. Mechanism: KD pays here through target-variance reduction (which is why alpha peaks at 0.9), and averaging two independent teachers reduces it further. | 5.5 h + ~2 h dump |
+| 3 | **Spacing-effect monotonicity on the curve** | curve-shape constraints | The family is 2/3 (PAVA, lambda=0.2). The GRU head already gives monotone-in-t and convex-in-t *by construction* (`(1+t/S)^-d`, d>0, and a nonneg mixture of convex functions is convex — checked in code, so do NOT propose either of those). What is NOT imposed is monotonicity in **review count**: stability should not decrease after a successful review. That is a real SRS structural fact and an un-used constraint. | 5.5 h |
+| 4 | **De-confound WS:decay at a FIXED budget** (1+1 vs 1.6+0.4) | schedule | `research_5k_notes.md` already establishes that iter 34's decay_ratio 0.25 -> 1.0 gain is confounded with a 1.25 -> 2.0 epoch budget change, and that the log-linear budget curve explains +0.00084 of the +0.00145. So the ratio itself rests on one confounded point, and the endgame's 10+2 split is *spending* +0.0006 it cannot demonstrate. This measures it. | ~10 h |
+| 5 | **Hint/feature distillation from the d=128 trunk** | distillation | Output-KD is 4/5; the classic next step is matching an intermediate representation, which targets the trunk directly rather than the two heads. Needs a learned projection (d=128 -> d=80) since the widths differ — the only entry here with real implementation risk. | 5.5 h + dump |
+
+⚠ Ranks 1-3 are cheap and single-variable; run them first and re-rank on what they say. Rank 1 is
+also the fastest to reject: if extending Muon's coverage does nothing, the "Muon = regularizer"
+reading loses its most direct prediction, which is worth knowing early.
+
