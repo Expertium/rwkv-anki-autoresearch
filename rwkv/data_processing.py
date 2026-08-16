@@ -205,10 +205,17 @@ def add_segment_features(df, equalize_review_ths=[]):
 
 def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     df = pd.read_parquet(data_path / "revlogs" / f"{user_id=}")
-    if _idf.enabled():
+    if "review_time" in df.columns:
         # BEFORE any cumsum or log: the -id set's recomputed gaps can go negative, which turns
-        # scale_elapsed_seconds into log(negative) = NaN and costs the whole user. See the
-        # docstring -- 10 of 313 sampled users are affected.
+        # scale_elapsed_seconds into log(negative) = NaN and costs the whole user (measured: 4 of
+        # 60 stride-sampled train users).
+        #
+        # ⚠ Gated on the DATASET (`review_time` present == this is the -id set), not on
+        # RWKV_ID_FEATURES, for the same reason as the drop below. This is a data-integrity fix,
+        # not part of the new-features treatment: if only the ON arm were clamped, the OFF control
+        # would silently lose whole users to NaN and the two arms would no longer cover the same
+        # rows -- turning a clean single-variable comparison into a coverage difference. Published
+        # data has no `review_time`, so live runs are untouched by construction.
         df = _idf.clamp_negative_gaps(df)
     df_len = len(df)
     df["user_id"] = user_id
@@ -257,10 +264,18 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
         # columns AS creation timestamps -- after the fill, "deck age" would be measured against a
         # placeholder. Nothing would crash; the column would just be wrong.
         df = _idf.add_id_features(df, df_cards, df_decks_raw)
-        # Site 4 of the plan: DROP review_time before add_queries' exhaustive partition assert
-        # ("Ensure that all columns are explicitly listed"). Listing it in keep_columns would work
-        # too, but that leaves a 1.7e12-magnitude raw epoch column one mistake away from the
-        # feature vector -- and it has no business being an input on magnitude grounds alone.
+    # Site 4 of the plan: DROP review_time before add_queries' exhaustive partition assert
+    # ("Ensure that all columns are explicitly listed"). Listing it in keep_columns would work too,
+    # but that leaves a 1.7e12-magnitude raw epoch column one mistake away from the feature vector,
+    # and it has no business being an input on magnitude grounds alone.
+    #
+    # ⚠ DELIBERATELY NOT GATED ON THE FLAG, and the de-risk plan is why. FUTURE_FEATURES.md's
+    # control arm is "`-id` with the new columns OFF" -- the only comparison where a difference is
+    # unambiguously the new derivations, since the published-vs-`-id` swap alone moves `size` for
+    # ~30% of users. Gating the drop would make that arm impossible: `-id` + flag off would die on
+    # the very assert this line exists to satisfy. Published data has no `review_time`, so every
+    # live run is unaffected.
+    if "review_time" in df.columns:
         df = df.drop(columns=["review_time"])
 
     # find cards with a nan note_id and fill them with a unique value individually
