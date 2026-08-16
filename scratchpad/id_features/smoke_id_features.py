@@ -123,16 +123,38 @@ def on():
     # Any statistic computed over the whole table -- a batch count, a mean, a max -- breaks this.
     full = frames[USERS[1]]
     n_keep = max(50, len(r) // 3)
-    kept_ths = set(range(1, n_keep + 1))
-    trunc = get_rwkv_data(IDD, USERS[1], equalize_review_ths=[])
-    trunc = trunc  # placeholder: get_rwkv_data has no prefix argument, so compare per-column below
-    # Compare the FIRST n_keep real (non-query) rows against themselves under a re-run -- this
-    # catches nondeterminism; true prefix-invariance is checked directly on the derivation instead.
+    # First, determinism: a second pass over the same user must give identical columns. Cheap, and
+    # it separates "the derivation is nondeterministic" from "the derivation looks at the future",
+    # which the prefix test below would otherwise conflate.
+    rerun = get_rwkv_data(IDD, USERS[1])
     a = full[full["is_query"] == 0].sort_values("review_th").head(n_keep)
-    b = trunc[trunc["is_query"] == 0].sort_values("review_th").head(n_keep)
+    b = rerun[rerun["is_query"] == 0].sort_values("review_th").head(n_keep)
     same = all(np.allclose(a[c].to_numpy(dtype=np.float64), b[c].to_numpy(dtype=np.float64))
                for c in idf.NEW_COLUMNS)
     check("re-running gives identical new columns (deterministic)", same)
+
+    # --- the PARTITION ASSERT, which get_rwkv_data alone does NOT exercise ---
+    # add_queries has an exhaustive "every column is either kept or rejected" check with a length
+    # assert whose message is "Ensure that all columns are explicitly listed". That assert is the
+    # documented blocker for the whole rebuild (an EXTRA column is exactly what a schema check
+    # cannot fail on), and it lives one function past get_rwkv_data -- so a smoke that stops at
+    # get_rwkv_data proves nothing about it. create_sample is the real entry point.
+    from rwkv.data_processing import create_sample
+    import torch
+    smp = create_sample(USERS[1], frames[USERS[1]], [], torch.float32, "cpu")
+    feats = smp.card_features if hasattr(smp, "card_features") else None
+    check("create_sample passes the exhaustive partition assert", True,
+          f"{tuple(feats.shape) if feats is not None else 'built'}")
+    if feats is not None:
+        check("sample feature width matches the column list",
+              feats.shape[1] == len(CARD_FEATURE_COLUMNS), str(feats.shape))
+        check("sample features finite", bool(torch.isfinite(feats).all()))
+        # query ("no press yet") rows must still carry the new columns -- they are keep_columns,
+        # and a zeroed timestamp column would silently make the ahead path blind to WHEN.
+        qi = idf.NEW_COLUMNS.index("tod_cos")
+        col = feats[:, len(CARD_FEATURE_COLUMNS) - len(idf.NEW_COLUMNS) + qi]
+        check("new columns are non-constant on the full sample (query rows included)",
+              float(col.std()) > 1e-6, f"tod_cos std {float(col.std()):.4f}")
 
     rr = r.iloc[:n_keep].copy()
     cc = c.copy()
