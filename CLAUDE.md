@@ -910,6 +910,21 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    nothing", ahead -0.00006 p=0.31) was measured in the one configuration where extra epochs CANNOT
    help. It says "more IDENTICAL epochs don't help" — never quote it as "more epochs don't help".**
    Turn augmentation ON for the 10x run, or it risks reproducing that null at 40x the cost.
+   **★★ BUT AUGMENTATION-ON AND KD-FROM-DUMP ARE MUTUALLY EXCLUSIVE (found 2026-08-16; the plan as
+   written above would hit this SILENTLY).** `RWKV_AUGMENT_SEED=none` makes the fetch children
+   UNSEEDED, so the ID-encoding and time-phase draws are not reproducible run to run. The KD dump
+   stores the teacher's OUTPUT LOGITS plus `labels_sum` as its ONLY identity check -- and
+   augmentation changes INPUTS, not labels. A KD run with augmentation on therefore PASSES the
+   checksum while distilling toward teacher predictions computed on different inputs, and
+   regenerating the dump cannot fix it (the next run draws differently again). Three options, each
+   with a real cost: (a) augmentation ON, NO KD -- forfeits the ~0.0019 iters 32/35/39/45 banked;
+   (b) a LIVE teacher forward per step instead of a dump -- exact, but adds the d=128 forward to
+   every step; (c) augmentation OFF, accepting byte-identical replays. **Decide before launching,
+   not during.** Same family as the QAT-inert bug: the checksum proves LABEL alignment and was being
+   read as proving BATCH alignment.
+   ⚠ Augmentation-on also carries **~0.0024 run-to-run variance against a 0.0001 accept gate** (24x
+   the bar), so it can never be validated as an ordinary research iteration -- it is an endgame-only
+   decision, and it will have to be taken on reasoning rather than on a measured A/B.
    (c) **wd/dropout** were tuned where
    overfitting was impossible; at 10x they are live levers. None of this is a reason to delay —
    just do not assume the 1-ep recipe transfers.
