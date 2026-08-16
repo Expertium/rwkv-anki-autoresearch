@@ -513,3 +513,81 @@ link would leave most of the hierarchy unused -- Anki users nest decks (`Japanes
 This is what set iter 50's L=3 rather than L=2: it is the smallest L that tests *tree* rather than
 *parent*. Levels 4+ are held back because each costs a full extra 4-layer pass for a shrinking share
 of the corpus (21 layer-steps at L=3 vs 13 today).
+
+---
+
+## ★★ THE CODE IS WRITTEN AND SMOKE-TESTED (2026-08-16) — what is left is Andrew's go, then GPU
+
+`rwkv/id_features.py` + hooks in `rwkv/data_processing.py`, all behind **`RWKV_ID_FEATURES=1`,
+default OFF and structurally inert when off** (with the flag unset the column list is the original
+24, the width helper returns 92, and `parity3/parity_train_vs_rnn.py` still passes all seven cases).
+The flag has to be inert rather than merely unused, because every live run reads the existing LMDBs
+and must keep producing byte-identical input tensors.
+
+**Shipped: 21 new columns replacing the card-state column → width 92 → 112.** Time-of-day raw phase
++ deviation from the user's running circular mean; true-phase day-of-week / day-of-year + weekend
+flag; sub-day time-since-any-review; user tenure; creation→first-review; deck age, depth,
+`card_predates_deck`, `is_default_deck`; the four creation-batch columns; `is_default_preset`.
+All 21 are `keep_columns` — none describes the outcome, only *when* the review happens and what the
+card/deck are, the same status `day_offset_diff` already has.
+
+### ⚠ THREE CORRECTIONS TO THE PLAN ABOVE, EACH FORCED BY RUNNING IT
+
+1. **★ "FIX (one line)" is wrong, and the documented version does not work.** Clamping
+   `elapsed_seconds` to the **−1 sentinel** moves the NaN one column over instead of removing it:
+   `elapsed_seconds_cumulative` is a per-card cumsum, so a card that gains a *second* sentinel
+   cumulates to **−2** and `scale_elapsed_seconds_cumulative` takes the identical `log(negative)`
+   branch. Measured on this page's own index case — user 486, card 1674953822938: raw
+   `[-1, -1, 43164, 22550]` → cumulative `[-1, -2, 43162, 65712]`, NaN on row 9182. **The plan's fix
+   would have passed a raw-column check and still lost the user.**
+   **Clamp to 0 instead.** The page's stated objection ("that would claim the two reviews were
+   simultaneous") is weaker than it looks: the overlap is bounded by the review's *own* duration, so
+   the true gap really is ~0 seconds and −1 ("no previous review at all") is the *less* accurate
+   code. It is also self-limiting — with every non-sentinel value ≥ 0 a card's cumsum is
+   `−1 + sum(nonneg) ≥ −1` by construction, which `data_processing` now asserts rather than hopes.
+   **Counterfactual over 60 stride-sampled train users: 4 of 60 (6.7%) would have NaN'd** — higher
+   than the 3.2% recorded here.
+2. **NOT `elapsed_days`.** The one-liner says "same for `elapsed_days`"; that would be a silent
+   corruption, because `is_first_review` is defined as `elapsed_days == -1`, so clamping a mid-card
+   review to the sentinel re-labels it as that card's FIRST review and poisons `cum_new_cards`,
+   `diff_new_cards` and the label machinery. It gets an **assert** instead — integer days cannot go
+   negative from a sub-day overlap, so if it ever fires we want to know loudly.
+3. **★ The reference derivations in `optimization/feature_stats_id.py` LEAK, and porting them
+   verbatim would have shipped it.** They count a user's **whole** card collection, which is correct
+   for the marginal distributions they were written to measure and wrong as a feature:
+   `creation_batch_1d` would tell the model how many cards the user *went on to* create later that
+   day. The production counts are clipped at `review_time` — on user 1 that is **289 of 22,430 rows**
+   that would otherwise have leaked. This is exactly the case the "Leakage rule" section above
+   anticipated ("same-day-created-and-reviewed cards stay honest") and it was still one copy-paste
+   away.
+
+### Also fixed on the way: `card_features_dim = 92` was hardcoded TWICE
+Once in `srs_model.py` and once in `srs_model_rnn.py` — two copies of one number, which is the shape
+of bug this project keeps paying for (the Rust positional-stream bug; STRIP_CMIX living only in
+`rwkv_model.py`). Both now call `id_features.input_width()`. And `RWKV_ZERO_FEATURES=22` is **refused**
+under the new layout rather than silently masking whatever now sits at index 22 (`day_of_week`) —
+the rebuild removes the state column at the source, so the mask is obsolete, not merely renumbered.
+
+### The smokes (both CPU, both green)
+* `scratchpad/id_features/smoke_id_features.py` — inertness when off; when on, finite values on
+  60 users / 6.3 M rows (zero NaN, zero exceptions) plus three leakage properties: causal batch
+  counts, the circular mean using strictly prior reviews, and **prefix invariance at exactly
+  0.000e+00** (truncate a user's history, the surviving rows are unchanged — the strongest of the
+  three, because any accidental whole-table statistic breaks it at once).
+* `scratchpad/parity3/smoke_id_features_width.py` — training class, deploy RNN class and
+  `CARD_FEATURE_COLUMNS` agree on the width under BOTH flag values (92 / 112). This is the §9
+  three-way check for this flag; it cannot live in `parity_train_vs_rnn.py`, which is single-stack.
+
+### WHAT IS STILL NOT DONE (in order)
+1. **`scratchpad/parity3/smoke_scripted_eval.sh`** — the iter-48 guard, mandatory after touching
+   `srs_model.py`. Needs a free GPU, so it waits for the running QAT job.
+2. **The 100-user de-risk build** on `-id`, comparing new-columns-ON vs new-columns-OFF (the `-id`
+   vs published comparison is invalid — `size` moves for ~30% of users from the dataset swap alone).
+3. **`find_equalize_test_reviews` → a new `label_filter_db`**, and re-reading the `size` gate as
+   *within a rebuild generation*.
+4. **Andrew's go for the ~23 h train+test rebuild on F:.** Not started; the endgame order puts the
+   algorithmic loop first, and every run in it reads `train_db_5k_h1`.
+5. **Rust deploy debt:** `rust/rwkv-infer` has its own input width and will need the new columns
+   plus a fresh parity trace. Not a blocker for measuring the features, but it is a gap the moment
+   one is adopted.
+
