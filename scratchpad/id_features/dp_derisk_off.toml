@@ -1,0 +1,27 @@
+# DE-RISK BUILD, ARM OFF (the CONTROL): 100 users from `anki-revlogs-10k-id` WITHOUT the new columns.
+# FUTURE_FEATURES.md "De-risk before committing anything" -- build a small LMDB first and check the
+# pipeline end to end for ~1% of the 23 h rebuild's cost.
+#
+# The comparison is against dp_derisk_on.toml, which is THIS FILE with a different LMDB_PATH and
+# RWKV_ID_FEATURES=1 set. That is the only valid control: the published-vs-`-id` swap
+# alone moves `size` for ~30% of users (measured 2026-08-03), so a difference against the existing
+# DB would be unattributable. Here the dataset, users, batch size and label filter are identical and
+# the ONLY difference is the feature columns.
+#
+# Reads the read-only -id set; writes a throwaway LMDB on F: (888 GB free). Touches nothing live.
+# LMDB_SIZE is deliberately modest: Windows reserves map_size on disk up front, and 100 train-half
+# users is ~5 M reviews, i.e. low single-digit GB.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/derisk_id_off"
+LMDB_SIZE = 30_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 100
+MAX_BATCH_SIZE = 16384
+PROCESSES = 6
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
