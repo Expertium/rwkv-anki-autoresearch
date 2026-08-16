@@ -292,7 +292,9 @@ deltas so dead ends aren't re-run.
   `features/` (vendored cross-repo deps — needed for imports) · `build_dataset.py` ·
   `test_users.json` · `verify_rust.py` (Rust-parity gate) + `export_rnn_trace.py` +
   `make_reference.py` (its trace/reference companions).
-- **`rwkv/`** — the vendored+evolved package: `architecture.py` (5-stream config + env hooks +
+- **`rwkv/`** — the vendored+evolved package: `deck_tree.py` (NEW 2026-08-16 — `RWKV_DECK_TREE=L`: the
+  parent-map loader, the ancestor walk, and the shared `build_module_data` grouping helper that
+  `prepare_batch.insert_probes` now also calls); `architecture.py` (5-stream config + env hooks +
   RWKV_ARCH_MODULE), `config.py`, `train_rwkv.py`, `get_result.py` (eval), `data_processing.py` /
   `prepare_batch.py` / `data_fetcher.py` / `find_equalize_test_reviews.py` (data pipeline),
   `run_as_rnn.py` (CPU RNN mode), `parse_toml.py`, `utils.py`; `model/` = `srs_model.py`,
@@ -358,6 +360,17 @@ deltas so dead ends aren't re-run.
   `buttons_py_vs_rust.py` (the 4 button intervals, Python vs Rust), `smoke_qat_jit.py` (CPU,
   seconds: proves QAT compiles as a ScriptModule, dispatches to the jit-ignored kernel, and
   matches eager bit-for-bit — i.e. `RWKV_NO_JIT=1` is not structurally required by QAT).
+  `smoke_deck_tree_rnn.py` (2026-08-16 — the deck tree in the RNN DEPLOY path: an all-inactive
+  parent map must reproduce the tree-off forward exactly, a real one must not).
+  **`deck_tree/`** (NEW 2026-08-15/16) = the deck-hierarchy lever's own tooling:
+  `build_parent_maps.py` -> **`parent_maps.parquet` (TRACKED, 4.6 MB — a RUN DEPENDENCY of any
+  deck-tree iteration; users 1-7500, 94.55% resolve, 0 cycles)**, `verify_lmdb_link.py` (do the
+  LMDB's stored deck ids resolve? 49.21% of reviews can walk up >=1 level), `level_reach.py` (the
+  per-level reach + depth histogram that set L), `shape_cost.py` (padded kernel volume per stream
+  — ⚠ it does NOT count B, which is what the singleton blunder turned on), `smoke_inert.py` (the
+  lever is byte-identical with the flag off), `smoke_tree.py` + `run_smoke_tree.cmd` (off / null /
+  real; `parent_maps_null.parquet` is derived scratch, gitignored).
+  **`iter50_decktree/`** = the live run.
   **`eval_pava/`** = the rectified-eval pipeline +
   `check_imm_identical.py` (⚠ its premise is WRONG in bf16 — see below) + `decompose_duration.py`
   (splits the rect-vs-unrect ahead delta) + `run_mode3_noise.cmd` (the noise control).
