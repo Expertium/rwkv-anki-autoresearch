@@ -915,20 +915,28 @@ applies to stored ids directly.
 deck id, marked inactive, and never scattered back. An all-inactive map reproduces the tree-off
 forward exactly in BOTH Python paths (`scratchpad/deck_tree/smoke_tree.py`,
 `scratchpad/parity3/smoke_deck_tree_rnn.py`); a real map moves it.
-**★ TWO COSTING LESSONS, both from the live run and both generalizable.**
-(1) **The WKV state is per SEQUENCE, so cost lives on B, not rows.** Inactive rows were singletons
-first ("T=1 is the cheapest thing the kernel can be handed" -- true of the sequential axis, and
-irrelevant): ~24,600 singletons carried ~100x the deck stream's state => 11.8/12.3 GB and **0.16
-steps/s at 1% GPU utilisation**. Padded volume (1.60x) and kernel launches (42->74) BOTH looked
-fine; neither counts B. I had even written the high sequence count up as reassuring.
-**Cost every future "add a coarse stream" proposal on B.**
-(2) **Low-B/high-T streams are the worst shape for this kernel.** After the fix, L=3 still ran 3.75x
-slower (vs 1.31x predicted) at 95% VRAM (WDDM paging cliff), so it was re-scoped to **L=2**, which
-runs 2.48x slower at 10.8 GB / 76% util. The residual gap is real compute: ancestor streams have
-B~=64 sequences vs the card stream's 11,900, i.e. ~320 parallel units on a 46-SM card.
-L=2 still puts a parent level on **49.21% of reviews**. Depth histogram PEAKS AT 4 (reach 49.2 /
-38.3 / 31.2 / 20.9%), so L=3+ stays the better test in principle -- worth the memory work only if
-L=2 shows signal. Detail + the L=3 pre-registration kept verbatim: `research_5k_verbose.md` iter 50.
+**★ ONE REAL COSTING LESSON, AND ONE WRONG CONCLUSION I HAD TO RETRACT WITHIN THE HOUR.**
+(1) **REAL -- the WKV state is per SEQUENCE, so a new stream's MEMORY lives on B, not rows.**
+Inactive rows were singletons first ("T=1 is the cheapest thing the kernel can be handed" -- true of
+the sequential axis, and irrelevant): 13,533 + 24,646 singleton sequences x 1280 floats x 4 layers =
+**~780 MB of extra WKV state fp32**, before backward saves. Grouping them by negated leaf deck
+instead gives 64 / 57 sequences and total state +1.4%. Padded volume (1.60x) and kernel launches
+(42->74) BOTH looked fine; **neither counts B**, and I had written the high sequence count up as
+*reassuring* ("parallelism ROSE"), which was the alarm read backwards.
+**Cost every future "add a coarse stream" proposal on B as well as on rows.**
+(2) **⚠ RETRACTED -- "low-B/high-T is the worst shape for this kernel" is NOT supported.** I measured
+0.16 then 0.238 then 0.360 steps/s and built a mechanism story on the gap to the 1.31x shape
+prediction. **All three windows were inside `torch.compile` warmup.** True steady state is
+**0.664 steps/s = 1.35x**, i.e. the shape prediction was right all along and there is no anomaly to
+explain. **The rule: never time a run against a steady-state baseline until compile warmup is
+provably over** -- on this stack that is several hundred steps, not tens. Same family as iter 47's
+three method failures (metric / trajectory / signal each held fixed).
+**=> the L=3 -> L=2 re-scope now rests ONLY on memory**, which is the part that was never a timing
+artifact: L=3 sits at 11.6-11.8 of 12.3 GB (95%), and this machine has a documented WDDM cliff and a
+GPU co-tenant (Andrew's FSRS benchmark), so a 10 h run there is fragile. L=2 sits at 10.8 GB and
+still puts a parent level on **49.21% of reviews**. Depth histogram PEAKS AT 4 (reach 49.2 / 38.3 /
+31.2 / 20.9%), so L=3+ remains the better test in principle, worth the memory work if L=2 shows
+signal. Detail + the L=3 pre-registration kept verbatim: `research_5k_verbose.md` iter 50.
 **✓ ITER 49 DONE 2026-08-16 06:32 -- REJECTED** (`iter49_cmix`, restore the user/preset LAYER-0
 channel mixers by dropping `user_id:0,preset_id:0` from `RWKV_STRIP_CMIX`; +26,070 params, +4.7%).
 ahead 0.297630 = **+0.000067 at p=0.113** (INSIDE the +/-7.5e-5 floor -- a coin flip); imm 0.265288 =

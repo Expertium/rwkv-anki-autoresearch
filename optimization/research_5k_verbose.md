@@ -2539,3 +2539,38 @@ stream" proposal should be costed on B, not on rows.**
 hierarchy carry information". If it shows signal, L=3 justifies the memory work; if it is a tie,
 deeper levels were never going to rescue it. The confound shrinks correspondingly: 13 -> 17
 layer-steps (1.31x), disambiguated by a depth-1 ancestor control if it wins.
+
+### ⚠ RETRACTION, same day: the "2.48x / low-B-high-T" analysis above is WRONG
+
+Everything in the previous subsection about **wall-clock** was measured inside `torch.compile`
+warmup and must not be quoted. Timeline of my own numbers for the SAME L=2 configuration:
+
+| window | steps | measured | what it actually was |
+|---|---|---|---|
+| first | 11 → 35 | 0.238 steps/s | compile warmup |
+| second | ~34 → 50 | 0.360 steps/s | still warmup |
+| **steady** | **226 → 299** | **0.664 steps/s** | **the real rate** |
+
+**0.664 vs the champion's 0.893 is 1.35x — the shape analysis predicted 1.31x and was right.** There
+was no anomaly, so the mechanism I invented for it ("ancestor streams are low-B/high-T, ~320
+parallel units on a 46-SM card, the worst shape for this kernel") explains a gap that does not
+exist. It is retracted. It may still be true as a statement about the kernel; nothing here is
+evidence for it.
+
+**THE RULE THIS EARNS:** *never time a run against a steady-state baseline until compile warmup is
+provably over.* On this stack that is several **hundred** steps, not tens — `RWKV_QAT_COMPILE=1`
+plus dynamo recompiles on new stream shapes. Projected cost accordingly falls from ~20.5 h to
+**~4.6 h WS + ~4.6 h decay + ~3.5 h eval ≈ 13 h**.
+
+**What survives, and why the re-scope to L=2 still stands.** The singleton fix is justified on
+*memory*, which was never a timing measurement: 13,533 + 24,646 singleton sequences × 1280 floats ×
+4 layers ≈ **780 MB of extra WKV state in fp32** before backward saves, against 64 / 57 sequences
+and +1.4% total after. And L=3's **11.6–11.8 of 12.3 GB (95%)** is likewise a direct reading, on a
+machine with a documented WDDM paging cliff at that occupancy and a GPU co-tenant (Andrew's FSRS
+benchmark). A 10 h run there is fragile for reasons that have nothing to do with steps/s. **So the
+decision is unchanged and the stated reason for it is now only memory** — the speed half of the
+argument was an artifact.
+
+**This is the third measurement error of the iter-47 family in a week** (wrong metric, wrong
+checkpoint, wrong signal — now wrong *window*), and the pattern is identical each time: a confident,
+plausible, mechanism-shaped story built on a comparison where one side was not held fixed.
