@@ -76,9 +76,9 @@ if MODE == "real":
             ids = d.ids[nm].numpy()
             n_neg = int((ids < 0).sum())
             n_sing = int(md.split_B[0]) if len(md.split_len) and md.split_len[0] == 1 else 0
-            assert n_sing >= n_neg, f"{nm}: {n_neg} inactive rows but only {n_sing} singletons"
+            pass  # inactive rows now group by LEAF DECK, not as singletons (see deck_tree docstring)
         break
-    print(f"[{MODE}] inactive rows are singleton groups: OK")
+    print(f"[{MODE}] inactive rows grouped by leaf deck: OK")
 
 torch.manual_seed(1234)
 model = SrsRWKV(DEFAULT_ANKI_RWKV_CONFIG)

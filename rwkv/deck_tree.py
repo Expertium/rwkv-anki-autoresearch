@@ -15,11 +15,20 @@ REACH (40 users, all chunks, 3.67 M reviews, review-weighted -- scratchpad/deck_
 The chain-depth histogram PEAKS AT 4, not 1 -- Anki users nest decks deeply -- which is why this
 is a loop over levels and not a single "parent deck" link.
 
-ROWS WITH NO k-TH ANCESTOR get a row-unique negative id, so they form SINGLETON sequences (T=1,
-the cheapest thing the WKV kernel can be handed) and are additionally marked INACTIVE. The model
-never scatters an inactive row's output back, so those rows pass through the level EXACTLY
-unchanged. Singletons rather than one shared sequence on purpose: a shared sequence would be
-T=N sequential work for output that is thrown away.
+ROWS WITH NO k-TH ANCESTOR are grouped by their LEAF deck id, negated so it cannot collide with a
+real ancestor id, and are additionally marked INACTIVE. The model never scatters an inactive row's
+output back, so those rows pass through the level EXACTLY unchanged.
+
+⚠ THEY WERE SINGLETONS FIRST, AND THAT COST AN 8x SLOWDOWN. The reasoning was "T=1 is the cheapest
+thing the WKV kernel can be handed", which is true about the SEQUENTIAL axis and irrelevant: the WKV
+**state is per SEQUENCE** (H*K*K floats each), so ~24,600 singletons carry ~100x the state of the
+deck stream's 203 sequences. Measured on the real run: 11.8 of 12.3 GB VRAM and 0.16 steps/s against
+the champion's 1.25, with GPU utilisation at 1% -- the card was busy allocating and writing state,
+not computing. Padded volume (1.60x) and kernel launches (42 -> 74) both looked fine and both missed
+it, because neither counts B.
+GROUPING BY LEAF DECK bounds the sequence count by the number of decks (~200/user) instead of the
+number of rows. The extra sequential work is on output that is discarded, and the deck stream
+already runs T=12,022 sequences routinely.
 
 ⚠ Every row must still belong to exactly one group in EVERY stream -- prepare() chains each
 stream's gather against the previous stream's LAYOUT (current_locs_list), so a row that is absent
@@ -110,8 +119,10 @@ def _load():
 def ancestor_ids(user_id: int, deck_ids: np.ndarray, k: int):
     """Walk `deck_ids` up k levels. Returns (ids, active).
 
-    `ids` is int64 with a ROW-UNIQUE negative sentinel wherever the walk ran out of ancestors
-    (root, deleted deck, ID_PLACEHOLDER, or a cycle), so those rows group as singletons.
+    `ids` is int64 carrying -(leaf_deck_id + 1) wherever the walk ran out of ancestors (root,
+    deleted deck, ID_PLACEHOLDER, or a cycle). Negative so it cannot collide with a real ancestor
+    id; keyed on the LEAF deck so the sequence count stays bounded by the user's deck count rather
+    than their review count (see the module docstring -- singletons here cost an 8x slowdown).
     `active` is the bool mask of rows that DID reach distance k.
     """
     pm = _load()
@@ -148,8 +159,8 @@ def ancestor_ids(user_id: int, deck_ids: np.ndarray, k: int):
     ids = res[inv]
     active = ok[inv]
     if not active.all():
-        dead = np.nonzero(~active)[0]
-        ids[dead] = -(dead.astype(np.int64) + 1)  # row-unique => singleton groups
+        # group by LEAF deck, negated: bounded sequence count, no collision with real ancestor ids
+        ids = np.where(active, ids, -(deck_ids.astype(np.int64) + 1))
     return ids, active
 
 
