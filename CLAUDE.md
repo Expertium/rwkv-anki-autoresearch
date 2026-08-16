@@ -292,7 +292,10 @@ deltas so dead ends aren't re-run.
   `features/` (vendored cross-repo deps — needed for imports) · `build_dataset.py` ·
   `test_users.json` · `verify_rust.py` (Rust-parity gate) + `export_rnn_trace.py` +
   `make_reference.py` (its trace/reference companions).
-- **`rwkv/`** — the vendored+evolved package: `deck_tree.py` (NEW 2026-08-16 — `RWKV_DECK_TREE=L`: the
+- **`rwkv/`** — the vendored+evolved package: **`id_features.py`** (NEW 2026-08-16 — `RWKV_ID_FEATURES=1`,
+  default OFF and structurally inert: the 21 real-timestamp columns, the measured normalization
+  constants, the negative-gap clamp, and `input_width()`, which `srs_model.py` + `srs_model_rnn.py`
+  now BOTH call instead of each hardcoding `card_features_dim = 92`); `deck_tree.py` (NEW 2026-08-16 — `RWKV_DECK_TREE=L`: the
   parent-map loader, the ancestor walk, and the shared `build_module_data` grouping helper that
   `prepare_batch.insert_probes` now also calls); `architecture.py` (5-stream config + env hooks +
   RWKV_ARCH_MODULE), `config.py`, `train_rwkv.py`, `get_result.py` (eval), `data_processing.py` /
@@ -360,6 +363,9 @@ deltas so dead ends aren't re-run.
   `buttons_py_vs_rust.py` (the 4 button intervals, Python vs Rust), `smoke_qat_jit.py` (CPU,
   seconds: proves QAT compiles as a ScriptModule, dispatches to the jit-ignored kernel, and
   matches eager bit-for-bit — i.e. `RWKV_NO_JIT=1` is not structurally required by QAT).
+  `smoke_id_features_width.py` (2026-08-16 — the §9 three-way check for `RWKV_ID_FEATURES`, which
+  CANNOT live in `parity_train_vs_rnn.py` because that harness is single-stack: asserts the training
+  class, the deploy RNN class and `CARD_FEATURE_COLUMNS` agree on the width at BOTH 92 and 112).
   `smoke_deck_tree_rnn.py` (2026-08-16 — the deck tree in the RNN DEPLOY path: an all-inactive
   parent map must reproduce the tree-off forward exactly, a real one must not).
   **`deck_tree/`** (NEW 2026-08-15/16) = the deck-hierarchy lever's own tooling:
@@ -370,7 +376,11 @@ deltas so dead ends aren't re-run.
   — ⚠ it does NOT count B, which is what the singleton blunder turned on), `smoke_inert.py` (the
   lever is byte-identical with the flag off), `smoke_tree.py` + `run_smoke_tree.cmd` (off / null /
   real; `parent_maps_null.parquet` is derived scratch, gitignored).
-  **`iter50_decktree/`** = the live run.
+  **`id_features/`** (NEW 2026-08-16) = `smoke_id_features.py`, the inertness + leakage smoke for the
+  `-id` feature rebuild (prefix invariance at 0.000e+00 is the one that catches a whole-table
+  statistic). **`optimizer_regime/`** (NEW 2026-08-16) = `muon_gap_over_training.py` (Muon-vs-AdamW
+  train gap by decile on the iter-29/iter-26 MATCHED pair) + `ns_steps_dose.py` (the NS step-count
+  screen). **`iter50_decktree/`** = the finished run.
   **`eval_pava/`** = the rectified-eval pipeline +
   `check_imm_identical.py` (⚠ its premise is WRONG in bf16 — see below) + `decompose_duration.py`
   (splits the rect-vs-unrect ahead delta) + `run_mode3_noise.cmd` (the noise control).
@@ -945,6 +955,40 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**▶ THE FEATURES PHASE IS NOW CODE, NOT A PLAN (2026-08-16, CPU-only, zero GPU).** The endgame's
+step 2 -- previously "scoped" -- is implemented behind **`RWKV_ID_FEATURES=1`, default OFF and
+structurally inert**: `rwkv/id_features.py` + four hooks in `data_processing.py`. 21 real-timestamp
+columns replace Anki's card-state column, width **92 -> 112**. Nothing changes for a run that does
+not set the flag (verified: original 24-column list, width 92, all seven CPU parity cases still pass).
+**WHY NOW:** the algorithmic loop is visibly running dry -- **0-for-6** since iter 45 (46, 47, 48, 49,
+50, 51), with ahead-vs-imm CLOSED on mechanism, topology CLOSED, capacity 0/3, low-rank-reg CLOSED and
+the optimizer remainder demoted. CLAUDE.md's own instruction was to "start scoping it BEFORE the
+algorithmic loop runs dry, not after". ⚠ This is preparation only -- **starting the ~23 h rebuild is
+still Andrew's call** and is step 1 of the FEATURES phase, not a preparatory step.
+**★ THREE PLAN CORRECTIONS, each found by running it, full detail in `FUTURE_FEATURES.md`:**
+(1) the documented "FIX (one line)" for the NaN landmine **does not work** -- clamping
+`elapsed_seconds` to the -1 SENTINEL moves the NaN into `elapsed_seconds_cumulative` (a per-card
+cumsum; a second sentinel cumulates to -2 and takes the same `log(negative)` branch). Measured on the
+page's own index case, user 486. **Clamp to 0**: more faithful (the overlap is bounded by the review's
+own duration, so the gap really is ~0) and self-limiting (`-1 + sum(nonneg) >= -1` by construction,
+now asserted). Counterfactual: **4 of 60 stride-sampled train users (6.7%) would have NaN'd**.
+(2) **NOT `elapsed_days`** -- `is_first_review` IS `elapsed_days == -1`, so clamping there re-labels a
+mid-card review as a first review and poisons the label machinery. Assert instead.
+(3) **The reference derivations in `feature_stats_id.py` LEAK** -- they count a user's WHOLE card
+collection, correct for the marginals they were written for and wrong as a feature
+(`creation_batch_1d` would reveal cards created later that day). Production counts are clipped at
+`review_time`; **289 of user 1's 22,430 rows** would otherwise have leaked.
+**★ AND A TWO-COPIES-OF-ONE-NUMBER BUG REMOVED:** `card_features_dim = 92` was hardcoded separately in
+`srs_model.py` AND `srs_model_rnn.py`. Both now call `id_features.input_width()`; `RWKV_ZERO_FEATURES=22`
+is REFUSED under the new layout rather than silently masking `day_of_week`.
+**Smokes, both green:** `scratchpad/id_features/smoke_id_features.py` (60 users / 6.3 M rows, zero NaN,
+plus **prefix invariance at exactly 0.000e+00** -- truncate a user's history and the surviving rows are
+unchanged, which is what catches ANY accidental whole-table statistic) and
+`scratchpad/parity3/smoke_id_features_width.py`.
+⚠ **STILL OWED before the rebuild:** `smoke_scripted_eval.sh` (GPU-gated, waiting on QAT#2 -- mandatory
+after touching `srs_model.py`), the 100-user de-risk build (ON-vs-OFF on `-id`; the `-id`-vs-published
+comparison is INVALID since `size` moves for ~30% of users from the dataset swap alone), a rebuilt
+`label_filter_db`, and the Rust input-width port.
 **✗ ITER 51 FAILED 2026-08-16 20:31 -- NOT a reject, no number produced** (`iter51_muon`,
 `RWKV_MUON_POLAR=1`: a per-step Polar-Express Newton-Schulz schedule replacing Muon's single fixed
 triple). Died hollow -- 410 good steps, then `Nan from RWKV-7` on all 3,684 remaining batches. ~0.5 h
