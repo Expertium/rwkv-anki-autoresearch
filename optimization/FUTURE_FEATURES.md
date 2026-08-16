@@ -500,3 +500,16 @@ assumed.
 
 Tools: `build_parent_maps.py` (emits `(user_id, deck_id, parent_id)`, `-1` = no resolvable parent;
 0.1 MB per 60 users, with a cycle guard) and `verify_lmdb_link.py` (the LMDB-side check above).
+
+**★ AND THE TREE IS DEEP -- the depth histogram PEAKS AT 4, not 1** (`scratchpad/deck_tree/level_reach.py`,
+same 40 users / 3.67 M reviews). Reviews whose deck has an ancestor at distance k:
+
+| k | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| reviews reached | 49.21% | 38.29% | 31.20% | 20.93% | 7.80% | 1.62% |
+
+Chain-depth mass sits at **depth 4 (13.13%)**, with depth 0 only 50.79%. So a single "parent deck"
+link would leave most of the hierarchy unused -- Anki users nest decks (`Japanese::Core2k::Stage 1::Vocab`).
+This is what set iter 50's L=3 rather than L=2: it is the smallest L that tests *tree* rather than
+*parent*. Levels 4+ are held back because each costs a full extra 4-layer pass for a shrinking share
+of the corpus (21 layer-steps at L=3 vs 13 today).

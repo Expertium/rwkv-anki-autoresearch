@@ -2368,3 +2368,89 @@ bug was fixed a day earlier and reported as complete. Guard added:
 `scratchpad/parity3/smoke_scripted_eval.sh`, a ~90 s one-user scripted eval that refuses to run
 under `RWKV_NO_JIT=1`. A plain eval is the ONLY path that scripts the model, which is why this
 class of bug is invisible to training and to QAT evals alike.
+
+## iter 50 — the deck tree: `(deck, depth_level)` as a shared-weight loop (PRE-REGISTERED, launched 2026-08-16)
+
+**The lever, in Andrew's words:** *"fully take into account deck tree structure, so that
+card->note->deck->preset->global becomes card->note->(deck, depth_level)->preset->global."*
+`RWKV_DECK_TREE=3` inserts two ancestor streams after `deck_id`, so the chain is
+`card_id, note_id, deck_id, deck_id@1, deck_id@2, preset_id, user_id`. Stream `deck_id@k` groups
+reviews by the deck's k-th ANCESTOR and is run by **the same deck module object** — depth is a loop
+count over the user's tree, not an architecture constant. Only new weights: an `(L-1, d_model)`
+level embedding added at each level's layer 0, **160 floats**, so params go 558,212 → **558,372**.
+
+**Why L=3 rather than a single parent link.** The deck-depth histogram **peaks at 4, not 1**
+(`scratchpad/deck_tree/level_reach.py`, 40 users, 3.67 M reviews, review-weighted):
+
+| ancestor at distance | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|
+| reviews reached | 49.21% | 38.29% | 31.20% | 20.93% | 7.80% | 1.62% |
+
+Anki users nest decks deeply (`Japanese::Core2k::Stage 1::Vocab`). L=2 would test "parent deck";
+L=3 is the smallest L that tests *tree*. Levels 4+ are held back because each costs a full extra
+4-layer pass for a shrinking share of the corpus.
+
+**No LMDB rebuild** — `data_processing` drops `parent_id` (:228) but **never factorizes or remaps
+`deck_id`** (the only rewrite is NaN → `ID_PLACEHOLDER`, :243-245), so the parquet's own
+`deck_id → parent_id` map applies directly to ids already stored. This settles a contradiction
+`FUTURE_FEATURES.md` had carried for weeks, and settles it structurally rather than by spot check.
+
+**The bypass, and why it is compute-and-discard rather than omit.** A row with no k-th ancestor
+gets a row-unique negative id — a **singleton** sequence, the cheapest thing the WKV kernel can be
+handed — and is marked inactive; the model gathers it but never scatters it back, so `x` keeps its
+incoming value **exactly**. It cannot simply be dropped from the stream: `prepare()` chains each
+stream's gather against the *previous stream's layout*, so a row absent from one stream has no slot
+for the next stream to reference. Filtering the scatter half while leaving `parts` unfiltered is the
+whole trick.
+
+### THREE-WAY PARITY (§9 requires this written down BEFORE the run)
+- **Training optimizes** the same `curve_loss + p_loss` as the champion. The tree changes only how
+  `x` is transformed between `features2card` and the heads; no loss term, label, or probe is touched.
+- **Eval scores** the same quantity, with `RWKV_DECK_TREE` **left set** — it is a model property,
+  not a training trick, and the checkpoint carries `tree_level_emb`. Clearing it at eval would score
+  a different function *and* fail to load.
+- **CPU inference computes** the same thing: `srs_model_rnn.py` mirrors the loop (shared module,
+  same level embedding, inactive levels skipped so neither `x` nor that level's state advances).
+  Ancestor next-states are handed back through the caller's list, because `review()`'s 5-tuple of
+  named states is the deploy API's shape.
+- **State-size budget:** card and note per-entity state is **unchanged**; this adds per-DECK
+  ancestor states, and the gate explicitly allows deck/preset/global to grow. Rust port only if
+  accepted.
+
+### What was verified before launching
+- An **all-inactive parent map reproduces the tree-off forward BIT-FOR-BIT** in both Python paths
+  (`smoke_tree.py`, `smoke_deck_tree_rnn.py`), while a real map moves it. This exercises the entire
+  new path — chain expansion, splits over 7 streams, derived ModuleData, mask threading, the scatter
+  filter — so a bypass that is merely *small* fails it; only an exact one passes.
+- The grouping extracted from `insert_probes` into `deck_tree.build_module_data` is **byte-identical
+  to the code it replaced** on 10 adversarial id arrays. That path runs on every batch regardless of
+  the flag, so it reaches an in-flight run's eval phase; this is the check that made editing
+  `rwkv/*.py` mid-chain safe.
+- `tree_level_emb` **does not exist** with the lever off (no older checkpoint gains a missing key);
+  the reference lives in a `@torch.jit.ignore` body with an explicit return annotation.
+- The **scripted `forward_batch` RUNS**, not merely compiles — iter 48's lesson.
+- The phase-0 param assert was validated in both directions: 558,372 with the tree, 558,212 without.
+
+### ⚠ The confound, stated in advance
+13 layer-steps become **21**, i.e. ~1.6× the model compute of the champion. **A win is therefore
+"the tree helps" OR "more deck compute helps"**, and disambiguating needs the L=2 arm (17
+layer-steps) plus a depth-matched control (e.g. ancestor levels at depth 1, which is compute-neutral
+at 15 steps). A tie needs no disambiguation — the usual asymmetry, and the reason this is worth
+running before the controls rather than after.
+
+### Two bugs this hit, both worth carrying
+1. **A shared config object let the last level overwrite `stream_name`.** `expand_modules` first
+   reused the deck `RWKV7Config` for every level; `srs_model` then stamps `cfg.stream_name = name`
+   per entry, so the one object ended up carrying `deck_id@2`, and `RWKV_STRIP_CMIX=deck_id:1,deck_id:2`
+   **silently stopped matching** — +26,070 params with no error anywhere. Fixed by deep-copying the
+   config per level and stamping the **base** name (the QAT scopes now match on the base name too).
+   Configs are mutated in place by several consumers; one object per stream entry is the only safe
+   shape.
+2. **The first smoke reported `real == off`.** A freshly built RWKV7 has **zero-init output
+   projections**, so every layer is exactly the identity and no change to sequence grouping can
+   show. This is the vacuity trap CLAUDE.md §9 already warns about for `parity_train_vs_rnn.py`, met
+   in a new harness. Randomizing fixed it — but seeding by raw parameter name then made `null`
+   diverge, because `nn.ModuleList` **dedupes the repeated deck object and renumbers the streams
+   after it** (preset/user move from `.3/.4` to `.5/.6`), so those two streams drew different
+   weights. Seeding on the canonicalised stream name fixed it properly. **Both failures produced a
+   confident, plausible, wrong verdict** — one a false null, one a false leak.
