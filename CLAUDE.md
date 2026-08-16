@@ -902,6 +902,42 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**▶ ITER 50 RUNNING (deck tree, `RWKV_DECK_TREE=2`) -- launched 2026-08-16 07:0x, detached pid 2368,
+ETA ~20.5 h (~03:30 on 08-17).** Andrew's long-standing ask: `card->note->deck->preset->global`
+becomes `card->note->(deck, depth_level)->preset->global`. The deck stream runs once per ancestor
+level, grouping reviews by the deck's k-th ancestor, reusing the SAME module object -- depth is a
+LOOP COUNT over the user's tree, not an arch constant. Chain
+`card_id, note_id, deck_id, deck_id@1, preset_id, user_id`; **558,292 params** (+80, the level
+embedding); 17 layer-steps. **NO LMDB REBUILD** -- `data_processing` drops `parent_id` but never
+factorizes `deck_id`, so `scratchpad/deck_tree/parent_maps.parquet` (TRACKED; a run dependency)
+applies to stored ids directly.
+**Bypass is EXACT and verified bit-for-bit:** rows with no k-th ancestor are grouped by negated leaf
+deck id, marked inactive, and never scattered back. An all-inactive map reproduces the tree-off
+forward exactly in BOTH Python paths (`scratchpad/deck_tree/smoke_tree.py`,
+`scratchpad/parity3/smoke_deck_tree_rnn.py`); a real map moves it.
+**★ TWO COSTING LESSONS, both from the live run and both generalizable.**
+(1) **The WKV state is per SEQUENCE, so cost lives on B, not rows.** Inactive rows were singletons
+first ("T=1 is the cheapest thing the kernel can be handed" -- true of the sequential axis, and
+irrelevant): ~24,600 singletons carried ~100x the deck stream's state => 11.8/12.3 GB and **0.16
+steps/s at 1% GPU utilisation**. Padded volume (1.60x) and kernel launches (42->74) BOTH looked
+fine; neither counts B. I had even written the high sequence count up as reassuring.
+**Cost every future "add a coarse stream" proposal on B.**
+(2) **Low-B/high-T streams are the worst shape for this kernel.** After the fix, L=3 still ran 3.75x
+slower (vs 1.31x predicted) at 95% VRAM (WDDM paging cliff), so it was re-scoped to **L=2**, which
+runs 2.48x slower at 10.8 GB / 76% util. The residual gap is real compute: ancestor streams have
+B~=64 sequences vs the card stream's 11,900, i.e. ~320 parallel units on a 46-SM card.
+L=2 still puts a parent level on **49.21% of reviews**. Depth histogram PEAKS AT 4 (reach 49.2 /
+38.3 / 31.2 / 20.9%), so L=3+ stays the better test in principle -- worth the memory work only if
+L=2 shows signal. Detail + the L=3 pre-registration kept verbatim: `research_5k_verbose.md` iter 50.
+**✓ ITER 49 DONE 2026-08-16 06:32 -- REJECTED** (`iter49_cmix`, restore the user/preset LAYER-0
+channel mixers by dropping `user_id:0,preset_id:0` from `RWKV_STRIP_CMIX`; +26,070 params, +4.7%).
+ahead 0.297630 = **+0.000067 at p=0.113** (INSIDE the +/-7.5e-5 floor -- a coin flip); imm 0.265288 =
+**+0.000087 at p=5.3e-16** (real by rank, still under the 0.0001 bar). size 0/2500, nan_users 0.
+Both-modes rule (a trunk capacity change can move either mode).
+**★ THE FINDING: capacity at the general streams' ENTRY layer is not the bottleneck.** 4.7% more
+params, placed exactly where the cmix ablations had removed the most, buys noise on ahead and a
+sixth of the bar on imm. **capacity-at-5k goes 0/3** -- consistent with the 100-user era's
+"DATA-limited, not capacity-limited", now confirmed at 5k on a 4.95x smaller trunk.
 **✓ ITER 48 DONE 2026-08-15 20:48 -- REJECTED as an exact TIE** (`iter48_rcouple`,
 `RWKV_RCOUPLE=1`: the curve logit R(t) added to the 4 rating logits via 4 zero-init coefficients,
 before the softmax so `out_p_binary` is coupled; undetached). ahead +0.000009 (p=0.19), imm
@@ -1192,6 +1228,7 @@ The 2026-08-01 ordering (finish HP tuning -> seed pair -> PAVA lambda) is **COMP
 **⚠ CPU-INFERENCE REALITY CHECK:** in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and plateaus -- that path is overhead-bound, so cost tracks op count (layers x streams), not width. **1 thread beats 3 and 6 -> deploy single-threaded.** The Rust path DOES convert the cut: **2.39x** measured. Full numbers: `optimization/CPU_INFERENCE.md`.
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+**capacity-at-5k 0/3** (iter 49 added the user/preset L0 channel mixers back, +4.7% params, for +0.000067 ahead at p=0.11 and +0.000087 imm -- both under the bar). Three placements now agree: this model is not capacity-limited at 5k. Do not propose a fourth width/depth add without a mechanism argument that distinguishes it from these three.
 **ahead-vs-imm-gap exploitation 0/2 -- CLOSED ON MECHANISM** (iters 46, 48). Both attempts to route
 the better-conditioned imm signal into the ahead/rating path returned exact nulls, by structurally
 DIFFERENT routes (soft targets; an architectural coupling), and iter 48 showed the coupling was
