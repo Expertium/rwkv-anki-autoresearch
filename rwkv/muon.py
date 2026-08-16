@@ -28,18 +28,74 @@ from torch.optim.adamw import adamw as _functional_adamw
 # and drive momentum with torch._foreach_*. Default OFF, i.e. byte-identical to iter 29-33.
 _MUON_BATCHED = os.environ.get("RWKV_MUON_BATCHED", "0") == "1"
 
+# ---- iter 51: RWKV_MUON_POLAR=1 -> a PER-STEP Newton-Schulz coefficient schedule (the Polar
+# Express idea, arXiv 2505.16932) instead of one fixed triple for all five steps.
+#
+# WHY. Newton-Schulz acts on each singular value independently as
+#     sigma <- p(sigma) = a*sigma + b*sigma^3 + c*sigma^5,
+# so orthogonalization is exactly "map the spectrum onto {1}". The production triple
+# (3.4445, -4.7750, 2.0315) is the modded-nanogpt constant, and it is deliberately sloppy:
+# a+b+c = 0.7010, so it maps sigma=1 -> 0.70 and lands the whole range in ~[0.70, 1.20]. Muon
+# works anyway -- an exact polar factor was never required -- but on OUR momentum buffers that
+# leaves a real, measured error.
+#
+# MEASURED ON THE 69 MOMENTUM MATRICES OF `i50_d_optim_10935.pth`
+# (scratchpad/iter51_muon/{ns_error,where_is_the_error,compare_variants}.py):
+#   * RMS|sigma-1| over ALL singular values = 0.274, reproducing PROPOSALS.md #5's 0.19-0.31;
+#   * it is NOT precision -- bf16 0.289 vs fp32 0.301;
+#   * ~half is the near-null tail (median condition number 1.2e4), which no odd polynomial can
+#     lift in 5 steps and which we would NOT want lifted (it is noise amplification);
+#   * but 0.161 remains on the directions carrying the top 90% of momentum ENERGY, and that is
+#     the number this lever attacks. Schedule below: 0.161 -> 0.0251, a 84.4% cut.
+#   * CONTROL: merely rescaling the input so sigma_max ~ 1 (the fixed triple is tuned for that)
+#     buys only 5.8%, so the win is the per-step schedule, not the input range.
+#
+# The schedule is FITTED, not quoted: greedy minimax, one step at a time, on [0.0297, 1.0] --
+# the lower end being where our 99%-energy cutoff sits, the upper end being GUARANTEED by the
+# Frobenius normalisation. (Fitting to the observed median sigma_max of 0.705 instead let step 0
+# reach c=66.9 and overflow above it.) Stability over the whole domain: peak intermediate 1.78,
+# and sigma in [0.03, 1] maps to 1.0000 to four decimals while sigma=1e-4 stays at 0.019.
+#
+# ⚠ SIDE EFFECT, small and documented rather than corrected: a more accurate polar factor changes
+# the update SIZE as well as its shape -- ||O||_F rises 2.6% (median over the 69 buffers). That is
+# far below any learning-rate sensitivity we have resolved (the tuner needed 1.41-2.8x moves), so
+# no compensating constant is folded in; a constant fitted to one checkpoint would be arbitrary.
+#
+# Training-only: no parameter, no state, no deploy path is touched. Default OFF = byte-identical.
+_MUON_POLAR = os.environ.get("RWKV_MUON_POLAR", "0") == "1"
+_FIXED_NS = (3.4445, -4.7750, 2.0315)
+_POLAR_SCHEDULE = [
+    (7.372480, -20.782051, 15.190877),
+    (2.925176, -2.188391, 0.476201),
+    (2.049675, -1.432759, 0.393654),
+    (1.877187, -1.253114, 0.375924),
+    (2.322228, -2.144455, 0.822228),
+]
+
+
+if _MUON_POLAR:
+    print("[muon] POLAR-EXPRESS Newton-Schulz schedule ON: per-step coefficients fitted by greedy "
+          "minimax on [0.0297, 1.0]; top-90%-energy RMS|sigma-1| 0.161 -> 0.025 on real buffers")
+
+
+def _ns_coeffs(steps: int):
+    """The (a,b,c) to use per iteration. Falls back to the fixed triple whenever the schedule
+    does not cover the requested step count, so RWKV_MUON_NS_STEPS stays usable."""
+    if _MUON_POLAR and steps == len(_POLAR_SCHEDULE):
+        return _POLAR_SCHEDULE
+    return [_FIXED_NS] * steps
+
 
 @torch.no_grad()
 def zeropower_via_newtonschulz5(G, steps: int = 5):
     """Quintic Newton-Schulz orthogonalization (modded-nanogpt reference constants)."""
     assert G.ndim == 2
-    a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.to(torch.bfloat16)
     transposed = G.size(0) > G.size(1)
     if transposed:
         X = X.mT
     X = X / (X.norm() + 1e-7)
-    for _ in range(steps):
+    for a, b, c in _ns_coeffs(steps):
         A = X @ X.mT
         B = b * A + c * (A @ A)
         X = a * X + B @ X
@@ -64,13 +120,12 @@ def zeropower_via_newtonschulz5_batched(G, steps: int = 5):
     for bmm than for mm. Equivalent in exact arithmetic, not in float.
     """
     assert G.ndim == 3
-    a, b, c = (3.4445, -4.7750, 2.0315)
     X = G.to(torch.bfloat16)
     transposed = G.size(1) > G.size(2)
     if transposed:
         X = X.mT
     X = X / (X.norm(dim=(1, 2), keepdim=True) + 1e-7)
-    for _ in range(steps):
+    for a, b, c in _ns_coeffs(steps):
         A = X @ X.mT
         B = b * A + c * (A @ A)
         X = a * X + B @ X
