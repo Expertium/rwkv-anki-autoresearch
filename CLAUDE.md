@@ -915,8 +915,20 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
-**▶ ITER 50 RUNNING (deck tree, `RWKV_DECK_TREE=2`) -- launched 2026-08-16 07:0x, detached pid 2368,
-ETA ~20.5 h (~03:30 on 08-17).** Andrew's long-standing ask: `card->note->deck->preset->global`
+**✓ ITER 50 DONE 2026-08-16 19:20 -- REJECTED as an EXACT TIE** (deck tree, `RWKV_DECK_TREE=2`):
+ahead **+0.000007 at p=0.52** (a literal coin flip) / imm **-0.000024 at p=0.86**, both 3-10x INSIDE
+the +/-7.5e-5 floor. size 0/2500, nan_users 0, 558,292 params, 12.5 h.
+**★ THE DIAGNOSTIC IS THE RESULT:** the zero-init level embedding TRAINED to L2=1.766 (max|.|=0.591)
+vs a `features2card` row-L2 median of 0.829 -- ~2x a typical input-projection row. The model marked
+the parent-deck level distinctly, USED it, and gained nothing (same shape as iter 48).
+**★★ MECHANISM: the 5-stream hierarchy already BRACKETS that scope** -- `deck_id` pools per-deck below
+it, `preset_id`/`user_id` pool more broadly above it -- so a parent-deck level is INTERPOLATION
+between scopes the model already has, not new evidence.
+**⚠ THIS DEMOTES L=3 RATHER THAN MOTIVATING IT:** deeper ancestors interpolate even CLOSER to
+preset/user, so if the parent level (most distinct scope, widest reach at 49.21%) is a coin flip,
+levels 3-4 are a worse bet. Do not run L=3 on "we only tested the shallow case"; it needs a new
+argument, and it costs 95% VRAM.
+**Original launch note (kept for the config):** Andrew's long-standing ask: `card->note->deck->preset->global`
 becomes `card->note->(deck, depth_level)->preset->global`. The deck stream runs once per ancestor
 level, grouping reviews by the deck's k-th ancestor, reusing the SAME module object -- depth is a
 LOOP COUNT over the user's tree, not an arch constant. Chain
@@ -1263,7 +1275,15 @@ essentially exactly rank-1) and the deployed loss did not improve. Any other rou
 -- rank-2 states, softer/scheduled lambda, a different proxy -- is aimed at the same empty term, and
 the step-50 check already proved engagement is not the bottleneck. **The QAT tax lives in the CODEBOOK
 and NORM terms.**
-**TOPOLOGY 1/3, and both rejects are CONTROLS that changed what we believe** (iter 41 ACCEPTED
+**TOPOLOGY 1/4 -- and iter 50 CLOSES the remaining direction.** Iters 41-44 showed that the
+EXISTENCE of a cross-scope information path pays (interleaving) while its CHOREOGRAPHY does not
+(three arrangements indistinguishable at |delta| <= 7.5e-5). **Iter 50 (the deck tree) shows that
+adding more SCOPES does not pay either** -- an exact tie at p=0.52/0.86 with the level embedding
+demonstrably learned. The scope ladder card->note->deck->preset->user is SUFFICIENT: the
+productive lever was moving information between the levels that exist, and it is banked.
+Do not propose a new intermediate scope without a mechanism that distinguishes it from a level
+the ladder already brackets.
+**TOPOLOGY (the 41-44 detail), and both rejects are CONTROLS that changed what we believe** (iter 41 ACCEPTED
 — interleave + reorder bundle, the phase's largest architectural gain; iter 42 REJECTED —
 order-alone is a small NEGATIVE, so INTERLEAVING carries all of it; iter 43 REJECTED AS A TIE —
 interleave at the original order equals the champion (p=0.42/0.098), so the reorder's cost

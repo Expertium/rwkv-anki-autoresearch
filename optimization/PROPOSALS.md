@@ -193,7 +193,7 @@ without a mechanism argument that distinguishes it from these three.** The consi
 confirmed at 5k on a 4.95x smaller trunk, is the 100-user era's: this model is **data-limited, not
 capacity-limited**, and training/topology levers are where the wins have come from.
 
-## Off-queue: the DECK TREE (Andrew's direct ask, iter 50, running 2026-08-16)
+## Off-queue: the DECK TREE (Andrew's direct ask, iter 50) -- REJECTED as an exact tie, 2026-08-16
 
 Not from the ranked list — Andrew asked for it directly: `card->note->deck->preset->global` becomes
 `card->note->(deck, depth_level)->preset->global`. Running at **L=2** (parent level only, 49.21% of
@@ -209,3 +209,13 @@ with a GPU co-tenant.
    state before backward saves.
 2. **Do not time it until compile warmup is provably over** — several HUNDRED steps on this stack.
    Three early windows said 2.5-4x slower; steady state was 1.35x, matching the shape prediction.
+
+**VERDICT (2026-08-16): exact tie, +0.000007 at p=0.52 / -0.000024 at p=0.86.** The level embedding
+WAS learned (L2=1.77, ~2x a features2card row), so the model used the parent-deck level and gained
+nothing. **Mechanism: the 5-stream ladder already brackets that scope** (deck below, preset/user
+above), so an intermediate level is interpolation, not new evidence.
+**⚠ This DEMOTES the L=3 follow-up.** Deeper ancestors interpolate even closer to preset/user, so if
+the parent level -- most distinct scope, widest reach (49.21%) -- is a coin flip, levels 3-4 are a
+worse bet, not a better one. Do NOT rank L=3 as "we only tested the shallow case".
+**And it closes the topology family's last open direction:** existence of cross-scope paths pays
+(iter 41), choreography does not (42-44), more scopes do not (50).

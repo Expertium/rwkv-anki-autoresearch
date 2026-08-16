@@ -2574,3 +2574,43 @@ argument was an artifact.
 **This is the third measurement error of the iter-47 family in a week** (wrong metric, wrong
 checkpoint, wrong signal — now wrong *window*), and the pattern is identical each time: a confident,
 plausible, mechanism-shaped story built on a comparison where one side was not held fixed.
+
+### RESULT — REJECTED as an exact tie (2026-08-16 19:20, `DONE_EXIT_0`)
+
+| | champion (iter 45) | iter 50 | delta | p |
+|---|---|---|---|---|
+| ahead | 0.297697 | 0.297690 | **+0.000007** | 0.521 |
+| imm | 0.265375 | 0.265399 | **−0.000024** | 0.860 |
+
+n=2500, size 0/2500, nan_users 0, params 558,292. Both deltas are **3–10× inside the ±7.5e-5 noise
+floor**, and p=0.52 on ahead is a literal coin flip. Both-modes rule (the tree feeds the shared
+trunk, so the curve-side exception does not apply).
+
+**★ THE DIAGNOSTIC IS THE RESULT, and it is what makes this null separable.** The level embedding is
+zero-init and free to stay there. It did not: it trained to **L2 = 1.766, max|·| = 0.591**, against a
+`features2card.0.weight` row-L2 median of **0.829** — roughly **2× the scale of a typical
+input-projection row**. So the model marked the parent-deck level distinctly, **used** it, and gained
+nothing. This is the same shape as iter 48's zero-init coupling (learned, sign-correct, negligible),
+and it rules out the "the lever never engaged" reading that would otherwise make a null uninformative.
+
+**★★ MECHANISM: the 5-stream hierarchy already BRACKETS the parent-deck scope.** `deck_id` pools
+per-deck immediately below it; `preset_id` and `user_id` pool more broadly immediately above it. A
+parent-deck level is therefore **interpolation between two scopes the model already has**, not a new
+kind of evidence. That is why 49.21% of reviews gaining a genuine extra pooling level moves nothing.
+
+**⚠ THIS DEMOTES THE L=3 FOLLOW-UP RATHER THAN MOTIVATING IT.** The pre-registration argued L=3 is
+the better test because the depth histogram peaks at 4. That is still true about *reach*, but the
+mechanism cuts the other way: **deeper ancestors interpolate even closer to preset/user**, so if the
+parent level — the one with the most distinct scope and the widest reach — is a coin flip, level 3
+and 4 are a worse bet, not a better one. L=3 should not be run on "we only tested the shallow case";
+it needs a new argument, and the memory work it requires (95% VRAM) makes it expensive.
+
+**What this adds to the topology family.** Iters 41–44 established that *the existence* of a
+cross-scope information path pays (interleaving, +0.000216..+0.000611) while its choreography does
+not (three arrangements indistinguishable at |Δ| ≤ 7.5e-5). Iter 50 closes the remaining direction:
+**adding more scopes does not pay either.** The scope ladder card→note→deck→preset→user is
+sufficient; the productive lever was letting information move *between* the levels that exist, and
+that has already been banked.
+
+**Cost:** WS 4h33m (6:51→11:24), decay 4h27m (11:24→15:51), eval 3h29m (15:51→19:20) ≈ **12.5 h** at
+0.66–0.67 steps/s throughout — 1.35× the champion's 0.893, matching the shape prediction.
