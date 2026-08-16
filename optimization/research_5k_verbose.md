@@ -2371,6 +2371,12 @@ class of bug is invisible to training and to QAT evals alike.
 
 ## iter 50 — the deck tree: `(deck, depth_level)` as a shared-weight loop (PRE-REGISTERED, launched 2026-08-16)
 
+> **★ RE-SCOPED TO L=2 BEFORE THE REAL RUN (2026-08-16 07:0x).** Everything below was written for
+> L=3 and is kept as written, because the reasoning for L=3 is still the reasoning for the *next*
+> arm. What changed is measured, not argued — see "WHY L=2" and "THE SINGLETON MISTAKE" at the end
+> of this section. Live config: **`RWKV_DECK_TREE=2`, 17 layer-steps, 558,292 params** (the level
+> embedding is 1x80 at L=2), chain `card_id, note_id, deck_id, deck_id@1, preset_id, user_id`.
+
 **The lever, in Andrew's words:** *"fully take into account deck tree structure, so that
 card->note->deck->preset->global becomes card->note->(deck, depth_level)->preset->global."*
 `RWKV_DECK_TREE=3` inserts two ancestor streams after `deck_id`, so the chain is
@@ -2465,3 +2471,71 @@ running before the controls rather than after.
    after it** (preset/user move from `.3/.4` to `.5/.6`), so those two streams drew different
    weights. Seeding on the canonicalised stream name fixed it properly. **Both failures produced a
    confident, plausible, wrong verdict** — one a false null, one a false leak.
+
+## iter 49 — restoring the user/preset layer-0 channel mixers: +4.7% params, ~nothing (REJECTED, 2026-08-16)
+
+**The lever, zero code:** drop `user_id:0` and `preset_id:0` from `RWKV_STRIP_CMIX`, i.e. give the two
+most general streams back the channel mixer at their **entry** layer. `PROPOSALS.md` item #6.
+**584,282 params, +26,070 (+4.7%)** vs the iter-45 champion; single-variable otherwise.
+
+**Result (n=2500, VAL half, rectified):** ahead 0.297630 (**+0.000067**, p=0.113) · imm 0.265288
+(**+0.000087**, p=5.3e-16) · size 0/2500 · nan_users 0 · `DONE_EXIT_0`.
+
+**REJECTED, for two independent reasons.** Both modes improve, but **both miss the raw ≥0.0001
+bar**, and ahead additionally fails the p-gate at p=0.113 — inside the ±7.5e-5 noise floor, i.e. a
+coin flip. imm's +0.000087 is a *real* effect by rank (p=5.3e-16: most users improve slightly) yet
+still below the accept threshold. The both-modes rule applies rather than the curve-side exception,
+because a trunk capacity change can move either mode.
+
+**★ THE FINDING: capacity at the general streams' ENTRY layer is not the bottleneck.** A 4.7%
+parameter increase, placed exactly where the stripped-cmix ablations had removed the most, buys an
+effect indistinguishable from noise on ahead and one-sixth of the accept bar on imm. **capacity-at-5k
+goes 0/3**, and the pattern is now consistent across three different placements: the model is not
+capacity-limited at this data scale, it is limited by something else. This is the same conclusion the
+100-user era reached from the opposite direction ("the d=32 model is DATA-limited, not
+capacity-limited; training levers are the wins"), now confirmed at 5k on a 4.95x smaller trunk.
+
+**⚠ Worth noting for calibration of the accept bar:** both deltas clear the *pre*-2026-08-10
+magnitude bar (raw ≥0.00005 via 4-dp rounding), so under the old rule this would have come down to
+the p-gate alone. The tightened bar and the p-gate agreed here, which is the reassuring case — but it
+is a reminder that the old magnitude bar sat below the measured noise floor, exactly as the
+tightening note said.
+
+**Ops:** clean run, `DONE_EXIT_0` at 06:32 after WS 21:03→00:27 and decay 00:27→03:42 (both ~3h15m at
+13 layer-steps), eval 03:42→06:32 (2h50m). No orphan fetch workers left behind.
+
+### ★ WHY L=2, AND THE SINGLETON MISTAKE (both measured on the real run, 2026-08-16)
+
+**THE SINGLETON MISTAKE — I optimised the wrong axis, and two pre-flight checks both missed it.**
+Rows with no k-th ancestor were first given a **row-unique** id so they formed singleton sequences,
+justified as "T=1 is the cheapest thing the WKV kernel can be handed". That is true about the
+SEQUENTIAL axis and irrelevant: **the WKV state is per SEQUENCE** (H*K*K floats each), so ~24,600
+singletons carry ~100x the state of the deck stream's 203 sequences. Measured live: **11.8 of 12.3
+GB VRAM, 0.16 steps/s, and GPU utilisation at 1%** — the card was allocating and writing state, not
+computing.
+**Both metrics I had checked in advance looked fine**: padded volume was 1.60x (`shape_cost.py`) and
+kernel launches went 42 -> 74. **Neither counts B.** Worse, I had written up the high sequence count
+as *reassuring* ("parallelism ROSE — 13,533 sequences vs deck's 203"), which is precisely the
+observation that should have raised the alarm.
+**FIX:** inactive rows group by their **negated leaf deck id** — bounded by decks-per-user instead of
+rows. `deck_id@1` 13,533 -> **64** sequences, `deck_id@2` 24,646 -> **57**, total WKV state 172 ->
+**174 MB (+1.4%)**, and `prepare()` 1.37 -> 1.25 s. The exact-bypass property is unchanged and was
+re-verified bit-for-bit.
+
+**WHY L=2 RATHER THAN L=3.** Even after the fix, L=3 pins VRAM at **11.6-11.8 of 12.3 GB (95%)** and
+runs at **0.238 steps/s against the champion's 0.893 — 3.75x slower** where the shape analysis
+predicts 1.31x. At 95% occupancy this machine starts WDDM paging (a documented ~4x cliff), so L=3
+would cost ~30 h *and* produce a throughput number confounded by paging. L=2 measures **0.360
+steps/s (2.48x), VRAM 10.8 GB (88%), util 76%** => ~8.4 h WS + 8.4 h decay + ~3.7 h eval ~= **20.5 h**.
+
+**⚠ THE RESIDUAL 2.48x-vs-1.31x GAP IS REAL COMPUTE, NOT PAGING, and it is a fact about this kernel
+worth carrying:** ancestor streams are **low-B / high-T** (B ~= 64 sequences against the card
+stream's 11,900). WKV parallelism is B*H, so B=64 gives ~320 parallel units on a 46-SM card —
+poor occupancy. The deck stream already has this shape (B=203); the tree adds four more layers *of
+the same bad shape*, so wall-clock grows faster than padded volume says. **Any future "add a coarse
+stream" proposal should be costed on B, not on rows.**
+
+**What L=2 still tests:** a parent level on **49.21% of reviews** — a real test of "does the deck
+hierarchy carry information". If it shows signal, L=3 justifies the memory work; if it is a tie,
+deeper levels were never going to rescue it. The confound shrinks correspondingly: 13 -> 17
+layer-steps (1.31x), disambiguated by a depth-1 ancestor control if it wins.

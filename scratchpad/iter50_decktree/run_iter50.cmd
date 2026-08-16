@@ -1,28 +1,34 @@
 @echo off
 REM ===========================================================================================
-REM ITER 50: THE DECK TREE (RWKV_DECK_TREE=3). Family: topology. Andrew's own long-standing ask:
+REM ITER 50: THE DECK TREE (RWKV_DECK_TREE=2). Family: topology. Andrew's own long-standing ask:
 REM   card-note-deck-preset-global  becomes  card-note-(deck, depth_level)-preset-global
 REM
 REM THE LEVER: the deck stream is applied once per DEPTH LEVEL of the user's deck tree, grouping
 REM reviews by the deck's k-th ANCESTOR. Chain becomes
-REM   card_id, note_id, deck_id, deck_id@1, deck_id@2, preset_id, user_id
+REM   card_id, note_id, deck_id, deck_id@1, preset_id, user_id
 REM The SAME deck module object runs at every level (weight sharing), so depth is a LOOP COUNT
 REM over the user's tree, not an architecture constant. The only new weights are a level
-REM embedding, 2 x 80 == 160 floats, added at each level's layer 0 so the shared module knows
+REM embedding, 1 x 80 == 80 floats, added at each level's layer 0 so the shared module knows
 REM which scope it is running at.
 REM
-REM WHY LEVEL 3 AND NOT 2: the deck-depth histogram PEAKS AT 4, not 1 (level_reach.py, 40 users,
-REM 3.67 M reviews, review-weighted). Reach by ancestor distance: 1 == 49.21 pct, 2 == 38.29 pct,
-REM 3 == 31.20 pct, 4 == 20.93 pct. A single parent link would test "parent deck", not "tree".
-REM L=3 is the smallest L that actually tests the hypothesis Andrew stated.
+REM WHY L=2, AFTER L=3 WAS TRIED AND MEASURED: the deck-depth histogram peaks at 4 (level_reach.py,
+REM 40 users, 3.67 M reviews; reach by ancestor distance 1 == 49.21 pct, 2 == 38.29 pct, 3 == 31.20
+REM pct), so L=3 is the better test of "tree" in principle. In practice it pins VRAM at 11.8 of 12.3
+REM GB and runs at 0.238 steps/s against the champion's 0.893 -- 3.75x slower where the shape
+REM analysis predicts 1.31x -- because at 95 pct occupancy the card starts WDDM paging (a documented
+REM 4x cliff on this machine). That would be ~30 h AND a throughput number confounded by paging.
+REM L=2 is 17 layer-steps, should sit near 9.5 GB, and still puts a parent level on 49.21 pct of
+REM reviews, which is a real test of "does the deck hierarchy carry information". If it shows
+REM signal, L=3 is worth the memory work; if it is a tie, deeper levels were never going to save it.
 REM
 REM NO LMDB REBUILD: data_processing drops parent_id but never factorizes deck_id, so the
 REM parquet's deck_id-to-parent_id map applies directly to ids already in the LMDB. Confirmed at
 REM scale in optimization/FUTURE_FEATURES.md.
 REM
-REM ROWS WITH NO k-TH ANCESTOR bypass EXACTLY: they get a row-unique negative id (a singleton
-REM sequence, the cheapest thing the kernel can be handed) and are marked inactive, and the model
-REM never scatters an inactive row back, so x keeps its incoming value. Proven, not asserted: an
+REM ROWS WITH NO k-TH ANCESTOR bypass EXACTLY: they are grouped by their negated LEAF deck id and
+REM marked inactive, and the model never scatters an inactive row back, so x keeps its incoming
+REM value. They were SINGLETONS first, which cost an 8x slowdown -- the WKV state is per SEQUENCE,
+REM so 24,600 singletons carry ~100x the deck stream's state. Proven, not asserted: an
 REM all-inactive parent map reproduces the tree-off forward BIT-FOR-BIT in both Python paths
 REM (scratchpad/deck_tree/smoke_tree.py, scratchpad/parity3/smoke_deck_tree_rnn.py).
 REM
@@ -30,10 +36,10 @@ REM SINGLE VARIABLE vs the iter-45 champion: this file is run_iter45.cmd with th
 REM changed and TWO lines added (RWKV_DECK_TREE=3 and the param assert). Seed 4321, KD alpha 0.9
 REM WS / 0.5 decay, PAVA 0.2, tuned HPs, the speed stack: all identical.
 REM
-REM KNOWN CONFOUND, stated up front: 13 layer-steps become 21, so this run has about 1.6x the
+REM KNOWN CONFOUND, stated up front: 13 layer-steps become 17, so this run has about 1.31x the
 REM model compute of the champion. A win is therefore "the tree helps" OR "more deck compute
-REM helps", and the disambiguating follow-up is the L=2 arm (17 layer-steps) plus a depth-matched
-REM control. A TIE needs no disambiguation, which is the usual asymmetry.
+REM helps", and the disambiguating follow-up is a depth-matched control (ancestor level at depth 1,
+REM which is compute-neutral). A TIE needs no disambiguation, which is the usual asymmetry.
 REM
 REM DEPLOY: srs_model_rnn.py already mirrors it (ancestor states are handed back through the
 REM caller's list). Rust port only if this is ACCEPTED; it would add per-deck ancestor states,
@@ -50,7 +56,7 @@ set STAMP=%RANDOM%%RANDOM%
 set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k
 set WSSTEPS=10935
 
-echo ===== ITER 50 (deck tree, RWKV_DECK_TREE=3) START %DATE% %TIME% ===== > "%LOG%"
+echo ===== ITER 50 (deck tree, RWKV_DECK_TREE=2) START %DATE% %TIME% ===== > "%LOG%"
 
 setlocal
 set PYTHONUNBUFFERED=1
@@ -88,7 +94,7 @@ set RWKV_KD_MIX=%DUMP%:%WSSTEPS%
 set RWKV_KD_ALPHA=0.9
 
 REM ================= THE LEVER, and the ONLY behavioural difference from run_iter45.cmd ========
-set RWKV_DECK_TREE=3
+set RWKV_DECK_TREE=2
 
 REM PHASE 0 GUARD -- the param count is CONSUMED state, unlike a banner (the QAT-inert bug printed
 REM a truthful banner for an object discarded one line later). Champion 558,212; the deck tree
@@ -97,7 +103,7 @@ REM were accidentally duplicated instead of shared, this lands at 584k+ and stop
 REM GPU is spent. It also catches the config-sharing bug found while building this: one shared
 REM config object let the last level overwrite stream_name, which silently disabled
 REM RWKV_STRIP_CMIX's deck_id entries and added 26,070 params with no error anywhere.
-.venv\Scripts\python.exe scratchpad\parity3\assert_param_count.py 558372 >> "%LOG%" 2>&1
+.venv\Scripts\python.exe scratchpad\parity3\assert_param_count.py 558292 >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_PARAMMISMATCH %DATE% %TIME% >> "%LOG%"
   exit /b 44
@@ -109,7 +115,7 @@ if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_WSFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 21
 )
-findstr /C:"[deck-tree] ON: 3 deck levels" "%DIR%\ws_%STAMP%.log" >nul
+findstr /C:"[deck-tree] ON: 2 deck levels" "%DIR%\ws_%STAMP%.log" >nul
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_NOTREE_WS %DATE% %TIME% >> "%LOG%"
   exit /b 39
@@ -140,7 +146,7 @@ if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_DECAYFAIL_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   exit /b 23
 )
-findstr /C:"[deck-tree] ON: 3 deck levels" "%DIR%\decay_%STAMP%.log" >nul
+findstr /C:"[deck-tree] ON: 2 deck levels" "%DIR%\decay_%STAMP%.log" >nul
 if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_NOTREE_DECAY %DATE% %TIME% >> "%LOG%"
   exit /b 40
