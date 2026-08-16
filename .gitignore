@@ -103,5 +103,7 @@ scratchpad/qat_tax/corpus_*/
 # derived deck-tree artifact: rebuildable in ~4 min by scratchpad/deck_tree/build_parent_maps.py
 scratchpad/deck_tree/parent_maps.parquet
 scratchpad/deck_tree/*.log
-scratchpad/deck_tree/*.parquet
+# The parent map is TRACKED (4.6 MB): it is a RUN DEPENDENCY of any deck-tree iteration, so
+# losing it would make a possible champion unreproducible. The null map is derived scratch.
+scratchpad/deck_tree/parent_maps_null.parquet
 scratchpad/deck_tree/smoke_out.txt

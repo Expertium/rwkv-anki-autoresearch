@@ -42,6 +42,7 @@ _MAP_PATH = os.environ.get(
 
 _lock = threading.Lock()
 _parents = None  # {user_id: {deck_id: parent_id}}, -1 = no resolvable parent
+_warned = set()
 
 
 def enabled() -> bool:
@@ -113,7 +114,18 @@ def ancestor_ids(user_id: int, deck_ids: np.ndarray, k: int):
     (root, deleted deck, ID_PLACEHOLDER, or a cycle), so those rows group as singletons.
     `active` is the bool mask of rows that DID reach distance k.
     """
-    par = _load().get(int(user_id), {})
+    pm = _load()
+    uid = int(user_id)
+    par = pm.get(uid)
+    if par is None:
+        # ⚠ A user missing from the map would make EVERY row inactive -- the tree would silently
+        # do nothing for them and the lever would measure as weaker than it is, with no error.
+        # Loud once per user per process; the map must cover the train AND eval ranges.
+        if uid not in _warned:
+            _warned.add(uid)
+            print(f"[deck-tree] WARNING: user {uid} has NO parent map entry -- every ancestor "
+                  f"level is inactive for them (map={_MAP_PATH})")
+        par = {}
     n = deck_ids.shape[0]
     # resolve per DISTINCT id, not per row: a user has ~56 decks and up to 16k rows
     uniq, inv = np.unique(deck_ids, return_inverse=True)
