@@ -9,6 +9,7 @@ from rwkv.data_processing import (
 from rwkv.model.rwkv_rnn_model import RWKV7RNN
 from rwkv.model.srs_model import interleave_schedule, is_excluded
 import torch
+from rwkv import id_features as _idf
 
 # An RNN implementation of srs_model.
 
@@ -46,16 +47,26 @@ FunctionType = __nop
 class SrsRWKVRnn(ModuleType):
     def __init__(self, anki_rwkv_config: AnkiRWKVConfig):
         super().__init__()
-        self.card_features_dim = 92
+        # 92 = 24 card feature columns + 68 ID-encoding dims. DERIVED, not hardcoded: the
+        # -id features rebuild (RWKV_ID_FEATURES=1) swaps the card half for 44 columns -> 112,
+        # and this line existed identically in srs_model.py and srs_model_rnn.py, so a literal
+        # would have been a silent shape mismatch in the deploy path the moment it landed.
+        self.card_features_dim = _idf.input_width()
         # RWKV_ZERO_FEATURES: same input-feature mask as SrsRWKV (srs_model.py, iter 15) so
         # the RNN/deploy path matches a model trained with dropped features. persistent=False:
         # not in state_dict, old checkpoints load unchanged.
         _zero_feats = [
             int(t) for t in os.environ.get("RWKV_ZERO_FEATURES", "").split(",") if t.strip()
         ]
-        assert all(0 <= i < 92 for i in _zero_feats), f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
+        assert not (_idf.enabled() and _zero_feats), (
+            "RWKV_ZERO_FEATURES is set while RWKV_ID_FEATURES=1 -- the -id rebuild removes the "
+            "card-state column at the source, so the mask indices no longer mean what they did."
+        )
+        assert all(0 <= i < self.card_features_dim for i in _zero_feats), (
+            f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
+        )
         self.input_feat_mask_on = len(_zero_feats) > 0
-        _mask = torch.ones(92)
+        _mask = torch.ones(self.card_features_dim)
         for _i in _zero_feats:
             _mask[_i] = 0.0
         # Plain attribute (not a buffer), matching srs_model.py: keeps state_dict unchanged.

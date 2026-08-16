@@ -127,6 +127,13 @@ def main():
         # depth-1 oracle proves the composition bit-exact vs the sequential branch) plus
         # the standard checkpoint-level trace parity (export_rnn_trace + verify) before
         # any interleaved champion ships -- the RNN mirror reads the same flag.
+        #
+        # RWKV_ID_FEATURES (the -id features rebuild) likewise has NO case here, and for the
+        # same structural reason: it changes the INPUT WIDTH, which lives in SrsRWKV /
+        # SrsRWKVRnn, one level above this single-stack harness. Its equivalent guard is
+        # scratchpad/parity3/smoke_id_features_width.py, which asserts the training class, the
+        # deploy RNN class and data_processing.CARD_FEATURE_COLUMNS all agree on the width
+        # under BOTH flag values (92 / 112) -- the same three-way question in the same shape.
     ]
     ok = [run(t, e) for t, e in cases]
     print("\nPARITY_" + ("ALL_PASS" if all(ok) else "FAILED: "

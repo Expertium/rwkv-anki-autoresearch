@@ -13,6 +13,7 @@ from rwkv.architecture import AnkiRWKVConfig
 
 
 import os
+from rwkv import id_features as _idf
 
 
 def __nop(ob):
@@ -246,7 +247,11 @@ class SrsRWKV(ModuleType):
     def __init__(self, anki_rwkv_config: AnkiRWKVConfig):
         super().__init__()
 
-        self.card_features_dim = 92
+        # 92 = 24 card feature columns + 68 ID-encoding dims. DERIVED, not hardcoded: the
+        # -id features rebuild (RWKV_ID_FEATURES=1) swaps the card half for 44 columns -> 112,
+        # and this line existed identically in srs_model.py and srs_model_rnn.py, so a literal
+        # would have been a silent shape mismatch in the deploy path the moment it landed.
+        self.card_features_dim = _idf.input_width()
         self.use_perm_gather = _USE_PERM_GATHER
         # Research iter 11 (2026-07-13, Andrew's idea): dedicated additive grade embedding.
         # The grade one-hot (cols 9:13 of the 92) already gets an implicit embedding via
@@ -426,9 +431,19 @@ class SrsRWKV(ModuleType):
         _zero_feats = [
             int(t) for t in os.environ.get("RWKV_ZERO_FEATURES", "").split(",") if t.strip()
         ]
-        assert all(0 <= i < 92 for i in _zero_feats), f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
+        # ⚠ Under RWKV_ID_FEATURES=1 the rebuild DROPS the state column at the source, so the
+        # historical RWKV_ZERO_FEATURES="22" is not merely renumbered -- it is obsolete, and
+        # leaving it set would zero whatever column now sits at index 22 (day_of_week). Refuse
+        # rather than silently mask the wrong dim.
+        assert not (_idf.enabled() and _zero_feats), (
+            "RWKV_ZERO_FEATURES is set while RWKV_ID_FEATURES=1. The -id rebuild removes the "
+            "card-state column at the source, so the mask has nothing to do and its indices no "
+            "longer refer to the same features. Unset it."
+        )
+        _w = self.card_features_dim
+        assert all(0 <= i < _w for i in _zero_feats), f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
         self.input_feat_mask_on = len(_zero_feats) > 0
-        _mask = torch.ones(92)
+        _mask = torch.ones(_w)
         for _i in _zero_feats:
             _mask[_i] = 0.0
         # Plain attribute, NOT a buffer: ScriptModule forbids persistent=False buffers, and a

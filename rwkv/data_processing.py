@@ -10,6 +10,7 @@ import torch
 import pandas as pd
 import random
 from rwkv.config import RWKV_SUBMODULES
+from rwkv import id_features as _idf
 from rwkv.parse_toml import parse_toml
 from rwkv.utils import save_tensor
 
@@ -39,6 +40,16 @@ CARD_FEATURE_COLUMNS = [
     "scaled_state",
     "is_query",
 ]
+
+# RWKV_ID_FEATURES=1 (default OFF): swap Anki's card-state column for the 21 real-timestamp
+# columns. Both halves are gated together on purpose -- dropping `scaled_state` shifts every
+# later dim by one, so doing it independently of the append would silently re-index the vector
+# against the LMDBs it is read from. Off => this block does not execute and the list is the
+# original 24. See optimization/FUTURE_FEATURES.md and rwkv/id_features.py.
+if _idf.enabled():
+    CARD_FEATURE_COLUMNS = [
+        c for c in CARD_FEATURE_COLUMNS if c != _idf.DROPPED_COLUMN
+    ] + list(_idf.NEW_COLUMNS)
 
 STATISTICS = {
     "elapsed_days_mean": 1.51,
@@ -194,6 +205,11 @@ def add_segment_features(df, equalize_review_ths=[]):
 
 def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     df = pd.read_parquet(data_path / "revlogs" / f"{user_id=}")
+    if _idf.enabled():
+        # BEFORE any cumsum or log: the -id set's recomputed gaps can go negative, which turns
+        # scale_elapsed_seconds into log(negative) = NaN and costs the whole user. See the
+        # docstring -- 10 of 313 sampled users are affected.
+        df = _idf.clamp_negative_gaps(df)
     df_len = len(df)
     df["user_id"] = user_id
     df["review_th"] = range(1, df.shape[0] + 1)
@@ -225,12 +241,27 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
             {c: pd.Series(dtype="int64") for c in ("deck_id", "parent_id", "preset_id")}
         )
     )
+    # parent_id is dropped from the merge frame (it is not a per-review input), but the deck-DEPTH
+    # feature needs the tree, so keep a reference to the raw table first.
+    df_decks_raw = df_decks.copy() if _idf.enabled() else None
     df_decks.drop(columns=["parent_id"], inplace=True)
     df = df.merge(df_cards, on="card_id", how="left", validate="many_to_one")
     df = df.merge(df_decks, on="deck_id", how="left", validate="many_to_one")
     assert len(df) == df_len
     assert df["day_offset"].is_monotonic_increasing
     assert df["duration"].min() >= 0
+
+    if _idf.enabled():
+        # ★ MUST run BEFORE the ID_PLACEHOLDER fills below. Those overwrite a NaN note_id/deck_id/
+        # preset_id with a huge synthetic constant, and every id-age feature here reads those very
+        # columns AS creation timestamps -- after the fill, "deck age" would be measured against a
+        # placeholder. Nothing would crash; the column would just be wrong.
+        df = _idf.add_id_features(df, df_cards, df_decks_raw)
+        # Site 4 of the plan: DROP review_time before add_queries' exhaustive partition assert
+        # ("Ensure that all columns are explicitly listed"). Listing it in keep_columns would work
+        # too, but that leaves a 1.7e12-magnitude raw epoch column one mistake away from the
+        # feature vector -- and it has no business being an input on magnitude grounds alone.
+        df = df.drop(columns=["review_time"])
 
     # find cards with a nan note_id and fill them with a unique value individually
     card_id_nan_mask = df["note_id"].isna()
@@ -260,6 +291,17 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     df["cum_reviews_today"] = df.groupby("day_offset").cumcount()
     df["elapsed_days_cumulative"] = df.groupby("card_id")["elapsed_days"].cumsum()
     df["elapsed_seconds_cumulative"] = df.groupby("card_id")["elapsed_seconds"].cumsum()
+    if _idf.enabled():
+        # The clamp above makes every non-sentinel gap >= 0, so a card's cumsum is
+        # `-1 + sum(nonneg) >= -1` BY CONSTRUCTION and the log branch in
+        # scale_elapsed_seconds_cumulative is safe. This asserts the theorem rather than hoping:
+        # the first version of the clamp used the -1 sentinel instead of 0 and moved the NaN into
+        # exactly this column, where no raw-column check could see it.
+        assert (df["elapsed_seconds_cumulative"].to_numpy() >= -1).all(), (
+            "elapsed_seconds_cumulative < -1 -- scale_elapsed_seconds_cumulative will emit NaN "
+            "and the eval NaN guard will drop this user"
+        )
+        assert (df["elapsed_days_cumulative"].to_numpy() >= -1).all()
     SECONDS_PER_DAY = 86400
     df["elapsed_seconds_sin"] = np.sin(
         (df["elapsed_seconds"] % SECONDS_PER_DAY) * 2 * np.pi / SECONDS_PER_DAY
@@ -400,6 +442,12 @@ def add_queries(section_df, equalize_review_ths):
         "day_of_week",
         "is_query",
     ]
+    # All 21 new columns are KEEP, not REJECT. A reject column is zeroed on the synthetic query
+    # ("no press yet") row because it would leak the outcome; none of these describes the outcome,
+    # only WHEN the review happens and what the card/deck are -- the same status as day_offset_diff
+    # and deck_id_is_nan, which are kept today. The scheduler knows when it is showing a card.
+    if _idf.enabled():
+        keep_columns = keep_columns + list(_idf.NEW_COLUMNS)
 
     reject_columns = [
         "rating",
