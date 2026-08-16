@@ -112,7 +112,7 @@ scratchpad/deck_tree/smoke_out.txt
 # RWKV_GRAD_STATS dumps: ~6,200 lines each, one per ablation run, and NOT part of the
 # scratchpad tracking convention (.cmd + tomls + *_ws_trace.jsonl). 14 of them were ~87k
 # lines of the 110k unsynced diff.
-**/grad_stats*.json
+**/*grad_stats*.json
 *.bak
 # Codebook FITS live in reference/ when they are a deploy artifact; the qat_tax working
 # copies are regenerable scratch (81k lines for one file).
@@ -121,3 +121,7 @@ scratchpad/fs_smoke.json
 # Parity trace dirs: only ref_metrics.json is tracked, same rule as reference/.
 reference_iter45/*
 !reference_iter45/ref_metrics.json
+scratchpad/deck_tree/smoke_out*.txt
+scratchpad/reviewed_entity_counts_10k.csv
+# Measured ALTERNATIVE codebooks (not the deploy choice) stay local -- regenerable by refit.
+reference/pq_cb_shift_c80_m5b12.txt
