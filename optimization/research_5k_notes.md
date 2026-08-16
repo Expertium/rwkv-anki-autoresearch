@@ -2067,3 +2067,47 @@ inflates the early `imm` gap and yields a confident wrong story. The correct par
 was found by diffing runners. Same family as iter 47's wrong-checkpoint control and iter 50's
 compile-warmup timing: **a difference is attributable only if everything except the named variable is
 held fixed — verify that by diffing the runners, not by reading the labels.**
+
+### Follow-up screen: is the NS STEP COUNT a dose knob for the flattening? No — 15 min of CPU, no GPU spent
+
+If Muon pays through spectral flattening, the obvious dose knob is **how many times the iteration
+runs** (production: 5). Unlike PolarExpress it cannot hit iter 51's failure mode, because iterating
+the *same* triple keeps p(1)=0.70 — the contraction — at every step. Screened on real momentum
+buffers at **both** ends of training, reporting **max** not median (both iter-51 lessons):
+`scratchpad/optimizer_regime/ns_steps_dose.py`.
+
+| steps | RMS\|σ−1\| all | RMS\|σ−1\| top-90%-energy | max ‖O‖F / 5-step | max σ |
+|---|---|---|---|---|
+| 1 | 0.8593 | 0.3654 | 1.17 | 1.20 |
+| 2 | 0.7175 | 0.1316 | 1.17 | 1.20 |
+| 3 | 0.5340 | 0.1769 | 1.14 | 1.20 |
+| **5 (production)** | **0.2856** | **0.1607** | **1.00** | **1.20** |
+| 8 | 0.2203 | 0.1354 | 3.20 | 1.20 |
+| 12 | 0.2155 | 0.1339 | 3.06 | 1.14 |
+| 20 | 0.2140 | 0.1326 | 3.10 | 1.13 |
+
+(late checkpoint, step 10935; the early one at step 50 is within ~0.02 of every entry, so the
+early/late conditioning difference that killed iter 51 does **not** bite here.)
+
+Three things, and together they close it:
+
+1. **The contraction holds at every step count — max σ never exceeds 1.21.** Confirms iter 51's
+   diagnosis from the other side: `p(1)<1` is what makes the iteration safe, and keeping it is
+   compatible with running longer.
+2. **The knob is nearly saturated and non-monotone.** 5→8 buys 16% on the attackable top-90% error
+   and 8→20 buys ~2% more. It also oscillates with parity (2 steps beats 3 and 5), because the
+   iteration cycles around 1 rather than converging to it — so "more steps" is not a clean dial.
+3. **The only scale confound is one matrix**, not a systemic LR change: median ‖O‖F ratio at 8 steps
+   is 1.024 and just 1% of the 69 matrices exceed 1.5×, but a single (320, 80) buffer triples (3.20).
+
+**Disposition: not worth 5.5 h of GPU, on the same grounds that closed the codebook bits ladder —
+there is no demonstrated link between orthogonality error and logloss.** Iter 51's schedule promised
+an 84% cut in exactly this proxy and never produced a number; a 16% cut in an unvalidated proxy is
+weaker motivation than that was. Filed as UNMOTIVATED, not refuted.
+
+**★ One thing the table shows that is worth carrying regardless: at 5 steps the top of the spectrum
+lands near 0.70, not 1.0.** Our "Muon" does not compute a polar factor — it produces a systematically
+contracted, partially flattened update. That is coherent with the regularizer finding above, and it
+is the mechanical reason the Muon LR is a *separate* hyperparameter that needed its own 8× cut in
+iter 34 rather than tracking the AdamW LR.
+
