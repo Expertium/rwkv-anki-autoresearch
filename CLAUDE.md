@@ -955,8 +955,8 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
-**>>> THE GPU IS BOOKED ~22 h DEEP, FOUR JOBS CHAINED (re-armed 2026-08-17 21:47 after QAT#2
-finished). Each waiter is detached via WMI so Esc cannot kill it, and each polls the previous job's
+**>>> THE GPU IS BOOKED ~25 h DEEP, FIVE JOBS CHAINED (re-armed 2026-08-17 21:47 after QAT#2
+finished; iter 57 appended 21:55). Each waiter is detached via WMI so Esc cannot kill it, and each polls the previous job's
 log with an ANCHORED `findstr /B /C:"DONE_EXIT_"` (the unanchored form matches its own progress line
 and fires instantly).**
 
@@ -966,6 +966,7 @@ and fires instantly).**
 | 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | ~6.2 h | ~04:00 | 12944 |
 | 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | ~3.5 h | ~10:15 | 32544 |
 | 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | ~6.2 h | ~13:45 | 29484 |
+| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` — decay LR mass 1.376x at zero extra steps | **~3.5 h** | ~19:45 | 13520 |
 
 **DONE: QAT#2 `qtaxg_i45kd` = iter 56, REJECTED as an exact tie** (ahead +0.000084 p=6.2e-04, imm
 -0.000070 p=1.0, both inside the +/-7.5e-5 floor). **The QAT tax does not live in the teacher**, and
