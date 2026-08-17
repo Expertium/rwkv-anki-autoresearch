@@ -968,12 +968,22 @@ WMI so Esc cannot kill it, and each polls the previous job's log with an ANCHORE
 
 ⚠ **PACING:** QAT#2 runs at 0.33 steps/s, so its decay ends ~08:00 and its ~10 h quant-aware eval
 ~18:00; iter 52 then lands ~22:00, iter 53 ~04:00, iter 54 ~10:00 the next day.
-⚠ **RUNNERS 53 AND 54 WERE BROKEN AND ARE NOW REPAIRED (2026-08-17 19:16, `442ed8c`).** Their
-generators sliced away `cd /d` and every `set DIR/LOG/STAMP/DUMP/WSSTEPS/MAXSTEPS` line; both would
-have exited instantly writing NOTHING (no `DONE_EXIT_`), idling the GPU ~12 h. Patched in place
-while the waiters were still looping, and verified by EXECUTING phase-0-only copies (exit 0, CWD =
-repo root, all vars expanding, iter 54 asserting 558,225 params). Full mechanism + the generalizable
-rule: the Ops section's "A RUNNER GENERATOR THAT CAN DELETE NEEDS OUTPUT GUARDS" bullet.
+⚠⚠ **RUNNERS 53 AND 54 WERE BROKEN TWO INDEPENDENT WAYS AND ARE NOW REPAIRED (2026-08-17,
+`442ed8c` + `02ff288`). ~12 h of GPU saved; iter 52 was unaffected both times.**
+(1) Their generators sliced away `cd /d` and every `set DIR/LOG/STAMP/DUMP/WSSTEPS/MAXSTEPS` line,
+so both would have exited in seconds writing NOTHING — **not even a `DONE_EXIT_` line**, which
+hangs the downstream waiter forever with nothing in any log to explain it.
+(2) Independently, **`mk53.py`/`mk54.py` never wrote the `i5N_ws.toml`** each runner passes to
+`--config`, so even with (1) fixed the WS phase would have died on a missing file. The new tomls
+are clones of `i45_ws.toml` differing ONLY in `SAVE_MODEL_FOLDER`/`SAVE_MODEL_PREFIX` — verified by
+parsing and diffing the dicts, not by reading, because KD replays the dump by step index and its
+`labels_sum` checksum hard-exits 43 if any data-affecting field diverges.
+Patched in place while the waiters were still looping, and verified by EXECUTING phase-0-only
+copies (exit 0, CWD = repo root, all vars expanding, iter 54 asserting 558,225 params).
+**★ THE TOOL THAT SHOULD HAVE CAUGHT BOTH: `scratchpad/preflight_runner.py` — RUN IT ON EVERY
+RUNNER BEFORE ARMING.** All three armed runners now `PREFLIGHT_ALL_PASS`. Finding two mechanical
+blockers by eyeballing three runners one at a time is the wrong method; full rule in the Ops
+section's "A RUNNER GENERATOR THAT CAN DELETE NEEDS OUTPUT GUARDS" bullet.
 ⚠ **BASIS SUBTLETY, accepted deliberately:** iters 53 and 54 are built on the ITER-45 recipe, so if
 iter 52 wins and promotes, their controlled comparison stays vs iter 45 while the champion has moved.
 The levers are orthogonal and chaining keeps the GPU busy rather than idling on a human reading a
