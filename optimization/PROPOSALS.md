@@ -346,3 +346,63 @@ idea generation is cheap relative to a 5.5 h run.
   the honest read is that the trunk is near its ceiling at this budget — which is an argument for
   moving to features sooner, not for grinding out ranks 7-10.
 
+## ★★★ EXPRESSIVENESS vs CAPACITY — Andrew's catch, 2026-08-17, and it was a real hole
+
+> *"No changes to architecture that improve expressiveness? Stuff like activation functions with
+> learnable params."*
+
+**He is right and the omission was a logical error on my part.** The queue had no such entry because
+"capacity-at-5k is 0/3" was doing the work of an argument it cannot support. Those three rejects all
+added **more of the same functional form** — user/preset layer-0 channel mixers (iter 49, +4.7%
+params), `num_curves`/`num_points` 64->128, `channel_mixer` 1.0->1.5. **None of them tested whether a
+RICHER functional form at ~fixed parameter count helps.** Expressiveness and capacity are different
+axes and the record only covers one.
+
+### ★ THE SCREEN THAT MAKES THIS CHEAP: the REDUNDANCY TEST
+Before measuring anything, ask whether an adjacent **free linear layer can absorb the new parameter**.
+If it can, the proposal adds exactly zero expressiveness — it is a reparameterization, and the
+optimizer already has the freedom it claims to add. In this architecture that kills a whole class at
+zero cost:
+
+* **Learnable slope/gain on `tanh` or `sigmoid`** — every one of them is sandwiched between free
+  linear layers (`B(tanh(A(x)))`, `sigmoid(linear(x))`), so `tanh(s*A(x))` is just `A` rescaled and
+  `s*tanh(...)` is just `B` rescaled. **Dead by algebra.**
+* **Cross-head mixing after the WKV** — `W_o` is already full-width over the flattened `H*K`
+  dimension, so heads already mix inside the layer. **Dead by algebra.**
+* **A learnable EXPONENT survives**: `relu(c*k)^p = c^p * relu(k)^p`, so rescaling the input only
+  rescales the output — the CURVATURE is set by `p` alone and no linear rescale reproduces it.
+
+### Three hard bounds measured against the champion, all NOT binding (CPU, minutes, no GPU)
+Tools: `scratchpad/expressiveness/decay_floor_probe.py` and the two inline probes in the
+2026-08-17 transcript. Each reads the reachable envelope straight from the checkpoint —
+`B(tanh(A(x)))` with `tanh` in `[-1,1]` gives an exact range of `bias +/- sum_j |B[.,j]|`, so no
+forward pass is needed.
+
+| bound | what it caps | measured on iter 45 | verdict |
+|---|---|---|---|
+| `_d = **-0.5** - softplus(-d_lora)` (`rwkv_model.py:915`) | fastest decay: `w >= 0.5452`, half-life 1.14 steps | median FASTEST reachable `w` per tensor is **0.954-0.994** (half-life 15-115 steps); **0.3%** of channels can get within 0.05 of the floor | **DEAD.** The model lives at the SLOW end (`w@rest` 0.984-0.998) and never approaches the cap. Making the constant learnable cannot buy anything. |
+| `tanh` inside every LoRA bottleneck | saturation collapses an already rank-2/4 bottleneck | typical input `||A_row||` = **1.08-1.50** (tanh retains 42% of linear slope at 1.0, ~20% at 1.5); only 9.5% of `v_lora` rows exceed 2 | **DEAD twice over** — not saturating, and a learnable slope is redundant by the test above. |
+| `a = sigmoid(a_lora)`, RWKV-7's in-context learning rate | `a` in (0,1): no over-correction, no full skip | reachable band is median **[0.41, 0.60]**; **0.0%** of channels reach `a<0.05`, **0.1%** reach `a>0.95` | **DEAD.** Nowhere near the bound — the model chose a narrow half-strength band, so the sigmoid is not what is limiting it. |
+
+**That is three plausible-looking architecture proposals killed for ~20 minutes of CPU**, which is
+the same discipline that killed the NS-step-count lever. It also says something worth carrying: the
+trunk operates in a *narrow, smooth* regime — slow decay, mid-range `a`, unsaturated `tanh` — rather
+than pressed against any of its parameterization's limits.
+
+### WHAT SURVIVES: iter 54 candidate — learnable exponent in the channel mixer
+`rwkv_model.py:633` is `o = W_v(relu(k)**2)` — RWKV-7's squared-ReLU FFN, with the exponent a
+**hardcoded 2**. Make it `relu(k)**p` with `p` a learnable scalar (init 2.0): **13 params**, one per
+block, and it survives the redundancy test. This is exactly the class Andrew named, applied at the
+one place in the network where a fixed exponent is doing real shape work.
+* Sweep granularity as part of the same iteration: global / per-stream / per-block. Per-block is 13
+  params and the natural default.
+* ⚠ **Implementation note that will bite:** `d/dp relu(k)^p = relu(k)^p * log(relu(k))`, which
+  diverges as `k -> 0+`. Use `(relu(k) + eps)^p` or clamp the base; a naive version will produce
+  NaNs in the first hundred steps and look like the iter-51 failure.
+* ⚠ **Deploy debt:** this is a forward-pass change, so it needs the Rust port plus a fresh parity
+  trace. First such candidate in a while — the last several were training-only.
+
+**Ranked into the plan at #4**, displacing the decay LR shape to #5: it is a different FAMILY from
+everything else queued (all of which are training-recipe or optimizer levers), and the whole point of
+Andrew's catch is that the family was missing.
+
