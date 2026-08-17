@@ -325,7 +325,7 @@ Worth actively looking for decay-only formulations of any candidate.
 | 3 | **54** | **`RWKV_CMIX_POW=1`, learnable channel-mixer exponent** | EXPRESSIVENESS | 6.2 h | ARMED. Added after this table was first written -- see "EXPRESSIVENESS vs CAPACITY" below. The only candidate of Andrew's named class that survives the redundancy test. Carries the first Rust deploy debt in a while. |
 | 4 | -- | **Ensemble teacher** ⚠ **DEMOTED to rank 7 on 2026-08-17** -- see "ENSEMBLE-TEACHER SCREEN" below; the proposed 2nd teacher is the 1st teacher's own student | distillation | 5.5 h + 2 h dump | External-teacher KD is **4/4**. KD pays here through target-VARIANCE reduction (which is why α peaks at 0.9); averaging two independent teachers reduces it further. NOT iter 46: that teacher shared the trunk and the forward pass. |
 | 5 | -- | **Decay LR SHAPE** (cosine -> linear / 1−sqrt) | schedule | **3.5 h** | The tuner swept `decay_ratio`, never the decay *shape*, and WSD literature puts the action in that phase. Decay-only, so it is the cheapest untried lever in the queue. |
-| 6 | -- | **Spacing-effect monotonicity** | curve constraints | 5.5 h | Family is **2/3**. ⚠ Do NOT propose monotone-in-t or convex-in-t: the GRU head gives both BY CONSTRUCTION (`(1+t/S)^-d`, d>0, nonneg mixture — checked in code). Monotonicity in REVIEW COUNT is a real SRS fact and is not imposed. |
+| ~~6~~ | -- | ~~**Spacing-effect monotonicity**~~ **KILLED 2026-08-17 by the second screen** -- the violating rows are CALIBRATED (+0.0019 +/- 0.0029) and carry no excess loss, so the drops are correct inference; the between-group gap points the OTHER way. See "SECOND SPACING SCREEN". | curve constraints | 5.5 h saved | Family is **2/3**. ⚠ Do NOT propose monotone-in-t or convex-in-t: the GRU head gives both BY CONSTRUCTION (`(1+t/S)^-d`, d>0, nonneg mixture — checked in code). Monotonicity in REVIEW COUNT is a real SRS fact and is not imposed. |
 | 7 | -- | **Fixed-budget WS:decay de-confound** (1+1 vs 1.6+0.4) | schedule | ~10 h | Iter 34's `decay_ratio 0.25 -> 1.0` gain is confounded with a 1.25 -> 2.0 epoch budget change; the log-linear budget curve explains +0.00084 of the +0.00145. The endgame's 10+2 split is SPENDING ~+0.0006 that rests on one confounded point. |
 | 8 | -- | **Weight decay on the LoRA group** | regularization | 5.5 h | Those params sit at wd=0.0 today, never chosen — they inherited it from `other_params`. One number, and it pairs with iter 53's outcome either way (if Muon helps them, wd is the other half of the same question; if it hurts, wd is the gentler version). |
 | 9 | -- | **Horizon reweighting of the curve loss** | objective | 5.5 h | Long intervals are rare and hard, so the curve objective is dominated by short t. ⚠ Distinct from iter 37 (by-USER weighting, mechanism-refuted in every size quartile): this addresses a coverage imbalance in **t**, which is a property of the data, not of user size. |
@@ -643,6 +643,64 @@ restriction our (more accurate) model currently declines to obey.
 *regularizer* — the same shape as PAVA, which is the family's accepted win: it may buy generalization
 while costing train loss. Do NOT pitch it as "imposing a fact the model is getting wrong". The screen
 did not kill it, but it replaced the implementation and the rationale.
+
+## ★★★ SECOND SPACING SCREEN (2026-08-17) — THE LEVER IS DEAD, and the data points the other way
+
+`scratchpad/spacing_screen/violation_calibration.py`, output in `calibration_result.txt`. ~90 min of
+CPU, no GPU, 90,278 reviews over 5 TRAIN-range users (107/136/156/178/203), champion driven through
+the deploy RNN path — the same instrument that reproduces the certified `reference_iter41` ahead
+predictions at exactly 0.000e+00.
+
+The first screen established the constraint BINDS (39.7% of Good / 38.3% of Easy transitions lower
+predicted retention at a fixed horizon). **Necessary, not sufficient: a violated constraint is only
+worth imposing if the violations are WRONG.**
+
+### Why the obvious test would have been wrong, and what replaces it
+Comparing logloss on rows following a violation vs following a non-violation is CONFOUNDED by a
+mechanism the first screen itself measured: violations concentrate on hard cards (per-card lapse rate
+1.9% → 46.4% with review count, ρ=0.4867), and hard cards carry more loss whatever the model does.
+**Calibration is the confound-free version** — a hard card has a low `p` AND a low `y`, so its gap
+stays near zero; only a systematically mis-set state moves `mean(y) − mean(p)`.
+
+### The result: the violations are CORRECT INFERENCE
+
+| group | n | mean p | mean y | calibration gap | logloss |
+|---|---|---|---|---|---|
+| **after Good/Easy WITH violation** | 17,026 | 0.9588 | 0.9607 | **+0.0019 ± 0.0029** | 0.1323 |
+| after Good/Easy, no violation | 49,199 | 0.9680 | 0.9642 | **−0.0038 ± 0.0016** | 0.1316 |
+
+**The primary reading needs no between-group comparison and carries no confound: the violating rows
+are CALIBRATED.** Their gap is statistically indistinguishable from zero. The lever's entire premise
+is that the drop is an error, which would appear as a clearly positive gap right there. It does not.
+**The target does not exist.**
+
+Corroborating, from the same table: the violating rows carry **no excess loss** — 0.1323 vs 0.1316 —
+despite being genuinely harder rows (mean p is 0.009 lower). Adjusted for difficulty they are
+predicted *better* than the rows the constraint would leave alone.
+
+### ⚠ And the between-group difference points AGAINST the lever, not for it
+The violation-minus-control gap is **+0.0057 ± 0.0033**, and it holds in **all six**
+predicted-probability bins (the strict, difficulty-matched form) — so it is not a mix artifact. But
+read where it comes from: the violating group is calibrated and the **NON-violating group is
+overconfident** (−0.0038, n=49,199). The model's error after a successful review is *failing to lower
+R enough*, in exactly the rows the regularizer would leave untouched — while the rows it would
+penalize are the correct ones. **A penalty on drops would push the wrong way.**
+
+⚠ **Do NOT promote "non-violating rows are overconfident" to an established finding without a lagged
+control.** That comparison partitions on a MODEL-INTERNAL change (the sign of ΔR), which invites
+regression to the mean: "R dropped" preferentially selects transiently-low estimates that then
+regress upward, and vice versa. The symmetric straddle of zero (+0.0019 / −0.0038) is exactly the
+signature. Binning on `p` controls the level, not the change. The primary verdict above does not
+depend on this comparison at all, which is why it stands regardless.
+
+### VERDICT: REMOVE from the queue (plan rank 6). Family stays 2/3.
+This is the **fifth cheap screen to change the ranking**, and the second to change it for this one
+lever — the first re-specified the implementation (Good/Easy-conditional), this one removes the
+justification for any implementation. ~90 min of CPU against a 5.5 h GPU run that would have measured
+a regularizer pulling against the data.
+**What is NOT closed:** the curve-shape family (2/3, PAVA and λ=0.2 are its wins) and monotonicity in
+`t`, which the GRU head already gives by construction. Only the review-count monotonicity constraint
+is dead.
 
 ## ★★★ EXPRESSIVENESS vs CAPACITY — Andrew's catch, 2026-08-17, and it was a real hole
 
