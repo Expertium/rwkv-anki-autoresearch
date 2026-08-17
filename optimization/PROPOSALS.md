@@ -336,10 +336,13 @@ Worth actively looking for decay-only formulations of any candidate.
 Full text + method: `scratchpad/iter53_muonlora/PREREG.md`. Tool `spectra.py`, CPU seconds, run on
 the **step-matched** pair `i53_ws_1000` vs `i45_ws_1000` (same recipe/seed, augmentation off — the
 control iter 47 failed to use). Two results, both before any eval number existed:
-* **The lever is strongly ENGAGED** — LoRA stable rank **+32.65% median** (max +151.6%) against
-  **−1.70%** on the control group. Unlike iters 48/50 (learned-but-negligible), the intervention is
+* **The lever is strongly ENGAGED** — `lora_*` stable rank **+48.26% median** (max +151.6%) against
+  **−2.49%** on an INTERNAL control (`*scale*` — excluded from Muon in BOTH runs, so it cannot
+  have moved), a 20:1 ratio. Unlike iters 48/50 (learned-but-negligible), the intervention is
   large, so a null would mean the mechanism doesn't pay, not that the flag did nothing.
-  ⚠ `||W||_F` also moved **+11.17% median / 220% max** at matched `wd=0` — Muon's update geometry.
+  ⚠ `||W||_F` moved **+22.85% median / 220% max** at matched `wd=0` (verified: the LoRA group is
+  explicitly `weight_decay: 0.0`, so no wd confound) — **but the inert control moved +10.28% too**,
+  so most of that is indirect coupling, not the lever. Only the stable-rank change attributes.
 * **★ THE PREMISE IS ~9x WEAKER THAN CLAIMED, and the obvious normalization INVERTS it.** "The LoRA
   matrices are the most anisotropic in the model" reads that way only in RAW stable rank (2.01 vs
   17.94), which is not comparable across shapes; `÷ min(shape)` flips the sign (0.52 vs 0.23); only

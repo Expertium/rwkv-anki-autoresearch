@@ -37,9 +37,15 @@ STEP = sys.argv[1] if len(sys.argv) > 1 else "1000"
 CAND = Path(f"scratchpad/iter53_muonlora/i53_ws_{STEP}.pth")
 CTRL = Path(f"scratchpad/iter45_kddecay/i45_ws_{STEP}.pth")
 
-# The Muon group rule, copied from train_rwkv.py:150-153 -- a param is EXCLUDED from Muon if its
-# name contains 'lora' or 'scale'. Those are precisely the tensors iter 53 moves.
-EXCLUDE = re.compile(r"lora|scale")
+# The Muon group rule (train_rwkv.py): a param is EXCLUDED from Muon if its name contains 'lora'
+# OR 'scale'. But iter 53's flag moves only the LORA-named ones -- the `scale` tensors stay on AdamW
+# in BOTH runs. So they are a free INTERNAL NEGATIVE CONTROL: whatever noise floor they show is the
+# floor this measurement cannot see past, measured on tensors of the same kind rather than on the
+# 80x80 matrices. Lumping them in with the lever (as the first version of this tool did) dilutes the
+# engagement number with tensors that cannot have moved.
+EXCLUDE = re.compile(r"lora|scale")     # everything AdamW keeps
+LEVER = re.compile(r"lora")             # the subset iter 53 actually moves
+INERT = re.compile(r"scale")            # AdamW in both runs -> must show ~0
 
 
 def load(p):
@@ -117,12 +123,21 @@ def main():
     print("\n=== Q2 (ENGAGEMENT): candidate vs the step-matched control ===")
     print("Muon orthogonalises the update, so the prediction is HIGHER stable rank on the LoRA")
     print("group and ~nothing elsewhere. A null here means the flag is inert, whatever the eval says.")
-    for tag, sel in (("LoRA/scale (THE LEVER)", True), ("everything else (control)", False)):
+    def _sel(name, which):
+        if which == "lever":                       # moved onto Muon by the flag
+            return bool(LEVER.search(name))
+        if which == "inert":                       # AdamW in BOTH runs -- the noise floor
+            return bool(INERT.search(name)) and not LEVER.search(name)
+        return not EXCLUDE.search(name)            # on Muon in both runs
+
+    for tag, sel in (("lora_* (THE LEVER)", "lever"),
+                     ("*scale* (INERT control)", "inert"),
+                     ("everything else (on Muon)", "other")):
         rows = []
         for k in cand:
             if not torch.is_tensor(cand[k]) or k not in ctrl:
                 continue
-            if bool(EXCLUDE.search(k)) != sel:
+            if not _sel(k, sel):
                 continue
             a, b = stats(cand[k]), stats(ctrl[k])
             if a is None or b is None:
@@ -141,7 +156,7 @@ def main():
               f"max={100*rel.max():+.2f}%")
         print(f"      ||W||_F ratio-1 median={100*np.median(d_fr):+.2f}%  "
               f"max={100*np.abs(d_fr).max():.2f}% (abs)")
-        if sel:
+        if sel == "lever":
             worst = sorted(rows, key=lambda r: -(r[1]["stable_rank"] - r[2]["stable_rank"]))[:4]
             print("      biggest movers:")
             for k, a, b in worst:

@@ -8,20 +8,29 @@ rather than in its runner, per the Ops rule that cost iters 43 and 46.)
 
 ## 1. The lever is strongly ENGAGED — this is not another inert flag
 
-| group | median Δ stable rank | median relative change |
-|---|---|---|
-| **LoRA / scale (the lever)** | **+0.4697** | **+32.65%** (max +151.6%) |
-| everything else (control) | −0.2182 | −1.70% |
+⚠ First version of this table lumped `lora_*` and `*scale*` together, because that is the Muon
+EXCLUSION rule. But the flag moves only the `lora`-named tensors — `*scale*` stays on AdamW in
+**both** runs, so it is a free **internal negative control**, measured on tensors of the same kind
+and shape rather than on 80x80 matrices. Splitting them raised the lever's signal from +32.65% to
++48.26% and supplied the floor to read it against:
 
-Muon orthogonalizes the update, so flatter LoRA spectra is exactly its predicted signature, and the
-control group barely moves. Contrast iters 48 and 50, where the diagnostic showed the mechanism was
-*learned but negligible*: here the intervention is large. Whatever the eval says, it is not saying
-"the flag did nothing."
+| group | n | median Δ stable rank | median rel. change | median Δ‖W‖_F |
+|---|---|---|---|---|
+| **`lora_*` (THE LEVER)** | 94 | **+0.6425** | **+48.26%** (max +151.6%) | +22.85% |
+| `*scale*` (INERT control) | 26 | −0.0507 | −2.49% | +10.28% |
+| everything else (on Muon in both) | 69 | −0.2182 | −1.70% | −0.37% |
 
-⚠ Also moved: `||W||_F` on the LoRA group is **+11.17% median, 220% max**. Both groups sit at
-`wd=0` (confirmed in the run's own banner: `27,520 LoRA in a wd=0 group`), so this is Muon's update
-geometry, not a decay difference. A 220% norm growth on some tensor is worth looking at if the run
-degrades — reported as a MAX because a median cannot see a blow-up (iter 51's lesson).
+Muon orthogonalizes the update, so flatter LoRA spectra is exactly its predicted signature, at a
+**20:1 ratio over the floor**. Contrast iters 48 and 50, where the diagnostic showed a mechanism
+that was *learned but negligible*: here the intervention is large. Whatever the eval says, it is
+not saying "the flag did nothing."
+
+★ **And the control corrects a reading I had already written down.** I flagged the lever's
+`||W||_F` growth (+22.85% median, 220% max) as worth watching. But the INERT tensors — whose
+optimizer treatment is identical in both runs — also grew **+10.28%**, because changing how the
+LoRA matrices train changes the gradients reaching everything else. So most of the norm movement is
+**indirect coupling, not the lever**, and only the stable-rank change survives attribution. A
+control group is what separates "my intervention did this" from "the model moved."
 
 ## 2. The stated premise is directionally true but ~9× weaker than claimed — and the obvious fix inverts it
 
