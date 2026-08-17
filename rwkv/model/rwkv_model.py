@@ -587,6 +587,16 @@ class RWKV7Layer(ModuleType):
 
 class RWKV7ChannelMixer(ModuleType):
     # Also the same as for RWKV-5
+    # `cmix_pow_on` must be a TorchScript CONSTANT, not a runtime bool. TorchScript compiles BOTH
+    # branches of a runtime `if`, so with the flag OFF it would try to resolve `self.cmix_pow` --
+    # which deliberately does not exist then -- and the whole model fails to script. Marking it
+    # constant prunes the dead branch at compile time. (Creating the Parameter unconditionally
+    # would also "fix" it and is the WRONG fix: it adds a state_dict key and breaks checkpoint
+    # interchange, which is exactly what the iter-50 level-embedding bug was.)
+    # Consistent with this file's existing constraint that old-style ScriptModule bakes the FIRST
+    # construction's env flags into the compiled class anyway.
+    __constants__ = ["cmix_pow_on"]
+
     def __init__(self, config: RWKV7Config, layer_id):
         super().__init__()
         # head dim K = d_model // n_heads. The CUDA WKV kernel now supports any K that DIVIDES 32
@@ -620,6 +630,22 @@ class RWKV7ChannelMixer(ModuleType):
 
             self.dropout = torch.nn.Dropout(p=config.dropout)
 
+            # RWKV_CMIX_POW=1 (iter 54): make the channel mixer's squared-ReLU exponent LEARNABLE,
+            # one scalar per block (13 params on this trunk). Andrew 2026-08-17 asked why the queue
+            # had no expressiveness changes; this is the one candidate of that class that survived
+            # the REDUNDANCY TEST. `relu(c*k)^p = c^p * relu(k)^p`, so rescaling the input only
+            # rescales the output -- the CURVATURE is set by p alone and no adjacent free linear can
+            # reproduce it. (That test kills learnable slopes on tanh/sigmoid, which are all
+            # sandwiched between free linears, and cross-head mixing, which W_o already does.)
+            # What p actually controls is the FFN's degree of homogeneity: relu(k)^p is a pure power
+            # law, so p is a gain exponent -- higher p is sharper/more selective, lower is smoother.
+            # Scale is absorbable; the exponent is not.
+            self.cmix_pow_on = os.environ.get("RWKV_CMIX_POW", "0") == "1"
+            if self.cmix_pow_on:
+                # Name deliberately contains neither "weight" nor "lora": get_optimizer's grouping
+                # sends it to other_params at wd=0, which is right for a shape parameter.
+                self.cmix_pow = torch.nn.Parameter(torch.tensor(2.0))
+
     @FunctionType
     def forward(self, in_BTC, time_shift_select_BT):
         x_BTC = self.layer_norm(in_BTC)
@@ -630,7 +656,17 @@ class RWKV7ChannelMixer(ModuleType):
             else:
                 x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
         k_BTK = self.W_k(torch.lerp(x_BTC, x_shift_BTC, self.lerp_k))
-        o_BTC = self.W_v(torch.square(torch.nn.functional.relu(k_BTK)))
+        if self.cmix_pow_on:
+            # ⚠ THE GRADIENT LANDMINE: d/dp x^p = x^p * log(x), which diverges as x -> 0+, and
+            # relu() produces exact zeros on roughly half the units. The +eps floor keeps log(x)
+            # finite; at eps=1e-6 and p=2 the floored contribution is ~1e-12, i.e. numerically the
+            # same zero, while d/dp there is eps^p * log(eps) ~ -1.4e-11. Without it this would NaN
+            # within the first hundred steps and look exactly like iter 51.
+            # Kept OUT of the flag-off branch so that path stays BYTE-IDENTICAL: (relu(k)+1e-6)^2
+            # differs from relu(k)^2 by ~2e-6*k, tiny but not zero.
+            o_BTC = self.W_v(torch.pow(torch.nn.functional.relu(k_BTK) + 1e-6, self.cmix_pow))
+        else:
+            o_BTC = self.W_v(torch.square(torch.nn.functional.relu(k_BTK)))
         return in_BTC + self.dropout(o_BTC)
 
 

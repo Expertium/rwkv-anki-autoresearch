@@ -118,6 +118,15 @@ class RWKV7RNNChannelMixer(ModuleType):
         self.W_k = torch.nn.Linear(config.d_model, k_dim, bias=False)
         self.W_v = torch.nn.Linear(k_dim, config.d_model, bias=False)
 
+        # RWKV_CMIX_POW (iter 54) -- the DEPLOY mirror of rwkv_model.RWKV7ChannelMixer. This file
+        # carried its OWN hardcoded `torch.square(relu(k))`, so changing only the training path
+        # would have been a silent three-way parity break of exactly the kind §9 exists for: train
+        # and eval would use relu(k)^p while CPU inference used relu(k)^2, and every path would
+        # look self-consistent in isolation. The parity harness has a case for this flag.
+        self.cmix_pow_on = os.environ.get("RWKV_CMIX_POW", "0") == "1"
+        if self.cmix_pow_on:
+            self.cmix_pow = torch.nn.Parameter(torch.tensor(2.0))
+
     def forward(self, in_BC, state: Optional[torch.Tensor]):
         x_shift_B1C = state
         assert len(in_BC.shape) == 2
@@ -130,7 +139,12 @@ class RWKV7RNNChannelMixer(ModuleType):
 
         x_layer_norm_B1C = x_B1C
         k_B1K = self.W_k(torch.lerp(x_B1C, x_shift_B1C, self.lerp_k))
-        o_B1C = self.W_v(torch.square(torch.nn.functional.relu(k_B1K)))
+        if self.cmix_pow_on:
+            # eps floor identical to the training path -- see the comment there on the log(x)
+            # gradient. It must match to the last bit or parity fails on the eps itself.
+            o_B1C = self.W_v(torch.pow(torch.nn.functional.relu(k_B1K) + 1e-6, self.cmix_pow))
+        else:
+            o_B1C = self.W_v(torch.square(torch.nn.functional.relu(k_B1K)))
 
         return (in_B1C + o_B1C).squeeze(1), x_layer_norm_B1C
 
