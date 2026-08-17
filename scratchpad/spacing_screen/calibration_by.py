@@ -125,11 +125,15 @@ def main():
     if OUT.exists() and os.environ.get("REUSE", "1") == "1":
         d = np.load(OUT)
         p, y, t, n, r = d["p"], d["y"], d["t"], d["n"], d["r"]
-        if "u" not in d:
+        # `u` is the marker for the 2026-08-17 fix: the user column and the previous-press
+        # rating landed together, so its absence dates the whole npz.
+        stale_npz = "u" not in d
+        if stale_npz:
             print("  (this npz predates the user column -- delete it and set REUSE=0 to"
                   " regenerate, so recalibration_prize.py can hold out BY USER)")
         print(f"reusing {OUT} ({p.size:,} records)")
     else:
+        stale_npz = False
         p, y, t, n, r, u = collect()
         np.savez_compressed(OUT, p=p, y=y, t=t, n=n, r=r, u=u)
         print(f"\nwrote {OUT} ({p.size:,} records)")
@@ -154,15 +158,24 @@ def main():
           [(n >= lo) & (n < hi) for lo, hi in zip(nedges[:-1], nedges[1:])], p, y)
 
     # --- control: the first run found `after Hard` worst-calibrated; it should reappear ---
-    table("CALIBRATION BY THE PREVIOUS (state-setting) PRESS", ["Again", "Hard", "Good", "Easy"],
-          [r == k for k in (1, 2, 3, 4)], p, y,
-          note="  The press that WROTE the state making this prediction. Slicing by the current
-"
-               "  row's rating instead would condition on the outcome (y == rating>=2) and report
-"
-               "  y=1.0 exactly -- degenerate. Cross-check: the first screen found `after Hard`
-"
-               "  the worst-calibrated group at -0.0251, which should reappear here.")
+    # ⚠ REFUSE to print this from a pre-fix npz. Those cached `r` values are the CURRENT row's
+    # rating, so the table would be degenerate (y == rating>=2 by definition) -- and it would look
+    # like a finding, complete with "<-- biased" flags on every row. A tool that emits a known-wrong
+    # table is worse than one that declines. `u` is the marker: both columns landed in the same fix.
+    if stale_npz:
+        print("\n=== CALIBRATION BY THE PREVIOUS PRESS: SKIPPED ===")
+        print("  The cached npz predates the previous-press fix, so its rating column holds the")
+        print("  CURRENT row's rating and this table would be degenerate. Delete")
+        print("  calib_records.npz and re-run with REUSE=0 (~90 min CPU) to get it.")
+    else:
+        table("CALIBRATION BY THE PREVIOUS (state-setting) PRESS",
+              ["(first)", "Again", "Hard", "Good", "Easy"],
+              [r == k for k in (0, 1, 2, 3, 4)], p, y,
+              note=("  The press that WROTE the state making this prediction. Slicing by the\n"
+                    "  CURRENT row's rating instead would condition on the outcome\n"
+                    "  (y == rating>=2) and report y=1.0000 exactly -- degenerate.\n"
+                    "  Cross-check: the first screen found `after Hard` the worst-calibrated\n"
+                    "  group at -0.0251, which should reappear here."))
 
 
 if __name__ == "__main__":
