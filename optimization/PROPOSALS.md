@@ -303,3 +303,46 @@ wins and promotes, iter 53's controlled comparison stays iter-53-vs-iter-45 whil
 must beat has moved. Accepted deliberately: the levers are orthogonal, iter 53's value is the
 mechanism test, and chaining keeps the GPU busy rather than idling until a human reads a verdict.
 
+## ★★★ THE 10-ITERATION PLAN (Andrew asked for it explicitly, 2026-08-17)
+
+**Planning constraint that shapes the whole list:** the families with a hit rate are mostly closed
+*as families* (ahead-vs-imm routing 0/2 mechanism-closed, topology 1/4 closed, capacity 0/3,
+low-rank-friendly regularization 0/1 mechanism-closed, HP tuning closed, state-size ladder 0/5).
+So "one more variant of X" is not available for most of X. Every entry below names the measurement
+that motivates it and what distinguishes it from the reject it resembles — and where that is thin,
+it says so.
+
+**Second planning constraint, and it is new: DECAY-ONLY LEVERS COST 36% LESS.** They warm-start from
+the champion's own `i45_ws_10935` exactly (the lever cannot touch WS), so ~3.5 h instead of ~5.5 h.
+Worth actively looking for decay-only formulations of any candidate.
+
+| # | iter | lever | family | cost | why it is here |
+|---|---|---|---|---|---|
+| 1 | **52** | KD `alpha_decay` 0.5 -> 0.9 | distillation | **3.5 h** | ARMED. The 0.5 was never chosen — iter 45 won because its runner didn't clear the var. Its own notes flag this as open. |
+| 2 | **53** | `RWKV_MUON_INCLUDE_LORA=1` | optimizer/reg | 6.2 h | ARMED. 27,520 params (4.9%) excluded from Muon by a name rule that predates the width ladder; the most anisotropic matrices in the model. Direct prediction of the regularizer finding. |
+| 3 | 54 | **Ensemble teacher: d=128 + a frozen past champion** | distillation | 5.5 h + 2 h dump | External-teacher KD is **4/4**. KD pays here through target-VARIANCE reduction (which is why α peaks at 0.9); averaging two independent teachers reduces it further. NOT iter 46: that teacher shared the trunk and the forward pass. |
+| 4 | 55 | **Decay LR SHAPE** (cosine -> linear / 1−sqrt) | schedule | **3.5 h** | The tuner swept `decay_ratio`, never the decay *shape*, and WSD literature puts the action in that phase. Decay-only, so it is the cheapest untried lever in the queue. |
+| 5 | 56 | **Spacing-effect monotonicity** | curve constraints | 5.5 h | Family is **2/3**. ⚠ Do NOT propose monotone-in-t or convex-in-t: the GRU head gives both BY CONSTRUCTION (`(1+t/S)^-d`, d>0, nonneg mixture — checked in code). Monotonicity in REVIEW COUNT is a real SRS fact and is not imposed. |
+| 6 | 57 | **Fixed-budget WS:decay de-confound** (1+1 vs 1.6+0.4) | schedule | ~10 h | Iter 34's `decay_ratio 0.25 -> 1.0` gain is confounded with a 1.25 -> 2.0 epoch budget change; the log-linear budget curve explains +0.00084 of the +0.00145. The endgame's 10+2 split is SPENDING ~+0.0006 that rests on one confounded point. |
+| 7 | 58 | **Weight decay on the LoRA group** | regularization | 5.5 h | Those params sit at wd=0.0 today, never chosen — they inherited it from `other_params`. One number, and it pairs with iter 53's outcome either way (if Muon helps them, wd is the other half of the same question; if it hurts, wd is the gentler version). |
+| 8 | 59 | **Horizon reweighting of the curve loss** | objective | 5.5 h | Long intervals are rare and hard, so the curve objective is dominated by short t. ⚠ Distinct from iter 37 (by-USER weighting, mechanism-refuted in every size quartile): this addresses a coverage imbalance in **t**, which is a property of the data, not of user size. |
+| 9 | 60 | **Hint/feature distillation from the d=128 trunk** | distillation | 5.5 h + dump | Output-KD is 4/4; matching an intermediate representation targets the TRUNK rather than the two heads. Needs a learned d=128 -> d=80 projection — the only entry with real implementation risk. |
+| 10 | 61 | **Born-again: fresh student, iter-45 champion as SOLE teacher** | distillation | 5.5 h + dump | The BAN phenomenon (same-capacity student beats its teacher). Cleanly distinct from iter 46: separate forward pass, different weights, frozen. Ranked below #3 because #3 keeps the known-good teacher and only ADDS ours, so it risks less. #3's result should inform whether this is worth running at all. |
+
+### ⚠ Honest note on where this list thins out
+Ranks 1-6 each rest on a specific measurement in this repo. Ranks 7-10 are weaker: 7 and 8 are
+"a knob nobody chose" arguments, and 9-10 are literature-standard moves without local evidence.
+**The plan is therefore to re-run Andrew's 3-agent generation protocol once ranks 1-5 have reported**,
+rather than to commit to 7-10 now — the first five results will close or reopen whole branches, and
+idea generation is cheap relative to a 5.5 h run.
+
+### What would change the plan
+* **If iter 53 wins**, the regularizer reading gains its first confirmation and the queue should tilt
+  toward more of it (scale matrices onto Muon, #7, structured regularizers). **If it regresses**, that
+  bounds the reading harder than a win would confirm it, and #7 becomes the gentler retry.
+* **If iter 52 wins**, the KD schedule is live and `alpha_decay=0.25` (the other bracket point) is a
+  cheap 3.5 h follow-up; #3 also gets more attractive.
+* **If both are nulls**, distillation and optimizer are the last two families with a hit rate, and
+  the honest read is that the trunk is near its ceiling at this budget — which is an argument for
+  moving to features sooner, not for grinding out ranks 7-10.
+
