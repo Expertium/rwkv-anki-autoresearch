@@ -328,7 +328,7 @@ Worth actively looking for decay-only formulations of any candidate.
 | ~~6~~ | -- | ~~**Spacing-effect monotonicity**~~ **KILLED 2026-08-17 by the second screen** -- the violating rows are CALIBRATED (+0.0019 +/- 0.0029) and carry no excess loss, so the drops are correct inference; the between-group gap points the OTHER way. See "SECOND SPACING SCREEN". | curve constraints | 5.5 h saved | Family is **2/3**. ⚠ Do NOT propose monotone-in-t or convex-in-t: the GRU head gives both BY CONSTRUCTION (`(1+t/S)^-d`, d>0, nonneg mixture — checked in code). Monotonicity in REVIEW COUNT is a real SRS fact and is not imposed. |
 | 7 | -- | **Fixed-budget WS:decay de-confound** (1+1 vs 1.6+0.4) | schedule | ~10 h | Iter 34's `decay_ratio 0.25 -> 1.0` gain is confounded with a 1.25 -> 2.0 epoch budget change; the log-linear budget curve explains +0.00084 of the +0.00145. The endgame's 10+2 split is SPENDING ~+0.0006 that rests on one confounded point. |
 | 8 | -- | **Weight decay on the LoRA group** | regularization | 5.5 h | Those params sit at wd=0.0 today, never chosen — they inherited it from `other_params`. One number, and it pairs with iter 53's outcome either way (if Muon helps them, wd is the other half of the same question; if it hurts, wd is the gentler version). |
-| 9 | -- | **Horizon reweighting of the curve loss** | objective | 5.5 h | Long intervals are rare and hard, so the curve objective is dominated by short t. ⚠ Distinct from iter 37 (by-USER weighting, mechanism-refuted in every size quartile): this addresses a coverage imbalance in **t**, which is a property of the data, not of user size. |
+| ~~9~~ | -- | ~~**Horizon reweighting of the curve loss**~~ **KILLED 2026-08-17 by the horizon screen** -- long intervals are NOT rare (32.8% of rows at t>=21d) and the calibration gap has NO horizon trend. See "HORIZON SCREEN", which replaced it with the recalibration candidate. | objective | 5.5 h | Long intervals are rare and hard, so the curve objective is dominated by short t. ⚠ Distinct from iter 37 (by-USER weighting, mechanism-refuted in every size quartile): this addresses a coverage imbalance in **t**, which is a property of the data, not of user size. |
 | 10 | -- | **Hint/feature distillation from the d=128 trunk** | distillation | 5.5 h + dump | Output-KD is 4/4; matching an intermediate representation targets the TRUNK rather than the two heads. Needs a learned d=128 -> d=80 projection — the only entry with real implementation risk. |
 | 11 | -- | **Born-again: fresh student, iter-45 champion as SOLE teacher** | distillation | 5.5 h + dump | The BAN phenomenon (same-capacity student beats its teacher). Cleanly distinct from iter 46: separate forward pass, different weights, frozen. Ranked below #3 because #3 keeps the known-good teacher and only ADDS ours, so it risks less. #3's result should inform whether this is worth running at all. |
 
@@ -701,6 +701,83 @@ a regularizer pulling against the data.
 **What is NOT closed:** the curve-shape family (2/3, PAVA and λ=0.2 are its wins) and monotonicity in
 `t`, which the GRU head already gives by construction. Only the review-count monotonicity constraint
 is dead.
+
+## ★★★ HORIZON SCREEN (2026-08-17) — rank 9 DIES, and the run turned up something better
+
+`scratchpad/spacing_screen/calibration_by.py` (output `calib_by_result.txt`, records cached in
+`calib_records.npz`) reuses the spacing screen's instrument and slices 83,478 predictions several
+ways, so the next question costs a slice rather than another 90 minutes of CPU.
+
+### Rank 9's premise fails on BOTH halves
+
+| t bucket | n | mean p | mean y | gap | logloss |
+|---|---|---|---|---|---|
+| <1d | 21,587 | 0.9727 | 0.9733 | +0.0006 | 0.0955 |
+| 1-3d | 9,045 | 0.9659 | 0.9595 | **−0.0064** | 0.1325 |
+| 3-7d | 10,877 | 0.9681 | 0.9689 | +0.0009 | 0.1081 |
+| 7-21d | 14,616 | 0.9642 | 0.9595 | **−0.0047** | 0.1367 |
+| 21-60d | 11,731 | 0.9560 | 0.9515 | **−0.0045** | 0.1611 |
+| 60-180d | 8,910 | 0.9594 | 0.9529 | **−0.0066** | 0.1691 |
+| >180d | 6,712 | 0.9590 | 0.9549 | −0.0041 | 0.1455 |
+
+* **"Long intervals are RARE" — FALSE. 32.8% of scored rows sit at t ≥ 21 days.** The horizon
+  distribution is remarkably spread; the curve objective is not dominated by short t.
+* **"…and HARD, so the model underfits the tail" — the loss column rises with t, but that is not the
+  test.** Long gaps are genuinely harder; that is the task, not an error. The test is the GAP, and it
+  shows **no horizon trend**: 60-180d (−0.0066) is indistinguishable from 1-3d (−0.0064), while <1d
+  and 3-7d are calibrated. **Reweighting toward long t would be correcting an error that is not
+  there.** Sixth screen to change the ranking.
+
+### ★★ THE REAL FINDING: the champion is systematically OVERCONFIDENT, and KD is why
+
+Read the sign column: the gap is **negative nearly everywhere**, overall **−0.00292** — and this is
+measured on **TRAIN-range users**, which is what makes it a finding. Binary cross-entropy is a proper
+scoring rule: at its optimum `mean(p) == mean(y)` within any input-determined group. A persistent gap
+on data the model trained on means it is not at the calibration optimum **for the hard labels**.
+
+**The mechanism is in the code, not inferred** (`srs_model.py:1261-1263`):
+
+    label_y = alpha * teacher_curve + (1 - alpha) * label_y      # alpha = 0.9 WS, 0.5 decay
+
+**The curve head is not trained to predict the outcome. It is trained to predict a blend that is
+mostly the d=128 teacher's probability**, so the teacher's calibration is inherited and nothing in the
+objective pulls it back to the data's frequency. KD is the log's best family (4/4) and it pays through
+target-VARIANCE reduction — but variance reduction and calibration are separable, and only one of them
+was ever measured.
+
+**Size of the prize** (`recalibration_prize.py`, held out, base logloss 0.1295 on this population):
+
+| correction | params | held-out gain |
+|---|---|---|
+| logit shift `z + b`, b = −0.093 | 1 | **+0.000115** |
+| Platt `a·z + b`, a = 1.033 | 2 | **+0.000131** |
+
+Just over the 0.0001 accept bar and comfortably clear of the 7.5e-5 noise floor.
+
+⚠ **Caveats, none of which I can discharge from this run.** (a) TRAIN-range users and ALL
+predecessor-having rows, not the benchmark's equalized subset — the absolute 0.1295 is NOT comparable
+to the 0.2977 gate number; only the relative gain transfers. (b) The held-out split is 2-fold by ROW,
+not by user — weaker than the gate's setting. Fixed for future runs (`calibration_by.py` now records
+the user id; delete the npz and re-run with `REUSE=0` to get a per-user split). (c) My first
+back-of-envelope estimate was **+0.00037, ~3x too high**, because it used a bucket-level gap where the
+overall gap is −0.00292 — the measured number is the one to quote.
+
+### The candidate, and a pre-registered test of it that is ALREADY RUNNING
+Two routes, with different costs:
+1. **Training-side: `alpha_decay` → 0.25, or a short pure-hard-label tail at the very end of decay.**
+   Lets the model recalibrate to the data while keeping the KD-learned representation. Cheap (3.5 h,
+   decay-only, same dump) and already listed as open in-family — this gives it a MECHANISM it did not
+   have. ⚠ It trades against the variance reduction that made KD win, so the +0.00013 is a ceiling
+   on the calibration half only.
+2. **Post-hoc recalibration** harvests it without that trade, but it is a forward-pass change on the
+   curve path and adds deploy debt (the GRU head's output is a mixture, so a logit shift is not
+   foldable into an existing linear bias).
+
+**★ PRE-REGISTERED: iter 52 is an indirect test of this mechanism, and it is 3rd in the running
+chain.** iter 52 moves `alpha_decay` 0.5 → **0.9**, i.e. MORE teacher in decay. If the KD-calibration
+cost is real and binding, iter 52 should come back **neutral-to-negative**. If it wins, the variance
+reduction dominates the calibration cost at this dose and route 1 is the wrong direction — in which
+case route 2 (which does not trade) is the only way to collect the +0.00013.
 
 ## ★★★ EXPRESSIVENESS vs CAPACITY — Andrew's catch, 2026-08-17, and it was a real hole
 
