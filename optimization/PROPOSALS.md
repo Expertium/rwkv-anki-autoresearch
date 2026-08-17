@@ -332,6 +332,24 @@ Worth actively looking for decay-only formulations of any candidate.
 | 10 | -- | **Hint/feature distillation from the d=128 trunk** | distillation | 5.5 h + dump | Output-KD is 4/4; matching an intermediate representation targets the TRUNK rather than the two heads. Needs a learned d=128 -> d=80 projection — the only entry with real implementation risk. |
 | 11 | -- | **Born-again: fresh student, iter-45 champion as SOLE teacher** | distillation | 5.5 h + dump | The BAN phenomenon (same-capacity student beats its teacher). Cleanly distinct from iter 46: separate forward pass, different weights, frozen. Ranked below #3 because #3 keeps the known-good teacher and only ADDS ours, so it risks less. #3's result should inform whether this is worth running at all. |
 
+### ★★ ITER 53 SPECTRAL PRE-REGISTRATION (2026-08-17, written at step ~1150 of 10,935)
+Full text + method: `scratchpad/iter53_muonlora/PREREG.md`. Tool `spectra.py`, CPU seconds, run on
+the **step-matched** pair `i53_ws_1000` vs `i45_ws_1000` (same recipe/seed, augmentation off — the
+control iter 47 failed to use). Two results, both before any eval number existed:
+* **The lever is strongly ENGAGED** — LoRA stable rank **+32.65% median** (max +151.6%) against
+  **−1.70%** on the control group. Unlike iters 48/50 (learned-but-negligible), the intervention is
+  large, so a null would mean the mechanism doesn't pay, not that the flag did nothing.
+  ⚠ `||W||_F` also moved **+11.17% median / 220% max** at matched `wd=0` — Muon's update geometry.
+* **★ THE PREMISE IS ~9x WEAKER THAN CLAIMED, and the obvious normalization INVERTS it.** "The LoRA
+  matrices are the most anisotropic in the model" reads that way only in RAW stable rank (2.01 vs
+  17.94), which is not comparable across shapes; `÷ min(shape)` flips the sign (0.52 vs 0.23); only
+  **÷ a same-shape Gaussian** is meaningful, and it gives **0.695 vs 0.846 — a real but modest 18%**.
+  **Carry this: a shape-dependent statistic needs a shape-matched RANDOM reference, not a
+  shape-normalized ratio.** Same family as median-vs-max.
+* **Prediction: null or small harm**, because a rank-4 bottleneck exists *to* concentrate and the
+  flag pushes it further toward flat. If null, rank 8 (LoRA weight decay) is the gentler retry of
+  the SAME question, not an independent lever.
+
 ### ⚠ Honest note on where this list thins out
 Ranks 1-6 each rest on a specific measurement in this repo. Ranks 7-10 are weaker: 7 and 8 are
 "a knob nobody chose" arguments, and 9-10 are literature-standard moves without local evidence.
