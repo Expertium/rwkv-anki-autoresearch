@@ -186,3 +186,96 @@ rejected (no speed win, lesson bank). One crossover thought kept: '1-bit-surviva
 redundancy PROBE (if a stream's weights survive binarization, its fp32 capacity is redundant ->
 prune it) -- but saliency-guided pruning already measures this more directly and is 5/5.
 Rank: NOT APPLICABLE.**
+
+---
+
+# REVIEW 2026-08-17 (Andrew: "time to do another literature review + GitHub repos that use RWKV")
+
+Previous sweep was 2026-07-21 -- before the A18 trunk consolidated, before the Muon-as-regularizer
+finding, and before the expressiveness-vs-capacity distinction. The filter is also sharper now.
+
+**THE FILTER.** 558k params / d=80 / H=5 / K=16 / 13 layer-steps; CPU+Rust deploy; card+note state
+FIXED; no new inputs; must clear **+0.0001 in BOTH modes**. Two consequences that kill most of the
+field on sight: (a) anything whose reported gain is "small" at 1B+ scale is below our noise floor;
+(b) **capacity adds are 0/3 here**, so a paper that buys accuracy with parameters is the wrong
+shape -- what we want is a RICHER FUNCTIONAL FORM at fixed parameters.
+
+## RWKV-8 -- NOT APPLICABLE (checked, do not re-review)
+Still experimental. Its three published features are all LLM-scale problems we do not have:
+**DeepEmbed** (edge-friendly sparse MoE to cut VRAM -- we have no MoE and no vocabulary embedding),
+**DeepEmbedAttention** (streamlining the KV cache -- we have no KV cache), and **ROSA** (an online
+suffix automaton over tokens -- we have no tokens). Nothing to port.
+
+## flash-linear-attention (fla-org) -- mostly INFRASTRUCTURE, not architecture
+2026 additions are MoBA/FlashMoBA, a TileLang backend, attention-sink support, and Context Parallel
+for KDA/GDN -- distributed-training and long-context plumbing for large models. The architectural
+items are **Kimi Delta Attention** (Oct 2025) and **DeltaFormer** (Sep 2025), both delta-rule
+variants aimed at LLM scale. Worth a look ONLY if the delta-rule direction below pays.
+
+## *** THE ONE REAL LEAD: the eigenvalue range of the state-transition matrix
+**Unlocking State-Tracking in Linear RNNs Through Negative Eigenvalues** (arXiv 2411.12537, ICLR
+2025; code `github.com/automl/unlocking_state_tracking`). Finite-precision linear RNNs whose
+state-transition eigenvalues are all POSITIVE provably cannot solve parity; extending the range from
+[0,1] to [-1,1] fixes that and also improves code/math perplexity, **at zero parameter and zero
+inference cost**. For DeltaNet the change is one constant -- `beta = 2*sigmoid(.)` instead of
+`sigmoid(.)` -- which works because DeltaNet has `||k|| = 1` and a diagonal of exactly 1, so
+`1 - beta` lands in `(-1, 1)`. Follow-up **DeltaProduct** (2502.10297) stacks Householder products
+for more expressivity at multiplied compute -- capacity-shaped, so LOW for us.
+
+### MEASURED ON OUR CHAMPION, and the measurement changes the proposal
+Our update (`rwkv_ops.single_timestep`) is `S <- S(diag(w) - kappa (a*kappa)^T) + v k^T`, so for
+constant `w` the eigenvalues are `w` (K-1 of them, always positive) and **`w - a*||kappa||^2`**
+along the delta direction. Read from the champion checkpoint's reachable envelopes:
+
+| quantity | value |
+|---|---|
+| `w` (decay) | 0.970 - 0.985 |
+| `a` at rest / at its reachable max | 0.49-0.52 / 0.59-0.64 |
+| **`||kappa||^2`** (= `k_scale^2`, another sigmoid) | **0.23 - 0.27** |
+| **eigenvalue along kappa, at rest** | **0.837 - 0.864** |
+| same, at the model's maximum reachable `a` | 0.809 - 0.840 |
+| same, if `a` were DOUBLED | 0.645 - 0.698 |
+
+**Two conclusions, and the second is why the paper does not port cleanly.**
+1. **We are firmly in the positive-eigenvalue regime** -- 0.84, not marginally positive. So the
+   representational limitation the paper describes does apply to us.
+2. **The naive `a = 2*sigmoid` port would be nearly INERT.** It moves the eigenvalue 0.85 -> 0.67,
+   still comfortably positive; reaching negative needs `a*||kappa||^2 > w ~ 0.98`, i.e. roughly a
+   **6x** increase in the product. The blocker is not mainly `a` -- it is **`||kappa||^2 ~ 0.24`**,
+   because RWKV-7 rescales the L2-normalised key by `k_scale = sigmoid(.)`. DeltaNet's trick works
+   precisely because it has `||k|| = 1`; we do not.
+
+### *** THE FINDING THAT IS WORTH MORE THAN THE PORT
+`a * ||kappa||^2` contributes only **~0.15** of eigenvalue movement against a decay of ~0.98. So
+our trained model uses its state almost as a **pure exponential-decay accumulator with a small
+rank-1 correction** -- RWKV-7's headline innovation, the expressive delta rule, is barely engaged.
+That is a previously invisible fact about this model, and it reframes the lever: the question is not
+"extend the range" but **"why is the delta-rule authority so weak, and does a version with more of
+it do better?"**
+
+**=> PROPOSAL (queued): DELTA-RULE AUTHORITY.** `a = c * sigmoid(.)` with `c` a small constant
+(2, then 4), or `c` learnable per layer. Zero params at fixed `c`, one multiply in the forward pass,
+same kernel, same state size, same deploy bytes.
+* **Stability is quantified, not hoped:** the worst-case eigenvalue is
+  `w - c * a_max * ||kappa||^2_max`. At the measured maxima, `c=4` gives ~0.35 and `c=8` gives
+  ~-0.3, so even `c=8` stays inside [-1,1]. WARNING: that is computed from RESTING envelopes and
+  assumes constant `w`, while `M` is non-symmetric -- **probe the actual max over a real batch before
+  trusting it** (iter 51's lesson: a median cannot see a blow-up, and this project has already paid
+  once for checking the wrong statistic).
+* Deploy debt: forward-pass change -> Rust port + fresh parity trace.
+* It is an EXPRESSIVENESS change, the axis Andrew opened on 2026-08-17 and the one the 0/3 capacity
+  record does NOT cover.
+
+### CORRECTION to the 2026-08-17 expressiveness probe in PROPOSALS.md
+That probe listed "`a = sigmoid(a_lora)` is nowhere near its bounds, therefore DEAD". **That
+reasoning is wrong for a representational barrier**, and this paper is why: if the useful region is
+unreachable at ANY parameter setting, there is no gradient pressure to climb toward the bound, so
+"not pressed against it" proves nothing. The measurement above supersedes it -- `a` is not dead, it
+is WEAK, and the reason is the `k_scale` factor rather than the sigmoid.
+
+## Sources
+* RWKV-7 "Goose": arXiv 2503.14456 - RWKV wiki architecture history: wiki.rwkv.com
+* Negative eigenvalues: arXiv 2411.12537 (ICLR 2025) + github.com/automl/unlocking_state_tracking
+* DeltaProduct: arXiv 2502.10297
+* flash-linear-attention: github.com/fla-org/flash-linear-attention
+
