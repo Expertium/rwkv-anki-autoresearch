@@ -485,6 +485,44 @@ test. Then, in logit space with a ZERO-INIT gain so the model is bit-identical a
 ⚠ Report the learned `gain` per gated layer as the separable diagnostic, exactly as iter 54 reports
 its 13 `cmix_pow` values.
 
+### ✅ BUILT 2026-08-17 (`ef1853f`) — code complete, NOT yet armed
+`RWKV_RGATE=card`, default off. **+324 params exactly as pre-registered**; per-entity state sizes
+unchanged, so the frozen 9-byte card budget holds. Threading: `log_dt` is recovered from
+`scaled_elapsed_seconds` in canonical row order and gathered per split with x's own indices, then
+passed `RWKV7 -> block -> time_mixer`; mirrored in `rwkv_rnn_model.py` + `srs_model_rnn.py`.
+Implemented in log space as `exp(-d * softplus(log_dt - log_s))` — the same function for every real
+input, so there is no clamp and no NaN branch, and `rhat` in (0,1] bounds the added term to
+`[0,|gain|]` (a WORST-CASE bound, the check iter 51 lacked).
+**Optimizer placement is deliberate:** all three tensors land in `other_params` at wd=0 (a (1,C)
+weight has squeeze-rank 1, so `train_rwkv`'s ">=2-D matrix" rule skips it and Muon never sees it).
+Weight decay on a zero-init gain would pin it at zero and make counter-hypothesis 1 unfalsifiable.
+
+**Verification (all green, CPU, zero GPU):**
+* `parity_train_vs_rnn.py` — 2 new cases, **10/10 pass**. Gate case 1.43e-06, with dt-sensitivity
+  2.96e-02 on BOTH paths and parity 1.67e-06 at a second dt. That second half is load-bearing:
+  agreement between two paths that both IGNORE dt is a matched no-op, not parity. Scope case
+  confirms `RWKV_RGATE=note,deck` leaves a card stack ungated.
+* **NEW `scratchpad/parity3/smoke_rgate.py`** (real chunk, real `prepare()`) — the single-stream
+  harness cannot see the PLUMBING, which is the risky half: `log_dt` is the first raw input feature
+  ever threaded into the recurrence, and an off-by-one in the gather would silently gate every
+  review on some OTHER review's elapsed time. **ON@gain=0 vs OFF = 0.000e+00** (identical checksums
+  to 10 dp), so the zero-init inertness claim is measured rather than asserted; gain=0.8 moves
+  1.88e-03; all 8 rgate tensors get finite non-zero grads; recovered `log_dt` is physically
+  log-seconds (median 6.68 = 13 min, max 15.86 = 89 days).
+
+**★ FOUND BY THAT SMOKE, and it would have become folklore otherwise: the LMDB stores features in
+BFLOAT16.** The first-review sentinel's standardized value −1.9117082534 is held as −1.9140625, and
+un-standardizing multiplies the error by std=5.21, so a first review recovers as
+**`log_dt` = −0.01227, not 0.0** (17.9% of rows in a real chunk). Substantively identical — `rhat`≈1
+there, so the gate contributes ~0 exactly as intended — but any `== 0` sentinel test can never pass,
+and the same ±0.02 log-space quantization (~2% in dt) rides on every row. Documented in the model
+and in the smoke.
+
+**STILL OWED BEFORE ARMING:** `smoke_scripted_eval.sh` (GPU-gated, waiting on the QAT#2 eval;
+mandatory after touching `srs_model.py` — a PLAIN eval is the only path that scripts the model, so
+iter 48's bug class is invisible to training AND to QAT evals), plus the Rust port + fresh parity
+trace, the same deploy debt iter 54 carries.
+
 ## ★★ SPACING-EFFECT SCREEN (2026-08-17) — the constraint BINDS HARD, but the proposal as written is WRONG
 
 Run before building it, CPU only, no GPU: `scratchpad/spacing_screen/monotonicity_probe.py`
