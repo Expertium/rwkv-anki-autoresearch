@@ -2665,3 +2665,65 @@ diverged** (max ratio 2.75e8) — which is what promoted the diagnosis from "bad
 ~0.5 h GPU, no eval, no champion impact. **Optimizer family stays 1/2** — this never produced a
 number, so it is a failed launch rather than a rejected iteration. The lever is closed on mechanism;
 `NorMuon` (per-neuron second-moment normalisation) is a *different* mechanism and remains open.
+
+## iter 56 (QAT#2, `qtaxg_i45kd`) — swap the KD teacher to our own plain champion (REJECTED as an exact tie, 2026-08-17 21:34)
+
+**Numbering:** 52–55 were pre-assigned to queued algorithmic iterations while this was still
+running, so this finished *before* them and is numbered *after*. It is a **QAT-tax arm**, not an
+algorithmic iteration: its comparison basis is the quant-aware twin `qtaxd_cblearn`
+(0.299983 / 0.268861), **never iter 45 plain**.
+
+### The lever, and it is exactly one line
+`run_i45kd.cmd` is `run_cblearn.cmd` with the KD dump changed and nothing else:
+
+    run_cblearn.cmd:29   set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k   (the d=128 teacher)
+    run_i45kd.cmd:29     set DUMP=C:\rwkv_kd_dump\ours_i45_full       (our own PLAIN iter-45 champion)
+
+Same WS-final, same `alpha=0.5`, same learnable catalogs, same refit starting codebooks, same
+LR/schedule. **Hypothesis:** a teacher that was never quantized should pull the quantized student
+back toward plain-model quality, i.e. pay down the QAT tax.
+
+### Result — REJECTED
+| mode | baseline (cblearn) | QAT#2 | delta | p | verdict |
+|---|---|---|---|---|---|
+| ahead | 0.299983 | 0.299899 | **+0.000084** | 6.239e-04 | misses the raw 0.0001 bar AND p<0.0001 |
+| imm | 0.268861 | 0.268931 | **−0.000070** | 1.0 | **worse by rank as well as by mean** |
+
+`size` 128,800,080 IDENTICAL on all 2500; `nan_users` 0; params 558,212 (a teacher swap has no
+weights). Both |deltas| sit **inside** the ±7.5e-5 same-capacity noise floor (1.1× and 0.9×), so the
+honest reading is *no effect* — not "a small win on ahead". Both-modes rule applies: a KD-teacher
+change reshapes the shared trunk, and the curve-side exception is reserved for levers that
+structurally cannot move imm.
+
+### ★★ THE FINDING: a minutes-of-CPU screen predicted this ~13 h GPU result, that same morning
+`scratchpad/ensemble_screen/teacher_agreement.py` measured the two teachers agreeing at
+**r = 0.9460** — because **iter 45 IS the d=128 teacher's own student**, the end of a 4-iteration
+lineage (32 → 35 → 39 → 45) each trained against that same dump. A teacher that agrees 0.946 with
+the incumbent carries almost no independent signal, so neither **adding** it (the ensemble proposal,
+projected +0.000033) nor **swapping** to it (this run, +0.000084 / −0.000070) can do much. Same
+order of magnitude, same verdict: nothing.
+
+That screen was run to rank a *different* proposal and incidentally priced this one. **The
+generalizable move is to run the screen BEFORE the build, not alongside it** — this is now four
+screens that have redirected six candidates, and the first where a full GPU run was spent
+confirming a conclusion the screen had already reached.
+
+### Consequence for the QAT tax
+**The tax does not live in the teacher.** It stays where the 2026-08-13 measurements put it — the
+**codebook and norm terms** — with iter 47 having separately shown the rank-1 truncation term is
+nearly empty of logloss. The remaining lever is codebook capacity/fit, which is **unmotivated
+rather than refuted**: reconstruction error cannot rank catalogs by logloss (the learned catalog
+reconstructs *worse* than the frozen one it improved on), so it needs a logloss A/B justified on its
+own terms before spending ~11 h.
+
+**Do not propose a third teacher variant.** Every teacher in this lineage is correlated with the
+d=128 dump by construction, and `RWKV_trained_on_5000_10000.pth` is disqualified — it trained on our
+entire VAL+TEST halves.
+
+### Ops
+The eval survived the 12:53 hard freeze *and* a later accidental power-off. `get_result` skips users
+already banked, so each resume cost only the in-flight user; the run completed `DONE_EXIT_0` at
+21:34 with all 2500 present. ⚠ `run_i45kd.cmd`'s REM header still describes the PREVIOUS arm
+("QAT IMPROVEMENT #1: LEARNABLE CODEBOOKS … single-variable vs qtaxc_m2b12"). The lever is
+unambiguous from the `DUMP` line and the LIVE table, but this is precisely the "runner executes
+correctly while describing the wrong experiment" hazard `mk54.py` was given asserts against.
