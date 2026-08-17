@@ -38,6 +38,15 @@ REM safe undo, because line endings shift the byte offset cmd.exe resumes from).
 REM No angle brackets or arrows in REM lines -- cmd parses redirection before REM.
 REM ===========================================================================================
 setlocal
+cd /d C:\Users\Andrew\rwkv-anki-autoresearch
+set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter53_muonlora
+set LOG=%DIR%\iter53.log
+set STAMP=%RANDOM%%RANDOM%
+set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k
+set WSSTEPS=10935
+REM BUDGET: 0 = full budget
+set MAXSTEPS=0
+echo ===== ITER 53 (Muon on the LoRA matrices) START %DATE% %TIME% ===== >> "%LOG%"
 set PYTHONUNBUFFERED=1
 set PYTHONPATH=C:\Users\Andrew\rwkv-anki-autoresearch
 set OMP_NUM_THREADS=7
