@@ -962,18 +962,19 @@ and fires instantly).**
 
 | order | run | lever | cost | ETA | waiter pid |
 |---|---|---|---|---|---|
-| 1 | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | ~7.1 h | RUNNING, WS ends ~00:58, done ~04:45 | 13644 |
-| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | ~7.1 h | ~11:50 | 12944 |
-| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | ~3.7 h | ~15:30 | 32544 |
-| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | ~7.1 h | ~22:40 | 29484 |
-| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` -- decay LR mass 1.376x at zero extra steps | ~3.7 h | ~02:20 (+1d) | 13520 |
+| 1 | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | decay ends ~04:15, verdict **~07:10** | 13644 |
+| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | 9.2 h | ~16:20 | 12944 |
+| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | ~22:25 | 32544 |
+| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | 9.2 h | ~07:35 (19th) | 29484 |
+| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` -- decay LR mass 1.376x at zero extra steps | 6.1 h | ~13:40 (19th) | 13520 |
 
-**ETAs re-derived 2026-08-17 22:15 from a MEASURED 0.911 steps/s** (90 s window, past compile
-warmup), not from the launch estimate. iter 45's own checkpoint mtimes give **0.920** over steps
-1000-10000, so **`RWKV_MUON_INCLUDE_LORA` costs ~1% of wall-clock, i.e. nothing** -- and the
-27%-slower reading I first took was against the PLAIN no-KD tuner rate (1.253), the wrong
-baseline. Diff the runners, do not read the labels. All four queued runners re-verified with
-`preflight_runner.py`: PREFLIGHT_ALL_PASS.
+**★ COSTS CORRECTED 2026-08-18 -- THE CHAIN IS ~35 h DEEP, NOT ~25 h, and the per-iteration
+figures this file carried were ~40% low.** The error: **decay is 10,935 steps, the SAME as WS**,
+because iter 34 adopted `decay_ratio = 1.0` (`EPOCHS = 1.0` in every `*_decay.toml`; the champion's
+own checkpoint is named `i45_d_10935`). The 2,733-step figure still quoted in places is the
+**tuner-era ratio 0.25** and has been wrong since iter 34. Measured on iter 53: WS 0.907 steps/s,
+decay 0.957, plain eval ~2.9 h =>  **full iteration (WS+decay+eval) = 9.2 h; decay-only = 6.1 h**
+(NOT the ~3.5 h this table said for iters 52/57, which was the training half only).
 
 **DONE: QAT#2 `qtaxg_i45kd` = iter 56, REJECTED as an exact tie** (ahead +0.000084 p=6.2e-04, imm
 -0.000070 p=1.0, both inside the +/-7.5e-5 floor). **The QAT tax does not live in the teacher**, and
