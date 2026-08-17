@@ -323,14 +323,14 @@ Worth actively looking for decay-only formulations of any candidate.
 | 1 | **52** | KD `alpha_decay` 0.5 -> 0.9 | distillation | **3.5 h** | ARMED. The 0.5 was never chosen — iter 45 won because its runner didn't clear the var. Its own notes flag this as open. |
 | 2 | **53** | `RWKV_MUON_INCLUDE_LORA=1` | optimizer/reg | 6.2 h | ARMED. 27,520 params (4.9%) excluded from Muon by a name rule that predates the width ladder; the most anisotropic matrices in the model. Direct prediction of the regularizer finding. |
 | 3 | **54** | **`RWKV_CMIX_POW=1`, learnable channel-mixer exponent** | EXPRESSIVENESS | 6.2 h | ARMED. Added after this table was first written -- see "EXPRESSIVENESS vs CAPACITY" below. The only candidate of Andrew's named class that survives the redundancy test. Carries the first Rust deploy debt in a while. |
-| 4 | 55 | **Ensemble teacher: d=128 + a frozen past champion** | distillation | 5.5 h + 2 h dump | External-teacher KD is **4/4**. KD pays here through target-VARIANCE reduction (which is why α peaks at 0.9); averaging two independent teachers reduces it further. NOT iter 46: that teacher shared the trunk and the forward pass. |
-| 5 | 56 | **Decay LR SHAPE** (cosine -> linear / 1−sqrt) | schedule | **3.5 h** | The tuner swept `decay_ratio`, never the decay *shape*, and WSD literature puts the action in that phase. Decay-only, so it is the cheapest untried lever in the queue. |
-| 6 | 57 | **Spacing-effect monotonicity** | curve constraints | 5.5 h | Family is **2/3**. ⚠ Do NOT propose monotone-in-t or convex-in-t: the GRU head gives both BY CONSTRUCTION (`(1+t/S)^-d`, d>0, nonneg mixture — checked in code). Monotonicity in REVIEW COUNT is a real SRS fact and is not imposed. |
-| 7 | 58 | **Fixed-budget WS:decay de-confound** (1+1 vs 1.6+0.4) | schedule | ~10 h | Iter 34's `decay_ratio 0.25 -> 1.0` gain is confounded with a 1.25 -> 2.0 epoch budget change; the log-linear budget curve explains +0.00084 of the +0.00145. The endgame's 10+2 split is SPENDING ~+0.0006 that rests on one confounded point. |
-| 8 | 59 | **Weight decay on the LoRA group** | regularization | 5.5 h | Those params sit at wd=0.0 today, never chosen — they inherited it from `other_params`. One number, and it pairs with iter 53's outcome either way (if Muon helps them, wd is the other half of the same question; if it hurts, wd is the gentler version). |
-| 9 | 60 | **Horizon reweighting of the curve loss** | objective | 5.5 h | Long intervals are rare and hard, so the curve objective is dominated by short t. ⚠ Distinct from iter 37 (by-USER weighting, mechanism-refuted in every size quartile): this addresses a coverage imbalance in **t**, which is a property of the data, not of user size. |
-| 10 | 61 | **Hint/feature distillation from the d=128 trunk** | distillation | 5.5 h + dump | Output-KD is 4/4; matching an intermediate representation targets the TRUNK rather than the two heads. Needs a learned d=128 -> d=80 projection — the only entry with real implementation risk. |
-| 11 | 62 | **Born-again: fresh student, iter-45 champion as SOLE teacher** | distillation | 5.5 h + dump | The BAN phenomenon (same-capacity student beats its teacher). Cleanly distinct from iter 46: separate forward pass, different weights, frozen. Ranked below #3 because #3 keeps the known-good teacher and only ADDS ours, so it risks less. #3's result should inform whether this is worth running at all. |
+| 4 | -- | **Ensemble teacher** ⚠ **DEMOTED to rank 7 on 2026-08-17** -- see "ENSEMBLE-TEACHER SCREEN" below; the proposed 2nd teacher is the 1st teacher's own student | distillation | 5.5 h + 2 h dump | External-teacher KD is **4/4**. KD pays here through target-VARIANCE reduction (which is why α peaks at 0.9); averaging two independent teachers reduces it further. NOT iter 46: that teacher shared the trunk and the forward pass. |
+| 5 | -- | **Decay LR SHAPE** (cosine -> linear / 1−sqrt) | schedule | **3.5 h** | The tuner swept `decay_ratio`, never the decay *shape*, and WSD literature puts the action in that phase. Decay-only, so it is the cheapest untried lever in the queue. |
+| 6 | -- | **Spacing-effect monotonicity** | curve constraints | 5.5 h | Family is **2/3**. ⚠ Do NOT propose monotone-in-t or convex-in-t: the GRU head gives both BY CONSTRUCTION (`(1+t/S)^-d`, d>0, nonneg mixture — checked in code). Monotonicity in REVIEW COUNT is a real SRS fact and is not imposed. |
+| 7 | -- | **Fixed-budget WS:decay de-confound** (1+1 vs 1.6+0.4) | schedule | ~10 h | Iter 34's `decay_ratio 0.25 -> 1.0` gain is confounded with a 1.25 -> 2.0 epoch budget change; the log-linear budget curve explains +0.00084 of the +0.00145. The endgame's 10+2 split is SPENDING ~+0.0006 that rests on one confounded point. |
+| 8 | -- | **Weight decay on the LoRA group** | regularization | 5.5 h | Those params sit at wd=0.0 today, never chosen — they inherited it from `other_params`. One number, and it pairs with iter 53's outcome either way (if Muon helps them, wd is the other half of the same question; if it hurts, wd is the gentler version). |
+| 9 | -- | **Horizon reweighting of the curve loss** | objective | 5.5 h | Long intervals are rare and hard, so the curve objective is dominated by short t. ⚠ Distinct from iter 37 (by-USER weighting, mechanism-refuted in every size quartile): this addresses a coverage imbalance in **t**, which is a property of the data, not of user size. |
+| 10 | -- | **Hint/feature distillation from the d=128 trunk** | distillation | 5.5 h + dump | Output-KD is 4/4; matching an intermediate representation targets the TRUNK rather than the two heads. Needs a learned d=128 -> d=80 projection — the only entry with real implementation risk. |
+| 11 | -- | **Born-again: fresh student, iter-45 champion as SOLE teacher** | distillation | 5.5 h + dump | The BAN phenomenon (same-capacity student beats its teacher). Cleanly distinct from iter 46: separate forward pass, different weights, frozen. Ranked below #3 because #3 keeps the known-good teacher and only ADDS ours, so it risks less. #3's result should inform whether this is worth running at all. |
 
 ### ⚠ Honest note on where this list thins out
 Ranks 1-6 each rest on a specific measurement in this repo. Ranks 7-10 are weaker: 7 and 8 are
@@ -348,6 +348,74 @@ idea generation is cheap relative to a 5.5 h run.
 * **If both are nulls**, distillation and optimizer are the last two families with a hit rate, and
   the honest read is that the trunk is near its ceiling at this budget — which is an argument for
   moving to features sooner, not for grinding out ranks 7-10.
+
+
+## ★★ ENSEMBLE-TEACHER SCREEN (2026-08-17) — the two teachers are NOT independent; DEMOTED
+
+Run BEFORE building it, from two dumps already on disk, **zero GPU**:
+`scratchpad/ensemble_screen/teacher_agreement.py` (output in `result.txt`). Both dumps cover the
+IDENTICAL batch stream — `labels_sum` matches on all 14 sampled steps — so 789,158 predicted ahead
+rows correspond one-for-one and no forward pass was needed.
+
+### The finding that decides it: teacher B is teacher A's STUDENT
+The proposal's mechanism is *"averaging two INDEPENDENT teachers reduces target variance further"*.
+**They are not independent, and it is verifiable in the runners rather than argued.** The proposed
+second teacher is the frozen iter-45 champion, and `scratchpad/iter45_kddecay/run_iter45.cmd:43,82`
+sets `DUMP=C:
+wkv_kd_dump	128_seedpair_65k` — the d=128 teacher's own dump. Iter 45 sits at the
+end of a four-iteration lineage (32 / 35 / 39 / 45) **every one of which was trained to imitate
+teacher A**. So the "second opinion" was fitted to the first opinion.
+
+This is the same shape as iter 46's null, one step removed. Iter 46 failed because its teacher shared
+the trunk and the forward pass, so the soft target re-expressed what the student already computed;
+here the second teacher is a separate forward pass with different weights, but it was *optimized to
+agree with the first*. Measured `r(A,B) = 0.9460`, consistent with that — though with no
+non-distilled control dump the correlation cannot be ATTRIBUTED to distillation on its own. The
+lineage is the argument; `r` corroborates it.
+
+### And the intervention is small next to one we have already priced
+The mix is linear in probability space (`srs_model.py:1189`,
+`label_y = alpha*teacher + (1-alpha)*hard`), so both changes are in the same units:
+
+| intervention | target shift |
+|---|---|
+| iter 39, alpha 0.5 → 0.9 (ACCEPTED, +0.000158 / +0.000153) | 0.0568 |
+| ensemble, teacher A → 0.5*(A+B) at alpha=0.9 | **0.0117 (21%)** |
+
+Linear projection: **+0.000033 / +0.000032** — under the 0.0001 bar and inside the ±7.5e-5 noise
+floor. ⚠ Both directions of caveat, stated because the projection is crude: effect need not scale
+linearly with shift magnitude (variance reduction is a different mechanism from a systematic move
+toward the teacher, and could be more efficient per unit), and `E|teacher-hard|` is a
+calibration-based estimate (`2*E[p(1-p)]` = 0.1419) on a corpus that is largely the teacher's own
+training data, where it is genuinely more accurate — which would shrink the iter-39 shift and raise
+the ratio. Neither caveat plausibly spans the 3× gap to the bar.
+
+### The one number that argues FOR the lever
+Disagreement is **concentrated where the loss lives**: mean `|A-B|` is 0.0429 on the 45.3% of rows
+where the teacher is uncertain (p < 0.95) versus 0.0119 on confident rows, and **74.9% of the total
+disagreement mass sits on the uncertain rows**. So the mean understates the effective intervention by
+~3.6× on the rows that carry the gradient. That is why this is a DEMOTION and not a kill.
+
+Also worth knowing: averaging necessarily blurs the target (mean `|p-0.5|` 0.4204 → 0.4131,
+**-1.74%** vs the more confident teacher), and this model's KD dose-response peaks at alpha=0.9 —
+it wants MORE teacher signal, not a softer target. That is a headwind specific to a mixing lever.
+
+### What would make an ensemble worth running
+The second teacher must sit **outside the KD lineage**. Candidates, with their problems:
+* **iter 31 or A18** — both predate iter 32, the first KD iteration, so neither was fitted to teacher
+  A. Genuinely non-distilled, but weaker (iter 31: 0.298909 / 0.267637) and still same-data,
+  same-trunk.
+* **A different-seed retrain** — the cleanest source of decorrelated error, but the teacher costs a
+  full training run to produce.
+* **⚠⚠ NOT `pretrain/RWKV_trained_on_5000_10000.pth`.** It is the obvious "second big teacher" and
+  it is **disqualified by leakage**: it was trained on users 5000-10000, which contains our entire
+  VAL half (5001-7500) and TEST half (7501-10000). Distilling from it would inject knowledge of the
+  eval users into the model, and no gate we run would catch it — the numbers would simply improve.
+  The teacher in use (`RWKV_trained_on_101_4999.pth`) is the correct one and `iter10_kd/run_kd_dump.cmd:4`
+  already flags exactly this ("never saw eval users 5001-10000"). Keep it that way.
+
+**RANKING:** #55 drops below the decay-LR-shape and spacing-effect entries — both are cheaper and
+neither has a measured headwind. If it is run later, run it with iter 31 as teacher B, not iter 45.
 
 ## ★★★ EXPRESSIVENESS vs CAPACITY — Andrew's catch, 2026-08-17, and it was a real hole
 
@@ -409,18 +477,34 @@ one place in the network where a fixed exponent is doing real shape work.
 everything else queued (all of which are training-recipe or optimizer levers), and the whole point of
 Andrew's catch is that the family was missing.
 
-### QUEUE STATE 2026-08-17 (late) -- three iterations ARMED, and the plan re-ranked itself
+### QUEUE STATE 2026-08-17 (late) -- three ARMED, and the unbuilt list is re-ranked
+
+> **⚠ UNBUILT CANDIDATES DELIBERATELY CARRY NO ITERATION NUMBER.** Pre-assigning them is what
+> desynchronised this file's two tables (the ensemble teacher was written as "iter 54", then the
+> real iter 54 became the cmix exponent, and every later row was off by one). A number is assigned
+> when the runner is built, not when the idea is ranked.
 
 | rank | iter | lever | cost | status |
 |---|---|---|---|---|
 | 1 | **52** | KD `alpha_decay` 0.5 -> 0.9 | 3.5 h | ARMED behind QAT#2 |
 | 2 | **53** | `RWKV_MUON_INCLUDE_LORA=1` | 6.2 h | ARMED behind 52 |
 | 3 | **54** | `RWKV_CMIX_POW=1` -- learnable channel-mixer exponent | 6.2 h | ARMED behind 53 |
-| 4 | 55 | Ensemble teacher: d=128 + a frozen past champion | 5.5 h + 2 h dump | next to build |
-| 5 | 56 | Decay LR SHAPE (cosine -> linear / 1-sqrt) | 3.5 h | decay-only, cheapest untried |
-| 6 | 57 | Spacing-effect monotonicity in REVIEW COUNT | 5.5 h | curve constraints 2/3 |
-| 7 | 58 | Fixed-budget WS:decay de-confound | ~10 h | settles a +0.0006 the endgame is spending |
+| 4 | -- | Decay LR SHAPE (cosine -> linear / 1-sqrt) | **3.5 h** | next to build; decay-only, cheapest untried, no measured headwind |
+| 5 | -- | Spacing-effect monotonicity in REVIEW COUNT | 5.5 h | curve constraints 2/3; screen it first (see below) |
+| 6 | -- | Fixed-budget WS:decay de-confound | ~10 h | settles a +0.0006 the endgame is spending |
+| 7 | -- | Ensemble teacher | 5.5 h + 2 h dump | **DEMOTED 2026-08-17 by a zero-GPU screen** -- the proposed 2nd teacher is the 1st teacher's own student. Only worth running with iter 31 as teacher B. |
 | ~~-~~ | ~~-~~ | ~~Delta-rule authority (`a = c*sigmoid`)~~ | ~~5.5 h~~ | **KILLED by measurement before launch -- see LIT_REVIEW.md** |
+
+**★ THE CHEAP-SCREEN HABIT IS NOW 3-FOR-3 AND SHOULD RUN BEFORE EVERY BUILD.** Three separate
+pre-launch measurements have each cost minutes-to-an-hour of CPU and changed a ranking that would
+otherwise have cost 5.5-10 h of GPU: the expressiveness bounds (3 proposals dead), the delta-rule
+authority probe (1 dead), and the ensemble screen (1 demoted). **Before building the decay-LR-shape
+and spacing-effect entries, ask what measurement would kill them.** For spacing-effect that question
+has an obvious answer and it is not yet run: *how often does the champion actually violate
+monotonicity of stability in review count?* If it essentially never does, the constraint is
+non-binding and the lever is dead the same way the decay floor was. That needs per-review `log-S`
+from a forward pass, so it is CPU-minutes on a few users rather than free -- but it is still ~100x
+cheaper than the run it would cancel.
 
 **Iter 54 was promoted into the armed set** because Andrew's expressiveness catch opened a family
 the plan had no entry for, and it is the only candidate of that family that survived the redundancy
