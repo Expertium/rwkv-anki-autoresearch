@@ -62,3 +62,11 @@ wrote scratchpad\spacing_screen\calib_records.npz (83,478 records)
   Hard                     3,413    0.9001    1.0000    +0.0999     0.0000    0.1144  <-- biased
   Good                    76,670    0.9722    1.0000    +0.0278     0.0000    0.0292  <-- biased
   Easy                       230    0.9614    1.0000    +0.0386     0.0000    0.0404  <-- biased
+
+
+⚠ ANNOTATION (added after the run): the last table above is DEGENERATE and should be
+ignored. It slices by the CURRENT row's rating, and y == (rating>=2), so it conditions on
+the outcome -- which is why Again reads y=0.0000 and the other three read y=1.0000 exactly.
+The meaningful slice is by the PREVIOUS (state-setting) press, as the first screen did;
+calibration_by.py now records that instead. The horizon and review-index tables are
+unaffected -- neither buckets on anything derived from y.

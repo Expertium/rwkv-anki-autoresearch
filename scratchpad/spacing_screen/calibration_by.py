@@ -79,7 +79,7 @@ def collect():
         df = load_user_df(uid)
         srs = rnn_mod.RNNProcess(path=os.environ["RWKV_CHAMP_CKPT"],
                                  device=torch.device("cpu"), dtype=torch.float32)
-        prev, nth = {}, {}
+        prev, nth, prat = {}, {}, {}
         for _, row in df.iterrows():
             cid = row["card_id"]
             k = nth.get(cid, 0)
@@ -88,9 +88,14 @@ def collect():
                 Y.append(1.0 if int(row["rating"]) >= 2 else 0.0)
                 T.append(float(row["elapsed_seconds"]))
                 N.append(k)                       # 0-based index of this review within its card
-                R.append(int(row["rating"]))
+                # ⚠ the PREVIOUS press, not this row's. Slicing by this row's rating would
+                # condition on the OUTCOME (y == rating>=2), which is degenerate -- it reports
+                # y=1.0 exactly for Hard/Good/Easy and y=0 for Again, measuring nothing. The
+                # state-setting press is the one that could bias the prediction being scored.
+                R.append(prat.get(cid, 0))
                 U.append(uid)
             prev[cid] = srs.process_row(row)
+            prat[cid] = int(row["rating"])
             nth[cid] = k + 1
         print(f"user {uid}: {len(df):,} reviews -> {len(P):,} records so far", flush=True)
     return (np.array(P), np.array(Y), np.array(T), np.array(N), np.array(R),
@@ -149,9 +154,15 @@ def main():
           [(n >= lo) & (n < hi) for lo, hi in zip(nedges[:-1], nedges[1:])], p, y)
 
     # --- control: the first run found `after Hard` worst-calibrated; it should reappear ---
-    table("CALIBRATION BY RATING PRESSED (control)", ["Again", "Hard", "Good", "Easy"],
+    table("CALIBRATION BY THE PREVIOUS (state-setting) PRESS", ["Again", "Hard", "Good", "Easy"],
           [r == k for k in (1, 2, 3, 4)], p, y,
-          note="  This is the OUTCOME's own rating, so `Again` is by construction y=0.")
+          note="  The press that WROTE the state making this prediction. Slicing by the current
+"
+               "  row's rating instead would condition on the outcome (y == rating>=2) and report
+"
+               "  y=1.0 exactly -- degenerate. Cross-check: the first screen found `after Hard`
+"
+               "  the worst-calibrated group at -0.0251, which should reappear here.")
 
 
 if __name__ == "__main__":
