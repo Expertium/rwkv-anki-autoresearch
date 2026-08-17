@@ -692,3 +692,43 @@ that should be reported alongside the number, the way iters 48 and 50 were:
   50's level embedding training to L2=1.77 and gaining nothing, which is what made that null
   interpretable rather than merely disappointing.
 
+
+## ★★ DECAY-SHAPE SCREEN (2026-08-17) — rank 5 was mis-specified twice; the lever survives with a BETTER motivation
+
+Pure arithmetic, no GPU, minutes. Rank 5 read *"Decay LR SHAPE (cosine -> linear / 1−sqrt)"*. Both
+halves of that are wrong, and the screen also supplies the argument the entry was missing.
+
+**1. WE ARE NOT ON A COSINE.** `train_rwkv.py`'s decay lambda is `1 + cos(pi/2*(1+x))`, whose name
+(`cosine_down`) is what made it look like one. It is **identically `1 − sin(pi x/2)`** (agreement
+4.4e-16) — far more aggressive than a standard cosine.
+
+**2. `1−sqrt(x)` IS NOT AN ALTERNATIVE DIRECTION.** It sits essentially on top of the current
+schedule. Integrated LR multiplier over the decay ("LR mass") and the midpoint value:
+
+| shape | LR mass | vs current | f(0.5) |
+|---|---|---|---|
+| **CURRENT** `1 − sin(pi x/2)` | 0.3634 | 1.000x | 0.293 |
+| `1 − sqrt(x)` | 0.3333 | 0.917x | **0.293** |
+| linear `1 − x` | 0.5000 | **1.376x** | 0.500 |
+| standard cosine `.5(1+cos pi x)` | 0.5000 | **1.376x** | 0.500 |
+
+So the only informative direction is **more LR mass**.
+
+**★ AND THAT REPLACES THE MOTIVATION WITH A MUCH BETTER ONE.** "Shape is unexplored" was never an
+argument. But **iter 34 adopted `decay_ratio` 0.25 → 1.0** — 4x the decay steps — and it was the
+phase's largest gain, i.e. direct local evidence that **more decay-LR-mass helps**. `decay_ratio`
+buys mass by spending WALL-CLOCK; the shape buys **1.376x of it at an identical step count, for
+free**. That is worth a run.
+
+⚠ **PRE-REGISTERED COUNTER-HYPOTHESIS:** linear and standard cosine have the *same* mass (0.5) and
+different profiles, so **a win here is a MASS result, not a SHAPE result**, until those two are
+compared against each other. If iter 57 wins, the follow-up that separates them is standard cosine
+at matched mass — do not claim "shape matters" from this run alone.
+
+**BUILT AS ITER 57** (`RWKV_DECAY_SHAPE=linear`, decay-only, ~3.5 h, queued behind iter 55). Params
+unchanged at 558,212 (a schedule has no weights); no deploy debt. Perfectly controlled by
+construction: it warm-starts from the champion's own `i45_ws_10935`, so WS is literally the
+champion's and the lever cannot touch it; KD alpha stays at the champion's 0.5 because iter 52 is
+the run that moves it. The default `RWKV_DECAY_SHAPE` path was verified **bit-identical to the
+historical schedule over all 2,734 decay steps** before queueing — mandatory, because a chain's
+later phases import whatever is on disk *then* and iter 53 was mid-flight.

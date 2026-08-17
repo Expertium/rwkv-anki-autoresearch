@@ -1070,12 +1070,44 @@ def main_loop(config, task_queue, batch_queue):
             milestones=[warmup_steps],
         )
     elif config.TRAIN_MODE == "D":
+        # RWKV_DECAY_SHAPE (iter 57): the decay phase's LR SHAPE. Default "" = the historical
+        # schedule, byte-identical -- and gating it on an env var matters more than usual here,
+        # because a chain's later phases are new processes that import whatever is on disk THEN,
+        # so an ungated edit would silently change an in-flight run's decay.
+        #
+        # ★ WHAT THE HISTORICAL SCHEDULE ACTUALLY IS, measured before touching it: the name
+        # `cosine_down` is misleading. 1 + cos(pi/2 * (1+x)) is IDENTICALLY 1 - sin(pi/2 * x)
+        # (agreement 4.4e-16), which is far more aggressive than a standard cosine. Integrated LR
+        # multiplier ("LR mass") over the decay, and the value at the midpoint:
+        #     current 1-sin(pi x/2)        mass 0.3634   f(.5) = 0.293
+        #     1-sqrt(x)                    mass 0.3333   f(.5) = 0.293
+        #     linear 1-x                   mass 0.5000   f(.5) = 0.500
+        #     standard cosine .5(1+cos pi x)  mass 0.5000   f(.5) = 0.500
+        # So the proposal's "cosine -> linear / 1-sqrt" was wrong twice over: we are not on a
+        # cosine, and 1-sqrt is not an alternative DIRECTION -- it sits essentially on top of the
+        # current schedule. The only informative direction is MORE LR mass.
+        #
+        # ★ AND THAT REFRAMES THE MOTIVATION. iter 34 adopted decay_ratio 0.25 -> 1.0, i.e. 4x the
+        # decay steps, and it was the phase's largest gain -- evidence that more decay-LR-mass
+        # helps. `decay_ratio` buys mass by spending WALL-CLOCK; the shape buys 1.376x of it for
+        # FREE, at an identical step count. That is the argument for this lever, not "shape is
+        # unexplored".
+        _shape = os.environ.get("RWKV_DECAY_SHAPE", "").strip().lower()
 
-        def cosine_down(step, total_steps):
-            return 1 + np.cos(0.5 * np.pi * (1 + step / total_steps))
+        def _decay_factor(step, total_steps):
+            x = min(max(step / total_steps, 0.0), 1.0)
+            if _shape == "linear":
+                return 1.0 - x
+            if _shape == "cosine":                      # the STANDARD one, same mass as linear
+                return 0.5 * (1.0 + np.cos(np.pi * x))
+            if _shape == "sqrt":                        # 1-sqrt(x); kept for completeness
+                return 1.0 - np.sqrt(x)
+            return 1 + np.cos(0.5 * np.pi * (1 + x))    # historical default
 
+        if _shape:
+            print(f"[decay-shape] LR decay shape = {_shape} (default is 1-sin(pi x/2), mass 0.3634)")
         scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda t: cosine_down(t, total_steps)
+            optimizer, lr_lambda=lambda t: _decay_factor(t, total_steps)
         )
     else:
         raise ValueError(f"Invalid train mode: {config.TRAIN_MODE}")
