@@ -353,6 +353,48 @@ control iter 47 failed to use). Two results, both before any eval number existed
   flag pushes it further toward flat. If null, rank 8 (LoRA weight decay) is the gentler retry of
   the SAME question, not an independent lever.
 
+### ★★ THE GRAFT POLICY — harvesting the sub-bar positives the loop currently throws away (2026-08-17)
+
+**The structural observation.** The accept bar is raw ≥0.0001 in both modes; the same-capacity noise
+floor is ±7.5e-5. The bar is therefore only **1.33x the floor**, which leaves a band of effects that
+are *real, reproducible and rank-significant* yet get discarded whole. That is not a flaw in the
+gate — the gate was tightened to 0.0001 for good reason (iters 41/43/44 are mutually
+indistinguishable at ≤7.5e-5) — but it does mean the loop deletes information it paid ~5.5 h to
+acquire.
+
+**The concrete instance.** iter 49 (restore the user/preset layer-0 channel mixers) measured
+**imm +0.000087 at p=5.3e-16** — as statistically certain as any *accepted* result in the log — and
+was rejected purely on magnitude. Its ahead side (+0.000067, p=0.11) is a coin flip, so it is one
+real half-effect, not two.
+
+**The policy, pre-registered so it is not invented after a convenient result:**
+
+> If **≥2** of the queued iterations (52, 53, 54, 55, 57) return **sub-bar but rank-significant**
+> positives *in the same mode*, run ONE graft combining them (plus iter 49) before concluding the
+> algorithmic loop is exhausted.
+
+**Why a graft of MEASURED singles is a much better bet than iter 31's was.** Iter 31 grafted three
+changes simultaneously and can never say which paid. Here every ingredient already has its own
+single-lever number, so the graft is attributable by subtraction — and the singles are what make the
+additivity assumption checkable rather than assumed.
+
+⚠ **The pre-registered counter-hypothesis, and the repo has already demonstrated it.** Effects need
+not add. Iters 41/42/43 are exactly this: the interleave+reorder BUNDLE was worth +0.000216..+0.000611,
+but order-alone was a small NEGATIVE and interleave-alone equalled the bundle — **the entire gain was
+one component and the other contributed nothing.** So a graft that lands *below* the sum of its parts
+is the expected case, not a surprise, and a graft that lands below its best single component means
+the levers interfere.
+
+⚠ **Do not graft levers that touch the same mechanism.** iter 49 (adds channel-mixer capacity) and
+iter 54 (`RWKV_CMIX_POW`, changes the channel mixer's functional form) are both channel-mixer
+changes; if both land positive, they are the *least* likely pair to be independent. Prefer pairs
+from different families.
+
+⚠ **Not available today:** of the six rejects since iter 46, only iter 49 qualifies (38 is mooted —
+iter 39's α=0.9 dominates the same lever; 48, 50 and 56 are inside the noise floor; 47 regressed).
+**One ingredient is not a graft.** This entry is a policy waiting on the chain, not a runnable
+proposal.
+
 ### ⚠ Honest note on where this list thins out
 Ranks 1-6 each rest on a specific measurement in this repo. Ranks 7-10 are weaker: 7 and 8 are
 "a knob nobody chose" arguments, and 9-10 are literature-standard moves without local evidence.
