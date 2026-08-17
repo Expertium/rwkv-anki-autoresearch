@@ -941,5 +941,15 @@ unchanged at 558,212 (a schedule has no weights); no deploy debt. Perfectly cont
 construction: it warm-starts from the champion's own `i45_ws_10935`, so WS is literally the
 champion's and the lever cannot touch it; KD alpha stays at the champion's 0.5 because iter 52 is
 the run that moves it. The default `RWKV_DECAY_SHAPE` path was verified **bit-identical to the
-historical schedule over all 2,734 decay steps** before queueing — mandatory, because a chain's
+historical schedule over all 10,935 decay steps** before queueing — mandatory, because a chain's
 later phases import whatever is on disk *then* and iter 53 was mid-flight.
+
+⚠ **That verification's own step count was wrong at first (corrected 2026-08-18).** It was checked
+over **2,734** steps — the tuner-era `decay_ratio = 0.25` figure — when the real decay is **10,935**,
+the same as WS, because iter 34 adopted `decay_ratio = 1.0` (`EPOCHS = 1.0` in every `*_decay.toml`;
+the champion's own checkpoint is `i45_d_10935`). Re-verified at the true length: **bit-identical
+across all 10,936 values**, so no in-flight run was affected. The same stale figure had the LIVE
+chain costed ~40% low — a full iteration is **9.2 h** and a decay-only **6.1 h**, not 3.5 h.
+**And the clamp turns out to fix a latent bug:** the original `1 + cos(pi/2*(1+x))` lets the LR
+*rise again* past `total_steps` (0.735 at t=20,000), where the clamped form pins it at 0.
+Unreachable through LambdaLR's counter, but wrong if it ever were.
