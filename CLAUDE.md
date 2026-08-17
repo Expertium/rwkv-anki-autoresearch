@@ -1475,9 +1475,16 @@ telemetry).** At 12:53 the box froze mid-eval; Andrew forced a dump with **Right
 Windows captured it -- bugcheck **0xE2 MANUALLY_INITIATED_CRASH** (all four params zero = the
 keyboard-forced path, NOT the underlying fault) plus a 4.4 GB `MEMORY.DMP` and minidump
 `081726-8234-01.dmp`. **The flight recorder caught the approach**, which the July hangs did not have:
-VRAM pinned at **11,981 of 12,282 MiB (97.6%)** for the last three samples while **power collapsed to
-42-51 W with util still reading 99%** -- i.e. the GPU was stalled in WDDM paging, not computing --
-then the recorder stopped dead at 12:53:01. ⚠ Do NOT generalize this to the July black-screens, which
+VRAM pinned at **11,981 of 12,282 MiB (97.6%)** for the last three samples, then the recorder
+**stopped dead at 12:53:01**.
+⚠ **CORRECTION, measured the same day: low power with high util is NOT the tell.** This entry first
+read the accompanying 42-51 W (at util 99%) as "stalled in paging, not computing", and the very next
+giant user REFUTED that: on the resume, user 6104 ran at **11,864 MiB / util 97-100% / 51-53 W for
+minutes and COMPLETED NORMALLY**, then VRAM fell to 6,756 MiB and power returned to 110 W. Low power
+at high util is just what a memory-bound giant user looks like on this card, and it triggered a false
+alarm within the hour. **The only reliable freeze signal is the ABSENCE OF FORWARD PROGRESS** -- the
+flight recorder ceasing to log, or the shard log's byte count not growing. Check `stat` on
+`shard_s0.log` over ~25 s before concluding anything from a power reading. ⚠ Do NOT generalize this to the July black-screens, which
 are recorded as having zero telemetry precursor; same symptom, not yet the same proven cause.
 **THE TRIGGER: giant user 6104, work 1,274,765** -- ~3.5x the 5002/5905/5995 trio this rule names --
 hit inline in a process that had already run 1,103 users, with a heavy desktop (Anki, 2x Edge,
