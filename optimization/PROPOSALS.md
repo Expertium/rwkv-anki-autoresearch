@@ -421,6 +421,70 @@ The second teacher must sit **outside the KD lineage**. Candidates, with their p
 neither has a measured headwind. If it is run later, run it with iter 31 as teacher B, not iter 45.
 
 
+
+## ★★★ ITER 55 (APPROVED BY ANDREW 2026-08-17): RETRIEVABILITY-GATED STATE UPDATE
+
+Andrew asked for genuinely big architectural changes, was pointed at FSRS, and approved this one
+(*"#1 sounds good"*). **Design recorded BEFORE implementation** so a compaction cannot lose it.
+
+### The mechanism, read from FSRS's own code (`srs-benchmark/models/fsrs_v7.py:263-312`)
+```
+R     = forgetting_curve(dt, S, S_short, D)   # time enters the READOUT
+S_new = next_stability(S, D, R, rating)       # and R then GATES the state update
+D_new = next_difficulty(D, rating, R)
+```
+**FSRS's state does NOT decay in real time** -- it is unchanged between reviews. What pays is that
+the *size of the update* is scaled by the model's own predicted retrievability: recall something you
+were likely to have forgotten and stability jumps; recall something you'd have remembered anyway and
+it barely moves. That is the spacing effect as STRUCTURE.
+⚠ An earlier note in this session proposed making our state decay as `w^dt` "like FSRS". That was
+WRONG -- inferred from the forgetting curve without reading `step()`. Corrected here.
+
+### Why our model is the right target
+RWKV-7 already HAS the corresponding mechanism: the delta rule, whose `a` is literally an in-context
+learning rate (`rwkv_model.py:948`, `a = sigmoid(a_lora(...))`), with delta-direction eigenvalue
+`w - a*||kappa||^2`. **And we measured it sitting idle**: `a*||kappa||^2 ~ 0.13` against a reachable
+~0.95, moving the eigenvalue ~0.15 against a decay of ~0.98. So the one RWKV-7 mechanism that
+structurally matches FSRS's core update is the one this trunk barely uses.
+
+### ★ THE DESIGN CONSTRAINT THAT SHAPES THE WHOLE LEVER (get this wrong and it is a capacity add)
+A naive version computes `rhat` as another learned function of the same `x` the `a`-LoRA already
+sees, and adds it to the a-logit. **That fails the REDUNDANCY TEST** -- it is extra capacity on an
+existing gate, and capacity-at-5k is 0/3. What makes it genuinely new is using **FSRS's FUNCTIONAL
+FORM**:
+
+    rhat = (1 + dt / s_hat) ** (-d_hat)
+
+a retrievability computed from a learned stability and the **actual elapsed time**. A rank-4 LoRA
+cannot express that interaction between a learned scalar and an input feature, so it survives the
+test. Then, in logit space with a ZERO-INIT gain so the model is bit-identical at init:
+
+    a_logit += gain * (1 - rhat)        # FSRS sign: lower expected recall => larger update
+
+### Implementation plan
+* **Plumbing is the real work.** The time-mixer sees only the projected `d_model` hidden state;
+  `dt` must be threaded from `srs_model` down through `RWKV7` -> block -> time_mixer. The column is
+  `CARD_FEATURE_COLUMNS.index("scaled_elapsed_seconds") == 2`.
+* **SCOPE v1 = the CARD stream only** (depth 2). That column means "gap since THIS CARD's previous
+  review", which is exactly FSRS's `dt` for the card stream; gathered into deck/preset it silently
+  becomes a different quantity. Scope string like the QAT scopes, e.g. `RWKV_RGATE=card`.
+* **Params:** 2 linears (d_model->1) + 1 scalar per gated layer ~= 161 x 2 = **~322 (+0.06%)**.
+* **Deploy:** state size UNCHANGED (no new state), so the frozen 9-byte card budget holds. But it IS
+  a forward-pass change => `rwkv_rnn_model.py` mirror + a `parity_train_vs_rnn.py` case + the Rust
+  port + a fresh parity trace. Same debt class as iter 54.
+* **Guards:** default OFF and inert; zero-init gain means even ON it starts bit-identical;
+  `smoke_scripted_eval.sh` before launch (mandatory after touching these files).
+
+### Pre-registered counter-hypotheses (write the verdict against these, not after the fact)
+1. **`gain` trains to ~0** => surprise-gating adds nothing here; the generic recurrence already does
+   what FSRS needs explicit structure for. A real finding, same shape as iter 48's learned-but-
+   negligible coupling.
+2. **`gain` moves but logloss does not** => the trunk already had the information (iter 48/50 shape).
+3. **It helps** => the delta rule was idle because nothing was pointing it at the right signal, and
+   the natural follow-ups are gating `note` too, and tying `rhat` to the real curve head.
+⚠ Report the learned `gain` per gated layer as the separable diagnostic, exactly as iter 54 reports
+its 13 `cmix_pow` values.
+
 ## ★★ SPACING-EFFECT SCREEN (2026-08-17) — the constraint BINDS HARD, but the proposal as written is WRONG
 
 Run before building it, CPU only, no GPU: `scratchpad/spacing_screen/monotonicity_probe.py`
