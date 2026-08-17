@@ -2769,3 +2769,54 @@ are self-contained at exactly 0.000e+00, A18 reproducing its recorded verdict.
   (3) A18 rectified scores ahead **0.302890 vs 0.299302 unrectified (+0.003588, worse on
   2080/2500)** — post-hoc rectification badly hurts a model never trained under the constraint,
   which is 10x the noise and so a real effect, not an artifact.
+
+## HP TUNER (MAX=65536 era) -- the LIVE block archived from CLAUDE.md 2026-08-17
+
+Launched 2026-07-30, completed, and became **iter 34**. Archived because CLAUDE.md still
+presented it as `▶ LIVE ... RUNNING` weeks after it finished, while its own family
+scoreboard said HP tuning was CLOSED. Verbatim below.
+
+**▶ LIVE: THE HP TUNER IS REBUILT AND RUNNING** (launched 2026-07-30, detached pid 32352 via
+`scratchpad/tuner65k/run_tuner_loop.cmd`; loop log `scratchpad/tuner65k/tuner_loop.log`, per-trial
+`scratchpad/tuner65k/<name>.log`). Target = recover the -0.0003 that MAX=65536 cost.
+`optimization/hp_tuner_5k.py` was rewritten wholesale (the old one targeted d=32 H=2/K=16,
+MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong). What it does now:
+
+  * recipe = **`scratchpad/maxval/run_maxval.cmd` with the HPs swapped** — the d=80 A18 trunk env,
+    PLAIN (no QAT), WS 1 epoch, MAX=65536, NUM_FETCH_PROCESSES=2, the three speed flags during
+    training and **cleared before eval**, RECTIFIED eval (`RWKV_EVAL_PAVA=1`) on **5001-6000**.
+  * **★ THE BASELINE COST ZERO GPU:** `maxval` IS the default config, and restricting its existing
+    rectified jsonls to 5001-6000 gives **ahead 0.299250 / imm 0.266335**, seeded into the journal.
+    That subset also RANKS maxval-vs-iter-31 the same way the full VAL half does (+0.000113/+0.000309
+    vs +0.000264/+0.000306), so it is a usable proxy — unlike the 200-user one that inverted.
+  * **LEVER ORDER LEADS WITH THE LEARNING RATES**, because that is what the batch change implicates.
+    Lever 1 is a joint **`lr_mult`** [1.0, 1.41, 2.0, 2.8] scaling **BOTH** `PEAK_LR` (1e-3, the
+    AdamW group = 57,412 params) **and `RWKV_MUON_LR`** (0.02, the Muon groups = 500,800 params).
+    ⚠ Tuning `peak_lr` alone would have moved only ~10% of the weights — Muon has its own base LR
+    and the schedulers scale it proportionally (`train_rwkv.py:188-196`). Then `warmup_steps`
+    [200,400,800], `muon_lr_mult` [1.0,0.5,2.0] (re-balance Muon vs AdamW after the joint move),
+    `weight_decay` [0.01,0.05,0.1], `clip` [0.25,0.5], `decay_ratio` [0.25,0.4].
+  * **11 non-default points x ~4.0 h = ~44 h** if nothing prunes — MEASURED on trial 1, not
+    projected: **1.253 steps/s** steady state (5-min window past compile warmup), so WS 10,935
+    steps = 2.42 h, decay 2,733 = 0.61 h, rectified eval on 1000 users ~1.0 h. Trials are named
+    `t65_*`, trial dir `scratchpad/tuner65k/`, journal `optimization/tuner_5k_log.jsonl` (the old rows were archived to
+    `tuner_5k_log_d32qat_era.jsonl` — different arch AND batch, not comparable).
+  * **Val-based early pruning is ON** against **`optimization/tuner65k_vprune_ref.json`** (built from
+    maxval's own val trajectory + its 5001-6000 finals = a matched reference on this exact trunk and
+    batch). `RWKV_VPRUNE_MIN_STEP = max(1000, 2 x the trial's warmup)` so a long-warmup trial is not
+    killed for being slow by construction. It matters most for the LR grid, where 2.8x can diverge.
+  * **Three guards worth keeping in any future runner:** (1) a 40-step sanity phase that greps the
+    sanity log for BOTH `BATCHED Newton-Schulz` and `[compile] torch.compile` — an env typo that
+    silently disables a speed flag would cost ~2 h *per trial* across 11 trials; (2) stale-result
+    deletion happens in **Python at trial-generation time, not in the `.cmd`**, so the `.cmd`'s
+    **three eval attempts with NO `del` between them** keep `eval_sharded`'s resume property for the
+    giant-user OOM; (3) the WS exit-code guard, because `write_decay_setup` takes the LATEST ckpt and
+    would silently decay+evaluate a half-trained one.
+  * **★ THE BAR, STATED CONCRETELY so trials are judged not eyeballed:** "recover what MAX=65536
+    cost" means reaching **iter 31's numbers ON THE SAME 1000-user subset = ahead 0.299137 /
+    imm 0.266026**. Against the seeded baseline (0.299250/0.266335) that is **+0.000113 ahead and
+    +0.000309 imm** — note the two are NOT equal, because MAX hurt imm ~2.7x more than ahead on
+    this subset. Anything beyond that bar is net new gain on top of the 1.68x speedup.
+  * A sub-0.001 winner still needs **confirming on the full VAL half (5001-7500)** before it becomes
+    the recipe — the subset is a ranking proxy, not a gate.
+

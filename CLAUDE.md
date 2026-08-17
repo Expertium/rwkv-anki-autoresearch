@@ -962,11 +962,18 @@ and fires instantly).**
 
 | order | run | lever | cost | ETA | waiter pid |
 |---|---|---|---|---|---|
-| 1 | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | ~6.2 h | RUNNING since 21:38 | 13644 |
-| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | ~6.2 h | ~04:00 | 12944 |
-| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | ~3.5 h | ~10:15 | 32544 |
-| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | ~6.2 h | ~13:45 | 29484 |
-| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` — decay LR mass 1.376x at zero extra steps | **~3.5 h** | ~19:45 | 13520 |
+| 1 | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | ~7.1 h | RUNNING, WS ends ~00:58, done ~04:45 | 13644 |
+| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | ~7.1 h | ~11:50 | 12944 |
+| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | ~3.7 h | ~15:30 | 32544 |
+| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | ~7.1 h | ~22:40 | 29484 |
+| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` -- decay LR mass 1.376x at zero extra steps | ~3.7 h | ~02:20 (+1d) | 13520 |
+
+**ETAs re-derived 2026-08-17 22:15 from a MEASURED 0.911 steps/s** (90 s window, past compile
+warmup), not from the launch estimate. iter 45's own checkpoint mtimes give **0.920** over steps
+1000-10000, so **`RWKV_MUON_INCLUDE_LORA` costs ~1% of wall-clock, i.e. nothing** -- and the
+27%-slower reading I first took was against the PLAIN no-KD tuner rate (1.253), the wrong
+baseline. Diff the runners, do not read the labels. All four queued runners re-verified with
+`preflight_runner.py`: PREFLIGHT_ALL_PASS.
 
 **DONE: QAT#2 `qtaxg_i45kd` = iter 56, REJECTED as an exact tie** (ahead +0.000084 p=6.2e-04, imm
 -0.000070 p=1.0, both inside the +/-7.5e-5 floor). **The QAT tax does not live in the teacher**, and
@@ -1431,49 +1438,21 @@ Mechanism: groups 22,346 -> **10,935**, i.e. HALF the optimizer steps per epoch 
 structural and LR/warmup are tuned after it (methodology (f)). Do NOT treat the -0.0003 as
 permanent; it is the tuner's target.
 
-**▶ LIVE: THE HP TUNER IS REBUILT AND RUNNING** (launched 2026-07-30, detached pid 32352 via
-`scratchpad/tuner65k/run_tuner_loop.cmd`; loop log `scratchpad/tuner65k/tuner_loop.log`, per-trial
-`scratchpad/tuner65k/<name>.log`). Target = recover the -0.0003 that MAX=65536 cost.
-`optimization/hp_tuner_5k.py` was rewritten wholesale (the old one targeted d=32 H=2/K=16,
-MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong). What it does now:
-
-  * recipe = **`scratchpad/maxval/run_maxval.cmd` with the HPs swapped** — the d=80 A18 trunk env,
-    PLAIN (no QAT), WS 1 epoch, MAX=65536, NUM_FETCH_PROCESSES=2, the three speed flags during
-    training and **cleared before eval**, RECTIFIED eval (`RWKV_EVAL_PAVA=1`) on **5001-6000**.
-  * **★ THE BASELINE COST ZERO GPU:** `maxval` IS the default config, and restricting its existing
-    rectified jsonls to 5001-6000 gives **ahead 0.299250 / imm 0.266335**, seeded into the journal.
-    That subset also RANKS maxval-vs-iter-31 the same way the full VAL half does (+0.000113/+0.000309
-    vs +0.000264/+0.000306), so it is a usable proxy — unlike the 200-user one that inverted.
-  * **LEVER ORDER LEADS WITH THE LEARNING RATES**, because that is what the batch change implicates.
-    Lever 1 is a joint **`lr_mult`** [1.0, 1.41, 2.0, 2.8] scaling **BOTH** `PEAK_LR` (1e-3, the
-    AdamW group = 57,412 params) **and `RWKV_MUON_LR`** (0.02, the Muon groups = 500,800 params).
-    ⚠ Tuning `peak_lr` alone would have moved only ~10% of the weights — Muon has its own base LR
-    and the schedulers scale it proportionally (`train_rwkv.py:188-196`). Then `warmup_steps`
-    [200,400,800], `muon_lr_mult` [1.0,0.5,2.0] (re-balance Muon vs AdamW after the joint move),
-    `weight_decay` [0.01,0.05,0.1], `clip` [0.25,0.5], `decay_ratio` [0.25,0.4].
-  * **11 non-default points x ~4.0 h = ~44 h** if nothing prunes — MEASURED on trial 1, not
-    projected: **1.253 steps/s** steady state (5-min window past compile warmup), so WS 10,935
-    steps = 2.42 h, decay 2,733 = 0.61 h, rectified eval on 1000 users ~1.0 h. Trials are named
-    `t65_*`, trial dir `scratchpad/tuner65k/`, journal `optimization/tuner_5k_log.jsonl` (the old rows were archived to
-    `tuner_5k_log_d32qat_era.jsonl` — different arch AND batch, not comparable).
-  * **Val-based early pruning is ON** against **`optimization/tuner65k_vprune_ref.json`** (built from
-    maxval's own val trajectory + its 5001-6000 finals = a matched reference on this exact trunk and
-    batch). `RWKV_VPRUNE_MIN_STEP = max(1000, 2 x the trial's warmup)` so a long-warmup trial is not
-    killed for being slow by construction. It matters most for the LR grid, where 2.8x can diverge.
-  * **Three guards worth keeping in any future runner:** (1) a 40-step sanity phase that greps the
-    sanity log for BOTH `BATCHED Newton-Schulz` and `[compile] torch.compile` — an env typo that
-    silently disables a speed flag would cost ~2 h *per trial* across 11 trials; (2) stale-result
-    deletion happens in **Python at trial-generation time, not in the `.cmd`**, so the `.cmd`'s
-    **three eval attempts with NO `del` between them** keep `eval_sharded`'s resume property for the
-    giant-user OOM; (3) the WS exit-code guard, because `write_decay_setup` takes the LATEST ckpt and
-    would silently decay+evaluate a half-trained one.
-  * **★ THE BAR, STATED CONCRETELY so trials are judged not eyeballed:** "recover what MAX=65536
-    cost" means reaching **iter 31's numbers ON THE SAME 1000-user subset = ahead 0.299137 /
-    imm 0.266026**. Against the seeded baseline (0.299250/0.266335) that is **+0.000113 ahead and
-    +0.000309 imm** — note the two are NOT equal, because MAX hurt imm ~2.7x more than ahead on
-    this subset. Anything beyond that bar is net new gain on top of the 1.68x speedup.
-  * A sub-0.001 winner still needs **confirming on the full VAL half (5001-7500)** before it becomes
-    the recipe — the subset is a ranking proxy, not a gate.
+**HP TUNING IS CLOSED** -- the 2026-07-30 tuner run became **iter 34**, which recovered the
+MAX=65536 cost and was the phase's largest gain; the champion HPs have since been confirmed
+against 19 alternatives at full eval. The ~44-line LIVE description of that tuner (recipe, lever
+order, val-prune reference, per-trial bar) is archived to `HISTORY.md`. **Four things from it stay
+operative:**
+* **⚠ Tuning `PEAK_LR` alone moves only ~10% of the weights.** Muon has its OWN base LR
+  (`RWKV_MUON_LR`) and the schedulers scale it proportionally (`train_rwkv.py:188-196`), so the
+  AdamW group is 57,412 params against Muon's 500,800. Any future LR work must move BOTH.
+* **1.253 steps/s** is the reference rate for this trunk at MAX=65536 -- but it is the **PLAIN,
+  no-KD** recipe. A KD run is ~0.92 steps/s (measured on iters 45 and 53). Do not use one as the
+  other's baseline; that mistake read a free flag as 27% slower on 2026-08-17.
+* Journal `optimization/tuner_5k_log.jsonl`; the d=32/QAT-era rows are archived to
+  `tuner_5k_log_d32qat_era.jsonl` (different arch AND batch -- not comparable).
+* Its three runner guards are now generalized in **`scratchpad/preflight_runner.py`** -- run that
+  before arming ANY runner.
 
 ### ★ THE ORDER FROM HERE
 The 2026-08-01 ordering (finish HP tuning -> seed pair -> PAVA lambda) is **COMPLETE** -- those became iters 34, 35 and 36. The ~340-line queue that tracked it, including the speedup phase's ranked list and the per-item DONE annotations, is archived to `HISTORY.md` (2026-08-10). What remains live:
