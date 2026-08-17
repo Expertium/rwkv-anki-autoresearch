@@ -1,5 +1,5 @@
-FILE_AHEAD = "RWKV-qtaxg_i45kd-s0"
-FILE_IMM = "RWKV-P-qtaxg_i45kd-s0"
+FILE_AHEAD = "RWKV-qtaxg_i45kd"
+FILE_IMM = "RWKV-P-qtaxg_i45kd"
 MODEL_PATH = "scratchpad/iter45_kddecay/qtaxg_i45kd_d_10935.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
@@ -12,5 +12,4 @@ RAW_DB_PATH = "raw/result_db"
 RAW_DB_SIZE = 1_000_000_000
 USER_START = 5001
 USER_END = 7500
-NUM_FETCH_PROCESSES = 2
-USERS_FILE = "C:/Users/Andrew/rwkv-anki-autoresearch/scratchpad/eval_shards/users_s0.json"
+NUM_FETCH_PROCESSES = 4
