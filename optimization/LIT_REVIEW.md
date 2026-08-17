@@ -253,18 +253,54 @@ That is a previously invisible fact about this model, and it reframes the lever:
 "extend the range" but **"why is the delta-rule authority so weak, and does a version with more of
 it do better?"**
 
-**=> PROPOSAL (queued): DELTA-RULE AUTHORITY.** `a = c * sigmoid(.)` with `c` a small constant
-(2, then 4), or `c` learnable per layer. Zero params at fixed `c`, one multiply in the forward pass,
-same kernel, same state size, same deploy bytes.
-* **Stability is quantified, not hoped:** the worst-case eigenvalue is
-  `w - c * a_max * ||kappa||^2_max`. At the measured maxima, `c=4` gives ~0.35 and `c=8` gives
-  ~-0.3, so even `c=8` stays inside [-1,1]. WARNING: that is computed from RESTING envelopes and
-  assumes constant `w`, while `M` is non-symmetric -- **probe the actual max over a real batch before
-  trusting it** (iter 51's lesson: a median cannot see a blow-up, and this project has already paid
-  once for checking the wrong statistic).
-* Deploy debt: forward-pass change -> Rust port + fresh parity trace.
-* It is an EXPRESSIVENESS change, the axis Andrew opened on 2026-08-17 and the one the 0/3 capacity
-  record does NOT cover.
+**=> PROPOSAL: DELTA-RULE AUTHORITY -- PROPOSED, THEN KILLED BY THE NEXT MEASUREMENT (same day).**
+The idea was `a = c * sigmoid(.)` with `c` = 2 then 4. Two checks retired it within the hour.
+
+### !!! SELF-CORRECTION, and it is the SAME MISTAKE THIS PROJECT ALREADY PAID FOR TWICE
+The stability numbers first written here ("`c=4` gives ~0.35, `c=8` gives ~-0.3, so even `c=8` stays
+inside [-1,1]") were **WRONG, in the dangerous direction**. They used the **resting**
+`||kappa||^2 = 0.24` as if it were a bound. It is not: `k_scale = sigmoid(Linear(x))` has an
+**UNBOUNDED input**, so `||kappa||^2 -> 1` is reachable. Only `a` has a true envelope, because its
+LoRA passes through a `tanh`. Redone with genuine maxima (`a_max = 0.9552` over all 1040 channels,
+`w_min = 0.5452` the architectural floor, `||kappa||^2_max = 1`):
+
+| `c` | worst-case eigenvalue `w_min - c*a_max` | verdict |
+|---|---|---|
+| **1.0 (today)** | **-0.410** | safe |
+| 1.5 | -0.888 | safe |
+| **2.0** | **-1.365** | **UNSAFE, |lambda| > 1** |
+| 4.0 | -3.276 | far unsafe |
+
+So the safe range is `c <= ~1.5`, not `c <= 8`. **This is the third instance of the same failure
+shape in this project** -- iter 51 fitted a schedule on a median and missed a 1.76e7 blow-up; the
+`a`-is-dead probe used "not pressed against the bound" where a representational argument was needed;
+and now a resting value stood in for a maximum. **The rule is not "report the max" as a style
+preference -- it is that a typical-case statistic cannot bound a worst case, ever.**
+
+### AND THE SAME NUMBERS KILL THE PROPOSAL OUTRIGHT
+`c = 1.0` is TODAY, and its worst-case eigenvalue is already **-0.410**. So negative eigenvalues are
+**not structurally impossible** in RWKV-7 as we run it -- the paper's "provably cannot solve parity"
+argument applies to architectures whose eigenvalues are CONFINED to [0,1], and ours are not confined,
+merely far from negative in practice. The theoretical motivation therefore does not transfer.
+
+Worse for the proposal: **both factors of `a * ||kappa||^2` are freely learnable in the direction of
+MORE delta authority.** `a` can reach 0.955 and sits at ~0.50; `k_scale` is a sigmoid of an
+unbounded linear and could approach 1 but sits at ~0.49. The model can already reach
+`a * ||kappa||^2 ~ 0.95` and instead operates at **~0.13**. **The delta rule is weakly engaged
+because the model prefers it that way, not because anything blocks it** -- so raising `c` only
+extends a range that is already unused. **DEAD. Do not run it.**
+
+### What SURVIVES, and it is a fact rather than a lever
+The empirical finding stands and is worth carrying: at typical operating points the delta term moves
+the state-transition eigenvalue by only **~0.15** against a decay of ~0.98, i.e. **our trained model
+uses its WKV state almost as a pure exponential-decay accumulator with a small rank-1 correction.**
+RWKV-7's headline innovation is barely used here. That is a real characterisation of what this model
+learned, and it should inform how the next architecture proposal is judged -- but the same
+measurement says the cause is preference, not constraint, so it is not itself actionable.
+⚠ One genuinely open question it raises, for a future review rather than a run: is the delta rule
+weakly engaged because the TASK does not need it (spaced repetition may really be exponential
+forgetting plus small corrections), or because our 1.25-epoch budget never gets there? The 10x
+endgame run would answer that for free -- re-run this probe on its checkpoint.
 
 ### CORRECTION to the 2026-08-17 expressiveness probe in PROPOSALS.md
 That probe listed "`a = sigmoid(a_lora)` is nowhere near its bounds, therefore DEAD". **That
