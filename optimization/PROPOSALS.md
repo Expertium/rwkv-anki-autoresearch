@@ -557,10 +557,10 @@ Andrew's catch is that the family was missing.
 | 7 | -- | Ensemble teacher | 5.5 h + 2 h dump | **DEMOTED 2026-08-17 by a zero-GPU screen** -- the proposed 2nd teacher is the 1st teacher's own student. Only worth running with iter 31 as teacher B. |
 | ~~-~~ | ~~-~~ | ~~Delta-rule authority (`a = c*sigmoid`)~~ | ~~5.5 h~~ | **KILLED by measurement before launch -- see LIT_REVIEW.md** |
 
-**★ THE CHEAP-SCREEN HABIT IS NOW 3-FOR-3 AND SHOULD RUN BEFORE EVERY BUILD.** Three separate
-pre-launch measurements have each cost minutes-to-an-hour of CPU and changed a ranking that would
-otherwise have cost 5.5-10 h of GPU: the expressiveness bounds (3 proposals dead), the delta-rule
-authority probe (1 dead), and the ensemble screen (1 demoted). **Before building the decay-LR-shape
+**★ THE CHEAP-SCREEN HABIT: FOUR SCREENS, SIX CANDIDATES RE-RANKED — RUN ONE BEFORE EVERY
+BUILD.** The expressiveness bounds (3 killed), the delta-rule authority probe (1 killed), the
+ensemble screen (1 demoted) and the spacing-effect screen (1 re-specified). Each cost
+minutes-to-an-hour of CPU against the 5.5-13 h GPU runs it redirected. **Before building the decay-LR-shape
 and spacing-effect entries, ask what measurement would kill them.** For spacing-effect that question
 has an obvious answer and it is not yet run: *how often does the champion actually violate
 monotonicity of stability in review count?* If it essentially never does, the constraint is

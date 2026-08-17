@@ -973,8 +973,7 @@ iter 52 wins and promotes, their controlled comparison stays vs iter 45 while th
 The levers are orthogonal and chaining keeps the GPU busy rather than idling on a human reading a
 verdict; report both numbers at verdict time.
 
-**★★ TWO QUEUED CANDIDATES SCREENED ON CPU WHILE THE GPU RAN (2026-08-17) -- the cheap-screen habit
-is now 5-for-5 and should run BEFORE every build.** Detail in `PROPOSALS.md`; both cost minutes.
+**★★ TWO QUEUED CANDIDATES SCREENED ON CPU WHILE THE GPU RAN (2026-08-17).** **★★ FOUR CPU SCREENS HAVE NOW CHANGED THE RANKING OF SIX CANDIDATES** (four killed outright, one demoted, one re-specified), each for minutes-to-an-hour of CPU against the 5.5-13 h GPU runs they redirect. **Run one before every build.** Detail in `PROPOSALS.md`; both cost minutes.
 * **Ensemble teacher: DEMOTED (rank 4 -> 7).** The proposed 2nd teacher is the 1st teacher's own
   STUDENT -- iter 45 ends a 4-iteration lineage (32/35/39/45) each trained against the d=128 dump
   (verified in `run_iter45.cmd:43,82`). Measured r=0.9460. Priced in the same units as an accepted
