@@ -1,0 +1,29 @@
+repaired and compiles
+user 136: 5,385 reviews, 4,647 consecutive same-card pairs
+
+=== does the champion violate stability monotonicity across review count? ===
+ horizon              after SUCCESS    after FAILURE (control)  median drop
+      1d     4,152/8,199     = 50.6%       442/663       = 66.7%   0.00384 (median gain 0.00150)
+      7d     3,815/8,199     = 46.5%       414/663       = 62.4%   0.01400 (median gain 0.00431)
+     30d     3,860/8,199     = 47.1%       393/663       = 59.3%   0.03137 (median gain 0.01200)
+    180d     4,418/8,199     = 53.9%       359/663       = 54.1%   0.06222 (median gain 0.03210)
+
+=== SANITY: does R at a fixed horizon trend up over a card's life? ===
+     1d: cards ending HIGHER than they started  20.5%   mean first 0.9823 -> mean last 0.9530
+     7d: cards ending HIGHER than they started  24.4%   mean first 0.9648 -> mean last 0.9251
+    30d: cards ending HIGHER than they started  27.6%   mean first 0.9356 -> mean last 0.8688
+   180d: cards ending HIGHER than they started  26.8%   mean first 0.8779 -> mean last 0.7410
+
+=== per-step mean change (all pairs) ===
+     1d: mean -0.00579  median -0.00005  p10 -0.0370  p90 +0.0131
+     7d: mean -0.00785  median +0.00023  p10 -0.0575  p90 +0.0255
+    30d: mean -0.01321  median +0.00070  p10 -0.1003  p90 +0.0424
+   180d: mean -0.02706  median -0.00574  p10 -0.1643  p90 +0.0776
+
+=== violation rate at 30d, split by the button pressed ===
+  Again      393/663     =  59.3%
+  Hard     1,532/2,326   =  65.9%
+  Good     2,246/5,659   =  39.7%
+  Easy        82/214     =  38.3%
+
+[exited with code 0]

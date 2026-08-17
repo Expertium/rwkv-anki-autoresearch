@@ -402,8 +402,11 @@ it wants MORE teacher signal, not a softer target. That is a headwind specific t
 
 ### What would make an ensemble worth running
 The second teacher must sit **outside the KD lineage**. Candidates, with their problems:
-* **iter 31 or A18** — both predate iter 32, the first KD iteration, so neither was fitted to teacher
-  A. Genuinely non-distilled, but weaker (iter 31: 0.298909 / 0.267637) and still same-data,
+* **iter 31 or A18** — both predate iter 32, the first KD iteration on this trunk, so neither was
+  fitted to teacher A. **Verified in their own runners** — `iter31_algo/run_iter31_algo.cmd`
+  and `track2_a18/run_track2_a18.cmd` both set no `RWKV_KD_MIX` — not taken from the lineage
+  table.
+  Genuinely non-distilled, but weaker (iter 31: 0.298909 / 0.267637) and still same-data,
   same-trunk.
 * **A different-seed retrain** — the cleanest source of decorrelated error, but the teacher costs a
   full training run to produce.
@@ -416,6 +419,65 @@ The second teacher must sit **outside the KD lineage**. Candidates, with their p
 
 **RANKING:** #55 drops below the decay-LR-shape and spacing-effect entries — both are cheaper and
 neither has a measured headwind. If it is run later, run it with iter 31 as teacher B, not iter 45.
+
+
+## ★★ SPACING-EFFECT SCREEN (2026-08-17) — the constraint BINDS HARD, but the proposal as written is WRONG
+
+Run before building it, CPU only, no GPU: `scratchpad/spacing_screen/monotonicity_probe.py`
+(champion driven through the deploy RNN path over whole user histories; each card's stored curve is
+re-read at fixed horizons 1d/7d/30d/180d and consecutive reviews of the same card are compared).
+Output in `result.txt`. Comparing at a FIXED horizon is what makes it a statement about the model —
+comparing each curve at its own interval would conflate "stability changed" with "the interval
+changed".
+
+**INSTRUMENT VERIFIED FIRST, and this is why the numbers are usable:** the probe reproduces the
+`reference_iter41` trace's certified `py_pred_ahead` on all 4,215 ahead rows at **exactly
+0.000e+00** (`verify_probe.py`) — the same predictions the Rust port was certified against. As a
+free by-product that also proves `imm_predict` is genuinely state-read-only, since the probe skips
+it and the exporter does not.
+
+### The result: violations are common, and they split by BUTTON
+n = 8,862 consecutive same-card pairs, users 107 + 136. Violation = predicted retention at the fixed
+horizon DECREASED. At 30d:
+
+| button | pairs | R decreased |
+|---|---|---|
+| Again | 663 | 59.3% |
+| **Hard** | 2,326 | **65.9%** |
+| Good | 5,659 | 39.7% |
+| Easy | 214 | 38.3% |
+
+**The proposal says "penalise a stability decrease after a SUCCESSFUL review", and `rating >= 2`
+makes Hard a success.** So a blanket rule would fight the model on **66% of Hard transitions** —
+where a decrease is not an error but correct inference, Hard being direct evidence the card is
+harder than assumed. **Any implementation must be Good/Easy-conditional.** That alone is worth the
+screen: the blanket version was the obvious one to write.
+
+### The sanity check that forced the reinterpretation
+Predicted retention at a fixed horizon **falls over a card's life** — only 20-27% of cards end
+higher than they started (mean R(30d) 0.9356 → 0.8688). That is the opposite of the naive SRS
+expectation, so before trusting any violation rate it had to be explained.
+
+**It is difficulty selection, and that is measurable from the DATA ALONE with no model involved:**
+lapse rate per card rises monotonically with how many reviews the card received — **1.9% (1 review)
+→ 9.0% (5-7) → 21.2% (8-12) → 46.4% (21+)**, Spearman rho **0.4867** over 10,797 cards spanning two
+train and two held-out users. Cards that survive to many reviews are the hard ones, so a model that
+infers difficulty *should* lower its retention estimate as evidence accumulates. The declining trend
+is correct behaviour, not a probe artifact — which is exactly why the per-step rates could then be
+read at face value.
+
+### ⚠ And the "structural fact" is FSRS's modelling assumption, not a proven property of memory
+In FSRS, `R(t) = (1 + FACTOR*t/S)^-DECAY` with DECAY **fixed**, so `R(t_fixed)` is a monotone
+function of `S` alone and cannot fall after a successful review. Our curve is a **mixture** of
+`(1 + t/s_i)^(-d_i)` with **learnable per-curve `d_i` and mixture weights**, so it can lower
+`R(t_fixed)` while stability grows — it has strictly more freedom, and it *uses* that freedom on
+~40% of Good transitions. So the constraint is not free structure being left on the table; it is a
+restriction our (more accurate) model currently declines to obey.
+
+**VERDICT: keep it queued, re-specified.** Good/Easy-conditional, and understood as a
+*regularizer* — the same shape as PAVA, which is the family's accepted win: it may buy generalization
+while costing train loss. Do NOT pitch it as "imposing a fact the model is getting wrong". The screen
+did not kill it, but it replaced the implementation and the rationale.
 
 ## ★★★ EXPRESSIVENESS vs CAPACITY — Andrew's catch, 2026-08-17, and it was a real hole
 
