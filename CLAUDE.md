@@ -973,6 +973,25 @@ iter 52 wins and promotes, their controlled comparison stays vs iter 45 while th
 The levers are orthogonal and chaining keeps the GPU busy rather than idling on a human reading a
 verdict; report both numbers at verdict time.
 
+**★★ TWO QUEUED CANDIDATES SCREENED ON CPU WHILE THE GPU RAN (2026-08-17) -- the cheap-screen habit
+is now 5-for-5 and should run BEFORE every build.** Detail in `PROPOSALS.md`; both cost minutes.
+* **Ensemble teacher: DEMOTED (rank 4 -> 7).** The proposed 2nd teacher is the 1st teacher's own
+  STUDENT -- iter 45 ends a 4-iteration lineage (32/35/39/45) each trained against the d=128 dump
+  (verified in `run_iter45.cmd:43,82`). Measured r=0.9460. Priced in the same units as an accepted
+  change: the target shift is 0.0117 vs 0.0568 for iter 39's alpha 0.5->0.9, i.e. **21% of a change
+  worth +0.00016**. Not killed only because 74.9% of the disagreement sits on uncertain rows.
+  ⚠ **`RWKV_trained_on_5000_10000.pth` is DISQUALIFIED as the obvious 2nd big teacher -- it trained
+  on our entire VAL+TEST halves and no gate would catch the leak.** Use iter 31 / A18 (verified
+  KD-free in their runners).
+* **Spacing-effect: RE-SPECIFIED, still queued.** The constraint BINDS (violation rates by button at
+  30d: Again 59.3 / **Hard 65.9** / Good 39.7 / Easy 38.3%) but the blanket `rating>=2` form is
+  WRONG -- it would fight the model on 66% of Hard transitions, where lowering retention is correct
+  inference. Must be Good/Easy-conditional and pitched as a regularizer (PAVA's shape), because the
+  "structural fact" is FSRS's fixed-DECAY assumption and our learnable-`d` mixture declines to obey
+  it on ~40% of Good transitions. Instrument verified at **0.000e+00** vs the certified iter-41
+  trace first; the alarming "R falls over a card's life" is difficulty SELECTION, shown from data
+  alone (per-card lapse rate 1.9% -> 46.4% with review count, rho 0.4867).
+
 **★★ ANDREW 2026-08-17: AT LEAST 10 MORE ALGORITHMIC ITERATIONS BEFORE THE FEATURES PHASE.**
 *"There is no way the current architecture and training are so optimal that no improvement is
 possible."* Ranked plan + what would change it: `optimization/PROPOSALS.md`.
