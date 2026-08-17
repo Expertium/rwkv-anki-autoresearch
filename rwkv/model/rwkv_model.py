@@ -509,7 +509,13 @@ class RWKV7(ModuleType):
         )
 
     @FunctionType
-    def forward(self, in_BTC, time_shift_select_BT, skip_BT):
+    def forward(
+        self,
+        in_BTC,
+        time_shift_select_BT,
+        skip_BT,
+        log_dt_BT: Optional[torch.Tensor] = None,
+    ):
         x_BTC, v0_BTC = in_BTC, torch.empty_like(in_BTC)
         for _, block in enumerate(self.blocks):
             x_BTC, v0_BTC = block(
@@ -517,6 +523,7 @@ class RWKV7(ModuleType):
                 v0_BTC=v0_BTC,
                 time_shift_select_BT=time_shift_select_BT,
                 skip_BT=skip_BT,
+                log_dt_BT=log_dt_BT,
             )
         return x_BTC
 
@@ -528,7 +535,15 @@ class RWKV7(ModuleType):
     # across rounds and the stream's value-residual stays stream-local, as in the
     # sequential form.
     @FunctionType
-    def forward_layer(self, layer_idx: int, in_BTC, v0_BTC, time_shift_select_BT, skip_BT):
+    def forward_layer(
+        self,
+        layer_idx: int,
+        in_BTC,
+        v0_BTC,
+        time_shift_select_BT,
+        skip_BT,
+        log_dt_BT: Optional[torch.Tensor] = None,
+    ):
         x_BTC = in_BTC
         v0_out = v0_BTC
         i = 0
@@ -539,6 +554,7 @@ class RWKV7(ModuleType):
                     v0_BTC=v0_out,
                     time_shift_select_BT=time_shift_select_BT,
                     skip_BT=skip_BT,
+                    log_dt_BT=log_dt_BT,
                 )
             i += 1
         return x_BTC, v0_out
@@ -568,12 +584,20 @@ class RWKV7Layer(ModuleType):
         self.dropout = torch.nn.Dropout(p=config.dropout_layer)
 
     @FunctionType
-    def forward(self, in_BTC, v0_BTC, time_shift_select_BT, skip_BT):
+    def forward(
+        self,
+        in_BTC,
+        v0_BTC,
+        time_shift_select_BT,
+        skip_BT,
+        log_dt_BT: Optional[torch.Tensor] = None,
+    ):
         x_BTC, v0_BTC = self.time_mixer(
             in_BTC=in_BTC,
             v0_BTC=v0_BTC,
             time_shift_select_BT=time_shift_select_BT,
             skip_BT=skip_BT,
+            log_dt_BT=log_dt_BT,
         )
         if self.cmix_stripped:
             return x_BTC, v0_BTC
@@ -746,6 +770,12 @@ class LoraMLP(ModuleType):
 
 
 class RWKV7TimeMixer(ModuleType):
+    # `rgate_on` must be a TorchScript CONSTANT for the same reason as the channel mixer's
+    # `cmix_pow_on`: TorchScript compiles BOTH branches of a runtime `if`, so with the flag OFF it
+    # would try to resolve params that deliberately do not exist and the whole model would fail to
+    # script. Marking it constant prunes the dead branch at compile time.
+    __constants__ = ["rgate_on"]
+
     def __init__(self, config: RWKV7Config, layer_id):
         super().__init__()
         assert config.d_model % config.n_heads == 0
@@ -796,6 +826,71 @@ class RWKV7TimeMixer(ModuleType):
             self.xhead_mix_weight = torch.nn.Parameter(
                 torch.zeros(self.H, self.H, self.K, self.K)
             )
+
+        # RWKV_RGATE (iter 55): FSRS-style RETRIEVABILITY GATING of the delta rule's in-context
+        # learning rate `a`. FSRS's state does NOT decay in real time (`models/fsrs_v7.py::step` --
+        # the state is unchanged between reviews); what pays is that the SIZE of the update is
+        # scaled by the model's own predicted retrievability. Recall something you were likely to
+        # have forgotten and stability jumps; recall something you'd have remembered anyway and it
+        # barely moves. That is the spacing effect as STRUCTURE. RWKV-7 already has the matching
+        # mechanism -- `a` is literally an in-context learning rate -- and we measured it sitting
+        # idle on this trunk: a*||kappa||^2 ~ 0.13 against a reachable ~0.95, moving the
+        # delta-direction eigenvalue ~0.15 against a decay of ~0.98.
+        #
+        # ★ WHY THIS IS NOT MERELY CAPACITY (the REDUNDANCY TEST -- capacity-at-5k is 0/3, so a
+        # capacity add is a known-dead proposal): a second learned function of the same `x` the
+        # a-LoRA already sees would be absorbable by it. What survives the test is FSRS's
+        # FUNCTIONAL FORM -- an interaction between a learned scalar and the ACTUAL ELAPSED TIME,
+        # which no rank-4 LoRA over x can express:
+        #     rhat = (1 + dt/s) ** (-d)
+        # computed in log space as exp(-d * softplus(log_dt - log_s)). That is the SAME function
+        # for every real input (softplus -> z for large z, -> 0 for very negative z), so it needs
+        # no clamp and has no NaN branch. `log_dt` = natural log of elapsed seconds, un-standardized
+        # in srs_model from the `scaled_elapsed_seconds` column.
+        #
+        # ⚠ BOUNDED BY CONSTRUCTION -- the check iter 51 lacked (a median cannot see a blow-up, only
+        # a max can): rhat lies in (0, 1] for EVERY input, so the added logit term lies in
+        # [0, |gain|]. That is a worst-case bound, not a typical-case statistic. `a` then passes
+        # through sigmoid and stays in (0,1) whatever the gate learns.
+        #
+        # gain is ZERO-INIT, so the model is bit-identical at init and the lever must earn its way
+        # in. All three tensors land in the optimizer's `other_params` at wd=0 (a (1,C) weight has
+        # squeeze-rank 1, so train_rwkv's ">=2-D matrix" rule skips it, and it never reaches Muon).
+        # That is deliberate: weight decay on a zero-init gain would pin it at zero and make
+        # counter-hypothesis 1 ("gain trains to ~0") unfalsifiable instead of a finding.
+        #
+        # Scope = comma list of stream names, with or without the `_id` suffix (e.g. RWKV_RGATE=card).
+        # v1 is CARD-ONLY on purpose: `scaled_elapsed_seconds` means "gap since THIS CARD's previous
+        # review", which is exactly FSRS's dt for the card stream; gathered into deck/preset it
+        # silently becomes a different quantity.
+        # Default unset = params absent = byte-identical; old checkpoints load unchanged.
+        _rgate_scope = [
+            t.strip()[:-3] if t.strip().endswith("_id") else t.strip()
+            for t in os.environ.get("RWKV_RGATE", "").split(",")
+            if t.strip()
+        ]
+        _stream = config.stream_name
+        if _stream.endswith("_id"):
+            _stream = _stream[:-3]
+        self.rgate_on = _stream in _rgate_scope
+        if self.rgate_on:
+            # Local import: keeps rwkv_model free of a module-level data_processing dependency
+            # (srs_model imports both) while still deriving the constant rather than hardcoding it.
+            from rwkv.data_processing import STATISTICS as _DP_STATS
+
+            self.rgate_log_s = torch.nn.Linear(C, 1, bias=True)
+            self.rgate_d = torch.nn.Linear(C, 1, bias=False)
+            self.rgate_gain = torch.nn.Parameter(torch.zeros(1))
+            with torch.no_grad():
+                # Zero-init both projections so the gate starts as a clean CONSTANT in a responsive
+                # band, then learns its x-dependence: log_s = mean log elapsed seconds (9.96, i.e.
+                # ~5.8 h) and d = softplus(0) = 0.693. At a median-gap review that puts rhat at
+                # ~0.62 -- mid-range, where drhat/dlog_dt is large. Initializing log_s at 0 instead
+                # would put rhat ~ 4e-4 for every ordinary gap, collapsing the gate to a constant
+                # bias on the a-logit and testing nothing.
+                self.rgate_log_s.weight.zero_()
+                self.rgate_log_s.bias.fill_(float(_DP_STATS["elapsed_seconds_mean"]))
+                self.rgate_d.weight.zero_()
 
         with torch.no_grad():
             ratio_0_to_1 = layer_id / max(config.n_layers - 1, 1)  # guard 1-layer stream (iter35 card=1)
@@ -915,7 +1010,14 @@ class RWKV7TimeMixer(ModuleType):
         )
 
     @FunctionType
-    def forward(self, in_BTC, v0_BTC, time_shift_select_BT, skip_BT):
+    def forward(
+        self,
+        in_BTC,
+        v0_BTC,
+        time_shift_select_BT,
+        skip_BT,
+        log_dt_BT: Optional[torch.Tensor] = None,
+    ):
         B, T, C = in_BTC.shape
         H, K = self.H, self.K
 
@@ -945,7 +1047,23 @@ class RWKV7TimeMixer(ModuleType):
             v_lerp_BTC = torch.nn.functional.sigmoid(self.v_lora_simple(v_BTC))
             v_BTC = torch.lerp(self.W_v(v_BTC), v0_BTC, v_lerp_BTC)
 
-        a_BTC = torch.nn.functional.sigmoid(self.a_lora_simple(a_BTC))
+        a_logit_BTC = self.a_lora_simple(a_BTC)
+        if self.rgate_on:
+            # rhat = (1 + dt/s)^(-d) in log space; see __init__ for why this form and not another
+            # learned function of x. Shapes: log_s/d_hat are (B,T,1), so the gate is one scalar per
+            # (batch, timestep) broadcast over channels and scaled by the single scalar `gain`.
+            assert log_dt_BT is not None, (
+                "RWKV_RGATE is on for this stream but srs_model did not thread log_dt down to it"
+            )
+            log_dt_BT1 = log_dt_BT.unsqueeze(-1).to(x_BTC.dtype)
+            log_s_BT1 = self.rgate_log_s(x_BTC)
+            d_hat_BT1 = torch.nn.functional.softplus(self.rgate_d(x_BTC))
+            rhat_BT1 = torch.exp(
+                -d_hat_BT1 * torch.nn.functional.softplus(log_dt_BT1 - log_s_BT1)
+            )
+            # FSRS sign: lower expected recall => larger state update.
+            a_logit_BTC = a_logit_BTC + self.rgate_gain * (1.0 - rhat_BT1)
+        a_BTC = torch.nn.functional.sigmoid(a_logit_BTC)
         g_BTC = self.lora_B_g(torch.nn.functional.sigmoid(self.lora_A_g(g_BTC)))
 
         _d_BTC = -0.5 - torch.nn.functional.softplus(-self.d_lora_mlp(d_BTC))

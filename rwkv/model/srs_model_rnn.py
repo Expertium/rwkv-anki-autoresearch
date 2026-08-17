@@ -5,6 +5,7 @@ import numpy as np
 from rwkv.architecture import AnkiRWKVConfig
 from rwkv.data_processing import (
     CARD_FEATURE_COLUMNS,
+    STATISTICS,
 )
 from rwkv.model.rwkv_rnn_model import RWKV7RNN
 from rwkv.model.srs_model import interleave_schedule, is_excluded
@@ -146,6 +147,33 @@ class SrsRWKVRnn(ModuleType):
             self.tree_level_emb = torch.nn.Parameter(
                 torch.zeros(max(self.tree_level) + 1, self.d_model)
             )
+        # RWKV_RGATE (iter 55) deploy mirror of SrsRWKV -- keep in sync. Which streams gate `a`
+        # on FSRS-form retrievability, and where log_dt comes from. The training path un-
+        # standardizes the SAME column with the SAME constants; if these two ever disagree the
+        # deploy model computes a different function from the trained one and no gate catches it
+        # (the PAVA lesson: trained-but-never-evaluated survived 8 iterations).
+        def _base_stream(_n):
+            _b = _n.split("@")[0]
+            return _b[:-3] if _b.endswith("_id") else _b
+
+        _rg_scope = [
+            _base_stream(t.strip())
+            for t in os.environ.get("RWKV_RGATE", "").split(",")
+            if t.strip()
+        ]
+        self.rgate_stream = [
+            1 if _base_stream(n) in _rg_scope else 0 for n in self.stream_names
+        ]
+        self.rgate_on = any(v > 0 for v in self.rgate_stream)
+        if self.rgate_on:
+            assert self.interleave_on, "RWKV_RGATE requires RWKV_INTERLEAVE=1"
+            self.rgate_col = CARD_FEATURE_COLUMNS.index("scaled_elapsed_seconds")
+            self.rgate_mean = float(STATISTICS["elapsed_seconds_mean"])
+            self.rgate_std = float(STATISTICS["elapsed_seconds_std"])
+        else:
+            self.rgate_col = 0
+            self.rgate_mean = 0.0
+            self.rgate_std = 1.0
         # iter 44 (RWKV_ILV_SPREAD): same schedule helper as the training path, so the two
         # cannot drift -- see interleave_schedule()'s docstring for the placement rule.
         self.ilv_spread = os.environ.get("RWKV_ILV_SPREAD", "0") == "1"
@@ -445,6 +473,15 @@ class SrsRWKVRnn(ModuleType):
             card_features = card_features * self.input_feat_mask.to(
                 card_features.device, card_features.dtype
             )
+        # RWKV_RGATE: read log_dt from the MASKED features, exactly as forward_batch does (it
+        # reassigns batch_start to the masked tensor before indexing the column). Same inversion
+        # of data_processing's standardization, so train and deploy feed the gate the same number.
+        log_dt_B = None
+        if self.rgate_on:
+            log_dt_B = (
+                card_features[:, self.rgate_col].to(card_features.dtype) * self.rgate_std
+                + self.rgate_mean
+            )
         card_rwkv_input = self.features2card(card_features)
         # Route states BY ENTITY NAME, execute in the arch module's order (see __init__ note).
         state_by_entity = {
@@ -490,7 +527,11 @@ class SrsRWKVRnn(ModuleType):
                         if _lv >= 0 and _lj == 0:
                             _x_in = _x_in + self.tree_level_emb[_lv]
                         x_il, v0s[_i] = self.rwkv_modules[_i].forward_layer(
-                            _lj, _x_in, v0_in, states[_i]
+                            _lj,
+                            _x_in,
+                            v0_in,
+                            states[_i],
+                            log_dt_B if self.rgate_stream[_i] else None,
                         )
             global_encoding = x_il
             for _nm, _st in zip(self.stream_names, states):

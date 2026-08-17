@@ -27,7 +27,7 @@ class RWKV7RNN(torch.nn.Module):
             [RWKV7RNNLayer(config, layer_id) for layer_id in range(config.n_layers)]
         )
 
-    def forward(self, in_BC, state):
+    def forward(self, in_BC, state, log_dt_B=None):
         if state is None:
             state = {}
             for i in range(len(self.blocks)):
@@ -35,13 +35,15 @@ class RWKV7RNN(torch.nn.Module):
 
         x_BC, v0_BC = in_BC, torch.empty_like(in_BC)
         for i, block in enumerate(self.blocks):
-            x_BC, v0_BC, block_state = block(in_BC=x_BC, v0_BC=v0_BC, state=state[i])
+            x_BC, v0_BC, block_state = block(
+                in_BC=x_BC, v0_BC=v0_BC, state=state[i], log_dt_B=log_dt_B
+            )
             state[i] = block_state
         return x_BC, state
 
-    def run(self, in_BC, state):
+    def run(self, in_BC, state, log_dt_B=None):
         state = copy.deepcopy(state)
-        return self.forward(in_BC, state)
+        return self.forward(in_BC, state, log_dt_B)
 
     # iter 41 (RWKV_INTERLEAVE) deploy mirror: run ONE block, mutating the caller-owned
     # state dict in place (the caller deepcopies once per review, replacing run()'s
@@ -52,9 +54,9 @@ class RWKV7RNN(torch.nn.Module):
             state[i] = None
         return state
 
-    def forward_layer(self, layer_idx, in_BC, v0_BC, state):
+    def forward_layer(self, layer_idx, in_BC, v0_BC, state, log_dt_B=None):
         x_BC, v0_out, block_state = self.blocks[layer_idx](
-            in_BC=in_BC, v0_BC=v0_BC, state=state[layer_idx]
+            in_BC=in_BC, v0_BC=v0_BC, state=state[layer_idx], log_dt_B=log_dt_B
         )
         state[layer_idx] = block_state
         return x_BC, v0_out
@@ -85,12 +87,13 @@ class RWKV7RNNLayer(ModuleType):
         state: Optional[
             Tuple[Optional[Tuple[torch.Tensor, torch.Tensor]], Optional[torch.Tensor]]
         ],
+        log_dt_B: Optional[torch.Tensor] = None,
     ):
         if state is None:
             state = None, None
         time_state, channel_state = state
         x_BC, v0_BC, time_state = self.time_mixer(
-            in_BC=in_BC, v0_BC=v0_BC, state=time_state
+            in_BC=in_BC, v0_BC=v0_BC, state=time_state, log_dt_B=log_dt_B
         )
         if self.cmix_stripped:
             # the mixer (and its residual add) is skipped entirely; its shift state stays
@@ -150,6 +153,10 @@ class RWKV7RNNChannelMixer(ModuleType):
 
 
 class RWKV7RNNTimeMixer(ModuleType):
+    # mirror of RWKV7TimeMixer's constant -- see rwkv_model.py for why this must be a
+    # TorchScript constant and not a runtime bool.
+    __constants__ = ["rgate_on"]
+
     def __init__(self, config: RWKV7Config, layer_id):
         super().__init__()
         assert config.d_model % config.n_heads == 0
@@ -157,6 +164,32 @@ class RWKV7RNNTimeMixer(ModuleType):
         C = config.d_model
         self.H = config.n_heads
         self.K = C // config.n_heads
+
+        # RWKV_RGATE (iter 55): mirror of RWKV7TimeMixer (rwkv_model.py) -- keep in sync. The
+        # deploy path must gate `a` with exactly the same function the trained model used, or its
+        # state_dict does not load and its arithmetic is not the model we trained. Parameter
+        # names, shapes and init must match the training side EXACTLY; the init values matter
+        # here only for a from-scratch construction (deploy loads a checkpoint), but a mismatch
+        # would make the parity harness compare two different models and call it a pass.
+        _rgate_scope = [
+            t.strip()[:-3] if t.strip().endswith("_id") else t.strip()
+            for t in os.environ.get("RWKV_RGATE", "").split(",")
+            if t.strip()
+        ]
+        _stream = config.stream_name
+        if _stream.endswith("_id"):
+            _stream = _stream[:-3]
+        self.rgate_on = _stream in _rgate_scope
+        if self.rgate_on:
+            from rwkv.data_processing import STATISTICS as _DP_STATS
+
+            self.rgate_log_s = torch.nn.Linear(C, 1, bias=True)
+            self.rgate_d = torch.nn.Linear(C, 1, bias=False)
+            self.rgate_gain = torch.nn.Parameter(torch.zeros(1))
+            with torch.no_grad():
+                self.rgate_log_s.weight.zero_()
+                self.rgate_log_s.bias.fill_(float(_DP_STATS["elapsed_seconds_mean"]))
+                self.rgate_d.weight.zero_()
 
         self.layer_norm = torch.nn.LayerNorm(config.d_model)
         self.rkvdag_lerp = torch.nn.Parameter(torch.empty(8, 1, 1, config.d_model))
@@ -231,7 +264,13 @@ class RWKV7RNNTimeMixer(ModuleType):
         scale_BH = self.state_clamp_tau / torch.clamp(norms_BH, min=self.state_clamp_tau)
         return state_BHKK * scale_BH[..., None, None]
 
-    def forward(self, in_BC, v0_BC, state: Optional[Tuple[torch.Tensor, torch.Tensor]]):
+    def forward(
+        self,
+        in_BC,
+        v0_BC,
+        state: Optional[Tuple[torch.Tensor, torch.Tensor]],
+        log_dt_B: Optional[torch.Tensor] = None,
+    ):
         B, C = in_BC.shape
         H, K = self.H, self.K
 
@@ -267,7 +306,22 @@ class RWKV7RNNTimeMixer(ModuleType):
             v_lerp_B1C = torch.nn.functional.sigmoid(self.v_lora_simple(v_B1C))
             v_B1C = torch.lerp(self.W_v(v_B1C), v0_BC.unsqueeze(1), v_lerp_B1C)
 
-        a_B1C = torch.nn.functional.sigmoid(self.a_lora_simple(a_B1C))
+        a_logit_B1C = self.a_lora_simple(a_B1C)
+        if self.rgate_on:
+            # mirror of rwkv_model.py's gate: rhat = (1 + dt/s)^(-d) in log space. x here is
+            # x_layer_norm_B1C -- the SAME tensor the training path calls x_BTC (post-layer_norm,
+            # pre-lerp), at T=1.
+            assert log_dt_B is not None, (
+                "RWKV_RGATE is on for this stream but srs_model_rnn did not thread log_dt down"
+            )
+            log_dt_B11 = log_dt_B.reshape(B, 1, 1).to(x_layer_norm_B1C.dtype)
+            log_s_B11 = self.rgate_log_s(x_layer_norm_B1C)
+            d_hat_B11 = torch.nn.functional.softplus(self.rgate_d(x_layer_norm_B1C))
+            rhat_B11 = torch.exp(
+                -d_hat_B11 * torch.nn.functional.softplus(log_dt_B11 - log_s_B11)
+            )
+            a_logit_B1C = a_logit_B1C + self.rgate_gain * (1.0 - rhat_B11)
+        a_B1C = torch.nn.functional.sigmoid(a_logit_B1C)
         g_B1C = self.lora_B_g(torch.nn.functional.sigmoid(self.lora_A_g(g_B1C)))
 
         _d_B1C = -0.5 - torch.nn.functional.softplus(-self.d_lora_mlp(d_B1C))

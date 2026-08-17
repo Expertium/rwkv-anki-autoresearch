@@ -60,14 +60,43 @@ x = torch.randn(1, T, C) * 0.5
 tss = torch.tensor([[0] + list(range(T - 1))])
 skip = torch.zeros(1, T, dtype=torch.bool)
 
-out_train = train(x, tss, skip)                      # (1, T, C)
+# RWKV_RGATE (iter 55): the gate reads log elapsed SECONDS. Spread the timesteps across a
+# realistic range -- ~1 s to ~9 years -- so rhat genuinely VARIES down the sequence instead of
+# saturating to a constant, which is the difference between testing the gate and testing a bias.
+# Key on the MODEL, not the env string: RWKV_RGATE names streams, so "note,deck" must leave this
+# card_id stack ungated. Asserting the two agree is the scope-resolution test -- the analogue of
+# the strip list's "other stream's strips are inert" case.
+_scope = [s.strip().removesuffix("_id") for s in os.environ.get("RWKV_RGATE", "").split(",") if s.strip()]
+rgate_on = any(nm.endswith("rgate_gain") for nm, _ in train.named_parameters())
+assert rgate_on == (STREAM.removesuffix("_id") in _scope), (
+    f"RWKV_RGATE={_scope} but this stream's gate present={rgate_on}")
+log_dt = torch.linspace(0.0, 19.0, T).view(1, T) if rgate_on else None
+if rgate_on:
+    # `p.normal_()` above randomized rgate_log_s.bias too, which would park log_s near 0 and
+    # push rhat to ~1e-4 for every ordinary gap -- a constant gate, i.e. a vacuous test. Put it
+    # back in the responsive band on BOTH copies (named_parameters, so this does not depend on
+    # indexing a ScriptModule's ModuleList).
+    n_fixed = 0
+    for m in (train, rnn):
+        for nm, p in m.named_parameters():
+            if nm.endswith("rgate_log_s.bias"):
+                p.fill_(9.96)
+                n_fixed += 1
+    assert n_fixed == 2 * cfg.n_layers, f"expected one log_s bias per layer per copy, got {n_fixed}"
 
-state = None
-outs = []
-for t in range(T):
-    y, state = rnn.run(x[:, t], state)               # one timestep at a time
-    outs.append(y)
-out_rnn = torch.stack(outs, dim=1)
+def run_train(dt):
+    return train(x, tss, skip, dt) if rgate_on else train(x, tss, skip)
+
+def run_rnn(dt):
+    st = None
+    o = []
+    for t in range(T):
+        y, st = rnn.run(x[:, t], st, dt[:, t] if dt is not None else None)
+        o.append(y)
+    return torch.stack(o, dim=1), st
+
+out_train = run_train(log_dt)                        # (1, T, C)
+out_rnn, state = run_rnn(log_dt)
 
 d = (out_train - out_rnn).abs().max().item()
 scale = out_train.abs().max().item()
@@ -93,6 +122,23 @@ if tau > 0:
         raise SystemExit(0)
 
 assert d < 2e-5, f"PARITY FAIL: {d:.3e}"
+
+if rgate_on:
+    # NON-VACUITY, and it is the whole point of the case: agreement between two paths that both
+    # IGNORE dt is not parity, it is a matched no-op. Feed a different elapsed-time vector and
+    # require BOTH paths to move -- that is what proves dt actually reaches the recurrence
+    # rather than being threaded to a parameter that happens to be zero.
+    log_dt2 = torch.full_like(log_dt, 3.0)
+    t2 = run_train(log_dt2)
+    r2, _ = run_rnn(log_dt2)
+    dt_move_train = (t2 - out_train).abs().max().item()
+    dt_move_rnn = (r2 - out_rnn).abs().max().item()
+    d2 = (t2 - r2).abs().max().item()
+    print(f"  dt-sensitivity: train {dt_move_train:.3e}, rnn {dt_move_rnn:.3e}; "
+          f"parity at dt2 {d2:.3e}")
+    assert dt_move_train > 1e-4, "elapsed time does not reach the TRAINING recurrence"
+    assert dt_move_rnn > 1e-4, "elapsed time does not reach the DEPLOY recurrence"
+    assert d2 < 2e-5, f"PARITY FAIL at the second dt: {d2:.3e}"
 print("PARITY_OK")
 """
 
@@ -125,6 +171,13 @@ def main():
         # precisely the shape §9 was written for: without a case here, train/eval would use
         # relu(k)^p and deploy relu(k)^2, each self-consistent in isolation.
         ("learnable cmix exponent", {"RWKV_CMIX_POW": "1"}),
+        # iter 55. The gate is the first thing to feed a RAW INPUT FEATURE into the recurrence,
+        # so both a plumbing bug and a formula divergence are possible; the case asserts parity
+        # AND that changing dt moves both paths (see the non-vacuity block in CHILD).
+        ("retrievability gate", {"RWKV_RGATE": "card"}),
+        # a scope naming a DIFFERENT stream must leave this one ungated -- the same inertness
+        # check the strip list gets, and the one that catches a scope match ignoring the name
+        ("other stream's rgate is inert", {"RWKV_RGATE": "note,deck"}),
         # RWKV_INTERLEAVE (iter 41) has NO case here BY DESIGN: it lives at the SrsRWKV
         # level (multi-stream schedule + gather composition), which this single-stream
         # harness cannot see. Its coverage: scratchpad/parity3/smoke_interleave.py (the

@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 from rwkv.config import RWKV_SUBMODULES
-from rwkv.data_processing import RWKVSample
+from rwkv.data_processing import CARD_FEATURE_COLUMNS, RWKVSample, STATISTICS
 from rwkv.model.rwkv_model import RWKV7, take_rank1_penalty
 from rwkv.model.rwkv_model import _RANK1_REG as _RANK1_REG_LAMBDA
 import torch
@@ -528,6 +528,49 @@ class SrsRWKV(ModuleType):
                 (int(n.split("@")[1]) - 1 if "@" in n else -1) for n in _names
             ]
             self.tree_on = any(l >= 0 for l in self.tree_level)
+            # RWKV_RGATE (iter 55): which streams gate the delta-rule learning rate `a` on
+            # FSRS-form retrievability. 1/0 per stream in canonical order (list[int], matching
+            # tree_level -- TorchScript indexes these fine). The time mixer owns the parameters
+            # and re-reads the same env var; this list only decides which streams get `log_dt`
+            # threaded down to them, and the two MUST agree -- hence the assert below, which
+            # turns a silent "gate exists but never receives dt" into a launch-time failure.
+            def _base_stream(_n):
+                _b = _n.split("@")[0]
+                return _b[:-3] if _b.endswith("_id") else _b
+
+            _rg_scope = [
+                _base_stream(t.strip())
+                for t in os.environ.get("RWKV_RGATE", "").split(",")
+                if t.strip()
+            ]
+            self.rgate_stream = [1 if _base_stream(n) in _rg_scope else 0 for n in _names]
+            self.rgate_on = any(v > 0 for v in self.rgate_stream)
+            if self.rgate_on:
+                assert self.interleave_on, (
+                    "RWKV_RGATE currently requires RWKV_INTERLEAVE=1 (the champion recipe). The "
+                    "sequential branch rebuilds x as cat(y) per stream, so the canonical row order "
+                    "log_dt is indexed by no longer matches x after the first stream."
+                )
+                _unknown = [s for s in _rg_scope if s not in [_base_stream(n) for n in _names]]
+                assert not _unknown, f"RWKV_RGATE names no such stream: {_unknown}"
+                # Module-level globals are INVISIBLE to a scripted forward (see rwkv_model's
+                # rank1_reg note), so the column index and the un-standardization constants have
+                # to be instance attributes.
+                self.rgate_col = CARD_FEATURE_COLUMNS.index("scaled_elapsed_seconds")
+                self.rgate_mean = float(STATISTICS["elapsed_seconds_mean"])
+                self.rgate_std = float(STATISTICS["elapsed_seconds_std"])
+                print(
+                    f"[rgate] retrievability-gated `a` ON for streams "
+                    f"{[n for n, f in zip(_names, self.rgate_stream) if f]}; "
+                    f"log_dt from column {self.rgate_col} "
+                    f"({CARD_FEATURE_COLUMNS[self.rgate_col]})"
+                )
+            else:
+                # Attributes must exist unconditionally: TorchScript resolves every attribute a
+                # scripted method mentions, even on a branch that constant-folds away.
+                self.rgate_col = 0
+                self.rgate_mean = 0.0
+                self.rgate_std = 1.0
             # ⚠ CREATED ONLY WHEN THE LEVER IS ON. A Parameter that always exists would add a
             # state_dict key, which is NOT inert: every checkpoint written before this change
             # would fail to load (missing key) -- including the one an in-flight run is about to
@@ -919,6 +962,25 @@ class SrsRWKV(ModuleType):
         if self.grade_emb_on:
             x = self._apply_grade_emb(x, batch_start)
 
+        # RWKV_RGATE: recover natural-log elapsed SECONDS from the standardized column, in
+        # CANONICAL row order (the same order x lives in throughout the interleaved path, so the
+        # per-split gathers below reuse x's own indices). data_processing stores
+        #   scaled = (log(1 + 1e-5 + dt) - mean) / std
+        # so this inverts to log(1 + 1e-5 + dt). The -1 "no previous review" sentinel is mapped to
+        # 0 BEFORE standardizing, so it comes back here as log_dt ~ 0, i.e. dt ~ 1 s, and the gate
+        # contributes ~0 for a first review -- the semantically right answer (no elapsed gap,
+        # nothing forgotten), reached with no special case.
+        # ⚠ ~0 and not exactly 0, measured not assumed: the LMDB stores features in BFLOAT16, so
+        # the sentinel's standardized -1.9117082534 is held as -1.9140625 and un-standardizing
+        # multiplies that error by std=5.21 -> log_dt = -0.01227 (17.9% of rows in a real chunk).
+        # The same +/-0.02 log-space quantization rides on every row, i.e. ~2% in dt -- immaterial
+        # to a smooth retrievability function, but it means an `== 0` sentinel test can never pass.
+        log_dt_N = torch.zeros(1, device=x.device, dtype=x.dtype)
+        if self.rgate_on:
+            log_dt_N = (
+                batch_start[:, self.rgate_col].to(x.dtype) * self.rgate_std + self.rgate_mean
+            )
+
         assert len(batch_sub_gather) == len(self.rwkv_modules)
         if self.interleave_on:
             x = self._interleaved_streams(
@@ -928,6 +990,7 @@ class SrsRWKV(ModuleType):
                 batch_time_shift_selects,
                 batch_skips,
                 batch_stream_active,
+                log_dt_N,
             )
             x = x.view(batch_num_data, -1, self.d_model)
             return self.head_and_out(x)
@@ -998,6 +1061,7 @@ class SrsRWKV(ModuleType):
         batch_time_shift_selects: list[list[torch.Tensor]],
         batch_skips: list[list[torch.Tensor]],
         batch_stream_active: Optional[list[torch.Tensor]] = None,
+        log_dt_N: torch.Tensor = torch.zeros(1),
     ):
         # -- 1) compose canonical-anchored gathers + their scatter halves, once per batch --
         n_rows = x.size(0)
@@ -1078,12 +1142,21 @@ class SrsRWKV(ModuleType):
                                 x_in = self._add_level_emb(x_in, lvl)
                         else:
                             v0_in = v0s[i][s]
+                        # RWKV_RGATE: gather log_dt with THIS split's own canonical indices, so it
+                        # lines up row-for-row with x_in. Pad slots (g < 0) clamp to row 0 and are
+                        # never scattered back, exactly as for x.
+                        dt_in: Optional[torch.Tensor] = None
+                        if self.rgate_stream[i] > 0:
+                            dt_in = torch.index_select(
+                                log_dt_N, 0, torch.clamp(g, min=0)
+                            ).view(-1, sub_len)
                         x_out, v0_out = submodule.forward_layer(
                             lj,
                             x_in,
                             v0_in,
                             tss[s].view(-1, sub_len),
                             sks[s].view(-1, sub_len),
+                            dt_in,
                         )
                         v0s[i][s] = v0_out
                         flat = x_out.reshape(-1, self.d_model)
