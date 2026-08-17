@@ -1470,6 +1470,39 @@ The 2026-08-01 ordering (finish HP tuning -> seed pair -> PAVA lambda) is **COMP
 3. **THEN the 10x-budget run, ONCE, on the final champion** -- see THE ENDGAME above for the two arms (plain, then warm-started QAT), the ~4-day cost, and the three 1-epoch assumptions (warmup 200, augmentation off, wd/dropout) that must be reconsidered first.
 4. **Rust port** (`rust/rwkv-infer/TRACK2_PORT_PLAN.md`) -- **★ GAPS 7 + 8 CLOSED AND PARITY-VERIFIED 2026-08-11** (`276f379`): both engines (candle + the default fast path) now run the interleaved schedule (`RWKV_INTERLEAVE=1`) and the reordered stream list (`RWKV_STREAM_ORDER=card,note,deck,preset,user`), against a fresh `reference_iter41/` trace that is self-contained at exactly 0.000e+00 -- interleaved PARITY PASS on both paths (max per-review 4.78e-06 / 1.25e-06) and the sequential path BIT-IDENTICAL to the green iter-31 preds on both. **Gap 8 was a LIVE cross-wiring bug the gate caught** (states were assembled positionally, so `_cnd` fed DECK's state into the NOTE module; `name_to_idx` likewise would have quantized card+DECK for `card,note` scopes). ⚠ Front-loaded placement only -- fine today (iter 44's spread was rejected), but a future spread adoption needs `interleave_schedule()`'s table, not `r < depth[m]`. Remaining measured items and the AGPL/SIMD note are in that plan.
 
+**★★ THE 2026-08-17 HARD FREEZE HAS A DIAGNOSED CAUSE, AND IT IS THIS RULE FIRING (first time with
+telemetry).** At 12:53 the box froze mid-eval; Andrew forced a dump with **RightCtrl + Space x2** and
+Windows captured it -- bugcheck **0xE2 MANUALLY_INITIATED_CRASH** (all four params zero = the
+keyboard-forced path, NOT the underlying fault) plus a 4.4 GB `MEMORY.DMP` and minidump
+`081726-8234-01.dmp`. **The flight recorder caught the approach**, which the July hangs did not have:
+VRAM pinned at **11,981 of 12,282 MiB (97.6%)** for the last three samples while **power collapsed to
+42-51 W with util still reading 99%** -- i.e. the GPU was stalled in WDDM paging, not computing --
+then the recorder stopped dead at 12:53:01. ⚠ Do NOT generalize this to the July black-screens, which
+are recorded as having zero telemetry precursor; same symptom, not yet the same proven cause.
+**THE TRIGGER: giant user 6104, work 1,274,765** -- ~3.5x the 5002/5905/5995 trio this rule names --
+hit inline in a process that had already run 1,103 users, with a heavy desktop (Anki, 2x Edge,
+2x Chrome, Word, Excel, Telegram, Steam, Razer). Desktop VRAM was ~1.1 GB after reboot vs the 4.6 GB
+this rule cites for its three failures.
+**★ AND THE CONFIGURATION IS THE FIXABLE PART: the runners pass `--solo-threshold 0`, which DISABLES
+the power-user solo phase** Andrew approved 2026-07-14 for exactly these users. A dry run shows
+**25 of the 2500 VAL users are >= 1,000,000 work (11.2% of total work)**, 6104 among them; with the
+solo phase on they run alone, first, in their own process. The live rule above says d=80 evals use
+`--shards 1 --solo-threshold 0`, and those are INDEPENDENT axes -- `--shards` controls parallel
+shards, `--solo-threshold` controls giant isolation. **Turning the solo phase back on is not free
+mid-run**: `merge_jsonl` ASSERTS no duplicate users across phases, and 7 of the 25 giants
+(5414/5626/5835/5859/5900/5991/6007) are already banked in `-s0.jsonl`, so they would be re-run and
+then collide at merge. Fix it at LAUNCH time, not on a resume.
+**RECOVERY, and it was cheap:** the 13 h decay phase survived entirely (`qtaxg_i45kd_d_10935.pth` +
+both exported catalogs), and `get_result` skips users already present in the output jsonls, so a
+plain relaunch resumes at 6104 **in a fresh process** -- most of what the solo phase would buy (clean
+allocator, giant first). Runner `scratchpad/qat_tax/run_i45kd_evalresume.cmd` is phase-B-only, sliced
+from the chain runner so the env is byte-identical, with asserts that no training/dump phase leaked
+in and that nothing deletes the result jsonls.
+⚠ **A dirty shutdown truncates the chain log's last write to NUL bytes** (76 of them here, from a
+second incident the same afternoon when the PC was switched off). Harmless to the anchored
+`findstr /B /C:"DONE_EXIT_"` waiters, but strip them before relaunching or the next append lands
+after the padding.
+
 **⚠ BIG-EVAL OPS RULE (learned 2026-07-29/30):** giant users (5002/5905/5995, 266k-367k reviews) OOM the 12 GB card **iff the DESKTOP holds several GB of VRAM** (4.6 GB during three failures vs ~0.5 GB when the same users cleared three evals overnight). `expandable_segments` does NOT help. **Never `del` the result jsonls between eval attempts** -- `eval_sharded` skips completed users, so a relaunch only re-risks the remainder. Check `nvidia-smi` before starting a big eval.
 
 **⚠ CPU-INFERENCE REALITY CHECK:** in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and plateaus -- that path is overhead-bound, so cost tracks op count (layers x streams), not width. **1 thread beats 3 and 6 -> deploy single-threaded.** The Rust path DOES convert the cut: **2.39x** measured. Full numbers: `optimization/CPU_INFERENCE.md`.
