@@ -406,3 +406,38 @@ one place in the network where a fixed exponent is doing real shape work.
 everything else queued (all of which are training-recipe or optimizer levers), and the whole point of
 Andrew's catch is that the family was missing.
 
+### QUEUE STATE 2026-08-17 (late) -- three iterations ARMED, and the plan re-ranked itself
+
+| rank | iter | lever | cost | status |
+|---|---|---|---|---|
+| 1 | **52** | KD `alpha_decay` 0.5 -> 0.9 | 3.5 h | ARMED behind QAT#2 |
+| 2 | **53** | `RWKV_MUON_INCLUDE_LORA=1` | 6.2 h | ARMED behind 52 |
+| 3 | **54** | `RWKV_CMIX_POW=1` -- learnable channel-mixer exponent | 6.2 h | ARMED behind 53 |
+| 4 | 55 | Ensemble teacher: d=128 + a frozen past champion | 5.5 h + 2 h dump | next to build |
+| 5 | 56 | Decay LR SHAPE (cosine -> linear / 1-sqrt) | 3.5 h | decay-only, cheapest untried |
+| 6 | 57 | Spacing-effect monotonicity in REVIEW COUNT | 5.5 h | curve constraints 2/3 |
+| 7 | 58 | Fixed-budget WS:decay de-confound | ~10 h | settles a +0.0006 the endgame is spending |
+| ~~-~~ | ~~-~~ | ~~Delta-rule authority (`a = c*sigmoid`)~~ | ~~5.5 h~~ | **KILLED by measurement before launch -- see LIT_REVIEW.md** |
+
+**Iter 54 was promoted into the armed set** because Andrew's expressiveness catch opened a family
+the plan had no entry for, and it is the only candidate of that family that survived the redundancy
+test. It carries the first Rust deploy debt in a while (forward-pass change -> channel mixer + fresh
+parity trace), which is a cost to schedule if it wins, not a reason to skip it.
+
+**STOPPING AT THREE DEEP ON PURPOSE.** Iters 53 and 54 are already built on the iter-45 recipe, so a
+win for iter 52 leaves them measuring against a superseded champion. Chaining a fourth would compound
+that for no gain -- the GPU is booked ~34 h and the first verdict lands well before the queue drains.
+Build 55 only once 52 has reported.
+
+### The verdict protocol for these three, decided in advance
+Each is a single variable vs iter 45 on the PLAIN rectified basis (0.297697 / 0.265375, VAL half
+5001-7500), both-modes rule, `paired_pvalue` for the p-gate. Two of them have a SEPARABLE diagnostic
+that should be reported alongside the number, the way iters 48 and 50 were:
+* **iter 53** -- did the LoRA group's behaviour change at all? Compare the LoRA weight statistics
+  against iter 45's checkpoint. A null with visibly different weights means Muon reached them and
+  bought nothing; a null with identical statistics means something is wrong with the grouping.
+* **iter 54** -- print the 13 learned `cmix_pow` values. Still 2.0 = the lever was inert; moved = the
+  model used it and the verdict is only about whether that helped. This is the same shape as iter
+  50's level embedding training to L2=1.77 and gaining nothing, which is what made that null
+  interpretable rather than merely disappointing.
+

@@ -955,6 +955,68 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
+**>>> THE GPU IS BOOKED ~34 h DEEP, FOUR JOBS CHAINED (armed 2026-08-17). Each waiter is detached via
+WMI so Esc cannot kill it, and each polls the previous job's log with an ANCHORED `findstr /B
+/C:"DONE_EXIT_"` (the unanchored form matches its own progress line and fires instantly).**
+
+| order | run | lever | cost | pid |
+|---|---|---|---|---|
+| 1 | QAT#2 `qtaxg_i45kd` | KD from the plain iter-45 teacher, quant-aware decay | ~13 h from 22:51 | 15876 |
+| 2 | **iter 52** `iter52_kdalpha` | KD `alpha_decay` 0.5 -> 0.9 | **~3.5 h** | 51656 |
+| 3 | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | ~6.2 h | 21656 |
+| 4 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | ~6.2 h | 52256 |
+
+⚠ **PACING:** QAT#2 runs at 0.33 steps/s, so its decay ends ~08:00 and its ~10 h quant-aware eval
+~18:00; iter 52 then lands ~22:00, iter 53 ~04:00, iter 54 ~10:00 the next day.
+⚠ **BASIS SUBTLETY, accepted deliberately:** iters 53 and 54 are built on the ITER-45 recipe, so if
+iter 52 wins and promotes, their controlled comparison stays vs iter 45 while the champion has moved.
+The levers are orthogonal and chaining keeps the GPU busy rather than idling on a human reading a
+verdict; report both numbers at verdict time.
+
+**★★ ANDREW 2026-08-17: AT LEAST 10 MORE ALGORITHMIC ITERATIONS BEFORE THE FEATURES PHASE.**
+*"There is no way the current architecture and training are so optimal that no improvement is
+possible."* Ranked plan + what would change it: `optimization/PROPOSALS.md`.
+
+**★★ AND HE OPENED A FAMILY THAT WAS MISSING: EXPRESSIVENESS != CAPACITY.** The queue had no
+architecture entries because "capacity-at-5k is 0/3" was standing in for an argument it cannot
+support -- all three of those rejects added **more of the same functional form**; none tested a
+RICHER form at fixed parameter count. Iter 54 is the first of the new family.
+**★ THE SCREEN THAT MAKES THE FAMILY CHEAP: the REDUNDANCY TEST.** If an adjacent FREE LINEAR can
+absorb the new parameter, it adds exactly zero expressiveness. That kills learnable slopes on
+tanh/sigmoid (all sandwiched between free linears) and cross-head mixing (`W_o` already mixes the
+full `H*K` dimension) by algebra alone. A learnable EXPONENT survives -- curvature is not absorbable.
+**★ FOUR ARCHITECTURE PROPOSALS KILLED BY MEASUREMENT, ~1 h of CPU, zero GPU** (probes in
+`scratchpad/expressiveness/`, detail in `LIT_REVIEW.md`): the hardcoded `-0.5` decay floor is not
+binding (median fastest reachable `w` 0.954-0.994 vs a floor of 0.545; 0.3% of channels get within
+0.05); the LoRA `tanh` is not saturating (inputs 1.08-1.50); `a` sits in a median band of [0.41,0.60];
+and the delta-rule authority lever died on its own follow-up measurement.
+
+**★★ LIT REVIEW 2026-08-17 (Andrew's ask) -- one real lead, and it did not survive contact.**
+RWKV-8 is NOT APPLICABLE (DeepEmbed/MoE, KV-cache streamlining, a token suffix automaton -- we have
+none of those). fla's 2026 work is distributed-training plumbing. The lead was
+**arXiv 2411.12537 (ICLR 2025), negative eigenvalues**: linear RNNs whose state-transition
+eigenvalues are all positive provably cannot solve parity, and extending to [-1,1] costs zero params.
+**Measured, not adopted, and it failed twice over:** (1) the naive `a = 2*sigmoid` port is nearly
+INERT here -- our eigenvalue along the delta direction is `w - a*||kappa||^2` = 0.837-0.864, and
+doubling `a` only reaches 0.67, because `||kappa||^2 ~ 0.24` (RWKV-7 rescales the normalised key by
+`k_scale`) does most of the blocking, whereas DeltaNet has `||k||=1` exactly; (2) BOTH factors are
+already freely learnable toward more delta authority -- the model can reach ~0.95 and operates at
+~0.13, so nothing blocks it and raising the range only extends what is unused. **DEAD, do not run.**
+**★ THE FINDING THAT SURVIVES, and it is a characterisation of this model:** the delta term moves the
+state-transition eigenvalue by only **~0.15** against a decay of ~0.98, i.e. **our trunk uses its WKV
+state almost as a pure exponential-decay accumulator with a small rank-1 correction -- RWKV-7's
+headline innovation is barely engaged.** Whether that is the TASK's nature or our 1.25-epoch budget
+is a FREE check on the 10x endgame checkpoint: re-run `scratchpad/expressiveness/decay_floor_probe.py`
+and the eigenvalue probe on it.
+**⚠⚠ AND THE THIRD INSTANCE OF ONE FAILURE SHAPE, this time in my own writeup an hour after writing
+it:** the first stability numbers for that lever used the RESTING `||kappa||^2 = 0.24` as if it were a
+bound. It is not -- `k_scale = sigmoid(Linear(x))` has an UNBOUNDED input, so `||kappa||^2 -> 1` is
+reachable, and only `a` has a true envelope (its LoRA passes through `tanh`). Redone with genuine
+maxima the safe range is `c <= ~1.5`, not `c <= 8`; `c=2` already gives a worst-case eigenvalue of
+-1.365. Iter 51 fitted on a median and missed a 1.76e7 blow-up; the `a`-is-dead probe used "not
+pressed against the bound" where a REPRESENTATIONAL argument was needed; now a resting value stood in
+for a maximum. **The rule is not "report the max" as a style preference -- a typical-case statistic
+cannot bound a worst case, ever.**
 **★★★ ANDREW 2026-08-17 — AT LEAST 10 MORE ALGORITHMIC ITERATIONS, AND THE FEATURES PHASE WAITS.**
 *"It seems a bit too early to give up on algorithmic improvements, give it at least 10 more iters.
 There is no way the current architecture and training are so optimal that no improvement is possible."*
