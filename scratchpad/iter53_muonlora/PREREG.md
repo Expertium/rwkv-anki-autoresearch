@@ -69,6 +69,36 @@ than a foregone null. Ranked by what I expect:
 and the LoRA weight-decay entry (plan rank 8) should be read as the gentler retry of the *same*
 question — not as an independent lever.
 
+## 3b. PERSISTENCE CHECK at step 2000 — answered in the negative, and it raises a new worry
+
+Section 4 said the prediction should be discounted if the step-1000 engagement had *decayed* by
+later checkpoints, i.e. if it were a transient of early optimization. Re-run at the step-2000
+matched pair:
+
+| group | step 1000 | step 2000 |
+|---|---|---|
+| `lora_*` median rel. Δ stable rank | +48.26% | **+50.88%** |
+| `*scale*` (inert) | −2.49% | −1.08% |
+| `lora_*` median Δ‖W‖_F | +22.85% | **+36.43%** (max 336%) |
+| `*scale*` Δ‖W‖_F | +10.28% | **+3.76%** |
+
+The spectral effect **persists and grows slightly** — not a transient, so the escape route is
+closed and the eval will be measuring something real.
+
+★ **But the norm columns invert their story between the two checkpoints, and that is the new
+worry.** At step 1000 the lever's ‖W‖_F growth was mostly indirect coupling (control +10.28% against
+lever +22.85%). By step 2000 the control's drift has *fallen* to +3.76% while the lever's has *risen*
+to +36.43% — so the norm growth is increasingly the lever's own, and it is accelerating rather than
+settling. **Mechanism:** Muon takes a fixed-norm step along an orthogonalized direction, while Adam's
+step adapts to gradient scale; with `wd=0` on this group there is nothing pulling the norm back. Over
+10,935 steps that is a plausible route to harm, and it is *specific to moving params onto Muon
+without giving them decay*.
+
+**→ CHECK AT WS-FINAL (`spectra.py 10000`): does ‖W‖_F growth saturate or keep climbing?** If it is
+still climbing at step 10,000, then plan rank 8 (weight decay on the LoRA group) stops being "the
+gentler retry of the same question" and becomes **the fix for this run's failure mode** — i.e. the
+right follow-up is Muon *plus* decay, not decay instead of Muon.
+
 ## 4. What would change my mind before the verdict
 
 Re-run `spectra.py 10000` when the WS-final checkpoint lands. If the +32.65% at step 1000 has
