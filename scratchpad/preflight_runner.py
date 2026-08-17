@@ -163,6 +163,27 @@ def preflight(path):
             else:
                 notes.append(f"KD dump ok through step_{steps}.pt")
 
+    # ---- the training phase must keep the speed-stack env ---------------------------------
+    # A phase-0 guard legitimately has to CLEAR RWKV_NO_JIT (a scripted eval is the whole point of
+    # it), and forgetting to restore it silently trains a different configuration from the
+    # champion's -- torch.compile cannot trace a ScriptModule, so RWKV_QAT_COMPILE quietly stops
+    # doing anything. Nothing else in the pipeline notices. Checked by walking the file in order,
+    # because only the LAST assignment before each train_rwkv call is the one that applies.
+    for n, ln in enumerate(lines):
+        if "train_rwkv" not in ln or "--config" not in ln:
+            continue
+        val = None
+        for prev in lines[:n]:
+            m = re.match(r"\s*set\s+RWKV_NO_JIT=(.*)$", prev)
+            if m:
+                val = m.group(1).strip()
+        if val is None:
+            notes.append(f"train_rwkv at line {n + 1}: RWKV_NO_JIT never set (plain-JIT run?)")
+        elif val != "1":
+            problems.append(
+                f"train_rwkv at line {n + 1} runs with RWKV_NO_JIT='{val}' -- it was cleared "
+                f"earlier and not restored; torch.compile/QAT_COMPILE cannot trace a ScriptModule")
+
     # ---- terminal line --------------------------------------------------------------------
     if sum(1 for ln in lines if "DONE_EXIT_0" in ln) != 1:
         problems.append("expected exactly one DONE_EXIT_0 line (the waiter's success signal)")

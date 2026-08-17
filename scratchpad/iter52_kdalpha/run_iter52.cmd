@@ -77,7 +77,7 @@ set RWKV_MAX_STEPS=
 echo ===== ITER 52 (KD alpha_decay 0.5 to 0.9) START %DATE% %TIME% ===== >> "%LOG%"
 
 REM ================= PHASE 0: the scripted-eval guard (iter 48's lesson) =================
-"C:\Program Files\Git\usr\bin\bash.exe" scratchpad/parity3/smoke_scripted_eval.sh > "%DIR%\smoke_%STAMP%.log" 2>&1
+"C:\Program Files\Git\bin\bash.exe" scratchpad/parity3/smoke_scripted_eval.sh scratchpad/iter45_kddecay/i45_eval.toml > "%DIR%\smoke_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo ITER52 SCRIPTED_EVAL_SMOKE_FAILED %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_45 >> "%LOG%"
