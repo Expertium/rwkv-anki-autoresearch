@@ -1502,6 +1502,17 @@ second incident the same afternoon when the PC was switched off). Harmless to th
 `findstr /B /C:"DONE_EXIT_"` waiters, but strip them before relaunching or the next append lands
 after the padding.
 
+**⚠ THE FLIGHT-RECORDER HANG SIGNAL BREAKS AT MIDNIGHT (2026-08-18, one false alarm).** The
+recorder writes `flight_YYYYMMDD.csv`, so at 23:59:47 it stops appending to yesterday's file and
+starts today's. A monitor that resolves the filename ONCE at launch then watches a file nothing
+will ever write to again and fires ~10 min later -- 23:59:47 + 624 s, exactly when the alert came,
+while training was advancing at 0.967 steps/s. **Chains here run ~25 h, so every one crosses
+midnight.** Fixed in `scratchpad/chain_monitor.sh`, which (1) re-resolves the newest `flight_*.csv`
+each poll and (2) **never declares a hang from the recorder alone** -- a hang stops the BOX, so it
+must also stop the training log; requiring BOTH witnesses means one signal failing costs a log
+line instead of a false alarm. That second fix is the general one: **an alert built on a single
+witness reports the witness's health, not the system's.**
+
 **⚠ BIG-EVAL OPS RULE (learned 2026-07-29/30):** giant users (5002/5905/5995, 266k-367k reviews) OOM the 12 GB card **iff the DESKTOP holds several GB of VRAM** (4.6 GB during three failures vs ~0.5 GB when the same users cleared three evals overnight). `expandable_segments` does NOT help. **Never `del` the result jsonls between eval attempts** -- `eval_sharded` skips completed users, so a relaunch only re-risks the remainder. Check `nvidia-smi` before starting a big eval.
 
 **⚠ CPU-INFERENCE REALITY CHECK:** in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and plateaus -- that path is overhead-bound, so cost tracks op count (layers x streams), not width. **1 thread beats 3 and 6 -> deploy single-threaded.** The Rust path DOES convert the cut: **2.39x** measured. Full numbers: `optimization/CPU_INFERENCE.md`.
