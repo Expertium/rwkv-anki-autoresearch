@@ -32,42 +32,35 @@ LoRA matrices train changes the gradients reaching everything else. So most of t
 **indirect coupling, not the lever**, and only the stable-rank change survives attribution. A
 control group is what separates "my intervention did this" from "the model moved."
 
-## 2. The stated premise is directionally true but ~9× weaker than claimed — and the obvious fix inverts it
+## 2. ⚠ CORRECTED — the premise HOLDS. My first correction of it was itself wrong.
 
-The proposal says the LoRA matrices are "the most anisotropic matrices in the model." Stable rank is
-**not comparable across shapes** — these are rank-4/rank-2 bottlenecks next to 80×80 matrices — and
-the two obvious normalizations disagree with each other:
+**What this section said first, and why it was wrong.** I reported the LoRA matrices as only 18%
+more concentrated than the Muon-managed ones (0.695 vs 0.846) and called the proposal's premise
+"~9x weaker than claimed." That measurement was taken on the **CANDIDATE** checkpoint — which by
+step 1000 had already had the flag raise its LoRA stable rank by 48%. **I measured the premise on
+the treated model.** `spectra.py` now reads the CONTROL for Q1.
 
-| comparison | LoRA | Muon-managed | reads as |
+Measured correctly, on the champion:
+
+| checkpoint | LoRA | Muon-managed | LoRA as a fraction |
 |---|---|---|---|
-| raw stable rank | 2.01 | 17.94 | LoRA 9× more anisotropic |
-| ÷ min(shape) | 0.52 | 0.23 | **inverted** — LoRA 2× *flatter* |
-| **÷ same-shape Gaussian** | **0.695** | **0.846** | LoRA 18% more concentrated |
+| champion @ step 1000 | **0.5082** | 0.8524 | 60% |
+| champion @ step 10935 | **0.5197** | 0.8146 | 64% |
 
-Only the third is meaningful: a random (4,80) Gaussian already sits near 0.67 of its maximum stable
-rank while a random 80×80 sits near 0.25, so dividing by `min(shape)` over-corrects by exactly the
-amount that flips the sign. Computed empirically per shape rather than quoted from Marchenko–Pastur.
+(stable rank ÷ E[same-shape Gaussian]; 1.0 = as spread as random init.) **The champion's LoRA
+matrices really are substantially more anisotropic** — and stably so across training. The premise is
+sound.
 
-**Carry this:** *a shape-dependent statistic needs a shape-matched random reference, not a
-shape-normalized ratio.* Same family as the median-vs-max lesson — a statistic that looks comparable
-across objects usually is not.
+**What survives from the original section, and it is the reusable part:** raw stable rank
+(2.01 vs 17.94) is not comparable across shapes and overstates this ~9x; dividing by `min(shape)`
+(0.52 vs 0.23) *inverts* the sign, because a random (4,80) Gaussian already sits near 0.67 of its
+maximum while a random 80x80 sits near 0.25. Only the shape-matched random reference is meaningful.
 
-## 3. The prediction
-
-Given (1) a large intervention and (2) a real but modest 18% headroom, this is a genuine test rather
-than a foregone null. Ranked by what I expect:
-
-1. **Null or small harm** — most likely. The proposal's own pre-registered counter-hypothesis now
-   has a measured mechanism behind it: a rank-4 bottleneck exists *to* concentrate, it is already at
-   0.695 of random spread, and the flag pushes it further toward flat (+32.65%). Flattening the
-   thing whose job is to be low-rank is the failure mode.
-2. **Real gain** — if Muon's regularizer effect scales with how much of the model it covers, adding
-   4.9% of params should buy a fraction of the +0.0019 iter 29 measured. That fraction is plausibly
-   under the 0.0001 bar.
-
-**If it is a null, the family verdict is "optimizer coverage, not optimizer choice, is exhausted"**
-and the LoRA weight-decay entry (plan rank 8) should be read as the gentler retry of the *same*
-question — not as an independent lever.
+**Two lessons, and the second is the one I keep re-learning:**
+1. A shape-dependent statistic needs a shape-matched RANDOM reference, not a shape-normalized ratio.
+2. **A premise must be measured on the UNTREATED model.** Reaching for the checkpoint that happened
+   to be loaded is how a treatment effect gets read as a baseline property — the same error family
+   as iter 47's step-50-vs-final comparison, committed while writing up a tool built to avoid it.
 
 ## 3b. PERSISTENCE CHECK at step 2000 — answered in the negative, and it raises a new worry
 
@@ -98,6 +91,32 @@ without giving them decay*.
 still climbing at step 10,000, then plan rank 8 (weight decay on the LoRA group) stops being "the
 gentler retry of the same question" and becomes **the fix for this run's failure mode** — i.e. the
 right follow-up is Muon *plus* decay, not decay instead of Muon.
+
+## 3c. RESOLVED AT WS-FINAL (step 10,935) — the norm growth does NOT saturate
+
+| step | `lora_*` Δ stable rank | `lora_*` Δ‖W‖_F | `*scale*` (inert) Δ‖W‖_F |
+|---|---|---|---|
+| 1,000 | +48.26% | +22.85% | +10.28% |
+| 2,000 | +50.88% | +36.43% | +3.76% |
+| **10,935** | **+66.60%** (max +205.6%) | **+70.56%** (max 372%) | **+2.04%** |
+
+Both columns answered:
+
+* **Spectral engagement persists and grows** (+48 → +51 → +67%) while the inert control settles at
+  +2.7%. Section 4's escape route — "discount this if the effect decayed" — is closed.
+* **★ The norm growth does NOT saturate.** It roughly doubles between step 2,000 and WS-final while
+  the inert control's indirect drift falls to +2.04%, so it is unambiguously the lever's own. Muon
+  takes a fixed-norm step along an orthogonalized direction where Adam's adapts to gradient scale,
+  and this group has `wd=0`, so nothing pulls it back.
+
+**Per the pre-registration, this promotes plan rank 8.** Weight decay on the LoRA group is no longer
+"a knob nobody chose" — it is **the fix for this run's specific failure mode, if it fails**, and the
+right form is Muon *plus* decay rather than decay instead of Muon.
+
+**And the trajectory sharpens the counter-hypothesis into something measurable.** The lever does not
+merely close the gap to the Muon-managed group — it **overshoots**: LoRA goes from the champion's
+0.52 to the candidate's **0.828**, past the 0.81 where the rest of the model sits. A rank-4
+bottleneck exists *to* concentrate, and this flattens it past everything around it.
 
 ## 4. What would change my mind before the verdict
 

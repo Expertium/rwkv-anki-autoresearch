@@ -175,8 +175,14 @@ def random_baseline_report():
     Reported as stable_rank / E[stable_rank of a same-shape Gaussian]: 1.0 = as spread as random,
     below 1.0 = genuinely concentrated. THIS is the number the proposal's premise needs.
     """
+    # ⚠ MUST read the CONTROL, not the candidate. Q1 asks about the CHAMPION's premise ("are the
+    # LoRA matrices the most anisotropic in the model?"), and the candidate has already had the
+    # lever acting on it -- by step 1000 the flag had raised LoRA stable rank 48%, so measuring the
+    # premise there measures the treatment. The first version of this tool loaded CAND and the
+    # resulting 0.695 was quoted as a property of the champion. It was not.
     torch.manual_seed(0)
-    sd = load(CAND)
+    src = CTRL if CTRL.exists() else CAND
+    sd = load(src)
     cache = {}
 
     def base(shape):

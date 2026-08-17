@@ -343,12 +343,25 @@ control iter 47 failed to use). Two results, both before any eval number existed
   ⚠ `||W||_F` moved **+22.85% median / 220% max** at matched `wd=0` (verified: the LoRA group is
   explicitly `weight_decay: 0.0`, so no wd confound) — **but the inert control moved +10.28% too**,
   so most of that is indirect coupling, not the lever. Only the stable-rank change attributes.
-* **★ THE PREMISE IS ~9x WEAKER THAN CLAIMED, and the obvious normalization INVERTS it.** "The LoRA
-  matrices are the most anisotropic in the model" reads that way only in RAW stable rank (2.01 vs
-  17.94), which is not comparable across shapes; `÷ min(shape)` flips the sign (0.52 vs 0.23); only
-  **÷ a same-shape Gaussian** is meaningful, and it gives **0.695 vs 0.846 — a real but modest 18%**.
-  **Carry this: a shape-dependent statistic needs a shape-matched RANDOM reference, not a
-  shape-normalized ratio.** Same family as median-vs-max.
+* **★ CORRECTED 2026-08-18 — THE PREMISE HOLDS, and my first correction of it was wrong.** I
+  reported 0.695 vs 0.846 ("18%, ~9x weaker than claimed") from the **CANDIDATE** checkpoint,
+  which by step 1000 had already had the flag raise its LoRA stable rank 48% — **the premise
+  measured on the treated model.** On the CHAMPION it is **0.5082 vs 0.8524** at step 1000 and
+  0.5197 vs 0.8146 at WS-final: the LoRA matrices sit at ~60-64% of the Muon-managed group's
+  relative spread, stably across training. `spectra.py` now reads the control for Q1.
+  **What survives is the measurement rule:** raw stable rank (2.01 vs 17.94) is not comparable
+  across shapes and overstates this ~9x, `÷ min(shape)` (0.52 vs 0.23) *inverts* the sign, and
+  only a **shape-matched random reference** is meaningful. Plus: **a premise must be measured on
+  the UNTREATED model** — same error family as iter 47's step-50-vs-final comparison.
+* **★ WS-FINAL (step 10,935): engagement grows and the NORM GROWTH DOES NOT SATURATE.**
+  `lora_*` stable rank +48.26% → +50.88% → **+66.60%** across steps 1k/2k/10.9k, inert control
+  +2.72%. But ‖W‖_F goes +22.85% → +36.43% → **+70.56%** (max 372%) while the inert group's
+  indirect drift falls to +2.04% — so it is the lever's own and it is still climbing. Muon takes
+  a fixed-norm step where Adam's adapts to gradient scale, and this group has `wd=0`.
+  **→ This PROMOTES rank 8** (LoRA weight decay) from "a knob nobody chose" to **the fix for
+  this run's failure mode if it fails** — as Muon *plus* decay, not decay instead of Muon.
+  It also sharpens the counter-hypothesis: the lever **overshoots**, taking LoRA from the
+  champion's 0.52 past the 0.81 where the rest of the model sits, to 0.828.
 * **Prediction: null or small harm**, because a rank-4 bottleneck exists *to* concentrate and the
   flag pushes it further toward flat. If null, rank 8 (LoRA weight decay) is the gentler retry of
   the SAME question, not an independent lever.
