@@ -1003,6 +1003,37 @@ helps anyway. Detail + the two measurement lessons: `research_5k_verbose.md` ite
    overfitting was impossible; at 10x they are live levers. None of this is a reason to delay —
    just do not assume the 1-ep recipe transfers.
 
+#### ★★★ NEXT AFTER THE CHAIN DRAINS: A BUG HUNT, THEN RESUME (Andrew 2026-08-18)
+
+> *"once GPU is free, do some bug hunting. Obviously not every bug will be caught just by staring at
+> the code, so temporarily reduce the number of epochs to 0.05 and the number of eval users to 20,
+> and use that for diagnostics. Once you are reasonably confident that there are no bugs left,
+> resume the autoresearch loop normally."*
+
+**This comes BEFORE the next research iteration.** Do not treat the queued candidates as the next
+task when the chain finishes; the bug hunt is the next task.
+
+**THE METHOD HE SPECIFIED, and it is the point of the exercise:** build a **FAST DIAGNOSTIC CONFIG**
+-- `EPOCHS = 0.05` and an eval over **20 users** -- so a whole train -> decay -> eval cycle runs in
+minutes instead of ~9.2 h. Reading code cannot find the failures that matter here; **executing the
+path can**, and at 0.05 epochs it is cheap enough to execute every path. Every failure of
+2026-08-17/18 would have been caught by one cheap end-to-end run: the `endlocal` marker, the
+`LOAD_MODEL_FOLDER` omission, the alpha/guard mismatches, the smoke inheriting its own control.
+
+**WHY (the audit, `HISTORY.md` "BUG-RATE AUDIT"):** the bug RATE is flat (21% of commits in both
+halves of the last 24 days, ratio 1.01x). The recent spike is EXPOSURE -- orchestration edits ran
+3.5x baseline after the outage, and model-code edits were zero. The root cause is **cloning runners
+across lineages**: each new run inherits its nearest ancestor's defects (`run_iter45.cmd` carries the
+`endlocal` bug and its descendants do; `run_iter52.cmd` does not and its descendants are clean).
+**27 historical runners carry that one defect.** So the durable fix is **ONE CANONICAL RUNNER
+TEMPLATE with the guards baked in** -- build that as part of the hunt, not another clone.
+
+**Already done and not to be redone:** every smoke audited for the false-green class (a control arm
+inheriting the treatment from the ambient env) -- 12 of 49 inherit `os.environ`, only `rgate` was a
+live risk and it is fixed; no past verdict is affected (iter 48's `rcouple_w` is learned non-zero,
+so its lever was live); `preflight_runner.py` now asserts the `endlocal` ordering and all four live
+runners pass.
+
 #### LIVE
 **>>> THE GPU IS BOOKED ~31 h DEEP: ITER 53 IS DONE AND ACCEPTED, FOUR JOBS REMAIN CHAINED**
 (re-armed 2026-08-17 21:47; iter 54 launched 2026-08-18 08:04). Each waiter is detached via WMI so
