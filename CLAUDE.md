@@ -968,11 +968,18 @@ instantly). **Costs below are MEASURED on iter 53, and are ~40% higher than this
 
 | order | run | lever | cost | ETA | waiter pid |
 |---|---|---|---|---|---|
-| ~~1~~ | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | **DONE 07:11 -- ACCEPTED, NEW CHAMPION** | -- |
-| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | 9.2 h | RUNNING since 08:04, ~17:15 | 12944 |
-| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | ~23:20 | 32544 |
-| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | 9.2 h | ~08:30 (19th) | 29484 |
-| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` -- decay LR mass 1.376x at zero extra steps | 6.1 h | ~14:35 (19th) | 13520 |
+| ~~1~~ | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | **DONE -- ACCEPTED, NEW CHAMPION** | -- |
+| ~~2~~ | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1` | -- | **WS ONLY** (resumed after the outage); decay+eval RE-QUEUED as phase 2 | -- |
+| 3 | **iter 52** `iter52_kdalpha` | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | RUNNING since 12:47, ~18:50 | 9480 |
+| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card` | 9.2 h | ~04:00 (19th) | 16816 |
+| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` | 6.1 h | ~10:10 (19th) | 2276 |
+| 6 | **iter 54 PHASE 2** `run_iter54_phase2.cmd` | the owed decay + eval | 6.1 h | ~16:15 (19th) | 9740 |
+
+**⚠ ALL WAITER PIDS ABOVE ARE POST-OUTAGE (re-armed 11:52 and 13:15).** The 2026-08-18 power cut
+killed every pre-outage waiter; iter 54 was resumed mid-WS and the rest re-chained. **After an
+outage, re-check WHAT EACH WAITER POLLS before re-arming** -- `wait_then_iter52.cmd` points at the
+QAT#2 log, which already carries a terminal marker, so re-arming it as-is would have fired
+instantly and run two GPU jobs at once. It was replaced by `wait_then_iter52_v2.cmd`.
 
 **★★ THE CHAMPION MOVED, SO THE REMAINING FOUR NOW HAVE A HIGHER BAR.** All four were built on the
 ITER-45 recipe, which keeps their comparison CONTROLLED against iter 45 -- but the gate is always vs
