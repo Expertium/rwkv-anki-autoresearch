@@ -45,6 +45,55 @@ in the first pass and would have reported six defects that do not exist.
 
 All 27 are finished runs, so **none needs repair** — the exposure is to future clones.
 
+## Findings so far (CPU-only, GPU still booked)
+
+### 1. Two live runner defects — fixed
+
+* **`run_iter55.cmd` (rgate, queued) verified neither training phase's output.** Added two gates
+  naming the expected **final step**. An existence test would not have sufficed: the outage left a
+  step-8000 checkpoint, so "a `.pth` exists" was true while the model was half-trained.
+* **`kdalpha025` announced `alpha 0.9`** for a run whose alpha is `0.25`. Env and guards were
+  correct, so the run was never at risk — the **record** was. Fixed in the generator; the diff is
+  three prose lines with no executed logic touched.
+
+Both were patched while their waiters were still looping, with byte-exact backups. A `call`ed `.cmd`
+is not open until the call.
+
+### 2. rgate's smoke failure was stale — verified by execution
+
+Its `DONE_EXIT_46` log is timestamped 22:25:45; the hermetic fix landed at **22:31:21**, six minutes
+later. Re-run **with `RWKV_RGATE=card` deliberately set in the ambient environment** — the exact
+contamination that caused the original false green — it now reports `RGATE_ALL_PASS`: OFF 0 keys /
+ON 8 keys, delta **+324 params**, inertness exactly `0.000e+00`, gain=0.8 moves. That queue slot is
+sound.
+
+### 3. Three-way parity is green on current code
+
+`parity_train_vs_rnn.py` → `PARITY_ALL_PASS`, including cases for both in-flight levers
+(`RWKV_CMIX_POW`, `RWKV_RGATE`).
+
+### 4. The state clamp does **not** bind — a three-way-parity question closed
+
+The clamp is implemented in all three paths but with deliberately different granularity: training
+clamps **per 32768-step window**, the RNN and Rust deploy paths clamp **every step**. They agree
+exactly wherever `||S||_F < tau`, because the factor is then exactly `1.0` and the multiply is
+bit-inert — so the entire question is whether the norm ever reaches tau.
+
+Nothing had ever measured it. `parity_train_vs_rnn.py` deliberately **skips** the parity assertion
+for a binding tau (the training clamp is CUDA-only, so a CPU run of the training path does not clamp
+at all), and no run has ever switched on `RWKV_STATE_CLAMP_LOG`.
+
+Measured on the champion via the deploy RNN path (`state_norm_probe.py`, CPU, wraps `clamp_state` in
+its own process so no repo file is touched):
+
+| user | clamp calls | max ‖S‖_F | tau | binding steps |
+|---|---|---|---|---|
+| 5001 | 30,000 | **9.61** | 300 | **0** |
+
+**31× headroom, zero binding steps** — so training and deploy compute the same quantity here, and the
+documented divergence is latent rather than live. The clamp is doing its intended job: a safety net
+for the divergent A0/A3 configs it was added for, inert on a healthy model.
+
 ## Tools here
 
 | file | what |
