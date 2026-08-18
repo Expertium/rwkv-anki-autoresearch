@@ -42,6 +42,13 @@ pre-existing artifact (the upstream d=128 model). `summary` ≤ 20 words (Andrew
 full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md) (AI-only) and
 `research_log.jsonl`.
 
+> **⚠ WHY THE NUMBERS SKIP (e.g. 51 -> 53 -> 56).** An iteration number is assigned when a run is
+> **QUEUED**, not when it finishes, and rows land here only once a verdict exists. So a gap means
+> *still in flight*, not *lost*. QAT#2 took **56** because 52-55 were already reserved for queued
+> algorithmic runs, and it then finished BEFORE several of them. **As of 2026-08-18 the absent
+> numbers are exactly {52, 54, 55, 57}** -- all four are chained on the GPU. Check CLAUDE.md's
+> LIVE block for what is running before concluding a row was forgotten.
+
 | iter | trained on | ahead | imm | vs old (a / i) | logloss | status | p-value | params | NaN users | provenance | summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0 | 101–4999 | 0.2964 | 0.2649 | — (ref) | exact | — (target) | — (reference) | 2,762,884 | 0 | adopted | Old d=128 leaderboard model, unquantized — the fp target to beat on 5001–10000. |

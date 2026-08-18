@@ -7,7 +7,11 @@ REM including a waiter's own progress message, which fires the loop instantly.
 REM
 REM iter 52's ORIGINAL log was renamed to iter52_failed_smoke_2135.log after its 21:35 launch died
 REM in 0.07 s, precisely so this waiter cannot fire on that run's stale DONE_EXIT_45.
-set PREVLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter52_kdalpha\iter52.log
+REM ** RE-POINTED 2026-08-18: the chain was reordered to 52 -- 54 PHASE 2 -- 55 -- 57, so iter 55
+REM now waits on iter 54's owed decay+eval rather than on iter 52 directly. It must poll
+REM iter54_phase2.log and NOT iter54.log: the latter already carries DONE_EXIT_TOMLFAIL_1 from the
+REM 12:44 failure and would fire this waiter instantly.
+set PREVLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter54_cmixpow\iter54_phase2.log
 set WLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter55_rgate\waiter.log
 echo waiter armed (waits on iter 52 re-run) %DATE% %TIME% > "%WLOG%"
 :loop

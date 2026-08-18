@@ -971,15 +971,20 @@ instantly). **Costs below are MEASURED on iter 53, and are ~40% higher than this
 | ~~1~~ | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | **DONE -- ACCEPTED, NEW CHAMPION** | -- |
 | ~~2~~ | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1` | -- | **WS ONLY** (resumed after the outage); decay+eval RE-QUEUED as phase 2 | -- |
 | 3 | **iter 52** `iter52_kdalpha` | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | RUNNING since 12:47, ~18:50 | 9480 |
-| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card` | 9.2 h | ~04:00 (19th) | 16816 |
-| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` | 6.1 h | ~10:10 (19th) | 2276 |
-| 6 | **iter 54 PHASE 2** `run_iter54_phase2.cmd` | the owed decay + eval | 6.1 h | ~16:15 (19th) | 9740 |
+| 4 | **iter 54 PHASE 2** `run_iter54_phase2.cmd` | the owed decay + eval | 6.1 h | ~01:00 (19th) | 9472 |
+| 5 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card` | 9.2 h | ~10:15 (19th) | 29596 |
+| 6 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` | 6.1 h | ~16:20 (19th) | 2276 |
 
-**⚠ ALL WAITER PIDS ABOVE ARE POST-OUTAGE (re-armed 11:52 and 13:15).** The 2026-08-18 power cut
-killed every pre-outage waiter; iter 54 was resumed mid-WS and the rest re-chained. **After an
-outage, re-check WHAT EACH WAITER POLLS before re-arming** -- `wait_then_iter52.cmd` points at the
-QAT#2 log, which already carries a terminal marker, so re-arming it as-is would have fired
-instantly and run two GPU jobs at once. It was replaced by `wait_then_iter52_v2.cmd`.
+**★ ORDER CHANGED 2026-08-18 15:14 (Andrew asked why 54 was scheduled after 55/57).** iter 54's
+phase 2 was originally queued LAST, because iter 55's waiter already polled `iter52.log` and a
+second waiter there would have fired both at once. But iter 54 is the OLDEST incomplete work and
+its owed decay+eval is only 6.1 h, so finishing it a day later left a half-done iteration exposed
+to another outage for nothing. Resolved by re-pointing iter 55 at **`iter54_phase2.log`** -- a
+FRESH file. ⚠ `iter54.log` could NOT be used: it already carries `DONE_EXIT_TOMLFAIL_1` from the
+12:44 failure and would fire a waiter instantly.
+⚠ COSMETIC: `wait_then_iter55.cmd`'s startup echo still says "waits on iter 52 re-run" -- its
+`PREVLOG` is correct (`iter54_phase2.log`) and the file must NOT be edited while its waiter loops
+(cmd.exe re-reads batch files from a byte offset).
 
 **★★ THE CHAMPION MOVED, SO THE REMAINING FOUR NOW HAVE A HIGHER BAR.** All four were built on the
 ITER-45 recipe, which keeps their comparison CONTROLLED against iter 45 -- but the gate is always vs
