@@ -170,7 +170,11 @@ if not %ERRORLEVEL%==0 (
   exit /b 25
 )
 echo EVAL rect OK %TIME% >> "%LOG%"
-endlocal
-
+REM The terminal marker must be written BEFORE endlocal. endlocal restores the
+REM pre-setlocal environment, so LOG expands to EMPTY after it and the append
+REM target becomes an empty string -- nothing is written and every downstream
+REM waiter is stranded forever. Cost iter 53 a 45-minute idle GPU on 2026-08-18
+REM after a run that had already finished cleanly with exit 0.
 echo DONE_EXIT_0 %DATE% %TIME% >> "%LOG%"
+endlocal
 exit /b 0

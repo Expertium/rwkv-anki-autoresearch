@@ -2666,6 +2666,96 @@ diverged** (max ratio 2.75e8) — which is what promoted the diagnosis from "bad
 number, so it is a failed launch rather than a rejected iteration. The lever is closed on mechanism;
 `NorMuon` (per-neuron second-moment normalisation) is a *different* mechanism and remains open.
 
+## iter 53 — Muon on the LoRA matrices (`RWKV_MUON_INCLUDE_LORA=1`) — ACCEPTED, NEW CHAMPION
+
+**ahead 0.297523 (+0.000174, p=3.5e-08) / imm 0.265191 (+0.000184, p=2.7e-54)** vs iter 45, VAL half
+n=2500. size 0/2500, nan_users 0, **params 558,212 EXACTLY unchanged**, card/note/deck state
+untouched, throughput 1860.3 rev/s (vs 1833.5 — identical within noise). Training cost ~1%
+(0.907 steps/s vs iter 45's 0.920, both measured from checkpoint mtimes).
+
+### The lever
+`train_rwkv.py`'s Muon grouping excludes any param whose name contains `lora` or `scale`, so the
+27,520 rank-4/rank-2 LoRA projections the A18 width ladder introduced (104 tensors, 4.9% of the
+model) had always run on AdamW. The flag moves them to Muon **in their own group at
+`weight_decay = 0.0`** — the value they already had in `other_params` — so the optimizer is the only
+variable. Verified in code, not assumed: the group carries an explicit `weight_decay: 0.0`.
+
+### ★ The mechanism is confirmed, and it is why this worked
+The 2026-08-16 finding was that **Muon pays here as a REGULARIZER, not a faster optimizer**: on the
+matched iter-29/iter-26 pair its train-loss edge decays to nothing over training while its held-out
+edge holds at +0.0019. Extending it to the LoRA matrices reproduces that signature exactly.
+
+Paired WS traces, 10,935 steps, extracted from both runs' logs — train-loss advantage of iter 53
+over iter 45 by decile:
+
+| decile | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| ahead | −0.00147 | −0.00003 | −0.00010 | −0.00002 | +0.00009 | +0.00006 | +0.00002 | +0.00007 | −0.00007 | +0.00006 |
+| imm | −0.01172 | +0.00007 | +0.00015 | +0.00002 | +0.00015 | +0.00013 | +0.00020 | +0.00005 | +0.00019 | +0.00009 |
+
+**On ahead the train-loss advantage oscillates around ZERO for the whole run (mean ≈ +0.00001) while
+the held-out gain is +0.000174** — a generalization gain with no optimization gain behind it. On imm
+the train edge is real but small (~+0.00012) against +0.000184 held out. Decile 1 is *worse* for
+iter 53, so the lever costs early-training dynamics and repays later.
+
+### The separable diagnostic, run BEFORE the verdict existed
+`scratchpad/iter53_muonlora/spectra.py` + `PREREG.md`, on step-**matched** checkpoint pairs
+(`i53_ws_N` vs `i45_ws_N` — same recipe, same seed, augmentation off), which is the control iter 47's
+first run failed to use.
+
+| step | `lora_*` Δ stable rank | `*scale*` (inert control) | `lora_*` Δ‖W‖_F |
+|---|---|---|---|
+| 1,000 | +48.26% | −2.49% | +22.85% |
+| 2,000 | +50.88% | −1.08% | +36.43% |
+| 10,935 (WS-final) | +66.60% | +2.72% | +70.56% |
+| 10,935 (decay-final, deployed) | +66.61% | +2.73% | +62.40% |
+
+`*scale*` tensors are excluded from Muon in **both** runs, so they are a free internal negative
+control on tensors of the same kind. Engagement runs at ~20:1 over that floor and **persists through
+decay intact**. Unlike iters 48 and 50 — where the diagnostic found a mechanism that was learned but
+negligible — the intervention here is large *and* it pays.
+
+### ⚠ My pre-registered prediction was WRONG, and the corrected measurement predicted better than I did
+I predicted null-or-small-harm, reasoning that a rank-4 bottleneck exists *to* concentrate and that
+flattening it destroys what the factorization is for. The lever **does** overshoot — it takes the
+LoRA group from the champion's 0.52 to 0.83 of shape-matched-random spread, past the 0.81 where the
+rest of the model sits — and it helps anyway.
+
+Notably, the *corrected* premise measurement agreed with the outcome when my prediction did not: the
+champion's LoRA matrices really are substantially more anisotropic (0.5082 vs 0.8524), which is what
+the proposal claimed and what predicts a gain.
+
+### ★★ Two measurement lessons from the same tool, both mine
+1. **Stable rank is not comparable across shapes.** Raw values overstate the LoRA-vs-other gap ~9x
+   (2.01 vs 17.94); dividing by `min(shape)` **inverts** the sign (0.52 vs 0.23), because a random
+   (4,80) Gaussian already sits near 0.67 of its maximum while a random 80×80 sits near 0.25. Only a
+   **shape-matched random reference** is meaningful: 0.5082 vs 0.8524.
+2. **A premise must be measured on the UNTREATED model.** My first write-up read Q1 off the
+   *candidate*, which by step 1000 had already been moved 48% by the lever, and published the
+   premise as "18%, ~9x weaker than claimed". Same error family as iter 47's step-50-vs-final
+   comparison — committed inside a tool built to avoid exactly that.
+
+### ★ OPEN, and this result promotes it: the norm growth has no brake
+Deployed LoRA `‖W‖_F` is **+62%** over the champion's, and the growth does not saturate (+22.9 →
++36.4 → +70.6% at steps 1k/2k/10.9k). It stops only because the LR schedule anneals to zero — Muon's
+step is fixed-norm × LR, this group has `wd = 0`, and nothing pulls it back. At the 10x endgame
+budget the same mechanism runs ~6× longer before the schedule stops it, so **that run must either
+carry weight decay on the LoRA group or re-measure this**. Plan rank 8 (LoRA weight decay) therefore
+stops being "a knob nobody chose" and becomes the natural follow-up, in the form **Muon plus decay**.
+
+**The productive optimizer axis is COVERAGE, not descent quality.** The 2026-08-16 note demoted
+PolarExpress/NorMuon because they refine the descent — the half that stopped paying. iter 53 confirms
+the other half pays. The only 2-D params still on AdamW are the 26 `*scale*` tensors.
+
+### Ops — the run finished cleanly and still stranded the chain
+Eval completed 07:11 with 2,500 users, exit 0, but the runner never wrote its `DONE_EXIT_` line:
+**`endlocal` preceded the echo**, so `%LOG%` was out of scope and the redirect became an empty
+target. Four chained waiters were left polling for a string that could never appear; the GPU idled
+45 minutes. iters 54 and 55 had the identical tail (all three generated from `run_iter45.cmd`, which
+has it too — invisible until now because iter 45 was last in its chain) and were patched before the
+chain was released. iters 52 and 57 came from a different generator and were already correct.
+Deploy debt: **none** — training-only, the forward pass is untouched.
+
 ## iter 56 (QAT#2, `qtaxg_i45kd`) — swap the KD teacher to our own plain champion (REJECTED as an exact tie, 2026-08-17 21:34)
 
 **Numbering:** 52–55 were pre-assigned to queued algorithmic iterations while this was still

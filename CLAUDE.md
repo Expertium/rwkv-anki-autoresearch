@@ -782,32 +782,36 @@ Work continues as ONE lineage on the A18 trunk, numbered as track-1 iterations i
 belonged to the d=32 track; this lineage's size story is the 4.95x reduction (flagged to
 Andrew, not silently dropped).
 
-#### CHAMPION = iter 45 `iter45_kddecay` (KD kept through the DECAY phase, on the iter-41 recipe) -- promoted 2026-08-11 23:45
-**RECTIFIED (the gate basis): ahead 0.297697 / imm 0.265375** on the VAL half (n=2500) =
-+0.000192 / +0.000104 vs iter 41 at p=3.9e-47 / 1.4e-82. size 0/2500, nan_users 0, **558,212
-params EXACT, card 2,880 / note 1,440 / deck 5,760 state floats ALL unchanged** (a schedule of
-teacher signal has no weights), throughput 1833.5 rev/s (vs 1849.8 -- identical within noise, as a
-training-only change must be). ckpt `scratchpad/iter45_kddecay/i45_d_10935.pth`;
-`champion_5k_track2.json` points at it.
-**THE LEVER, and it is ZERO CODE:** the runner does NOT clear `RWKV_KD_MIX`/`RWKV_KD_ALPHA` before
-the decay phase; WS keeps the tuned `alpha=0.9`, **decay gets `alpha=0.5`**. Since iter 34 adopted
-decay_ratio=1.0, decay is HALF of all training and had been running on pure hard labels.
-**★ THE CHAMPION ENV = iter 41's, PLUS KD surviving into decay at 0.5.** So every run on this trunk
-sets: `RWKV_INTERLEAVE=1`, `RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py`
-(card→note→deck→preset→user, depths [2,1,4,3,3]), seed 4321, KD alpha 0.9 WS **and 0.5 through
-decay**, PAVA lambda 0.2, tuned HPs, and the speed stack during training only.
-**PERFECTLY CONTROLLED, verified not assumed:** the WS step trace is IDENTICAL to iter 41's for all
-10,935 steps (`scratchpad/iter45_kddecay/extract_trace.py --compare`), so the whole gain is
-attributable to the DECAY phase alone -- and run-to-run reproducibility at seed 4321 is re-confirmed
-free.
-**⚠ MARGIN:** imm clears the raw 0.0001 bar by only **4%** (+0.000104) -- ~1.4x iter 44's ±7.5e-5
-same-capacity noise floor and inside the ~0.0004 cross-seed spread. Accepted because the written
-gate passes both modes and single-run-at-4321 is the practice since iter 35; a second-seed
-confirmation is still the rigorous move before leaning on this number.
-**DEPLOY: nothing to port** -- training-only, no arch change. (And the interleave/order the recipe
-depends on ARE now in `rust/rwkv-infer`, parity-verified 2026-08-11.)
-**Open in-family, cheap (same dump):** alpha_decay 0.9 and 0.25 -- the WS curve peaked at 0.9 and
-bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.md` iter 45.
+#### CHAMPION = iter 53 `iter53_muonlora` (Muon extended to the LoRA matrices) -- promoted 2026-08-18 08:04
+**ahead 0.297523 / imm 0.265191** on the VAL half (n=2500) = **+0.000174 / +0.000184** vs iter 45 at
+p=3.5e-08 / 2.7e-54. size 0/2500, nan_users 0, **params 558,212 EXACTLY unchanged**, card/note/deck
+state 2,880/1,440/5,760 all unchanged (an optimizer change has no weights), throughput 1860.3 rev/s
+(vs 1833.5 -- identical within noise). Training cost ~1% (0.907 vs 0.920 steps/s).
+ckpt `scratchpad/iter53_muonlora/i53_d_10935.pth`; `champion_5k_track2.json` points at it.
+**THE LEVER, ~2 lines:** `RWKV_MUON_INCLUDE_LORA=1`. The Muon grouping excluded any param whose name
+contains `lora` or `scale`, so the **27,520** rank-4/rank-2 LoRA projections (104 tensors, 4.9% of the
+model) had always run on AdamW. They move to Muon **in their own group at `weight_decay = 0.0`** --
+the value they already had in `other_params` -- so the optimizer is the ONLY variable (verified in
+code: the group carries an explicit `weight_decay: 0.0`).
+**★ THE MECHANISM IS CONFIRMED, NOT ASSUMED, and it is why this worked.** The 2026-08-16 finding that
+**Muon pays here as a REGULARIZER rather than a faster optimizer** predicted this directly, and the
+paired WS traces reproduce its signature: over deciles 2-10 iter 53's **TRAIN**-loss advantage on
+ahead oscillates around **ZERO** (mean ~+0.00001) while the **HELD-OUT** gain is **+0.000174**. A
+generalization gain with no optimization gain behind it. (imm: train ~+0.00012 vs +0.000184 held out.)
+**=> THE PRODUCTIVE OPTIMIZER AXIS IS COVERAGE, NOT DESCENT QUALITY.** The 2026-08-16 note demoted
+PolarExpress/NorMuon because they refine the DESCENT -- the half that stopped paying. This confirms
+the other half pays. The only 2-D params still on AdamW are the 26 `*scale*` tensors.
+**★ OPEN, and this result promotes it -- the LoRA norms have NO BRAKE.** Deployed `||W||_F` is **+62%**
+over the champion's and does NOT saturate (+22.9 -> +36.4 -> +70.6% at steps 1k/2k/10.9k). It stops
+only because the LR schedule anneals to zero: Muon's step is fixed-norm x LR, this group has `wd=0`,
+nothing restores it. **At the 10x endgame the same mechanism runs ~6x longer, so that run must either
+carry weight decay on the LoRA group or re-measure.** PROPOSALS rank 8 is now the natural follow-up,
+as **Muon PLUS decay**.
+**DEPLOY: nothing to port** -- training-only, forward pass untouched, params identical.
+**⚠ PRE-REGISTERED PREDICTION WAS WRONG** (`scratchpad/iter53_muonlora/PREREG.md`): I predicted
+null-or-harm because a rank-4 bottleneck exists *to* concentrate. It does overshoot (LoRA goes from
+0.52 to 0.83 of shape-matched-random spread, past the 0.81 where the rest of the model sits) and it
+helps anyway. Detail + the two measurement lessons: `research_5k_verbose.md` iter 53.
 
 #### THE CHAMPION LINEAGE (full blocks archived to `optimization/HISTORY.md` 2026-08-10 -- this table replaces ~150 lines of superseded champion detail)
 
@@ -821,7 +825,8 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
 | 36 | + PAVA lambda 0.1 -> 0.2 (directed accept, a 5.9:1 trade) | 0.298338 / 0.266027 |
 | 39 | + KD alpha 0.5 -> 0.9 | 0.298180 / 0.265875 |
 | 41 | + interleaving (and a reorder that iter 43 later showed is free) | 0.297889 / 0.265479 |
-| **45** | **+ KD kept through the decay phase (alpha 0.5), zero code** | **0.297697 / 0.265375** |
+| 45 | + KD kept through the decay phase (alpha 0.5), zero code | 0.297697 / 0.265375 |
+| **53** | **+ Muon extended to the LoRA matrices (own wd=0 group), ~2 lines** | **0.297523 / 0.265191** |
 
 ⚠ iters 32 and 34 are not directly comparable to their neighbours: the gate basis changed to the RECTIFIED metric at iter 33, and iter 34 changed the training budget. Per-iteration detail: `research_5k_verbose.md`. Full superseded champion blocks (env strings, ckpt paths, caveats): `HISTORY.md`.
 
@@ -955,26 +960,47 @@ bracketed at 1.0, so decay's shape is not implied. Detail: `research_5k_verbose.
    just do not assume the 1-ep recipe transfers.
 
 #### LIVE
-**>>> THE GPU IS BOOKED ~25 h DEEP, FIVE JOBS CHAINED (re-armed 2026-08-17 21:47 after QAT#2
-finished; iter 57 appended 21:55). Each waiter is detached via WMI so Esc cannot kill it, and each polls the previous job's
-log with an ANCHORED `findstr /B /C:"DONE_EXIT_"` (the unanchored form matches its own progress line
-and fires instantly).**
+**>>> THE GPU IS BOOKED ~31 h DEEP: ITER 53 IS DONE AND ACCEPTED, FOUR JOBS REMAIN CHAINED**
+(re-armed 2026-08-17 21:47; iter 54 launched 2026-08-18 08:04). Each waiter is detached via WMI so
+Esc cannot kill it, and each polls the previous job's log with an ANCHORED
+`findstr /B /C:"DONE_EXIT_"` (the unanchored form matches its own progress line and fires
+instantly). **Costs below are MEASURED on iter 53, and are ~40% higher than this table used to say.**
 
 | order | run | lever | cost | ETA | waiter pid |
 |---|---|---|---|---|---|
-| 1 | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | decay ends ~04:15, verdict **~07:10** | 13644 |
-| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | 9.2 h | ~16:20 | 12944 |
-| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | ~22:25 | 32544 |
-| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | 9.2 h | ~07:35 (19th) | 29484 |
-| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` -- decay LR mass 1.376x at zero extra steps | 6.1 h | ~13:40 (19th) | 13520 |
+| ~~1~~ | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | **DONE 07:11 -- ACCEPTED, NEW CHAMPION** | -- |
+| 2 | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1`, learnable channel-mixer exponent | 9.2 h | RUNNING since 08:04, ~17:15 | 12944 |
+| 3 | **iter 52** `iter52_kdalpha` (RE-RUN) | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | ~23:20 | 32544 |
+| 4 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card`, FSRS-form retrievability gate on `a` | 9.2 h | ~08:30 (19th) | 29484 |
+| 5 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` -- decay LR mass 1.376x at zero extra steps | 6.1 h | ~14:35 (19th) | 13520 |
 
-**★ COSTS CORRECTED 2026-08-18 -- THE CHAIN IS ~35 h DEEP, NOT ~25 h, and the per-iteration
-figures this file carried were ~40% low.** The error: **decay is 10,935 steps, the SAME as WS**,
-because iter 34 adopted `decay_ratio = 1.0` (`EPOCHS = 1.0` in every `*_decay.toml`; the champion's
-own checkpoint is named `i45_d_10935`). The 2,733-step figure still quoted in places is the
-**tuner-era ratio 0.25** and has been wrong since iter 34. Measured on iter 53: WS 0.907 steps/s,
-decay 0.957, plain eval ~2.9 h =>  **full iteration (WS+decay+eval) = 9.2 h; decay-only = 6.1 h**
-(NOT the ~3.5 h this table said for iters 52/57, which was the training half only).
+**★★ THE CHAMPION MOVED, SO THE REMAINING FOUR NOW HAVE A HIGHER BAR.** All four were built on the
+ITER-45 recipe, which keeps their comparison CONTROLLED against iter 45 -- but the gate is always vs
+the CURRENT champion, so to be ACCEPTED they must now beat **iter 53's 0.297523 / 0.265191**, i.e.
+their iter-45 deltas must exceed +0.000174 / +0.000184 before clearing the 0.0001 bar. **Report BOTH
+numbers at verdict time** (delta vs iter 45 = the controlled effect of the lever; delta vs iter 53 =
+the gate). The levers are orthogonal to iter 53's, so nothing needs re-running.
+
+**★ COSTS (measured on iter 53, not projected): full iteration 9.2 h, decay-only 6.1 h.** Decay is
+**10,935 steps, the SAME as WS** (`decay_ratio = 1.0` since iter 34; the champion checkpoints are
+named `*_d_10935`). The 2,733-step figure once quoted here is the tuner-era ratio 0.25 and had this
+chain costed ~40% low. WS 0.907 steps/s, decay 0.957, plain eval ~2.9 h.
+
+**⚠⚠ OPS -- `endlocal` BEFORE THE `DONE_EXIT_` ECHO STRANDS THE WHOLE CHAIN (cost 45 min of idle GPU,
+2026-08-18).** iter 53 finished cleanly at 07:11 (exit 0, 2,500 users in both result jsonls) and
+**never announced it**: its runner ended `... endlocal / echo DONE_EXIT_0 >> "%LOG%"`, and `endlocal`
+restores the pre-`setlocal` environment, so `%LOG%` expanded to EMPTY and the append target became
+`""`. Nothing was written, and four chained waiters polled forever for a line that could not appear.
+**`run_iter54.cmd` and `run_iter55.cmd` had the identical tail** -- all three were generated from
+`run_iter45.cmd`, which has it too and never revealed it because iter 45 was LAST in its chain. Both
+were patched before the chain was released (marker moved inside the `setlocal` scope) and the fix was
+proven **by executing it in cmd.exe**, not by reading it. iters 52/57 came from a different generator
+and were already correct.
+**THE RULE: write the terminal marker BEFORE `endlocal`, and have `preflight_runner.py` assert it** --
+its existing "declared before first use" check cannot see `endlocal`, because that invalidates
+variables mid-file rather than at a line the parser can point at. Same family as the mk53/mk54
+deletion bug: `%LOG%` silently empty, failure maximally quiet.
+
 
 **DONE: QAT#2 `qtaxg_i45kd` = iter 56, REJECTED as an exact tie** (ahead +0.000084 p=6.2e-04, imm
 -0.000070 p=1.0, both inside the +/-7.5e-5 floor). **The QAT tax does not live in the teacher**, and
@@ -1555,8 +1581,8 @@ which is why this family once read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
 5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) ·
 objective-alignment **0/1 mechanism-refuted** (iter 37 by-user weighting: worse in every size
-quartile incl. its intended beneficiaries — do not retry milder doses) · **optimizer 1/2, and the
-REMAINDER IS DEMOTED ON MECHANISM** (Muon ACCEPTED iter 29, the phase's largest imm gain; cautious wd
+quartile incl. its intended beneficiaries — do not retry milder doses) · **optimizer 2/3 -- and iter 53 SPLITS the family in two**
+(COVERAGE pays, DESCENT QUALITY does not) (Muon ACCEPTED iter 29, the phase's largest imm gain; cautious wd
 REJECTED iter 30 — a pure trade; iter 51 PolarExpress FAILED structurally, p(1)<1 is load-bearing.
 **Muon is a REGULARIZER here** — its train-loss edge decays to −0.00058/+0.00097 while eval holds at
 +0.0019 — so descent-quality refinements incl. NorMuon target the half that stopped paying) · GRU-head N-sweep **peaks at

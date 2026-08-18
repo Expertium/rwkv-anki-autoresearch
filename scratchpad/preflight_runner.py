@@ -185,6 +185,17 @@ def preflight(path):
                 f"earlier and not restored; torch.compile/QAT_COMPILE cannot trace a ScriptModule")
 
     # ---- terminal line --------------------------------------------------------------------
+    # endlocal must NOT precede the terminal marker. endlocal restores the pre-setlocal
+    # environment, so %LOG% is EMPTY after it and `>> "%LOG%"` appends to nothing -- the runner
+    # exits 0, writes no marker, and every chained waiter polls forever. Cost 45 min of idle GPU
+    # on 2026-08-18 after iter 53 had ALREADY finished cleanly. The vars-before-use check above
+    # cannot catch it: endlocal invalidates variables mid-file, not at a line the parser sees.
+    _el = [n for n, ln in enumerate(lines) if ln.strip().lower() == "endlocal"]
+    _de = [n for n, ln in enumerate(lines) if ln.strip().startswith("echo DONE_EXIT_")]
+    if _el and _de and min(_el) < max(_de):
+        problems.append(
+            f"endlocal at line {min(_el) + 1} precedes the DONE_EXIT_ echo at line {max(_de) + 1}: "
+            f"%LOG% is out of scope there, so the marker is silently never written")
     if sum(1 for ln in lines if "DONE_EXIT_0" in ln) != 1:
         problems.append("expected exactly one DONE_EXIT_0 line (the waiter's success signal)")
 

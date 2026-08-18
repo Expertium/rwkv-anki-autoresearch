@@ -24,3 +24,4 @@
 {"name": "iter36_pava02", "date": "2026-08-07 18:30:50", "final_ahead": 0.298338, "final_imm": 0.266027, "n_trace_steps": 10935, "ckpt": "scratchpad/iter36_pava/i36b_d_10935.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "iter39_kda09", "date": "2026-08-08 21:47:36", "final_ahead": 0.29818, "final_imm": 0.265875, "n_trace_steps": 10935, "ckpt": "scratchpad/iter39_kda9/i39_d_10935.pth", "cb_wkv": "", "cb_shift": ""}
 {"name": "iter41_ilv", "date": "2026-08-09 15:24:01", "final_ahead": 0.297889, "final_imm": 0.265479, "n_trace_steps": 10935, "ckpt": "scratchpad/iter41_ilv/i41_d_10935.pth", "cb_wkv": "", "cb_shift": ""}
+{"name": "iter45_kddecay", "date": "2026-08-11 23:34:24", "final_ahead": 0.297697, "final_imm": 0.265375, "n_trace_steps": 10935, "ckpt": "scratchpad/iter45_kddecay/i45_d_10935.pth", "cb_wkv": "", "cb_shift": ""}
