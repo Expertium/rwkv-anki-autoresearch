@@ -1,4 +1,4 @@
-# Decay phase auto-written by write_decay_setup.py. i54_d cosine-decay from i54_ws_8000.
+# Decay phase auto-written by write_decay_setup.py. i54_d cosine-decay from i54_ws_10935.
 TRAIN_USERS_START = 1
 TRAIN_USERS_END = 5000
 VALIDATE_USERS_START = 5001
@@ -26,7 +26,7 @@ PEAK_LR = 1e-3
 
 LOAD_MODEL = true
 LOAD_MODEL_FOLDER = "scratchpad/iter54_cmixpow"
-LOAD_MODEL_NAME = "i54_ws_8000"
+LOAD_MODEL_NAME = "i54_ws_10935"
 SAVE_MODEL_FOLDER = "scratchpad/iter54_cmixpow"
 SAVE_MODEL_PREFIX = "i54_d"
 DEVICE = "cuda"
