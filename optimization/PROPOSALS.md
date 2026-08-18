@@ -408,6 +408,40 @@ iter 39's α=0.9 dominates the same lever; 48, 50 and 56 are inside the noise fl
 **One ingredient is not a graft.** This entry is a policy waiting on the chain, not a runnable
 proposal.
 
+### ★★ RANK 8 RE-SPECIFIED BY A DOSE SCREEN (2026-08-18) — the obvious value is a NULL by construction
+
+iter 53's accept promoted rank 8 (weight decay on the LoRA group) from "a knob nobody chose" to the
+fix for its one open worry: the deployed LoRA `‖W‖_F` is **+62.4%** over the champion's and does not
+saturate, because Muon's step is fixed-norm × LR and that group runs at `wd = 0`. The obvious
+implementation is to give it the **0.01** every other Muon group carries. **Pure arithmetic says that
+would measure nothing.**
+
+**The mechanics.** Muon adds a fixed-norm step scaled by LR, so the per-step norm *increment* is
+∝ LR. Decoupled decay removes `LR · wd_lr_scale · wd · ‖W‖`, also ∝ LR. **The LR cancels in the
+equilibrium**, and what remains is a brake time constant measured in STEPS:
+
+| `wd` | time constant (steps) | vs the 21,870-step run (WS + decay) |
+|---|---|---|
+| **0.01** | 100,000 | **4.57×** — brake never engages |
+| 0.02 | 50,000 | 2.29× |
+| **0.05** | 20,000 | **0.91×** — acts on the run's own timescale |
+| 0.1 | 10,000 | 0.46× |
+
+Integrating the actual schedule (warmup 400 → flat → `1 − sin(πx/2)`) confirms it: `wd = 0.01`
+shrinks the norm by **13.7%** across WS + decay, against a **+62.4%** growth — it offsets barely a
+fifth of the thing it is meant to brake, and a null would then be uninterpretable (dose too small, or
+mechanism wrong?).
+
+**→ SPECIFICATION: run it at `wd = 0.05` on the LoRA group only.** That is the dose whose time
+constant matches the run length, and it is already inside the tuner's swept range
+`[0.01, 0.05, 0.1]`, so it is not an exotic value. Keep every other group at its current decay so the
+LoRA group's `wd` is the single variable — the same discipline that made iter 53 attributable.
+
+⚠ **Pre-registered reading, both ways.** iter 53 won *with* the norm growth, so the growth is not
+obviously harmful — this tests whether it is harmful *anyway*, not whether it is required. If
+`wd = 0.05` REGRESSES, the growth is load-bearing and the 10x endgame needs no brake after all, which
+is worth knowing for a 4-day run. If it IMPROVES, the endgame must carry it.
+
 ### ⚠ Honest note on where this list thins out
 Ranks 1-6 each rest on a specific measurement in this repo. Ranks 7-10 are weaker: 7 and 8 are
 "a knob nobody chose" arguments, and 9-10 are literature-standard moves without local evidence.
