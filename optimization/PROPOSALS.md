@@ -442,7 +442,22 @@ obviously harmful — this tests whether it is harmful *anyway*, not whether it 
 `wd = 0.05` REGRESSES, the growth is load-bearing and the 10x endgame needs no brake after all, which
 is worth knowing for a 4-day run. If it IMPROVES, the endgame must carry it.
 
-### ★★ DELETED CARDS (Andrew, 2026-08-18) — screened, and the screen found a SHARPER lever
+### ~~DELETED CARDS~~ — SHELVED BY ANDREW 2026-08-18: *"forget about removing deleted cards.
+### Focus on algorithmic improvements."* Both variants are off the queue. The screen below is kept
+### because its measurements are reusable, not because the item is live.
+
+**Two facts worth carrying out of it, independent of the proposal:**
+* **srs-benchmark evaluates deleted cards** -- no filter on card existence anywhere in
+  `data_loader.py` / `evaluate.py` / `script.py`, and deletion is absent from the README's filter
+  list. So they can never be removed from EVAL. This is what the `size` gate enforces.
+* **Every deleted card in a user is pooled into ONE synthetic deck and ONE synthetic preset**
+  (`deck_id`/`preset_id` <- a bare `ID_PLACEHOLDER`; `note_id` is unique per card and escapes
+  this). That fake deck is the LARGEST in the user for 3 of 8 sampled users, median rank 2.
+  **Anyone reasoning about the deck or preset stream should know this exists**, whether or not it
+  is ever changed.
+
+#### The original screen (kept for its numbers)
+
 
 > *"I believe right now RWKV is trained on deleted cards as well, their deck and preset IDs are -1.
 > Check if removing deleted cards from training degrades log loss. If it doesn't, that's a free win."*
