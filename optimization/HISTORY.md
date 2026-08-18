@@ -2820,3 +2820,49 @@ MAX=110000, QUANT-AWARE, WS 2 epochs, eval 101-200 — every one of those wrong)
   * A sub-0.001 winner still needs **confirming on the full VAL half (5001-7500)** before it becomes
     the recipe — the subset is a ranking proxy, not a gate.
 
+## BUG-RATE AUDIT (Andrew asked, 2026-08-18): is quality degrading?
+
+**Answer: the rate is FLAT when normalised; the last two days are an EXPOSURE spike, not a
+competence drop. But the sweep found one systemic defect worth fixing.**
+
+### The measurement
+Proxy = commit subjects matching fix/bug/broke/wrong/fail/stale/revert/correct/repair/guard.
+
+| window | fix-ish / total commits | share |
+|---|---|---|
+| 2026-07-25 .. 08-05 | 29 / 139 | **21%** |
+| 2026-08-06 .. 08-18 | 46 / 218 | **21%** |
+
+Ratio **1.01x**. The last two days alone are 34% and 38% — genuinely elevated — but over the same
+two days, touches to runner/orchestration files ran at **21.0/day against a 6.0/day baseline (3.5x)**,
+and touches to model code on 08-18 were **zero**. The power outage forced resume runners, phase-2
+runners and three re-chainings. **Bugs per unit of orchestration work is flat or better; there was
+simply 3.5x more of the bug-prone work.**
+
+⚠ **Honest caveat: the recording rate is NOT constant.** Bugs are written down far more diligently
+now than in July, so the early 21% is probably an undercount and the true trend may be *down*. The
+commit-subject proxy also cannot see a bug that was never committed about. This measurement bounds
+the question; it does not settle it.
+
+### What the targeted sweep found
+* **Every smoke audited for the false-green class** (a control arm inheriting the treatment from the
+  ambient env — the `rgate` failure). 12 of 49 inherit `os.environ`; only ONE was a live risk, and
+  it is fixed. The rest are closed levers, or helpers where inheritance is CORRECT. Two apparent
+  hits on iters 48/49 were grep artifacts — the matches are inside `REM` comments.
+* **No past verdict is affected.** Checked the one case that could have been: iter 48's `rcouple_w`
+  is learned and non-zero in its checkpoint, so the lever was live in training.
+* **★ ONE SYSTEMIC DEFECT, in 27 historical runners: `endlocal` precedes the terminal marker**, so
+  `%LOG%` is out of scope and the marker is silently never written. It is a SCHEDULING failure (a
+  stranded waiter, an idle GPU), never a correctness one — a run that completed still produced and
+  recorded its results. Now caught by `preflight_runner.py`. All four live runners pass.
+
+### ★ The root cause is CLONING ACROSS LINEAGES, not carelessness
+Each new run is generated from whichever ancestor is nearest, and inherits that ancestor's defects.
+`run_iter45.cmd` carries the `endlocal` bug, so everything derived from it does; `run_iter52.cmd`
+does not, so its descendants are clean. The three failures of 2026-08-18 are all the same shape — a
+string that DEPENDS on the lever left un-updated by a clone (env right/guard wrong, guard
+right/env wrong, control inheriting the treatment).
+
+**=> The fix is one canonical runner template with the guards baked in, not a repo-wide sweep.**
+A sweep treats the symptom; the template removes the mechanism.
+
