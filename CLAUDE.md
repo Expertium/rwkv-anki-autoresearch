@@ -1712,6 +1712,14 @@ All hooks stay in-repo, env-gated, default off.
   spinning a full core for hours. **CHECK + KILL orphan pythons after every run** — but inspect
   command lines first: the spare `pythonw` are the bridge/controller, the ~80000s-CPU python is
   Andrew's FSRS benchmark, and he also runs a Reddit bot + liveplot. **Do not kill those.**
+- **⚠ OPS -- A DECAY-ONLY RUN WRITES ITS CHECKPOINTS INTO THE *SOURCE* RUN'S DIRECTORY.**
+  `write_decay_setup.py` takes the dir holding the WS-final checkpoint, so iter 52's decay landed
+  in **`scratchpad/iter45_kddecay/i52_d_10935.pth`**, not in `scratchpad/iter52_kdalpha/`. The eval
+  toml's `MODEL_PATH` points there and is correct. **Two consequences:** (1) `ls` in the run's own
+  directory shows NO decay checkpoint, which looks like a failed decay and is not; (2) deleting an
+  old champion's directory during housekeeping would silently take later runs' checkpoints with
+  it. iter 57 (`decayshape`) will land there too, since it also decays from `i45_ws_10935`.
+  Check `MODEL_PATH` in the eval toml before concluding anything about where a checkpoint is.
 - **OPS gotcha:** PowerShell `Set-Content -Encoding utf8` writes a BOM -> `tomli` dies at line 1
   col 1. Write tomls with the Write tool or `UTF8Encoding($false)`. A crashed run's
   `DONE_EXIT_WSFAIL` satisfies downstream waitloop greps — relaunch upstream FIRST, then re-park
