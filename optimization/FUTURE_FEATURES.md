@@ -179,6 +179,63 @@ is likely null; (2) shared-weight loop L=2/3/4 + level embedding; (3) parallel-p
 variant; (4) features-only control. The rebuild is CPU-side and can overlap GPU runs
 (it does compete with fetch workers for cores).
 
+## ★ SIBLING REVIEW GAP (Andrew, 2026-08-18) — queued, with one correction and one cheap redundancy test
+
+> *"if a card has siblings, then calculate the minimum number of days between sibling reviews.
+> Example: note A has cards A1, A2 and A3. A1 was reviewed on day 100, A2 on day 95, A3 on day 110.
+> So for card A1, the input feature will be min(abs(100-95), abs(100-110)). Well, with log1p... This
+> may be redundant thanks to note states though."*
+
+### ⚠ The example as written LEAKS, and the causal version is simpler than the general one
+`A3` is reviewed on day **110**, which is *after* the day-100 review being featurised. Taking a
+`min` over all siblings therefore lets the model see the future — not deployable (in Anki, when
+scheduling A1 you know your siblings' past reviews and not their future ones) and it would inflate
+eval exactly where no gate would catch it, since this is an input-side change and `size` would be
+identical.
+
+Restricted to siblings reviewed **before** the current review — which is the only deployable form —
+the definition collapses:
+
+    min over PAST siblings of |t_now - t_sib|  ==  t_now - max(t_sib)  ==  time since the most
+                                                                          recent sibling review
+
+So the feature is **"days since the nearest preceding sibling review"**, one column, and it needs no
+`min` at all — a running per-note "last review time" carried forward, which is cheap in the
+preprocessing pass and matches how `elapsed_seconds` is already computed. (Andrew's example still
+gives 5, because there the nearest sibling happens to be the past one; the two forms only diverge
+when the nearest sibling is in the future, which is precisely the leaking case.)
+This is the same shape as the existing **Leakage rule** below — compute as of review time, never
+from the full table.
+
+### Is it redundant with the note stream? — TESTABLE ON CPU, BEFORE THE REBUILD
+Andrew's own caveat is the right worry, and it has a precedent that cuts both ways: **iter 50 (the
+deck tree) was an exact tie because the 5-stream hierarchy already BRACKETED the scope it added.**
+The `note_id` stream does pool every review of a note, so the note state has *seen* the sibling
+reviews. But seeing them and encoding *the gap to the nearest one* are different claims — the state
+would have to reconstruct a time difference through its recurrence.
+
+**The cheap test, and it costs no rebuild:** the champion's note-stream state is already dumpable
+(the deploy RNN path gives it per review; `spectra.py`/`calibration_by.py` show the pattern). Regress
+the true sibling gap on that state and read the R²:
+* high R² → the note stream already carries it → **redundant, drop it** (and that is a real finding
+  about what note state encodes, not just a rejection);
+* low R² → the recurrence does *not* represent it → the feature adds information the model cannot
+  currently derive, and it earns a slot in the rebuild.
+Run this the way the spacing and horizon screens were run: **before** committing GPU or a 1-day LMDB
+rebuild. Two screens have already killed queue items this week for ~90 min of CPU each.
+
+### Why it is plausible even so
+Anki *buries* siblings by default, so the gap is largely schedule-determined — but that is what makes
+it informative: a small gap means burial was off or overridden, and sibling interference (two cards
+of one note studied close together) is a real memory effect the model currently has no explicit
+handle on. Note also that the quantity is **not** symmetric with what the note stream sees: the note
+state is dominated by *how many* siblings and *how they went*, not by *how recently*.
+
+### Cost and placement
+One extra column (width 112 → 113 under `RWKV_ID_FEATURES`), derivable from the `-id` set's real
+timestamps, no new export. It belongs to the **features phase**, i.e. the same LMDB rebuild as the
+other candidates — it does not justify a rebuild on its own.
+
 ## Leakage rule
 All count/batch features must be computed **as of review time** during preprocessing (not from
 the full table) so same-day-created-and-reviewed cards stay honest.
