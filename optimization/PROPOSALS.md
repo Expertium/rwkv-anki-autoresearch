@@ -447,9 +447,13 @@ is worth knowing for a 4-day run. If it IMPROVES, the endgame must carry it.
 > *"I believe right now RWKV is trained on deleted cards as well, their deck and preset IDs are -1.
 > Check if removing deleted cards from training degrades log loss. If it doesn't, that's a free win."*
 
-**Premise: right in mechanism, wrong in the sentinel.** `data_processing.py` merges revlogs → cards →
-decks with `how="left"`, so a deleted card gives NaN, and the NaN is filled with
-`ID_PLACEHOLDER = 314159265358979323` (lines 285-296), not −1. The important detail is *which* ids:
+**Premise confirmed, and the −1 is real — I was wrong to "correct" it.** BOTH sentinels exist, in
+different files. `srs-benchmark/data_loader.py:65` does `dataset.fillna(-1, inplace=True)` after the
+card/deck left-merges — that is the −1 Andrew remembered. Our vendored `rwkv/data_processing.py`
+instead fills with `ID_PLACEHOLDER = 314159265358979323` (lines 285-296). I checked our file, found
+the placeholder, and told him his figure was wrong; it was right about the benchmark. **Check the
+file the claim is about, not the nearest file that resembles it.**
+The important detail is *which* ids our pipeline fills, since that is what trains the model:
 
     note_id    <- ID_PLACEHOLDER + card_id   -> UNIQUE per card; notes are NOT pooled
     deck_id    <- ID_PLACEHOLDER             -> a BARE CONSTANT
@@ -480,6 +484,33 @@ makes the run worth doing:
 * **An IMPROVEMENT is unambiguous** — if dropping 15% of training data still wins while 9.4% of the
   eval distribution is exactly what was dropped, the fabricated-deck harm must dominate.
 * **A DEGRADATION is uninterpretable** on its own.
+
+### ★★ COMPATIBILITY CHECKED (Andrew's stop, 2026-08-18): srs-benchmark DOES evaluate deleted cards
+
+> *"If it uses deleted cards for evaluation, then we can't remove them, since we need our evals to
+> be compatible with the srs-benchmark methodology."*
+
+**Verified in the upstream code, three ways:**
+1. `data_loader.py::load_user_data` builds the dataset from **revlogs** (`create_features(df_revlogs)`),
+   then left-merges cards and decks purely to ADD columns, and fills the misses with −1. No row is
+   removed.
+2. Neither `data_loader.py`, `evaluate.py` nor `script.py` contains any filter on card existence.
+   The README enumerates the filters that *are* applied — same-day reviews, manual due-date changes,
+   filtered-deck entries, an outlier filter — and **deletion is not among them**.
+3. Our own pipeline agrees by construction: `data_processing.py:257` asserts
+   `len(df) == df_len` straight after the merges, so it cannot be dropping rows either.
+
+**=> EVAL MUST KEEP THEM. That is settled and non-negotiable** — it is what the `size` gate has been
+enforcing all along, and it is why the published RWKV numbers are comparable at all.
+
+**What this does and does not forbid:**
+* **Variant A (drop from TRAINING)** is still runnable — it changes nothing about what is evaluated.
+  But it now carries a named cost: the model is graded on 9.42% of rows whose *kind* it never
+  trained on. Confounded on a loss, unambiguous on a win (see the asymmetry above).
+* **Variant B (un-pool, drop nothing)** has **no compatibility question at all**. Identical rows in
+  training and in eval; only the deck/preset GROUPING changes. Andrew's objection does not touch it.
+
+**→ RUN B FIRST.** The check just removed the only argument for preferring A.
 
 ### → Two variants, no LMDB rebuild for either
 The stored deck ids are raw (`data_processing` never factorizes them), so `ID_PLACEHOLDER` is
