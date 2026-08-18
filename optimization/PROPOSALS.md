@@ -442,6 +442,58 @@ obviously harmful — this tests whether it is harmful *anyway*, not whether it 
 `wd = 0.05` REGRESSES, the growth is load-bearing and the 10x endgame needs no brake after all, which
 is worth knowing for a 4-day run. If it IMPROVES, the endgame must carry it.
 
+### ★★ DELETED CARDS (Andrew, 2026-08-18) — screened, and the screen found a SHARPER lever
+
+> *"I believe right now RWKV is trained on deleted cards as well, their deck and preset IDs are -1.
+> Check if removing deleted cards from training degrades log loss. If it doesn't, that's a free win."*
+
+**Premise: right in mechanism, wrong in the sentinel.** `data_processing.py` merges revlogs → cards →
+decks with `how="left"`, so a deleted card gives NaN, and the NaN is filled with
+`ID_PLACEHOLDER = 314159265358979323` (lines 285-296), not −1. The important detail is *which* ids:
+
+    note_id    <- ID_PLACEHOLDER + card_id   -> UNIQUE per card; notes are NOT pooled
+    deck_id    <- ID_PLACEHOLDER             -> a BARE CONSTANT
+    preset_id  <- ID_PLACEHOLDER             -> a BARE CONSTANT
+
+**So every deleted card in a user collapses into ONE fake deck and ONE fake preset.**
+
+### It is not a rounding error (`scratchpad/deleted_cards/prevalence.py`, CPU, minutes)
+
+| range | reviews from deleted cards | cards deleted |
+|---|---|---|
+| train (1–5000) | **15.18%** | 20.14% |
+| eval (5001–7500) | **9.42%** | 13.63% |
+
+Per-user spread is enormous — 0.04% (user 555) to **66.85%** (user 101).
+
+### ★ The mechanism, measured (`fake_deck_size.py`) — this is the real argument
+The synthetic deck is the **LARGEST deck in the user for 3 of 8 sampled users, median rank 2**. User
+101 has 105 real decks and puts 66.85% of its reviews in the fake one; user 1200, 38.36%. The deck
+stream is a per-deck recurrence, so it is spending much of its capacity summarising a group whose
+members share nothing except having been deleted. **That is a fabricated grouping, not merely extra
+data** — a concrete reason to expect signal rather than a null.
+
+### ⚠ But 9.42% of EVAL rows are deleted-card rows, which shapes the design
+Dropping them from training while still being graded on them conflates *"the data was useful"* with
+*"we stopped training on what we are tested on"*. The asymmetry is worth stating, because it still
+makes the run worth doing:
+* **An IMPROVEMENT is unambiguous** — if dropping 15% of training data still wins while 9.4% of the
+  eval distribution is exactly what was dropped, the fabricated-deck harm must dominate.
+* **A DEGRADATION is uninterpretable** on its own.
+
+### → Two variants, no LMDB rebuild for either
+The stored deck ids are raw (`data_processing` never factorizes them), so `ID_PLACEHOLDER` is
+detectable at batch-prep time. Both variants are runtime changes in `prepare_batch.build_module_data`:
+
+| variant | what it does | property |
+|---|---|---|
+| **A** (as proposed) | drop deleted-card rows from training | loses 15% of data; confounded on a loss |
+| **B** (from the screen) | keep every row, but give each deleted card its OWN deck/preset id — exactly what `note_id` already does | **no data loss, no train/test mismatch**, and it tests the fabricated grouping directly |
+
+**B is the sharper test and the better bet**: it removes only the fabrication, so it cannot lose on
+data volume, and a null cleanly means the pooling was harmless. Implement one env flag with two
+modes (`drop` / `split`) so both are one run each.
+
 ### ⚠ Honest note on where this list thins out
 Ranks 1-6 each rest on a specific measurement in this repo. Ranks 7-10 are weaker: 7 and 8 are
 "a knob nobody chose" arguments, and 9-10 are literature-standard moves without local evidence.
