@@ -23,6 +23,30 @@ vendored in — see §2/§10 for what lives where. Roadmap steps 1–3 are DONE.
 - Andrew sometimes hand-edits files; if you see an uncommitted change you didn't make,
   it's intentional — don't revert it, commit it if needed.
 
+## 0a. Simplified Technical English -- how to WRITE to Andrew (2026-08-18)
+
+**Write chat replies in ASD-STE100 Simplified Technical English.** The rules:
+
+- Write short sentences. Use 20 words maximum for an instruction, 25 for a description.
+- Write one idea in one sentence.
+- Use the active voice. Use simple tenses.
+- Use the same word for the same thing every time. Do not change words for variety.
+- Do not use idioms, metaphors, or slang.
+- Do not use a noun cluster of more than three words.
+- Write six sentences maximum in a paragraph.
+- Keep the articles "a" and "the". Put complex data in a list or a table.
+
+**Scope: CHAT REPLIES ONLY.** This file, `research_5k_verbose.md`, `PROPOSALS.md`, the run notes and
+the commit messages keep their current style. Those documents must carry mechanism, caveats and
+numbers, and the density is deliberate. The [[claude-md-bloat]] problem is length, not sentence style.
+
+**One limit, stated honestly:** STE also fixes an approved vocabulary of approximately 900 words,
+one meaning per word. That list is licensed, so I cannot check words against it. I follow the writing
+rules fully and only approximate the vocabulary rule. The standard permits technical names and
+technical verbs, so `logloss`, `checkpoint`, `decay`, `quantize` and `Wilcoxon` stay.
+
+**If a rule would drop a caveat, keep the caveat and shorten the sentence instead.** Accuracy first.
+
 ## 1. The end goal
 
 A small **RWKV-7 neural network for Anki spaced-repetition scheduling** that:
