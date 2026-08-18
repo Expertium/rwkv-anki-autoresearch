@@ -86,13 +86,22 @@ at all), and no run has ever switched on `RWKV_STATE_CLAMP_LOG`.
 Measured on the champion via the deploy RNN path (`state_norm_probe.py`, CPU, wraps `clamp_state` in
 its own process so no repo file is touched):
 
-| user | clamp calls | max ‖S‖_F | tau | binding steps |
-|---|---|---|---|---|
-| 5001 | 30,000 | **9.61** | 300 | **0** |
+| user | clamp calls | max ‖S‖_F | tau | binding steps | headroom |
+|---|---|---|---|---|---|
+| 5001 | 30,000 | 9.61 | 300 | **0** | 31× |
+| 5002 (giant) | 200,000 | **13.06** | 300 | **0** | 23× |
 
-**31× headroom, zero binding steps** — so training and deploy compute the same quantity here, and the
-documented divergence is latent rather than live. The clamp is doing its intended job: a safety net
-for the divergent A0/A3 configs it was added for, inert on a healthy model.
+**Zero binding steps on both** — so training and deploy compute the same quantity, and the documented
+divergence is latent rather than live. The clamp is doing its intended job: a safety net for the
+divergent A0/A3 configs it was added for, inert on a healthy model.
+
+**The shape of the two rows matters more than either number.** The giant user runs 6.6× more clamp
+calls and reaches only 1.36× the norm, so `||S||` **saturates** rather than accumulating with
+recurrence length. That is what a contracting recurrence must do, and it matches the independent
+2026-08-17 finding that this trunk operates as a near-pure exponential-decay accumulator (state
+eigenvalue ~0.98, delta term worth only ~0.15). So the conclusion does not rest on two samples: it
+rests on the mechanism, with two samples confirming it. A user long enough to reach 300 would have to
+break that decay structure first.
 
 ## Tools here
 
