@@ -46,20 +46,40 @@ def main():
         shutil.copyfile(src, dst)
         print(f"copied {src.name} -> {dst.name}")
 
+    # REPLACE-OR-APPEND, not replace-only. A from-scratch WS toml -- which every runner in this
+    # repo clones -- declares LOAD_MODEL and STEP_OFFSET but NOT LOAD_MODEL_FOLDER /
+    # LOAD_MODEL_NAME, because it never loads anything. The original loop only rewrote keys that
+    # were ALREADY PRESENT, so those two were silently omitted and the resume died on
+    #     AttributeError: 'Namespace' object has no attribute 'LOAD_MODEL_FOLDER'
+    # which train_rwkv then SWALLOWED, exiting 0 -- so the runner logged "WS OK" after 8 seconds
+    # and marched on to decay from a half-trained checkpoint. Cost one aborted relaunch after the
+    # 2026-08-18 power outage. Asserting the four keys are in the OUTPUT is what makes it safe.
+    want = {
+        "LOAD_MODEL": "LOAD_MODEL = true",
+        "LOAD_MODEL_FOLDER": f'LOAD_MODEL_FOLDER = "{run_dir.as_posix()}"',
+        "LOAD_MODEL_NAME": f'LOAD_MODEL_NAME = "{prefix}_{n}"',
+        "STEP_OFFSET": f"STEP_OFFSET = {n + 1}",
+    }
     text = ws_toml.read_text(encoding="utf-8")
-    out_lines = []
+    out_lines, seen = [], set()
     for line in text.splitlines():
         key = line.split("=")[0].strip() if "=" in line else ""
-        if key == "LOAD_MODEL":
-            line = "LOAD_MODEL = true"
-        elif key == "LOAD_MODEL_FOLDER":
-            line = f'LOAD_MODEL_FOLDER = "{run_dir.as_posix()}"'
-        elif key == "LOAD_MODEL_NAME":
-            line = f'LOAD_MODEL_NAME = "{prefix}_{n}"'
-        elif key == "STEP_OFFSET":
-            line = f"STEP_OFFSET = {n + 1}"
+        if key in want:
+            line = want[key]
+            seen.add(key)
         out_lines.append(line)
-    out_toml.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    missing = [k for k in want if k not in seen]
+    if missing:
+        out_lines.append("")
+        out_lines.append(f"# appended by make_resume.py -- absent from {ws_toml.name}")
+        out_lines.extend(want[k] for k in missing)
+    body = "\n".join(out_lines) + "\n"
+    present = {l.split("=")[0].strip() for l in body.splitlines() if "=" in l}
+    for k in want:
+        assert k in present, f"resume toml lacks {k} -- train_rwkv would die AND still exit 0"
+    out_toml.write_text(body, encoding="utf-8")
+    if missing:
+        print(f"appended keys absent from the source toml: {', '.join(missing)}")
     print(f"wrote {out_toml} (resume from step {n}, STEP_OFFSET={n + 1})")
     print("RUN WITH: RWKV_RESUME_SKIP_GROUPS=1 + the original run's full env; "
           "do NOT delete existing step-trace files.")

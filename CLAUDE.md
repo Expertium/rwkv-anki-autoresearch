@@ -1529,6 +1529,31 @@ second incident the same afternoon when the PC was switched off). Harmless to th
 `findstr /B /C:"DONE_EXIT_"` waiters, but strip them before relaunching or the next append lands
 after the padding.
 
+**⚠⚠ POWER OUTAGE 2026-08-18 ~10:32 -- RECOVERED BY MID-EPOCH RESUME, and it exposed a latent bug
+in `make_resume.py`.** The box lost power mid-WS; boot 10:33, all four waiters dead, GPU idle.
+iter 54 had reached step **8110 of 10,935** with a clean checkpoint pair at 8000 and **zero NUL
+bytes** in its log, so ~2.4 h of training was salvageable for ~110 lost steps. Recovery ran the
+documented path (`make_resume.py` + `RWKV_RESUME_SKIP_GROUPS=1`) and is confirmed live:
+`[resume-skip] epoch 0: skipping the first 8000 already-trained groups`.
+**★ THE BUG, and it is the day's recurring shape: `make_resume.py` REPLACED ONLY KEYS THAT
+ALREADY EXISTED.** Every runner's WS toml is cloned from a from-scratch config, which declares
+`LOAD_MODEL` and `STEP_OFFSET` but NOT `LOAD_MODEL_FOLDER` / `LOAD_MODEL_NAME` -- so those two
+were silently never written and the resume died on `AttributeError: 'Namespace' object has no
+attribute 'LOAD_MODEL_FOLDER'`. **`train_rwkv` SWALLOWED it and exited 0**, so the runner logged
+`WS OK` after 8 seconds and marched on to decay a half-trained model; it was killed within two
+minutes and no artifact was lost. Fixed to REPLACE-OR-APPEND with an assert on the OUTPUT toml.
+**TWO RULES:** (1) a config transformer must assert the keys are present in what it WROTE, not
+trust that they were there to rewrite -- same family as the mk53/mk54 slice and the `endlocal`
+marker; (2) **a runner phase must gate on the ARTIFACT, not the exit code** -- the resume runner
+now refuses to decay unless `i54_ws_10935.pth` exists, because CLAUDE.md's own warning that
+"train_rwkv can swallow fatal errors to exit 0" is exactly what happened.
+⚠ Also: `wait_then_iter52.cmd` polls the **QAT#2** log, which already carries a terminal marker,
+so re-arming it would have fired instantly and run iter 52 BESIDE iter 54. Replaced by
+`wait_then_iter52_v2.cmd`, pointed at `iter54.log`. **After any outage, re-check what each
+waiter polls before re-arming it** -- a waiter is only as correct as the log it watches.
+⚠ The resumed tail's DROPOUT DRAWS differ from an uninterrupted run (weights/optimizer exact),
+so iter 54's number is a fair measurement but the run is not bit-reproducible.
+
 **⚠ THE FLIGHT-RECORDER HANG SIGNAL BREAKS AT MIDNIGHT (2026-08-18, one false alarm).** The
 recorder writes `flight_YYYYMMDD.csv`, so at 23:59:47 it stops appending to yesterday's file and
 starts today's. A monitor that resolves the filename ONCE at launch then watches a file nothing
