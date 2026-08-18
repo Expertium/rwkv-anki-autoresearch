@@ -34,8 +34,13 @@ import numpy as np
 import torch
 
 STEP = sys.argv[1] if len(sys.argv) > 1 else "1000"
-CAND = Path(f"scratchpad/iter53_muonlora/i53_ws_{STEP}.pth")
-CTRL = Path(f"scratchpad/iter45_kddecay/i45_ws_{STEP}.pth")
+# phase: "ws" (default) or "d" for the DECAY-final pair, which is the DEPLOYED model and therefore
+# the one the verdict actually scores. WS-final answers "did the lever act"; decay-final answers
+# "what did the scored model end up looking like", and the two can differ -- decay is half of all
+# training here (decay_ratio = 1.0), so it has as much room to move the weights as WS did.
+PHASE = sys.argv[2] if len(sys.argv) > 2 else "ws"
+CAND = Path(f"scratchpad/iter53_muonlora/i53_{PHASE}_{STEP}.pth")
+CTRL = Path(f"scratchpad/iter45_kddecay/i45_{PHASE}_{STEP}.pth")
 
 # The Muon group rule (train_rwkv.py): a param is EXCLUDED from Muon if its name contains 'lora'
 # OR 'scale'. But iter 53's flag moves only the LORA-named ones -- the `scale` tensors stay on AdamW

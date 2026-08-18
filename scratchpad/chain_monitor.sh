@@ -27,9 +27,21 @@ mkdir -p "$MARK"
 DIRS="iter53_muonlora iter54_cmixpow iter52_kdalpha iter55_rgate iter57_decayshape"
 stall=0
 prev_ws=0
+prev_prog=""
 
+# The newest TRAINING log -- used for failure-signature scanning, which only applies to training.
 newest_train_log() {
   ls -t scratchpad/iter5*/ws_*.log scratchpad/iter5*/decay_*.log 2>/dev/null | head -1
+}
+
+# ★ The newest PROGRESS witness across ALL phases. An iteration is train -> decay -> eval, and the
+# eval writes to scratchpad/eval_shards/*.log and result/*.jsonl, NOT to a training log. Watching
+# only training logs made the stall check fire the moment decay finished and eval began -- i.e. on
+# every iteration, for the ~2.9 h the eval runs, which is a third of the chain. Same shape as the
+# midnight-rollover bug this file already fixes: a witness that legitimately goes quiet is not
+# evidence of a stall. Take the newest mtime over every file that ANY phase touches.
+newest_progress() {
+  ls -t scratchpad/iter5*/ws_*.log scratchpad/iter5*/decay_*.log         scratchpad/eval_shards/*.log result/*.jsonl 2>/dev/null | head -1
 }
 
 while true; do
@@ -53,12 +65,21 @@ while true; do
       echo "ERROR SIGNATURE in $(basename "$NEW"): $(tr -d '\0' < "$NEW" \
         | grep -oE 'Nan from RWKV-7|Traceback|CUDA out of memory|INTERNAL ASSERT' | tail -1)"
     fi
-    # --- 3. stall on the training log itself
-    cur_ws=$(stat -c %s "$NEW" 2>/dev/null || echo 0)
-    if [ "$cur_ws" = "$prev_ws" ]; then stall=$((stall + 1)); else stall=0; fi
+  fi
+
+  # --- 3. stall, measured on whatever phase is actually running
+  PROG=$(newest_progress)
+  if [ -n "$PROG" ]; then
+    cur_ws=$(stat -c %s "$PROG" 2>/dev/null || echo 0)
+    if [ "$cur_ws" = "$prev_ws" ] && [ "$PROG" = "$prev_prog" ]; then
+      stall=$((stall + 1))
+    else
+      stall=0
+    fi
     prev_ws=$cur_ws
+    prev_prog=$PROG
     if [ "$stall" -ge 30 ]; then
-      echo "STALL: $(basename "$NEW") has not grown in ~30 min"
+      echo "STALL: $(basename "$PROG") has not grown in ~30 min (phase: $(basename "$(dirname "$PROG")"))"
       stall=0
     fi
   fi
@@ -70,11 +91,11 @@ while true; do
     rec_age=$((now - $(stat -c %Y "$REC")))
     if [ "$rec_age" -gt 600 ]; then
       if [ "$stall" -ge 8 ]; then
-        echo "BOX HANG SUSPECTED: recorder silent ${rec_age}s AND $(basename "$NEW") not growing"
+        echo "BOX HANG SUSPECTED: recorder silent ${rec_age}s AND $(basename "$PROG") not growing"
       else
         # recorder-only silence: log it, do not alert. This is the midnight-rollover case and
         # the recorder-crashed case, neither of which is a hang.
-        echo "note: recorder $(basename "$REC") silent ${rec_age}s but training IS advancing"
+        echo "note: recorder $(basename "$REC") silent ${rec_age}s but $(basename "$PROG") IS advancing"
       fi
     fi
   fi

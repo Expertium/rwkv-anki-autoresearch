@@ -118,6 +118,33 @@ merely close the gap to the Muon-managed group — it **overshoots**: LoRA goes 
 0.52 to the candidate's **0.828**, past the 0.81 where the rest of the model sits. A rank-4
 bottleneck exists *to* concentrate, and this flattens it past everything around it.
 
+## 3d. THE DEPLOYED (decay-final) PAIR — and what stops the norm growth
+
+`spectra.py 10935 d` compares `i53_d_10935` against `i45_d_10935`, i.e. the models the verdict
+actually scores. Decay is half of all training here (`decay_ratio = 1.0`), so it had as much room to
+move the weights as WS did.
+
+| | WS-final | **decay-final (deployed)** |
+|---|---|---|
+| `lora_*` Δ stable rank | +66.60% | **+66.61%** |
+| `lora_*` Δ‖W‖_F | +70.56% | **+62.40%** |
+| `*scale*` (inert) Δ‖W‖_F | +2.04% | +2.16% |
+
+**The spectral effect is unchanged through decay** (+66.60 → +66.61%, which is as stable as this
+measurement gets). So the deployed model carries the full intervention; nothing washed out.
+
+**★ But the norm growth came DOWN slightly, and the reason matters more than the number.** Decay
+anneals the LR to zero, and Muon's step is *fixed-norm times LR* — so the growth stops because the
+schedule ran out, **not because anything pulls the weights back**. There is no restoring force in
+this configuration: `wd = 0` on the group, and Muon's update carries no scale feedback.
+
+**→ CONSEQUENCE FOR THE 10x ENDGAME, which is the part worth carrying.** At ~12.5 epochs instead of
+2, the same mechanism runs ~6x longer before the schedule stops it. A +62% norm growth at this budget
+is not obviously harmful; the same process unchecked over the endgame's run is a different
+proposition, and it would be discovered *there*, at ~4 days of GPU. **If iter 53 is adopted, the
+endgame must either carry weight decay on the LoRA group or re-measure this at the longer budget.**
+That is a cheap thing to know now and an expensive thing to find out later.
+
 ## 4. What would change my mind before the verdict
 
 Re-run `spectra.py 10000` when the WS-final checkpoint lands. If the +32.65% at step 1000 has
