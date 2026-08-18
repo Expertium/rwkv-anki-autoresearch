@@ -125,3 +125,8 @@ scratchpad/deck_tree/smoke_out*.txt
 scratchpad/reviewed_entity_counts_10k.csv
 # Measured ALTERNATIVE codebooks (not the deploy choice) stay local -- regenerable by refit.
 reference/pq_cb_shift_c80_m5b12.txt
+
+# bug-hunt diagnostic runs: generated runners + tomls are tracked, artifacts are not
+scratchpad/bughunt/diag_*/*.pth
+scratchpad/bughunt/diag_*/*.log
+scratchpad/bughunt/*.bak
