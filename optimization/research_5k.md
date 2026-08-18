@@ -42,29 +42,37 @@ pre-existing artifact (the upstream d=128 model). `summary` ≤ 20 words (Andrew
 full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md) (AI-only) and
 `research_log.jsonl`.
 
-> **★ ROWS ARE IN COMPLETION ORDER, AND SO ARE THE NUMBERS (Andrew, 2026-08-18).**
-> Sort this table by *when the verdict landed*, never by the number -- the two agree everywhere
-> except the one grandfathered row below, which is tagged `(queue-numbered)` in place so a reader
-> scanning the `#` column does not mistake it for a mis-sort. An iteration number is assigned when its
-> **VERDICT IS RECORDED**, not when the run is queued. So `iter N` means *the Nth result*, and
-> reading down the table tells you what was known at each point -- which is the thing you actually
-> want when reconstructing why a later decision was made.
+> **★ NUMBERS ASCEND DOWN THIS TABLE, AND ARE ASSIGNED AT VERDICT TIME (Andrew, 2026-08-18).**
+> A number is given when the result is recorded, not when the run is queued, so `iter N` means
+> *the Nth result* and the table reads as a history of what was known when. Sort by number; there
+> are no gaps and no out-of-sequence rows.
 >
-> **The previous convention numbered runs at QUEUE time**, which broke whenever runs finished out
-> of order: QAT#2 took **56** because 52-55 were already reserved for queued algorithmic runs, then
-> finished *before* iter 53. **That is the only violation in the whole log and it is grandfathered**
-> -- history is not renumbered, because the numbers are load-bearing in run directories, checkpoint
-> prefixes, `champion_5k_track2.json`, and commit messages.
+> **QAT#2 (`qtaxg_i45kd`) was renumbered 56 -> 54** on 2026-08-18 to remove the last gap. That was
+> free precisely because its number lived in NO path -- its directory is `scratchpad/qat_tax/` and
+> its checkpoints are `qtaxg_i45kd_*`. Every other run has its number baked into a directory and a
+> checkpoint prefix, which is why history is otherwise not renumbered.
 >
-> **The structural fix, for new runs: do NOT put the number in the run's directory or checkpoint
-> prefix.** Name the run for its lever (`rgate`, `cmixpow`, `decayshape`); `exp` in
-> `research_log.jsonl` carries that slug as the stable identity, and `number` is assigned at
-> verdict time. Baking a number into a path is what forced the old convention -- once
-> `scratchpad/iter55_rgate/i55_*.pth` exists, the number cannot follow the completion order.
+> **⚠ CONSEQUENCE -- ONE SLUG NOW LIES, and it is the in-flight `cmixpow` run.** Its directory is
+> `scratchpad/iter54_cmixpow/` with checkpoints `i54_*.pth`, but **54 is now QAT#2**, so that run
+> will be numbered **55** when its verdict lands. Trust `exp` in `research_log.jsonl`, never the
+> digits in a directory name. This is exactly the failure the new rule forbids for future runs:
+> **do not put the number in the run's directory or checkpoint prefix** -- name it for its lever
+> (`rgate`, `cmixpow`, `decayshape`) so the number stays free to follow completion order.
 >
-> ⚠ A gap in this table therefore means **still in flight**, never *lost*. As of 2026-08-18 the
-> absent numbers are {52, 54, 55, 57}, all four chained on the GPU -- and they will land in
-> ascending order (52, 54, 55, 57 is the chain order), so no exception is needed for them.
+> **THE NUMBERS THE FOUR IN-FLIGHT RUNS WILL GET** (decided 2026-08-18, chain order
+> `kdalpha -> cmixpow -> rgate -> decayshape`). **52 is still vacant** -- it was reserved for
+> `kdalpha`, which is running now -- so it takes **52**, and the sequence closes with no permanent
+> hole anywhere:
+>
+> | run (directory slug) | number at verdict | slug agrees? |
+> |---|---|---|
+> | `iter52_kdalpha` | **52** | yes |
+> | `iter54_cmixpow` | **55** | **no** -- 54 is QAT#2 |
+> | `iter55_rgate` | **56** | **no** -- 55 is cmixpow |
+> | `iter57_decayshape` | **57** | yes |
+>
+> That yields a contiguous 45-57 once the chain drains. ⚠ Two slugs will lie; `exp` in
+> `research_log.jsonl` is the identity, the directory digits are not.
 
 | iter | trained on | ahead | imm | vs old (a / i) | logloss | status | p-value | params | NaN users | provenance | summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -122,8 +130,8 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 49 | 1–5000 | 0.2976ᵛʳ | 0.2653ᵛʳ | +0.0031 / +0.0018 | exact | rejected | 0.11 / 5.3e-16 (vs iter 45) | 584,282 | 0 | invented | Restore the user/preset LAYER-0 channel mixers (+26,070 params, +4.7%). Both modes improve but both miss the raw ≥0.0001 bar: ahead +0.000067 at p=0.11 is inside the ±7.5e-5 noise floor (a coin flip), imm +0.000087 is real by rank but sub-threshold. Capacity at the general streams' ENTRY layer is not the bottleneck — capacity-at-5k goes 0/3. |
 | 50 | 1–5000 | 0.2977ᵛʳ | 0.2654ᵛʳ | +0.0031 / +0.0018 | exact | rejected (tie) | 0.52 / 0.86 (vs iter 45) | 558,292 | 0 | **Andrew** | THE DECK TREE (L=2): the deck stream runs a second time over reviews grouped by the deck's PARENT, same module object + an 80-float level embedding. Exact tie (+7e-6 / −2.4e-5). The embedding WAS learned (L2=1.77, ~2× a features2card row) — the model used the parent level and gained nothing. The 5-stream hierarchy already brackets that scope: deck below, preset/user above. |
 | 51 | 1–5000 | — | — | — | n/a | **failed (NaN)** | n/a | 558,212 | n/a (3,684 skipped batches) | invented | Polar-Express Newton-Schulz schedule for Muon. Died hollow at step 411: production `a+b+c`=0.7010 makes p(1)=0.70 a CONTRACTION, and a thin rank-1 momentum matrix sits at σ_max≈1.0012 in bf16. Accuracy means p(1)→1, which diverges there. Closed on mechanism; flag raises at import. |
-| 56 (queue-numbered) | 1-5000 | 0.2999ᵠ | 0.2689ᵠ | +0.0053 / +0.0054 | exact | rejected (tie) | 6.2e-04 / 1.0 (vs cblearn) | 558,212 | 0 | invented | QAT#2 - KD teacher swapped from the d=128 dump to our own plain iter-45 champion, quant-aware decay. **ᵠ = QUANT-AWARE basis; comparable only to its twin qtaxd_cblearn.** Exact tie (+8.4e-5 / -7.0e-5, both inside the +/-7.5e-5 floor). Predicted that morning by a minutes-of-CPU screen: the two teachers agree at r=0.9460 because iter 45 IS the d=128 teacher's own student. The QAT tax does not live in the teacher. |
 | **53** | 1–5000 | **0.2975**ᵛʳ | **0.2652**ᵛʳ | +0.0029 / +0.0016 | exact | **ACCEPTED — NEW CHAMPION** | 3.5e-08 / 2.7e-54 (vs iter 45) | 558,212 | 0 | invented | Muon on the 27,520 LoRA params (4.9%), own wd=0 group. Regularizer signature: no train-loss edge on ahead, real held-out gain. |
+| 54 | 1-5000 | 0.2999ᵠ | 0.2689ᵠ | +0.0053 / +0.0054 | exact | rejected (tie) | 6.2e-04 / 1.0 (vs cblearn) | 558,212 | 0 | invented | QAT#2 - KD teacher swapped from the d=128 dump to our own plain iter-45 champion, quant-aware decay. **ᵠ = QUANT-AWARE basis; comparable only to its twin qtaxd_cblearn.** Exact tie (+8.4e-5 / -7.0e-5, both inside the +/-7.5e-5 floor). Predicted that morning by a minutes-of-CPU screen: the two teachers agree at r=0.9460 because iter 45 IS the d=128 teacher's own student. The QAT tax does not live in the teacher. |
 
 **`vs old (a / i)` = how far this row still is from the OLD d=128 model** (Andrew's ask, 2026-08-12). `row - baseline` for ahead / imm, so **positive = still worse, negative = we have beaten it**. Baseline = `pretrain/RWKV_trained_on_101_4999.pth` unquantized, restricted to the **VAL half 5001-7500** (the only set candidates are scored on) = **0.294612 / 0.263561**; its full-range 5001-10000 numbers (0.296385 / 0.264905) are a different user set and are not used here, which is why the reference row itself reads `-- (ref)`.
 

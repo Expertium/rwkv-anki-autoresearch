@@ -2756,7 +2756,7 @@ has it too — invisible until now because iter 45 was last in its chain) and we
 chain was released. iters 52 and 57 came from a different generator and were already correct.
 Deploy debt: **none** — training-only, the forward pass is untouched.
 
-## iter 56 (QAT#2, `qtaxg_i45kd`) — swap the KD teacher to our own plain champion (REJECTED as an exact tie, 2026-08-17 21:34)
+## iter 54 (QAT#2, `qtaxg_i45kd`; renumbered from 56 on 2026-08-18) — swap the KD teacher to our own plain champion (REJECTED as an exact tie, 2026-08-17 21:34)
 
 **Numbering:** 52–55 were pre-assigned to queued algorithmic iterations while this was still
 running, so this finished *before* them and is numbered *after*. It is a **QAT-tax arm**, not an

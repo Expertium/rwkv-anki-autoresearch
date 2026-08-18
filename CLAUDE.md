@@ -597,6 +597,12 @@ within 0.0002). Such a change MAY shrink card/note state (gate #3 is for accurac
 Two HARD INVARIANTS (never change): hierarchy card->deck->note->preset->global (the CODE's order,
 corrected 2026-08-09 -- the doc had note/deck swapped vs what every arch file executes); same preprocessed 92-dim
 inputs / existing LMDBs (no new/changed inputs).
+**★ THE NUMBERS THE FOUR IN-FLIGHT RUNS GET (decided 2026-08-18):** `kdalpha` -> **52** (still
+vacant, and its own slug), `cmixpow` -> **55**, `rgate` -> **56**, `decayshape` -> **57**. QAT#2 was
+renumbered **56 -> 54** to close the last gap -- free ONLY because its number was in no path
+(`scratchpad/qat_tax/`, `qtaxg_i45kd_*`). **⚠ So `iter54_cmixpow/` and `iter55_rgate/` now have
+LYING slugs** -- `exp` in `research_log.jsonl` is the identity, directory digits are not. Result is
+a contiguous 45-57 with no permanent hole.
 **★ ITERATION NUMBERING = COMPLETION ORDER (Andrew 2026-08-18):** *"it's better to just order
 iterations by the time they finished rather than by the time they were queued"*. **Assign the number
 when the VERDICT is recorded**, so `iter N` means the Nth result and the log reads as a history of
@@ -1028,10 +1034,10 @@ variables mid-file rather than at a line the parser can point at. Same family as
 deletion bug: `%LOG%` silently empty, failure maximally quiet.
 
 
-**DONE: QAT#2 `qtaxg_i45kd` = iter 56, REJECTED as an exact tie** (ahead +0.000084 p=6.2e-04, imm
+**DONE: QAT#2 `qtaxg_i45kd` = iter 54, REJECTED as an exact tie** (ahead +0.000084 p=6.2e-04, imm
 -0.000070 p=1.0, both inside the +/-7.5e-5 floor). **The QAT tax does not live in the teacher**, and
 a minutes-of-CPU screen had predicted it that morning (the two teachers agree at r=0.9460 because
-iter 45 IS the d=128 teacher's own student). Detail: `research_5k_verbose.md` iter 56.
+iter 45 IS the d=128 teacher's own student). Detail: `research_5k_verbose.md` iter 54.
 
 ⚠ **ITER 52's FIRST LAUNCH DIED IN 0.07 s AND IS RE-QUEUED AS ORDER 3.** Its phase-0 guard called
 `Git\usr\bin\bash.exe` -- the RAW MSYS binary, which from cmd.exe has no MSYS PATH, so the script
