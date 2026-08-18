@@ -597,6 +597,20 @@ within 0.0002). Such a change MAY shrink card/note state (gate #3 is for accurac
 Two HARD INVARIANTS (never change): hierarchy card->deck->note->preset->global (the CODE's order,
 corrected 2026-08-09 -- the doc had note/deck swapped vs what every arch file executes); same preprocessed 92-dim
 inputs / existing LMDBs (no new/changed inputs).
+**★ ITERATION NUMBERING = COMPLETION ORDER (Andrew 2026-08-18):** *"it's better to just order
+iterations by the time they finished rather than by the time they were queued"*. **Assign the number
+when the VERDICT is recorded**, so `iter N` means the Nth result and the log reads as a history of
+what was known when. The old queue-time convention broke whenever runs finished out of order --
+QAT#2 became 56 because 52-55 were reserved for queued runs, then finished before iter 53. **That
+is the only violation in the log and it is GRANDFATHERED**; history is not renumbered, because the
+numbers are load-bearing in run dirs, checkpoint prefixes, `champion_5k_track2.json` and commits.
+**★ THE STRUCTURAL FIX -- new runs must NOT put the number in the directory or checkpoint prefix.**
+Name the run for its lever (`rgate`, `cmixpow`); `exp` in `research_log.jsonl` is the stable
+identity and `number` is assigned at verdict. Baking a number into a path is precisely what forced
+the old convention: once `scratchpad/iter55_rgate/i55_*.pth` exists the number cannot move.
+(No tooling change needed -- `logbook.py`/`gate.py` record the number, they never assign it. The
+four runs in flight need no exception: their chain order 52 -> 54 -> 55 -> 57 is already ascending.)
+
 **RESEARCH-PHASE CONDUCT (Andrew 2026-07-10) -- for the phase after HP tuning + the deck/preset/global
 state-size ladders:** (1) try LOTS of different tweaks of both the ARCHITECTURE and the TRAINING
 PIPELINE, from different FAMILIES of ideas (not many variants of one); (2) if an idea BARELY misses the

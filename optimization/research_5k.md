@@ -42,12 +42,26 @@ pre-existing artifact (the upstream d=128 model). `summary` ≤ 20 words (Andrew
 full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md) (AI-only) and
 `research_log.jsonl`.
 
-> **⚠ WHY THE NUMBERS SKIP (e.g. 51 -> 53 -> 56).** An iteration number is assigned when a run is
-> **QUEUED**, not when it finishes, and rows land here only once a verdict exists. So a gap means
-> *still in flight*, not *lost*. QAT#2 took **56** because 52-55 were already reserved for queued
-> algorithmic runs, and it then finished BEFORE several of them. **As of 2026-08-18 the absent
-> numbers are exactly {52, 54, 55, 57}** -- all four are chained on the GPU. Check CLAUDE.md's
-> LIVE block for what is running before concluding a row was forgotten.
+> **★ NUMBERING = COMPLETION ORDER (Andrew, 2026-08-18).** An iteration number is assigned when its
+> **VERDICT IS RECORDED**, not when the run is queued. So `iter N` means *the Nth result*, and
+> reading down the table tells you what was known at each point -- which is the thing you actually
+> want when reconstructing why a later decision was made.
+>
+> **The previous convention numbered runs at QUEUE time**, which broke whenever runs finished out
+> of order: QAT#2 took **56** because 52-55 were already reserved for queued algorithmic runs, then
+> finished *before* iter 53. **That is the only violation in the whole log and it is grandfathered**
+> -- history is not renumbered, because the numbers are load-bearing in run directories, checkpoint
+> prefixes, `champion_5k_track2.json`, and commit messages.
+>
+> **The structural fix, for new runs: do NOT put the number in the run's directory or checkpoint
+> prefix.** Name the run for its lever (`rgate`, `cmixpow`, `decayshape`); `exp` in
+> `research_log.jsonl` carries that slug as the stable identity, and `number` is assigned at
+> verdict time. Baking a number into a path is what forced the old convention -- once
+> `scratchpad/iter55_rgate/i55_*.pth` exists, the number cannot follow the completion order.
+>
+> ⚠ A gap in this table therefore means **still in flight**, never *lost*. As of 2026-08-18 the
+> absent numbers are {52, 54, 55, 57}, all four chained on the GPU -- and they will land in
+> ascending order (52, 54, 55, 57 is the chain order), so no exception is needed for them.
 
 | iter | trained on | ahead | imm | vs old (a / i) | logloss | status | p-value | params | NaN users | provenance | summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
