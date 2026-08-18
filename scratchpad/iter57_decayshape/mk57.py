@@ -142,6 +142,14 @@ for v, un in usepos.items():
 
 assert out.count("set RWKV_DECAY_SHAPE=linear") == 1, "the lever must be set exactly once"
 assert out.count("set RWKV_DECAY_SHAPE=") == 2, "the lever must also be CLEARED before the eval"
+# The KD guard must check the alpha this runner actually SETS. mk57 changed the env to 0.5 but
+# left the guard checking 0.9, so the run would have decayed correctly for 3.3 h and then been
+# rejected by its own guard -- the same shape as iter 54 phase 2a, where the ENV was wrong and
+# the guard right. Cloning a runner means updating every string that DEPENDS on the lever, not
+# just the lever.
+s_guard = 'findstr /C:"alpha FIXED at 0.5"'
+assert s_guard in out, "the KD guard must check 0.5, the value this runner sets"
+assert 'findstr /C:"alpha FIXED at 0.9"' not in out, "stale 0.9 guard"
 assert out.count("set RWKV_KD_ALPHA=0.5") == 1 and "set RWKV_KD_ALPHA=0.9" not in out, (
     "decay alpha must stay at the champion's 0.5 -- iter 52 is the run that moves it")
 assert out.count("DONE_EXIT_0") == 1

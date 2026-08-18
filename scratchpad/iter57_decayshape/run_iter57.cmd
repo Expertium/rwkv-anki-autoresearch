@@ -129,7 +129,7 @@ if not %ERRORLEVEL%==0 (
   echo DONE_EXIT_35 >> "%LOG%"
   endlocal & exit /b 35
 )
-findstr /C:"alpha FIXED at 0.9" "%DIR%\decay_%STAMP%.log" >nul
+findstr /C:"alpha FIXED at 0.5" "%DIR%\decay_%STAMP%.log" >nul
 if not %ERRORLEVEL%==0 (
   echo ITER57 WRONGALPHA_DECAY %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_36 >> "%LOG%"

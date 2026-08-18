@@ -36,7 +36,7 @@ import io
 import re
 
 SRC = "scratchpad/iter54_cmixpow/run_iter54_resume.cmd"
-DST = "scratchpad/iter54_cmixpow/run_iter54_phase2.cmd"
+DST = "scratchpad/iter54_cmixpow/run_iter54_phase2b.cmd"
 
 s = io.open(SRC, encoding="ascii", newline="").read()
 
@@ -54,22 +54,33 @@ tail = s[head_end:]
 tail = tail.replace("set RWKV_RESUME_SKIP_GROUPS=\r\n", "", 1)
 
 # fresh stamp so nothing stale can be read
-env_block = re.sub(r"^set STAMP=.*$", "set STAMP=phase2", env_block, count=1, flags=re.M)
+env_block = re.sub(r"^set STAMP=.*$", "set STAMP=phase2b", env_block, count=1, flags=re.M)
 # Own log file. iter54.log already carries DONE_EXIT_TOMLFAIL_1 from the 12:44 failure, and
 # appending a DONE_EXIT_0 after it would leave one log with two terminal markers -- a waiter
 # using `findstr /B` takes whichever it finds, so the file would report success and failure
 # at once. A phase-2 run gets a phase-2 log.
 env_block = env_block.replace(r"set LOG=%DIR%\iter54.log",
-                              r"set LOG=%DIR%\iter54_phase2.log")
+                              r"set LOG=%DIR%\iter54_phase2b.log")
 
 # (2) delete this run's own decay log before writing it, so the KD guards cannot read stale content
+#
+# ★★ (2b) AND RESET THE KD ALPHA TO 0.5 -- whose absence killed phase 2a after 3.3 h of decay.
+# The champion uses alpha 0.9 for WS (iter 39) and 0.5 for DECAY (iter 45). The original runner
+# sets 0.9 in its env block and RESETS it to 0.5 on its own line just before the decay -- and that
+# reset line lives INSIDE the WS region this generator slices away. Phase 2a therefore decayed at
+# 0.9, which is iter 55's lever, and would have made iter 54's number a confounded mixture of two
+# experiments. The runner's own KD guard caught it (DONE_EXIT_WRONGALPHA_DECAY) -- but a guard only
+# DETECTS a fault, it cannot repair one, so the reset has to be put back explicitly.
 DEC = 'echo === DECAY SETUP %TIME% === >> "%LOG%"\r\n'
 assert DEC in tail
 tail = tail.replace(
     DEC,
     'REM Delete OUR log first: the 12:44 failure had the KD guards certify a decay that never ran,\r\n'
     'REM because an aborted attempt had left a same-named log containing both guard strings.\r\n'
-    'if exist "%DIR%\\decay_%STAMP%.log" del "%DIR%\\decay_%STAMP%.log"\r\n' + DEC, 1)
+    'if exist "%DIR%\\decay_%STAMP%.log" del "%DIR%\\decay_%STAMP%.log"\r\n'
+    'REM The champion decays at alpha 0.5 (iter 45); 0.9 is its WS value (iter 39). The line that\r\n'
+    'REM performs this reset sits inside the WS phase, which this runner does not contain.\r\n'
+    'set RWKV_KD_ALPHA=0.5\r\n' + DEC, 1)
 
 # (3) artifact guard: the eval toml step must not run without a decay checkpoint
 ETOML = 'echo === EVAL TOML rect %TIME% === >> "%LOG%"\r\n'
@@ -123,10 +134,12 @@ assert _el and _de and min(_el) > max(_de), "endlocal must come AFTER the DONE_E
 
 assert "train_rwkv --config scratchpad/iter54_cmixpow/i54_decay.toml" in out, "decay phase missing"
 assert "i54_ws_resume.toml" not in out and "i54_ws.toml" not in out, "a WS phase leaked in"
-assert out.count("STAMP=phase2") == 1
+assert out.count("STAMP=phase2b") == 1
 assert out.count("DONE_EXIT_0") == 1
 assert 'if exist "%DIR%\\decay_%STAMP%.log" del' in out, "stale-log deletion missing"
 assert "i54_d_10935.pth" in out, "decay artifact guard missing"
+assert out.count("set RWKV_KD_ALPHA=0.5") == 1, "the decay alpha reset is missing"
+assert out.index("set RWKV_KD_ALPHA=0.9") < out.index("set RWKV_KD_ALPHA=0.5") < out.index("i54_decay.toml"), "0.5 must be set after 0.9 and before the decay call"
 for ln in lines:
     if ln.strip().upper().startswith("REM"):
         bad = [c for c in "<>&|^" if c in ln]

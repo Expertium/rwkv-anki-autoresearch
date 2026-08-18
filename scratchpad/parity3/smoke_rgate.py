@@ -144,8 +144,22 @@ ARCH = {
 }
 
 
+# Every env var this smoke controls. Each arm states its OWN value for all of them, so an arm that
+# omits one gets it UNSET rather than whatever the caller happened to export.
+_SMOKE_VARS = ("RWKV_RGATE", "SMOKE_GAIN", "SMOKE_GRAD")
+
+
 def run_child(tag, extra_env, out_path):
-    env = dict(os.environ, PYTHONPATH=REPO, SMOKE_OUT=out_path, **ARCH, **extra_env)
+    env = dict(os.environ, PYTHONPATH=REPO, SMOKE_OUT=out_path, **ARCH)
+    # ★ HERMETIC: strip the smoke's own vars before applying this arm's.
+    # `run_iter55.cmd` does `set RWKV_RGATE=card` BEFORE calling this script, and the original
+    # `dict(os.environ, **extra_env)` let the OFF arm inherit it. Both arms then built the SAME
+    # gated model: the param check failed ("rgate keys present with the flag OFF"), and worse, the
+    # inertness check compared two gated models and passed VACUOUSLY at 0.000e+00. A test that
+    # reads its control's configuration from the ambient environment is not a control.
+    for v in _SMOKE_VARS:
+        env.pop(v, None)
+    env.update(extra_env)
     env.pop("RWKV_NO_JIT", None)   # JIT ON: construction must compile
     p = subprocess.run([sys.executable, "-c", CHILD], cwd=REPO, env=env,
                        capture_output=True, text=True)

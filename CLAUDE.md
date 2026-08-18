@@ -1712,6 +1712,26 @@ All hooks stay in-repo, env-gated, default off.
   spinning a full core for hours. **CHECK + KILL orphan pythons after every run** — but inspect
   command lines first: the spare `pythonw` are the bridge/controller, the ~80000s-CPU python is
   Andrew's FSRS benchmark, and he also runs a Reddit bot + liveplot. **Do not kill those.**
+- **⚠⚠ OPS -- CLONING A RUNNER MEANS UPDATING EVERY STRING THAT DEPENDS ON THE LEVER, NOT JUST
+  THE LEVER. Three failures on 2026-08-18, same shape, one of them caught live.**
+  * **iter 54 phase 2a: the ENV was wrong, the guard right.** The champion uses KD alpha **0.9
+    for WS** (iter 39) and **0.5 for DECAY** (iter 45); the reset line sits INSIDE the WS phase,
+    which a decay-only generator slices away. Phase 2a decayed 3.3 h at 0.9 -- iter 55's lever --
+    and its own guard rejected it (`DONE_EXIT_WRONGALPHA_DECAY`). **The guard saved the
+    iteration**: the number would otherwise have been a mixture of two experiments. A guard
+    DETECTS, it cannot REPAIR.
+  * **`decayshape`: the guard was wrong, the env right.** `mk57.py` set alpha to 0.5 but left
+    `findstr /C:"alpha FIXED at 0.9"`, so a correct 3.3 h decay would have been rejected at the
+    end. **Caught 90 s into the run** by reading the runner rather than trusting it; killed,
+    fixed, relaunched for ~1 min of lost GPU. Both generators now assert the guard matches the
+    value the runner SETS.
+  * **`rgate`: the smoke's control inherited the lever.** `run_iter55.cmd` does
+    `set RWKV_RGATE=card` BEFORE calling the smoke, and the smoke built arms with
+    `dict(os.environ, **extra)` -- so the OFF arm was gated too. Its param check caught it
+    (`rgate keys present with the flag OFF`), but note the inertness check had passed
+    **VACUOUSLY at 0.000e+00 while comparing two gated models**. **A test that reads its
+    CONTROL's configuration from the ambient environment is not a control.** Fixed by stripping
+    the smoke's own vars before applying each arm's.
 - **⚠ OPS -- A DECAY-ONLY RUN WRITES ITS CHECKPOINTS INTO THE *SOURCE* RUN'S DIRECTORY.**
   `write_decay_setup.py` takes the dir holding the WS-final checkpoint, so iter 52's decay landed
   in **`scratchpad/iter45_kddecay/i52_d_10935.pth`**, not in `scratchpad/iter52_kdalpha/`. The eval

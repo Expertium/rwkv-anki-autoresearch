@@ -14,8 +14,8 @@ REM ============================================================================
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\iter54_cmixpow
-set LOG=%DIR%\iter54_phase2.log
-set STAMP=phase2
+set LOG=%DIR%\iter54_phase2b.log
+set STAMP=phase2b
 set DUMP=C:\rwkv_kd_dump\t128_seedpair_65k
 set WSSTEPS=10935
 REM BUDGET: 0 = full budget
@@ -73,6 +73,9 @@ if not %ERRORLEVEL%==0 (
 REM Delete OUR log first: the 12:44 failure had the KD guards certify a decay that never ran,
 REM because an aborted attempt had left a same-named log containing both guard strings.
 if exist "%DIR%\decay_%STAMP%.log" del "%DIR%\decay_%STAMP%.log"
+REM The champion decays at alpha 0.5 (iter 45); 0.9 is its WS value (iter 39). The line that
+REM performs this reset sits inside the WS phase, which this runner does not contain.
+set RWKV_KD_ALPHA=0.5
 echo === DECAY SETUP %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/iter54_cmixpow i54_ws i54_d scratchpad/iter54_cmixpow/i54_decay.toml train_db_5k_h1 1 5000 1.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
