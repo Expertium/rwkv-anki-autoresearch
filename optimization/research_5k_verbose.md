@@ -2756,6 +2756,51 @@ has it too — invisible until now because iter 45 was last in its chain) and we
 chain was released. iters 52 and 57 came from a different generator and were already correct.
 Deploy debt: **none** — training-only, the forward pass is untouched.
 
+## iter 55 — KD `alpha_decay` 0.5 → 0.9 (`iter52_kdalpha`) — REJECTED, and it confirms a pre-registered mechanism
+
+**vs iter 45** (the controlled comparison — iter 45's recipe with one variable moved):
+ahead **0.297740 = −0.000043** (inside the ±7.5e-5 floor, a tie) / imm **0.265491 = −0.000116**
+(outside it — a real, small regression). Both p=1.0 for improvement. vs the current champion iter 53
+the gap is −0.000217 / −0.000300. size 0/2500, nan_users 0, params unchanged.
+
+### ★ The asymmetry is the finding
+**α=0.9 WINS in the WS phase and LOSES in the decay phase.** iter 39 accepted α 0.5→0.9 for WS at
++0.000158/+0.000153, on a dose curve that was monotone up (0.5 → 0.75 → 0.9). The naive extension
+was that 0.9 would win in decay too. It does not.
+
+### The mechanism was PRE-REGISTERED, in PROPOSALS.md, the day before this ran
+The curve head is not trained to predict the outcome. `srs_model.py:1261-1263` overwrites the target:
+
+    label_y = alpha * teacher_curve + (1 - alpha) * label_y
+
+so the head inherits the **teacher's calibration**. Measured on the champion over 83,478 predictions
+on train-range users, the model is overconfident by **−0.00292**, and a one-parameter logit shift
+recovers **+0.000115** held out. The pre-registration read:
+
+> *"iter 52 raises `alpha_decay` to 0.9, i.e. MORE teacher in decay. If the KD-calibration cost is
+> real and binding, iter 52 should come back neutral-to-negative."*
+
+It came back negative. ⚠ Weak-form prediction — it excluded only "positive" — but the excluded
+outcome was the one the WS dose curve predicted, so it had real content.
+
+### Reading: variance reduction is an EARLY good, calibration is a LATE one
+KD pays through target-variance reduction, which is worth most when gradients are noisiest — the WS
+phase at high LR. Calibration matters when the weights are settling into what ships — the decay
+phase, LR annealing to zero. Loading decay with 90% teacher locks in the teacher's miscalibration at
+exactly the wrong moment. iter 45 already showed *some* teacher in decay helps (α=0.5 beat no KD in
+decay), so **the decay optimum is interior and near 0.5** — not at either end.
+
+### → The informative direction is now `alpha_decay` 0.25
+The other bracket point, already queued in `PROPOSALS.md` as the pair to 0.9. The calibration
+mechanism **predicts it improves**; a null bounds the effect instead. Decay-only, ~6.1 h, same dump,
+zero code. Second time the calibration finding has earned its keep before costing a run.
+
+### Ops
+Clean run, `DONE_EXIT_0` at 18:54 — its generator writes the marker before `endlocal`, unlike the
+iter-45-derived runners. ⚠ Its decay checkpoint is `scratchpad/iter45_kddecay/i52_d_10935.pth`, not
+in its own directory: `write_decay_setup.py` writes into the directory holding the WS-final it
+warm-starts from. Deploy debt: none.
+
 ## iter 54 (QAT#2, `qtaxg_i45kd`; renumbered from 56 on 2026-08-18) — swap the KD teacher to our own plain champion (REJECTED as an exact tie, 2026-08-17 21:34)
 
 **Numbering:** 52–55 were pre-assigned to queued algorithmic iterations while this was still

@@ -820,11 +820,16 @@ Two routes, with different costs:
    curve path and adds deploy debt (the GRU head's output is a mixture, so a logit shift is not
    foldable into an existing linear bias).
 
-**★ PRE-REGISTERED: iter 52 is an indirect test of this mechanism, and it is 3rd in the running
-chain.** iter 52 moves `alpha_decay` 0.5 → **0.9**, i.e. MORE teacher in decay. If the KD-calibration
-cost is real and binding, iter 52 should come back **neutral-to-negative**. If it wins, the variance
-reduction dominates the calibration cost at this dose and route 1 is the wrong direction — in which
-case route 2 (which does not trade) is the only way to collect the +0.00013.
+**★★ PRE-REGISTRATION CONFIRMED (2026-08-18).** The test was: *"iter 52 raises `alpha_decay` to
+0.9, i.e. MORE teacher in decay. If the KD-calibration cost is real and binding, iter 52 should
+come back neutral-to-negative."* **It came back NEGATIVE** — ahead −0.000043 (a tie), imm
+−0.000116 (a real regression), logged as iter 55. The excluded outcome was the one the WS dose
+curve predicted (0.5 → 0.75 → 0.9 monotone up), so the prediction had content.
+**→ α=0.9 wins in WS and loses in decay.** Variance reduction is an EARLY good; calibration is a
+LATE one. iter 45 showed *some* teacher in decay helps, so the decay optimum is INTERIOR, near
+0.5. **The informative direction is now `alpha_decay` 0.25** — the calibration mechanism predicts
+it IMPROVES, and a null bounds the effect. Decay-only, ~6.1 h, same dump, zero code. **Promoted
+to the front of the queue**, alongside the re-specified rank 8 (`wd=0.05` on the LoRA group).
 
 ## ★★★ EXPRESSIVENESS vs CAPACITY — Andrew's catch, 2026-08-17, and it was a real hole
 

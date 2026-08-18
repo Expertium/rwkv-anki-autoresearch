@@ -59,20 +59,26 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 > **do not put the number in the run's directory or checkpoint prefix** -- name it for its lever
 > (`rgate`, `cmixpow`, `decayshape`) so the number stays free to follow completion order.
 >
-> **THE NUMBERS THE FOUR IN-FLIGHT RUNS WILL GET** (decided 2026-08-18, chain order
-> `kdalpha -> cmixpow -> rgate -> decayshape`). **52 is still vacant** -- it was reserved for
-> `kdalpha`, which is running now -- so it takes **52**, and the sequence closes with no permanent
-> hole anywhere:
+> **NUMBERS ARE ASSIGNED AT VERDICT, IN COMPLETION ORDER -- so this table is BOTH ascending and
+> chronological, with no exceptions.** Reserving a number in advance is what broke that, so it is
+> no longer done.
+>
+> ⚠ **52 IS PERMANENTLY VACANT, and it is the one scar of the transition.** It was pre-assigned
+> to the `kdalpha` run under the OLD queue-time convention. That run then finished third, after
+> QAT#2 (54) and `muonlora` (53), so under the new rule it takes **55**. Giving it 52 anyway would
+> have put a lower number below higher ones -- the exact disorder the rule exists to remove. No
+> future gap can appear, because numbers are no longer reserved ahead of a verdict.
+>
+> **Remaining in-flight runs, and two slugs that LIE:**
 >
 > | run (directory slug) | number at verdict | slug agrees? |
 > |---|---|---|
-> | `iter52_kdalpha` | **52** | yes |
-> | `iter54_cmixpow` | **55** | **no** -- 54 is QAT#2 |
-> | `iter55_rgate` | **56** | **no** -- 55 is cmixpow |
-> | `iter57_decayshape` | **57** | yes |
+> | `iter54_cmixpow` (phase 2 running) | **56** | **no** -- 54 is QAT#2 |
+> | `iter55_rgate` | **57** | **no** -- 55 is kdalpha |
+> | `iter57_decayshape` | **58** | **no** -- 57 is rgate |
 >
-> That yields a contiguous 45-57 once the chain drains. ⚠ Two slugs will lie; `exp` in
-> `research_log.jsonl` is the identity, the directory digits are not.
+> Trust `exp` in `research_log.jsonl`; the digits in a directory name are not the number. This is
+> precisely why the rule now forbids putting a number in a run directory or checkpoint prefix.
 
 | iter | trained on | ahead | imm | vs old (a / i) | logloss | status | p-value | params | NaN users | provenance | summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -132,6 +138,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 51 | 1–5000 | — | — | — | n/a | **failed (NaN)** | n/a | 558,212 | n/a (3,684 skipped batches) | invented | Polar-Express Newton-Schulz schedule for Muon. Died hollow at step 411: production `a+b+c`=0.7010 makes p(1)=0.70 a CONTRACTION, and a thin rank-1 momentum matrix sits at σ_max≈1.0012 in bf16. Accuracy means p(1)→1, which diverges there. Closed on mechanism; flag raises at import. |
 | **53** | 1–5000 | **0.2975**ᵛʳ | **0.2652**ᵛʳ | +0.0029 / +0.0016 | exact | **ACCEPTED — NEW CHAMPION** | 3.5e-08 / 2.7e-54 (vs iter 45) | 558,212 | 0 | invented | Muon on the 27,520 LoRA params (4.9%), own wd=0 group. Regularizer signature: no train-loss edge on ahead, real held-out gain. |
 | 54 | 1-5000 | 0.2999ᵠ | 0.2689ᵠ | +0.0053 / +0.0054 | exact | rejected (tie) | 6.2e-04 / 1.0 (vs cblearn) | 558,212 | 0 | invented | QAT#2 - KD teacher swapped from the d=128 dump to our own plain iter-45 champion, quant-aware decay. **ᵠ = QUANT-AWARE basis; comparable only to its twin qtaxd_cblearn.** Exact tie (+8.4e-5 / -7.0e-5, both inside the +/-7.5e-5 floor). Predicted that morning by a minutes-of-CPU screen: the two teachers agree at r=0.9460 because iter 45 IS the d=128 teacher's own student. The QAT tax does not live in the teacher. |
+| 55 | 1–5000 | 0.2977ᵛʳ | 0.2655ᵛʳ | +0.0031 / +0.0019 | exact | rejected | 1.0 / 1.0 (vs iter 45) | 558,212 | 0 | invented | KD alpha_decay 0.5→0.9. Regresses. alpha=0.9 wins in WS but loses in decay — confirms the pre-registered KD-calibration cost. |
 
 **`vs old (a / i)` = how far this row still is from the OLD d=128 model** (Andrew's ask, 2026-08-12). `row - baseline` for ahead / imm, so **positive = still worse, negative = we have beaten it**. Baseline = `pretrain/RWKV_trained_on_101_4999.pth` unquantized, restricted to the **VAL half 5001-7500** (the only set candidates are scored on) = **0.294612 / 0.263561**; its full-range 5001-10000 numbers (0.296385 / 0.264905) are a different user set and are not used here, which is why the reference row itself reads `-- (ref)`.
 
