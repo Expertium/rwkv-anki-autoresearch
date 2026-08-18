@@ -52,6 +52,16 @@ s = s.replace("set RWKV_KD_ALPHA=0.9", "set RWKV_KD_ALPHA=0.25", 1)
 assert 'findstr /C:"alpha FIXED at 0.9"' in s, "the KD-alpha guard is missing"
 s = s.replace('findstr /C:"alpha FIXED at 0.9"', 'findstr /C:"alpha FIXED at 0.25"', 1)
 
+# --- AND THE PROSE MUST NOT LIE ABOUT THE LEVER ---
+# Cloning a runner means updating every string that DEPENDS on the lever, not just the lever
+# itself. iter 52's header and its DECAY_OK echo name ITS alpha (0.9). Left alone they write
+# "alpha 0.9" into THIS run's log for a run whose alpha is 0.25 -- and the log is what a verdict
+# gets read from months later. The guard was already correct, so the run was never at risk; the
+# RECORD was. Same family as iter 57, whose START banner still announces iter 52's lever.
+s = s.replace("(KD alpha_decay 0.5 to 0.9)", "(KD alpha_decay 0.5 to 0.25)")
+s = s.replace("KD alpha 0.9 ====", "KD alpha 0.25 ====")
+s = s.replace("DECAY_OK KD ON alpha 0.9", "DECAY_OK KD ON alpha 0.25")
+
 HEADER = [
     "@echo off",
     "REM =========================================================================================",
@@ -104,6 +114,18 @@ if _el:
 assert out.count("set RWKV_KD_ALPHA=0.25") == 1, "the lever must be set exactly once"
 assert "set RWKV_KD_ALPHA=0.9" not in out, "the old alpha survived somewhere"
 assert 'findstr /C:"alpha FIXED at 0.25"' in out, "the guard must check the NEW alpha"
+# Every ECHOED line that names an alpha must name THIS run's alpha. A REM may legitimately
+# discuss 0.9 (the WHY paragraph compares against iter 55); a line written to the log may not.
+# Match a NUMBER after the word "alpha", not the word itself -- the error labels
+# (WRONGALPHA_DECAY) contain "alpha" and name no value. A guard that fires on the wrong thing
+# is the failure it exists to prevent.
+for ln in lines:
+    st = ln.strip()
+    if st.lower().startswith("echo"):
+        vals = re.findall("alpha[^0-9]{0,12}([0-9]+[.][0-9]+)", st, re.I)
+        # A line may legitimately name the value moved FROM ("0.5 to 0.25"); it may never
+        # name alphas WITHOUT naming this run's own.
+        assert not vals or "0.25" in st, "echoed line names " + str(vals) + " but not 0.25: " + st
 assert out.count("DONE_EXIT_0") == 1
 for stale in ("iter52", "i52_", "iter 52"):
     body = "\n".join(l for l in lines if not l.strip().upper().startswith("REM")).lower()

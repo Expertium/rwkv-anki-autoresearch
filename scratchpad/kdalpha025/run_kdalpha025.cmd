@@ -65,7 +65,7 @@ set RWKV_GRAD_STATS=%DIR%\grad_stats.json
 set RWKV_ID_FEATURES=
 set RWKV_MAX_STEPS=
 
-echo ===== KDALPHA025 (KD alpha_decay 0.5 to 0.9) START %DATE% %TIME% ===== >> "%LOG%"
+echo ===== KDALPHA025 (KD alpha_decay 0.5 to 0.25) START %DATE% %TIME% ===== >> "%LOG%"
 
 REM ================= PHASE 0: the scripted-eval guard (iter 48's lesson) =================
 "C:\Program Files\Git\bin\bash.exe" scratchpad/parity3/smoke_scripted_eval.sh scratchpad/iter45_kddecay/i45_eval.toml > "%DIR%\smoke_%STAMP%.log" 2>&1
@@ -76,7 +76,7 @@ if not %ERRORLEVEL%==0 (
 )
 echo KDA025 SMOKE_OK %TIME% >> "%LOG%"
 
-REM ============ PHASE A: decay from the champion's WS-final, KD alpha 0.9 ============
+REM ============ PHASE A: decay from the champion's WS-final, KD alpha 0.25 ============
 set RWKV_MUON_BATCHED=1
 set RWKV_NO_JIT=1
 set RWKV_QAT_COMPILE=1
@@ -119,7 +119,7 @@ if not exist "%SRC%\kda025_d_%WSSTEPS%.pth" (
   echo DONE_EXIT_31 >> "%LOG%"
   endlocal & exit /b 31
 )
-echo KDA025 DECAY_OK KD ON alpha 0.9 %TIME% >> "%LOG%"
+echo KDA025 DECAY_OK KD ON alpha 0.25 %TIME% >> "%LOG%"
 
 REM ================= PHASE B: rectified VAL-half eval =================
 .venv\Scripts\python.exe scratchpad/write_eval_toml.py %SRCREL% kda025_d %DIR%\kda025_eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1

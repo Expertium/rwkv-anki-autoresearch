@@ -189,6 +189,15 @@ set RWKV_KD_ALPHA=0.5
 set RWKV_GRAD_STATS=
 set RWKV_MAX_STEPS=
 
+REM Exit code 0 is not evidence the phase ran: train_rwkv has swallowed a fatal error and
+REM still exited 0 (2026-08-18). Nor is "a checkpoint exists" -- an INTERRUPTED run leaves
+REM one at the step it died on, which is what made the outage recovery decay a half-trained
+REM model. The gate has to name the expected FINAL step.
+if not exist "%DIR%\i55_ws_%WSSTEPS%.pth" (
+  echo ITER55 WS_SHORT no i55_ws_%WSSTEPS%.pth %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_WSSHORT %DATE% %TIME% >> "%LOG%"
+  exit /b 27
+)
 echo === DECAY SETUP %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/iter55_rgate i55_ws i55_d scratchpad/iter55_rgate/i55_decay.toml train_db_5k_h1 1 5000 1.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
@@ -214,6 +223,12 @@ if not %ERRORLEVEL%==0 (
 )
 echo DECAY OK (KD ON, alpha 0.5) %TIME% >> "%LOG%"
 
+REM Same reasoning for the decay phase: name the step, do not merely test for a .pth.
+if not exist "%DIR%\i55_d_%WSSTEPS%.pth" (
+  echo ITER55 DECAY_SHORT no i55_d_%WSSTEPS%.pth %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_DECAYSHORT %DATE% %TIME% >> "%LOG%"
+  exit /b 28
+)
 echo === EVAL TOML rect %TIME% === >> "%LOG%"
 .venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/iter55_rgate i55_d scratchpad/iter55_rgate/i55_eval.toml RWKV-iter55_rgate RWKV-P-iter55_rgate 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
