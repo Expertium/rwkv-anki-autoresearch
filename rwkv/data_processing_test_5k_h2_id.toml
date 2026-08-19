@@ -1,3 +1,9 @@
+# ⚠ PROCESSES=2, NOT 6. This config is WHOLE-USER format (MAX_BATCH_SIZE=2097152), so each
+# worker holds an entire user's feature matrix -- and those are now 44 columns wide instead
+# of 24, ~1.8x the memory the old PROCESSES=6 was sized for. Combined with a concurrent
+# training run (whose 4 fetch workers were measured at ~9.7 GB EACH, far above the ~2.6 GB
+# the docs record), 6 whole-user workers exhausted 64 GB and died on a 4 MB allocation.
+# The TRAIN config is unaffected: it chunks at 16384, so its per-worker memory is bounded.
 # -id EVAL db, users 5001-10000 (the eval half only -- 1-5000 is the swap side and no live
 # path reads it, saving ~116 GB). Requires RWKV_ID_FEATURES=1.
 # 5k-phase EVAL (test) db for the SECOND half, users 5001-10000 -- the primary held-out eval set + the
@@ -16,5 +22,5 @@ LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 USER_START = 5001
 USER_END = 10000
 MAX_BATCH_SIZE = 2097152
-PROCESSES = 6
+PROCESSES = 2
 RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
