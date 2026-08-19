@@ -3009,3 +3009,66 @@ got nothing; iter 57 *made the surviving mixers richer* and got nothing.
   (`DONE_EXIT_WRONGALPHA_DECAY`), and phase 2b confirms the repair in its own log (`alpha FIXED at
   0.5`, 74 per-step confirmations). A guard detects; it cannot repair.
 * `DONE_EXIT_0` at 10:50:18. **Deploy debt: none** — rejected, so no port is owed.
+
+## iter 58 — KD `alpha_decay` 0.5 → 0.25 (`kdalpha025`) — REJECTED, and it CLOSES the lever
+
+**The lever.** Lower the teacher weight in the decay phase to the untested side of the bracket, after
+iter 55 showed 0.9 loses. Single variable vs iter 45; decay-only, so it cannot touch WS by
+construction. Zero code.
+
+| comparison | ahead | imm |
+|---|---|---|
+| vs **iter 45** (controlled) | −0.000078 | −0.000032 |
+| vs **iter 53** (the gate) | −0.000252 | −0.000215 |
+
+size 0/2500 vs both references, nan_users 0, params 558,212 unchanged. Both-modes rule, as
+pre-registered.
+
+### The bracket is now closed on all three sides
+
+| alpha_decay | ahead vs iter 45 | imm vs iter 45 |
+|---|---|---|
+| none (pre-iter-45) | worse (iter 45 accepted over it) | worse |
+| **0.25** (this) | −0.000078 | −0.000032 |
+| **0.50** (iter 45) | — reference — | — reference — |
+| **0.90** (iter 55) | −0.000043 | −0.000116 |
+
+Both directions from 0.5 lose, and the curve is **flat** around it — every deviation is within
+~1e-4. **0.5 is a genuine interior optimum. Lever CLOSED; do not test another alpha_decay value.**
+
+### My pre-registered prediction was wrong, and that is the finding
+
+`GATE.md` and `mk_kdalpha025.py` both predicted this would **improve**, from the calibration
+mechanism: KD overwrites the target with `α·teacher + (1−α)·hard`, so the head inherits the
+*teacher's* calibration; the champion is overconfident by −0.00292 over 83,478 predictions and a
+one-parameter logit shift recovers +0.000115 held out; variance reduction is an **early** good while
+calibration matters **late**, when the LR anneals into what ships.
+
+That reasoning correctly predicted iter 55's *direction*. It failed here.
+
+> **A one-sided mechanism cannot locate a two-sided optimum.** The calibration argument explains why
+> *more* teacher hurts. It does not thereby predict that *less* teacher helps — that needs the
+> countervailing term, which the argument **named** (target-variance reduction) and never quantified.
+> With both terms live, an interior optimum is the default expectation, and 0.5 sitting at the peak
+> is unremarkable.
+
+I should have predicted "0.5 is near-optimal, both directions lose" from the structure of the
+argument I had already written down. **Before predicting a direction from a mechanism, check whether
+it has a countervailing term; if it does, it predicts an optimum, not a direction.**
+
+### What survives, and where the +0.000115 might still be collected
+
+The calibration finding itself is **not** refuted: the model *is* overconfident, and a logit shift
+*does* recover +0.000115 held out. What is refuted is that `alpha_decay` is the lever that reaches
+it. A **direct recalibration** — a learned output temperature or shift on the curve head — remains
+untested, and is now the natural way to collect that gain, since the KD-schedule route is closed.
+
+### Ops
+
+* Clean run, `DONE_EXIT_0` at 17:00:27. Its START banner and `DECAY_OK` line both correctly read
+  `alpha 0.25`; the runner it was cloned from would have written `0.9` in both places, and that prose
+  defect was caught in the generator earlier the same day.
+* Decay checkpoint at `scratchpad/iter45_kddecay/kda025_d_10935.pth`, not in its own directory.
+* **First run named for its lever with no number in its path**, under the completion-order
+  convention — and the only one of the four in flight that could not acquire a lying slug.
+* **Deploy debt: none** — a training-schedule change, forward pass untouched.
