@@ -187,12 +187,22 @@ def elapsed_end_to_start(df):
     """
     if "review_time" not in df.columns or "duration" not in df.columns or not len(df):
         return df
-    is_first = (df["elapsed_seconds"] == -1).to_numpy()
     answer_prev = (df["review_time"] + df["duration"]).groupby(df["card_id"]).shift()
-    gap_s = (df["review_time"] - answer_prev) / 1000.0
-    gap_s = gap_s.clip(lower=0.0)                     # clamp BEFORE the cast, never after
+    gap_s = ((df["review_time"] - answer_prev) / 1000.0).clip(lower=0.0)  # clamp BEFORE the cast
     out = np.floor(gap_s.to_numpy())
-    out[is_first] = -1.0
+
+    # THE SENTINEL MASK IS "no known previous review FOR THIS CARD", which is NOT the same as
+    # `elapsed_seconds == -1` (that marks state == 0). A card whose FIRST row in the frame is not a
+    # state-0 row -- history truncated before the export window -- gets NaN from the groupby shift
+    # and is missed by the state-0 test. Measured: 1 row in 3,817,339 over 40 users, affecting 1 of
+    # them. Vanishingly rare per row, CERTAIN across 5,000 users, and one NaN poisons a whole user.
+    # It duly killed the rebuild 31 minutes in, which is the assert below doing its job.
+    #
+    # ⚠ Upstream's own value for such a row is a CROSS-CARD diff (it diffs the whole frame in
+    # protobuf order and only overwrites state-0 rows with -1), i.e. the gap to a different card's
+    # last review. That is meaningless, so the sentinel is the honest replacement, not a regression.
+    no_prev = np.isnan(out) | (df["elapsed_seconds"] == -1).to_numpy()
+    out[no_prev] = -1.0
     assert not np.isnan(out).any(), "elapsed_end_to_start produced NaN outside the sentinel rows"
     df = df.copy()
     df["elapsed_seconds"] = out.astype("int64")

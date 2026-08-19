@@ -325,11 +325,16 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     # ⚠ Every model trained before this date learned the buggy column, so cross-generation
     # comparisons were already invalid -- which is exactly why the fix is free HERE, folded into a
     # rebuild that re-bases everything anyway. Deferring it would have cost a second rebuild.
-    _is_first = df["is_first_review"].astype(bool)
+    # ⚠ MASK ON EACH COLUMN'S OWN SENTINEL, not on `is_first_review`. They are not the same set:
+    # `is_first_review` is `elapsed_days == -1`, while `elapsed_seconds` also carries -1 on rows
+    # where the card has no KNOWN previous review (history truncated before the export window --
+    # see id_features.elapsed_end_to_start). Masking both columns with the elapsed_days test would
+    # sum those -1s straight back into the cumulative, reinstating the exact bug this block fixes.
     for _raw, _col in (("elapsed_days", "elapsed_days_cumulative"),
                        ("elapsed_seconds", "elapsed_seconds_cumulative")):
-        _gap = df[_raw].where(~_is_first, 0)
-        df[_col] = _gap.groupby(df["card_id"]).cumsum().where(~_is_first, -1)
+        _sent = df[_raw] == -1
+        _gap = df[_raw].where(~_sent, 0)
+        df[_col] = _gap.groupby(df["card_id"]).cumsum().where(~_sent, -1)
     if _idf.enabled():
         # The clamp above makes every non-sentinel gap >= 0, so a card's cumsum is
         # `-1 + sum(nonneg) >= -1` BY CONSTRUCTION and the log branch in
