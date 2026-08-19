@@ -662,7 +662,19 @@ four runs in flight need no exception: their chain order 52 -> 54 -> 55 -> 57 is
 state-size ladders:** (1) try LOTS of different tweaks of both the ARCHITECTURE and the TRAINING
 PIPELINE, from different FAMILIES of ideas (not many variants of one); (2) if an idea BARELY misses the
 logloss threshold, don't give up early -- try a slightly different implementation of the same idea first;
-(3) MIX literature review (optimization/LIT_REVIEW.md) with self-generated ideas; (4) spend AT LEAST 50
+(3) MIX literature review (optimization/LIT_REVIEW.md) with self-generated ideas
+-- **★ TIGHTENED TO STRICT ALTERNATION (Andrew 2026-08-19): "1 invented, 1 adopted, 1 invented,
+1 adopted".** Not a ratio to satisfy on average -- the provenance column must alternate row by row.
+**WHY IT WAS NEEDED: iters 51, 54, 55, 56, 57, 58 are SIX CONSECUTIVE `invented` rows**, i.e. "mix"
+had silently degraded to "self-generated only" while the doc still claimed a mix was happening.
+**The next iteration is therefore `adopted`** -- sourced from a paper or a real RWKV repo, with the
+source named in the `provenance`/`change` fields, not merely inspired by one. Andrew also framed
+this as a change of pace, so treat it as a search-diversity mechanism rather than bookkeeping: the
+invented ideas come from this trunk's own measurements and therefore inherit its blind spots, which
+is exactly what an external source does not. ⚠ Pair it with his 2026-08-19 steer -- **stop chasing
+0.0001** -- so an `adopted` slot means a LARGE-EFFECT idea from outside, not a small one merely
+because it has a citation.
+(4) spend AT LEAST 50
 iterations (NOT counting HP-tuning trials) before even considering declaring "nothing left to improve";
 (5) (Andrew 2026-07-13) NEVER declare a FAMILY "closed" after one iteration -- writing off a family
 needs at least 3-5 distinct in-family variants; 1-2 rejects = "0/N so far, deprioritized", not closed.
