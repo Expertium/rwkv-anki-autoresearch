@@ -1,0 +1,19 @@
+# -id label_filter, users 1-10000. MUST be rebuilt for the new dataset: the equalize selection
+# is dataset-dependent, and `size` moves for ~30% of users from the swap alone.
+# Feature-INDEPENDENT (it selects which reviews count, not what they contain), so
+# RWKV_ID_FEATURES does not apply here.
+# 5k-phase label_filter for the FIRST half, users 1-5000 (swap-eval side). Extends the canonical
+# label_filter_db. Mirrors FSRS-6 --short --secs. 1 thread. Resumable (skips users already present, so
+# the existing 1-~200 rows are not recomputed).
+DATA_PATH = "../anki-revlogs-10k-id"
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 1
+USER_END = 10000
+
+PROCESSES = 6

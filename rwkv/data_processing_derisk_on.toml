@@ -1,0 +1,23 @@
+# DE-RISK build for the -id features rebuild (Andrew authorized 2026-08-19).
+# 100 users, ~7.5 GB. Arm: new columns ON.
+# The valid check is -id-vs--id ON vs OFF: comparing against the PUBLISHED db is
+# invalid because `size` moves for ~30% of users from the dataset swap alone.
+# 5k-phase TRAIN db for the FIRST half, users 1-5000 -- the primary training set. sc8k format
+# (MAX_BATCH_SIZE=16384 -> 8192-review chunks), matching the h2k16 champion recipe. Lives on C: (fast M.2;
+# training reads it every step). label_filter is read only to mark the metric-only label_is_equalize flag;
+# a train user absent from it -> empty equalize (fine, unused in training). 1 thread, cpu-build. Resumable.
+# Sparse map_size (400 GB) -- monitor FREE space on C:, not the logical file size.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/derisk_id_on"
+LMDB_SIZE = 30_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 100
+MAX_BATCH_SIZE = 16384
+PROCESSES = 6
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
