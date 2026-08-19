@@ -97,11 +97,15 @@ divergent A0/A3 configs it was added for, inert on a healthy model.
 
 **The shape of the two rows matters more than either number.** The giant user runs 6.6× more clamp
 calls and reaches only 1.36× the norm, so `||S||` **saturates** rather than accumulating with
-recurrence length. That is what a contracting recurrence must do, and it matches the independent
-2026-08-17 finding that this trunk operates as a near-pure exponential-decay accumulator (state
-eigenvalue ~0.98, delta term worth only ~0.15). So the conclusion does not rest on two samples: it
-rests on the mechanism, with two samples confirming it. A user long enough to reach 300 would have to
-break that decay structure first.
+recurrence length. That is what a contracting recurrence must do: the decay sits at ~0.98 < 1, and
+the delta term only ever *removes* state, so both terms contract. So the conclusion does not rest on
+two samples — it rests on the mechanism, with two samples confirming it. A user long enough to reach
+300 would have to break that contraction first.
+
+⚠ An earlier version of this paragraph cited the 2026-08-17 gloss that the trunk is a "near-pure
+exponential-decay accumulator, delta term worth only ~0.15". **That gloss is refuted** — see the
+delta-rule section below. The saturation argument is unaffected, because it needs only that both
+terms contract, which is true independently of how much *functional* work the delta term does.
 
 ## Tools here
 
@@ -158,3 +162,60 @@ instance; generating both from one variable makes the first impossible.
 
 `kdalpha025` is the first run named for its lever with **no number in its path** — the number is
 assigned at verdict time, per the completion-order convention.
+
+## Delta-rule simplification (Andrew, 2026-08-19) — screened and DEAD, ~25 min of CPU
+
+**The proposal:** simplify the delta rule to cut parameters "for free", as the earlier reduction
+ladder did. Two independent reasons it does not work, both measured before spending a 9.2 h run.
+
+### 1. The prize is the wrong *kind*, and it is not free
+
+`a_lora` (9,360) + `k_scale` (5,265) = 14,625 params = 2.62%. But these are **weights, not state.**
+The binding deploy budget is per-card **state** (9 B/card, frozen); weights ship once. The old ladder
+mattered because 2.76M params had to become shippable at all — that constraint is retired.
+
+Nor can a bias replace them (`delta_rule_screen.py`, 26 sites, per-module):
+
+| target | variance a bias CANNOT reproduce | prize |
+|---|---|---|
+| `a_lora` | **36.4%** | 1.68% |
+| `k_scale` | **20.0%** | 0.94% |
+| rank 4→3 | needs mean **3.1 of 4** components for 95% | 0.37% |
+
+### 2. The stronger version — ablate the delta term entirely — is decisively dead
+
+Zeroing `a` on the champion deletes the delta term and nothing else (`delta_ablate_screen.py`,
+4 smallest VAL users, paired within user, project's own equalized LogLoss via `get_stats`):
+
+| user | baseline imm | a=0 imm | Δ imm |
+|---|---|---|---|
+| 5044 | 0.20588 | 0.40362 | +0.19775 |
+| 5100 | 0.38223 | 0.53289 | +0.15065 |
+| 5063 | 0.17232 | 0.41081 | +0.23850 |
+| 5097 | 0.12592 | 0.37100 | +0.24508 |
+| **mean** | | | **+0.20799 imm / +0.06029 ahead** |
+
+Accept bar 0.0001; the entire A0→A18 ladder (4.95× smaller) cost +0.00053 imm. This is **~390× that
+whole ladder**, and the *smallest* per-user cost is ~1500× the bar. Inference-time ablation is an
+upper bound (weights co-adapted), but nothing at this scale retrains into a free simplification.
+
+### The reusable finding: magnitude ≠ selectivity
+
+This refutes the gloss the record carried since 2026-08-17 — "RWKV-7's headline innovation is barely
+engaged" — while leaving its measurement intact. The delta term really does move the state-transition
+eigenvalue only ~0.15 against a decay of ~0.98. But it is not tuning a decay rate: it performs the
+**key-selective removal** that makes the state an associative memory, rank-1 and aimed exactly at the
+direction being overwritten. 0.15 of movement spent precisely where needed does work no amount of
+uniform decay reproduces.
+
+> **A scalar summary of a mechanism's magnitude says nothing about its selectivity.** Same family as
+> iter 51's median-vs-max error: the wrong summary statistic, confidently applied.
+
+### Two method notes
+
+* **My first screen was wrong and arithmetic caught it.** Hooks keyed by `layer_id` merged the
+  layer-0 mixers of all five streams into one bucket. The tell: four variance components summing to
+  0.819 instead of 1.0, impossible for a purely linear `B(A(x))`. Contaminated 65.4% → corrected
+  28.2%, which moved the verdict from "don't bother" to "marginal" — so the bug mattered.
+* **Do not pipe a background job through `tail`.** The output file *is* the record; the first
+  ablation run kept only its last 22 lines and lost three of four users' rows.
