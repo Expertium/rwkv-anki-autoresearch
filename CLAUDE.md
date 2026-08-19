@@ -1182,6 +1182,30 @@ state almost as a pure exponential-decay accumulator with a small rank-1 correct
 headline innovation is barely engaged.** Whether that is the TASK's nature or our 1.25-epoch budget
 is a FREE check on the 10x endgame checkpoint: re-run `scratchpad/expressiveness/decay_floor_probe.py`
 and the eigenvalue probe on it.
+**⚠⚠⚠ "BARELY ENGAGED" IS REFUTED AS A STATEMENT ABOUT FUNCTION -- MEASURED 2026-08-19, AND THE
+EIGENVALUE NUMBER IS STILL CORRECT.** Andrew proposed simplifying the delta rule to cut parameters,
+which is exactly what the sentence above invites. Screened on CPU first
+(`scratchpad/bughunt/delta_ablate_screen.py`, ~25 min, zero GPU): **zeroing `a` on the champion --
+which deletes the delta term and nothing else -- costs `+0.208 imm / +0.060 ahead`.** For scale, the
+accept bar is 0.0001 and the ENTIRE A0->A18 ladder that made the model 4.95x smaller cost +0.00053
+imm. The ablation is **~390x that whole ladder**. The delta rule is massively load-bearing.
+**THE RECONCILIATION, and it is the reusable part: a small EIGENVALUE perturbation is not a small
+FUNCTIONAL contribution.** The delta term is not tuning the decay rate -- it performs the
+key-selective REMOVAL that makes the state an associative memory (erase the value bound to this key
+before writing the new one). It is rank-1 and aimed at exactly the direction being overwritten, so
+0.15 of eigenvalue movement, spent precisely where it is needed, does work that no amount of uniform
+decay reproduces. **A scalar summary of a mechanism's MAGNITUDE says nothing about its SELECTIVITY,
+and selectivity is the whole point of the delta rule.** Same family as the median-vs-max error of
+iter 51: the wrong summary statistic, confidently applied.
+⚠ The ablation is an INFERENCE-TIME upper bound (the weights co-adapted), so a retrain would recover
+some of it -- but at ~390x the full param ladder, no retrain turns this into a free simplification.
+**=> DO NOT propose delta-rule removal or `a`-simplification on the "barely engaged" argument.**
+The measured prize was small anyway and it is the wrong KIND of prize: `a_lora` + `k_scale` are
+14,625 params (2.62%) and they are **WEIGHTS, not STATE** -- the binding deploy budget is per-card
+state (9 B/card, frozen), which they do not touch. Nor are they free to bias-replace: 36.4% (a_lora)
+/ 20.0% (k_scale) of their variance is token-to-token, and `a_lora` needs a mean of 3.1 of its 4 rank
+components for 95% of variance, so even rank 4->3 is not free
+(`scratchpad/bughunt/delta_rule_screen.py`).
 **⚠⚠ AND THE THIRD INSTANCE OF ONE FAILURE SHAPE, this time in my own writeup an hour after writing
 it:** the first stability numbers for that lever used the RESTING `||kappa||^2 = 0.24` as if it were a
 bound. It is not -- `k_scale = sigmoid(Linear(x))` has an UNBOUNDED input, so `||kappa||^2 -> 1` is
