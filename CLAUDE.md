@@ -333,7 +333,13 @@ deltas so dead ends aren't re-run.
   AI-only) · `research_log.jsonl` (5k source of truth) · `log.md`/`log.jsonl` (regenerated
   canonical table — `python optimization/logbook.py rebuild`) · `research_log.md` (CLOSED
   100/100-era log) · `HISTORY.md` (superseded plans + archived CLAUDE.md live-state) ·
-  `FUTURE_FEATURES.md` · `LIT_REVIEW.md` · **`DATASETS.md`** (which review dataset to train on:
+  `FUTURE_FEATURES.md` · `LIT_REVIEW.md` · **`CONTENT_EMBEDDINGS.md`** (CONTINGENT, 2026-08-19 --
+  if a dataset with CARD CONTENT ever appears: Andrew's decision is
+  `paraphrase-multilingual-MiniLM-L12` at **int8, 118 MB, NO pruning**, on-device at all times
+  because users edit cards on mobile. Carries why multilingual beat the AnkiHub/med skew concern,
+  why pruning to ~29 MB was declined, that a LEARNED reduction is forbidden by Andrew's own
+  anti-skew argument while a fixed random projection is not, and the +5.5% param cost of a 384-dim
+  input to our 558k trunk. Nothing is scheduled) · **`DATASETS.md`** (which review dataset to train on:
   the four sets on this machine, the FSRS-Anki-20k VERDICT = do NOT train on it (disk 1.5 TB,
   no note/deck/preset, 4.3% leakage), the card-id-is-not-a-fingerprint lesson, the
   augmentation-off/byte-identical-epochs finding, and the 2-line users-vs-epochs ablation that
