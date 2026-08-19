@@ -2931,3 +2931,81 @@ ahead's noise-floor +0.000057 would have made genuinely tempting.
   echo. The defect was predicted hours earlier by the new preflight check and written into `GATE.md`
   *before* the line was emitted.
 * **Deploy debt: none** — a training-schedule change, forward pass untouched.
+
+## iter 57 — learnable channel-mixer exponent (`RWKV_CMIX_POW=1`, dir `iter54_cmixpow`) — REJECTED as an exact tie
+
+**The lever.** A learnable per-channel-mixer exponent on the squared-ReLU activation, init 2.0,
++13 params (558,225 vs iter 45's 558,212). The **first run of the expressiveness-vs-capacity family**
+Andrew opened 2026-08-17 — a richer functional form at fixed capacity rather than more of the same
+form. Chosen because a learnable exponent survives the redundancy test: an adjacent free linear can
+absorb a learnable *slope*, but not *curvature*.
+
+| comparison | ahead | imm | reading |
+|---|---|---|---|
+| vs **iter 45** (controlled) | −0.000031 | −0.000032 | both ~2.4× **inside** the ±7.5e-5 floor — a literal tie |
+| vs **iter 53** (the gate) | −0.000205 | −0.000215 | **REJECTED** |
+
+size 0/2500 vs both references, nan_users 0. Both-modes rule (a channel-mixer change is a trunk
+change).
+
+### The model used the freedom and gained nothing — third consecutive iteration with that signature
+
+Init is 2.0, confirmed by the stripped sites reading **exactly** 2.00000. Every live exponent moved:
+
+| site | final | move from init |
+|---|---|---|
+| card:0 | 1.261 | −37% |
+| note:0 | 1.526 | −24% |
+| deck:0 | 1.420 | −29% |
+| deck:3 | 1.858 | −7% |
+
+**All four moved in the same direction** — downward, toward plain ReLU and away from x². So the trunk
+does prefer a gentler channel-mixer nonlinearity, it moved decisively to get one, and the held-out
+loss did not move at all.
+
+Compare **iter 48** (`rcouple_w` learned, sign-correct, negligible) and **iter 50** (the deck level
+embedding trained to L2 = 1.766 and bought a coin flip). Three levers, three different mechanisms —
+an architectural coupling, a new scope, a functional form — and one signature.
+
+> **The generalizable statement: this model will use any new degree of freedom it is given, and use
+> is not evidence of need.** A "the parameter trained, so the lever engaged" check proves the lever
+> is not inert. It says nothing about whether the loss had anything to gain. Both facts are needed,
+> and only the first is cheap.
+
+### Scope caveat — recorded before the verdict, not after
+
+`scratchpad/iter54_cmixpow/GATE.md`, written 06:55 while the run was still training: **the lever
+reached 4 of 13 channel mixers.** 13 `cmix_pow` params are created and only 4 receive gradients; the
+9 dead ones are **exactly** `RWKV_STRIP_CMIX`, verified as a set equality. A stripped channel mixer
+still constructs its parameters and never uses them.
+
+So the honest claim is *"null on card:0, note:0, deck:0, deck:3"*, **not** "learnable exponents do not
+help" — the other 9 sites do not exist in this configuration and were never tested.
+
+**But the diagnostic makes this a stronger null than the caveat suggests.** At the four sites it did
+reach, the lever was *fully engaged* (up to a 37% move). This is not a too-weak-to-matter result: it
+is decisive where tested and silent elsewhere.
+
+### Family status and the overlap with iter 49
+
+Expressiveness-vs-capacity is **0/1 — deprioritized, not closed**. Conduct rule 5 needs 3–5 in-family
+variants, and this family was opened precisely because "capacity-at-5k is 0/3" had been standing in
+for an argument it could not support. Closing it on one run that reached 4 of 13 sites would repeat
+that error exactly. A second variant should target a richer form at a site that survives
+`RWKV_STRIP_CMIX`, and must clear the redundancy test.
+
+⚠ **Note the overlap with iter 49**, which restored the `user`/`preset` layer-0 channel mixers and was
+rejected at +0.000067 ahead (p=0.11). Those are among the sites that carry no exponent here. The two
+results concern the same missing mixers from opposite directions: iter 49 *added the mixers back* and
+got nothing; iter 57 *made the surviving mixers richer* and got nothing.
+
+### Ops
+
+* This is the run whose WS was interrupted by the 2026-08-18 power outage and recovered by mid-epoch
+  resume from step 8000 (~110 lost steps). The resumed tail's dropout draws differ, so the number is
+  **fair but not bit-reproducible**.
+* Phase 2a decayed 3.3 h at KD alpha **0.9** — iter 55's lever — because the decay-only generator
+  sliced away the WS region holding the reset line. Its own guard caught it
+  (`DONE_EXIT_WRONGALPHA_DECAY`), and phase 2b confirms the repair in its own log (`alpha FIXED at
+  0.5`, 74 per-step confirmations). A guard detects; it cannot repair.
+* `DONE_EXIT_0` at 10:50:18. **Deploy debt: none** — rejected, so no port is owed.

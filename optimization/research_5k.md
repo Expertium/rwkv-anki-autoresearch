@@ -52,13 +52,6 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 > its checkpoints are `qtaxg_i45kd_*`. Every other run has its number baked into a directory and a
 > checkpoint prefix, which is why history is otherwise not renumbered.
 >
-> **⚠ CONSEQUENCE -- ONE SLUG NOW LIES, and it is the in-flight `cmixpow` run.** Its directory is
-> `scratchpad/iter54_cmixpow/` with checkpoints `i54_*.pth`, but **54 is now QAT#2**, so that run
-> will be numbered **55** when its verdict lands. Trust `exp` in `research_log.jsonl`, never the
-> digits in a directory name. This is exactly the failure the new rule forbids for future runs:
-> **do not put the number in the run's directory or checkpoint prefix** -- name it for its lever
-> (`rgate`, `cmixpow`, `decayshape`) so the number stays free to follow completion order.
->
 > **NUMBERS ARE ASSIGNED AT VERDICT, IN COMPLETION ORDER -- so this table is BOTH ascending and
 > chronological, with no exceptions.** Reserving a number in advance is what broke that, so it is
 > no longer done.
@@ -69,16 +62,25 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 > have put a lower number below higher ones -- the exact disorder the rule exists to remove. No
 > future gap can appear, because numbers are no longer reserved ahead of a verdict.
 >
-> **Remaining in-flight runs, and two slugs that LIE:**
+> **⚠⚠ THREE DIRECTORY SLUGS LIE, and the resolved numbers are below (updated 2026-08-19 as each
+> verdict landed).** This block previously PREDICTED the remaining numbers, and its predictions were
+> wrong -- it had `cmixpow` at 55 in one paragraph and 56 in a table, and `decayshape` at 58. Both
+> were assigned on the assumption that the runs would finish in queue order. They did not:
+> `decayshape` finished FIRST of the remainder and took **56**, so `cmixpow` took **57**.
+> **That is the rule working, not failing** -- and it is also why predicting a number is now
+> forbidden. A prediction table is a reservation wearing a different hat.
 >
-> | run (directory slug) | number at verdict | slug agrees? |
+> | run (directory slug) | number | slug agrees? |
 > |---|---|---|
-> | `iter54_cmixpow` (phase 2 running) | **56** | **no** -- 54 is QAT#2 |
-> | `iter55_rgate` | **57** | **no** -- 55 is kdalpha |
-> | `iter57_decayshape` | **58** | **no** -- 57 is rgate |
+> | `iter57_decayshape` | **56** (verdict 04:40, rejected) | **no** |
+> | `iter54_cmixpow` | **57** (verdict 10:50, rejected) | **no** |
+> | `kdalpha025` | assigned at ITS verdict | n/a -- **no number in its path, by design** |
+> | `iter55_rgate` | assigned at ITS verdict | **no** -- 55 is kdalpha |
 >
 > Trust `exp` in `research_log.jsonl`; the digits in a directory name are not the number. This is
-> precisely why the rule now forbids putting a number in a run directory or checkpoint prefix.
+> precisely why the rule forbids putting a number in a run directory or checkpoint prefix --
+> `kdalpha025` is the first run named for its lever alone, and it is the only one here that cannot
+> acquire a lying slug.
 
 | iter | trained on | ahead | imm | vs old (a / i) | logloss | status | p-value | params | NaN users | provenance | summary |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -140,6 +142,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 54 | 1-5000 | 0.2999ᵠ | 0.2689ᵠ | +0.0053 / +0.0054 | exact | rejected (tie) | 6.2e-04 / 1.0 (vs cblearn) | 558,212 | 0 | invented | QAT#2 - KD teacher swapped from the d=128 dump to our own plain iter-45 champion, quant-aware decay. **ᵠ = QUANT-AWARE basis; comparable only to its twin qtaxd_cblearn.** Exact tie (+8.4e-5 / -7.0e-5, both inside the +/-7.5e-5 floor). Predicted that morning by a minutes-of-CPU screen: the two teachers agree at r=0.9460 because iter 45 IS the d=128 teacher's own student. The QAT tax does not live in the teacher. |
 | 55 | 1–5000 | 0.2977ᵛʳ | 0.2655ᵛʳ | +0.0031 / +0.0019 | exact | rejected | 1.0 / 1.0 (vs iter 45) | 558,212 | 0 | invented | KD alpha_decay 0.5→0.9. Regresses. alpha=0.9 wins in WS but loses in decay — confirms the pre-registered KD-calibration cost. |
 | 56 | 1–5000 | 0.2976ᵛʳ | 0.2653ᵛʳ | +0.0030 / +0.0017 | exact | rejected | 0.985 / 1.0 (vs iter 53) | 558,212 | 0 | invented | Linear LR decay shape. Real but sub-bar vs iter 45; loses to iter 53. Even perfect stacking fails. |
+| 57 | 1-5000 | 0.2977 | 0.2654 | +0.0031 / +0.0018 | exact | rejected (tie) | 0.99 / 1.0 (vs iter 53) | 558,225 | 0 | invented | Learnable channel-mixer exponent. Exact tie vs iter 45. All 4 live exponents moved 2.0->1.26-1.86 and bought nothing. |
 
 **`vs old (a / i)` = how far this row still is from the OLD d=128 model** (Andrew's ask, 2026-08-12). `row - baseline` for ahead / imm, so **positive = still worse, negative = we have beaten it**. Baseline = `pretrain/RWKV_trained_on_101_4999.pth` unquantized, restricted to the **VAL half 5001-7500** (the only set candidates are scored on) = **0.294612 / 0.263561**; its full-range 5001-10000 numbers (0.296385 / 0.264905) are a different user set and are not used here, which is why the reference row itself reads `-- (ref)`.
 
