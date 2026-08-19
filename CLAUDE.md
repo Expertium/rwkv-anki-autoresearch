@@ -599,9 +599,26 @@ objective is `p_loss` = cross-entropy on **`label_rating`**, which the lever nev
 rewrites `label_y`, which feeds only `curve_loss` / `curve_raw_loss` / the PAVA probe target. imm can
 therefore move ONLY through the shared trunk. (§9 already said this in general: "a curve-side change
 moves only one of the two gate modes".)
-⚠ **`label_y` DOES reach one imm-side term** -- `p_binary_loss`, srs_model.py:1128 -- but
-`pbin_scale=0` in this recipe so it is skipped. **If `RWKV_PBIN_SCALE` is ever turned on, a
-curve-side lever starts softening the imm objective too and this exception no longer applies.**
+⚠ **`label_y` DOES reach one imm-side term** -- `p_binary_loss`, srs_model.py:1128 (**stale: it is
+now :1365**) -- but `pbin_scale=0` in this recipe so it is skipped. **If `RWKV_PBIN_SCALE` is ever
+turned on, a curve-side lever starts softening the imm objective too and this exception no longer
+applies.**
+**⚠⚠ AND THAT CAVEAT NAMES THE WEAKER PATH WHILE OMITTING THE STRONGER ONE (found 2026-08-19, while
+pre-registering kdalpha025's gate rule). EXTERNAL-TEACHER KD IS *NOT* CURVE-SIDE.** `RWKV_KD_ALPHA`
+rewrites **BOTH** objectives from the same `kd_mix` tuple, gated on the same
+`if kd_mix is not None`, with the same alpha:
+* `srs_model.py:1263` -- `label_y = alpha*teacher_curve + (1-alpha)*hard`  ->  curve / **ahead**;
+* `srs_model.py:1354` -- `_km2_target = alpha*teacher_p + (1-alpha)*one_hot(label_rating)`, and
+  `p_loss` is then REPLACED by soft-target CE against it  ->  rating / **imm**.
+So a KD-alpha lever is a **direct** lever on the imm objective, not an indirect one through the
+trunk. **The exception's verification is correct FOR ITER 46** (self-distillation rewrote only
+`label_y`); the trap is generalising "KD rewrites `label_y`" to "KD is curve-side". Any KD-alpha
+iteration -- iter 55, kdalpha025, and any successor -- gets the **BOTH-MODES** rule.
+This also gives iter 55 a cleaner mechanism than the record has: its imm **-0.000116** did not have
+to travel through the shared trunk, which would be a surprisingly large indirect effect. alpha 0.9
+replaced 90% of the imm TARGET with teacher probabilities, so the rating head inherited the teacher's
+miscalibration head-on. **Before applying the curve-side exception to any lever, grep for every site
+that consumes `kd_mix` / the lever's tensor -- do not reason from which tensor it is named after.**
 **THE RULE:** accept iff ahead improves by **raw >=0.0001 with p<0.0001**, AND imm is **not
 significantly worse** = NOT (imm mean declines AND the one-sided paired Wilcoxon for "candidate
 worse" gives p < 0.05). **Both halves of the harm test are load-bearing, and iter 44 is why:** its
