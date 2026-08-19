@@ -1679,6 +1679,47 @@ witness reports the witness's health, not the system's.**
 **⚠ CPU-INFERENCE REALITY CHECK:** in the PYTHON RNN path a 4.5x arithmetic cut buys only **1.24x** wall-clock and plateaus -- that path is overhead-bound, so cost tracks op count (layers x streams), not width. **1 thread beats 3 and 6 -> deploy single-threaded.** The Rust path DOES convert the cut: **2.39x** measured. Full numbers: `optimization/CPU_INFERENCE.md`.
 
 #### FAMILY SCOREBOARD (conduct rule 5: 1-2 rejects = deprioritized, NOT closed)
+
+**★★ THE CROSS-FAMILY PATTERN, and it is now THREE independent confirmations (2026-08-19): THE MODEL
+USES ANY NEW DEGREE OF FREEDOM IT IS GIVEN, AND *USE IS NOT EVIDENCE OF NEED*.**
+
+| iter | lever | the parameter demonstrably moved | held-out result |
+|---|---|---|---|
+| 48 | `rcouple_w`, R(t) into the 4 rating logits | learned, **sign-correct** (Again -0.0138) | exact tie, p=0.19/0.37 |
+| 50 | deck-tree level embedding | zero-init trained to **L2=1.766**, ~2x a typical input-projection row | exact tie, p=0.52/0.86 |
+| 57 | learnable channel-mixer exponent | all 4 live exponents moved **2.0 -> 1.26-1.86**, same direction | exact tie, both inside the floor |
+
+Three different mechanisms -- an architectural coupling, a new scope, a functional form -- one
+signature. **=> A "the parameter trained, so the lever engaged" check proves only that the lever is
+NOT INERT. It says nothing about whether the loss had anything to gain, and the two questions need
+separate evidence.** Report the engagement diagnostic in every such iteration (it is what makes a
+null interpretable rather than ambiguous), but never read it as a partial success or as grounds to
+retry the same lever harder. **The productive inference runs the other way: when a model moves
+decisively into a new freedom and gains nothing, the constraint that freedom removed was not
+binding** -- so look for a DIFFERENT constraint, not a bigger dose of the same one.
+
+**expressiveness-vs-capacity 0/1 -- DEPRIORITIZED, NOT CLOSED** (iter 57, the learnable channel-mixer
+exponent; the family Andrew opened 2026-08-17). ⚠ **The lever reached 4 of 13 channel mixers** -- 9
+`cmix_pow` params get no gradient and the dead set is EXACTLY `RWKV_STRIP_CMIX` (verified as a set
+equality). So the honest claim is "null on card:0, note:0, deck:0, deck:3", not "learnable exponents
+do not help". **But it is a STRONGER null than that caveat suggests: at the four sites it reached the
+lever was FULLY engaged (up to a 37% move), so this is not a too-weak-to-matter result** -- decisive
+where tested, silent elsewhere. A second variant must target a richer form at a site that SURVIVES
+`RWKV_STRIP_CMIX`, and must clear the redundancy test. ⚠ Do not close this family on one run: it was
+opened precisely because "capacity-at-5k is 0/3" had been standing in for an argument it could not
+support. Note the overlap with iter 49 from the opposite direction -- it ADDED the user/preset L0
+mixers back and got nothing; iter 57 made the SURVIVING mixers richer and got nothing.
+
+**LR-schedule shape 0/1 -- and the follow-up is CLOSED BY ARITHMETIC, not by a second run** (iter 56,
+`RWKV_DECAY_SHAPE=linear`). Real but sub-bar vs iter 45: ahead +0.000057 (INSIDE the +/-7.5e-5 floor,
+so its reality rests on rank consistency at p=6e-12, not magnitude) / imm +0.000104 (clears both).
+Loses to iter 53 at -0.000117/-0.000080. **The obvious follow-up -- does it STACK on iter 53, since
+the levers are orthogonal -- was priced BEFORE queueing: under PERFECT additivity the stacked run
+sits at +0.000057 ahead, which FAILS the 0.0001 bar. Even the best case cannot clear the gate, so do
+NOT spend 6.1 h on it.** ★ The iteration also refutes a general claim: the "same-capacity
+rearrangement is indistinguishable" result of iters 41/43/44 is NOT a law about this trunk -- it held
+for the curve head and FAILED for the rating head at p=3e-161.
+
 **capacity-at-5k 0/3** (iter 49 added the user/preset L0 channel mixers back, +4.7% params, for +0.000067 ahead at p=0.11 and +0.000087 imm -- both under the bar). Three placements now agree: this model is not capacity-limited at 5k. Do not propose a fourth width/depth add without a mechanism argument that distinguishes it from these three.
 **ahead-vs-imm-gap exploitation 0/2 -- CLOSED ON MECHANISM** (iters 46, 48). Both attempts to route
 the better-conditioned imm signal into the ahead/rating path returned exact nulls, by structurally
