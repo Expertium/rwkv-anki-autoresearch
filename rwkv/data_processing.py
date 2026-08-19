@@ -304,8 +304,31 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     )
     df["cum_new_cards_today"] = df.groupby("day_offset")["is_first_review"].cumsum()
     df["cum_reviews_today"] = df.groupby("day_offset").cumcount()
-    df["elapsed_days_cumulative"] = df.groupby("card_id")["elapsed_days"].cumsum()
-    df["elapsed_seconds_cumulative"] = df.groupby("card_id")["elapsed_seconds"].cumsum()
+    # ⚠ THE SENTINEL MUST NOT BE SUMMED (fixed 2026-08-19; reported by obezag on Discord and
+    # confirmed here). A card's FIRST review carries elapsed_days/elapsed_seconds = -1, which is a
+    # SENTINEL meaning "no previous review", not a magnitude. The old code was a plain
+    # `groupby(card_id).cumsum()`, so every cumulative value started at -1 and was low by exactly 1.
+    #
+    # It is worse than an off-by-one because of the scaling. The feature is
+    # `np.where(x == -1, 0, log(1 + 1e-5 + x))`, so storing `C - 1` yields `log(C)` where `log(1+C)`
+    # is meant -- and at C = 1 that is `log(1) = 0`, which is EXACTLY the value the -1 sentinel
+    # encodes. A card's second review one day after its first was therefore indistinguishable, on
+    # this feature, from a review with no history at all.
+    #
+    # Measured on user 333 (277,807 non-first reviews): 3.9% of rows sat on that collision, 15.4%
+    # were distorted by more than 0.05 sigma, and the worst case was 0.31 sigma. The seconds column
+    # is negligible by comparison (1 second against 1e5-1e7) but is fixed for the same reason.
+    #
+    # The fix: sum only real gaps, and keep -1 on the first review so it still takes the sentinel
+    # branch. Cumulative now means "true elapsed since this card's first review".
+    # ⚠ Every model trained before this date learned the buggy column, so cross-generation
+    # comparisons were already invalid -- which is exactly why the fix is free HERE, folded into a
+    # rebuild that re-bases everything anyway. Deferring it would have cost a second rebuild.
+    _is_first = df["is_first_review"].astype(bool)
+    for _raw, _col in (("elapsed_days", "elapsed_days_cumulative"),
+                       ("elapsed_seconds", "elapsed_seconds_cumulative")):
+        _gap = df[_raw].where(~_is_first, 0)
+        df[_col] = _gap.groupby(df["card_id"]).cumsum().where(~_is_first, -1)
     if _idf.enabled():
         # The clamp above makes every non-sentinel gap >= 0, so a card's cumsum is
         # `-1 + sum(nonneg) >= -1` BY CONSTRUCTION and the log branch in
