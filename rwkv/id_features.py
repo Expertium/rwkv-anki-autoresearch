@@ -148,6 +148,57 @@ def _std(name, v):
     return (v - STATISTICS_ID[f"{name}_mean"]) / STATISTICS_ID[f"{name}_std"]
 
 
+def elapsed_end_to_start(df):
+    """Re-derive `elapsed_seconds` as END-of-previous-review to START-of-this-review.
+
+    ANDREW 2026-08-19: "make sure that all the stuff like elapsed_days, elapsed_seconds, etc. is
+    based on review ID *after* subtracting review duration, so that everything interval-related is
+    'from the end of the prior review to the beginning of next review', NOT 'from the end of the
+    prior review to the end of next review'."
+
+    WHAT WAS STORED, AND WHY IT LOOKED FIXED. `build_parquet_id.py` sets
+    `review_time = revlog.id - taken_millis`, i.e. the SHOW time, and then derives
+    `elapsed_seconds = review_time.diff()` -- its own docstring says "show-to-show". That
+    correction is real and worth having: it makes the timestamp the moment the user actually saw
+    the card, which is what every time-of-day feature needs. But the INTERVAL is still
+    start-to-start, so it carries the previous review's duration inside it:
+
+        show(k) - show(k-1)  =  duration(k-1) + [ show(k) - answer(k-1) ]
+
+    Verified numerically on user 333: stored 67/20/215/23/21 s against end-to-start
+    40.7/9.9/206.9/13.0/11.9 s, the difference equal to the prior duration to the millisecond.
+    On learning steps that is 40-50% of the gap; on multi-day intervals it is noise.
+
+    THE FIX: subtract the PREVIOUS review's duration, per card.
+
+        elapsed_seconds[k] = ( review_time[k] - (review_time[k-1] + duration[k-1]) ) / 1000
+
+    The -1 sentinel is preserved on first reviews, and negatives are clamped to 0 BEFORE the
+    int cast -- flooring -0.4 would produce -1 and silently mint a fake "first review", which is
+    exactly the sentinel-collision class fixed earlier the same day in the cumulative columns.
+
+    ⚠ `elapsed_days` is deliberately NOT touched. It is `day_offset.diff()`, a CALENDAR-day index
+    difference matching Anki's scheduling semantics; "subtract a duration" is not well defined on
+    a day index, and a ~10 s duration can only ever move it by crossing midnight. Flagged rather
+    than changed.
+
+    Gated on the DATASET (`review_time` present), like `clamp_negative_gaps`: published data has
+    no `review_time`, so pre-rebuild runs are untouched by construction.
+    """
+    if "review_time" not in df.columns or "duration" not in df.columns or not len(df):
+        return df
+    is_first = (df["elapsed_seconds"] == -1).to_numpy()
+    answer_prev = (df["review_time"] + df["duration"]).groupby(df["card_id"]).shift()
+    gap_s = (df["review_time"] - answer_prev) / 1000.0
+    gap_s = gap_s.clip(lower=0.0)                     # clamp BEFORE the cast, never after
+    out = np.floor(gap_s.to_numpy())
+    out[is_first] = -1.0
+    assert not np.isnan(out).any(), "elapsed_end_to_start produced NaN outside the sentinel rows"
+    df = df.copy()
+    df["elapsed_seconds"] = out.astype("int64")
+    return df
+
+
 def clamp_negative_gaps(df):
     """★ THE NaN LANDMINE. One line, and without it ~3.2% of users are silently destroyed.
 
@@ -285,7 +336,13 @@ def add_id_features(df, df_cards, df_decks_raw):
     gap = np.empty(n, dtype=np.float64)
     if n:
         gap[0] = -1.0
-        gap[1:] = np.maximum(np.diff(rt) / 1000.0, 0.0)
+        # END-to-START, like `elapsed_seconds` (Andrew 2026-08-19). `np.diff(rt)` is
+        # show-to-show and therefore carries the PREVIOUS review's duration inside the gap;
+        # subtract it so this measures "from the end of the last review the user did, on any
+        # card, to the moment this card appeared". Same defect and same fix as
+        # `elapsed_end_to_start`, one level up: that one is per-card, this one is per-user.
+        _du = df["duration"].to_numpy(dtype=np.int64)
+        gap[1:] = np.maximum((rt[1:] - (rt[:-1] + _du[:-1])) / 1000.0, 0.0)
     df["scaled_t_since_any_review"] = np.where(
         gap == -1.0, 0.0, _std("t_since_any_review", _log_t(np.maximum(gap, 0.0)))
     )

@@ -206,6 +206,7 @@ def add_segment_features(df, equalize_review_ths=[]):
 def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     df = pd.read_parquet(data_path / "revlogs" / f"{user_id=}")
     if "review_time" in df.columns:
+        df = _idf.elapsed_end_to_start(df)
         # BEFORE any cumsum or log: the -id set's recomputed gaps can go negative, which turns
         # scale_elapsed_seconds into log(negative) = NaN and costs the whole user (measured: 4 of
         # 60 stride-sampled train users).
