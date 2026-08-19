@@ -1041,14 +1041,19 @@ Esc cannot kill it, and each polls the previous job's log with an ANCHORED
 `findstr /B /C:"DONE_EXIT_"` (the unanchored form matches its own progress line and fires
 instantly). **Costs below are MEASURED on iter 53, and are ~40% higher than this table used to say.**
 
-| order | run | lever | cost | ETA | waiter pid |
-|---|---|---|---|---|---|
-| ~~1~~ | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | **DONE -- ACCEPTED, NEW CHAMPION** | -- |
-| ~~2~~ | **iter 54** `iter54_cmixpow` | `RWKV_CMIX_POW=1` | -- | **WS ONLY** (resumed after the outage); decay+eval RE-QUEUED as phase 2 | -- |
-| 3 | **iter 52** `iter52_kdalpha` | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | RUNNING since 12:47, ~18:50 | 9480 |
-| 4 | **iter 54 PHASE 2** `run_iter54_phase2.cmd` | the owed decay + eval | 6.1 h | ~01:00 (19th) | 9472 |
-| 5 | **iter 55** `iter55_rgate` | `RWKV_RGATE=card` | 9.2 h | ~10:15 (19th) | 29596 |
-| 6 | **iter 57** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` | 6.1 h | ~16:20 (19th) | 2276 |
+**⟶ STATE AS OF 2026-08-19 04:45. Four of the six are DONE; two remain plus a retry.** Numbers are
+assigned at VERDICT time (completion order), so the reservations two paragraphs above are superseded
+by what is in `research_log.jsonl`: `decayshape` took **56**, not 57, and `cmixpow`/`rgate` are
+UNNUMBERED until they report. Directory digits bind nothing.
+
+| order | run | lever | cost | state |
+|---|---|---|---|---|
+| ~~1~~ | **iter 53** `iter53_muonlora` | `RWKV_MUON_INCLUDE_LORA=1` | 9.2 h | **DONE -- ACCEPTED, CHAMPION** |
+| ~~2~~ | **iter 55** `iter52_kdalpha` | KD `alpha_decay` 0.5 -> 0.9 | 6.1 h | **DONE -- REJECTED** (confirms the KD-calibration mechanism) |
+| ~~3~~ | **iter 56** `iter57_decayshape` | `RWKV_DECAY_SHAPE=linear` | 6.1 h | **DONE 04:40:48 -- REJECTED.** Sub-bar vs iter 45 (+5.7e-5/+1.04e-4), loses to iter 53. **Stacking priced under perfect additivity: still FAILS the ahead bar -> do NOT queue it.** |
+| 4 | **`cmixpow` PHASE 2B** `run_iter54_phase2b.cmd` | the owed decay + eval | 6.1 h | **RUNNING** since 04:41:45 (WS done pre-outage) |
+| 5 | `kdalpha025` | KD `alpha_decay` 0.5 -> 0.25 | 6.1 h | waiter armed on `iter54_phase2b.log` |
+| 6 | `rgate` `iter55_rgate` | `RWKV_RGATE=card` | 9.2 h | waiter armed on `kdalpha025.log`; its 22:25 smoke failure is STALE (fix landed 22:31) and the smoke now PASSES with the contaminating var deliberately set |
 
 **★ ORDER CHANGED 2026-08-18 15:14 (Andrew asked why 54 was scheduled after 55/57).** iter 54's
 phase 2 was originally queued LAST, because iter 55's waiter already polled `iter52.log` and a
