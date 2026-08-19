@@ -37,6 +37,34 @@ still queued, so it was fixed in its generator (three prose lines, no executed l
 names an alpha the runner never sets. It is a note and not an error because a `REM` may legitimately
 discuss the value being moved away from, and the check has to distinguish prose from logic.
 
+## Pre-registered gate rule — written 04:25, BEFORE any number was read
+
+The eval was at 2202/2500 users and no result had been inspected when this was written. Fixing the
+rule now is the point: picking `--curve-side` *after* seeing that imm regressed would be gate
+shopping, and the curve-side exception is narrow enough to be tempting.
+
+**This lever gets the BOTH-MODES rule, not the curve-side exception.** `RWKV_DECAY_SHAPE=linear`
+changes the LR schedule of the decay phase, so it acts on the **whole trunk** through the optimizer.
+CLAUDE.md scopes the exception explicitly: it is for levers that touch only the curve/ahead objective
+(self-distillation, PAVA lambda, ahead-target and monotonicity changes), and states that
+"trunk / optimizer / capacity / topology changes keep the BOTH-modes rule, because those genuinely
+can move both."
+
+So the command is the plain form — **no `--curve-side`**:
+
+```
+paired_pvalue.py --cand-ahead RWKV-iter57_decayshape --cand-imm RWKV-P-iter57_decayshape \
+                 --champ-ahead RWKV-iter53_muonlora --champ-imm RWKV-P-iter53_muonlora --intersect
+```
+
+Accept only if **raw ≥ 0.0001 in BOTH modes** vs iter 53 **and** p < 0.0001 in both.
+
+**Prediction: null.** iters 41/43/44 established that three structurally different arrangements at
+identical capacity are mutually indistinguishable at |delta| ≤ 7.5e-5, and a decay-shape change is a
+reallocation of the same optimization budget rather than more of it. The honest prior is that the
+WSD decay tail is already near-flat in outcome, so reshaping it moves little. A null here bounds the
+schedule-shape family and is worth recording as such.
+
 ## When recording the verdict
 
 * Gate against the **current champion, iter 53** = `0.297523 ahead / 0.265191 imm` (VAL 5001–7500).
