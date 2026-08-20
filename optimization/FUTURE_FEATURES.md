@@ -1,3 +1,43 @@
+# ★★★ STATUS: THE REBUILD IS DONE (2026-08-20 01:27). Everything below is the PLAN it was built from.
+
+Andrew authorized it 2026-08-19; it completed in **~4 hours of wall clock**, not the ~23 h this page
+estimated. That estimate was already flagged here as unmeasured at scale, and it was wrong by ~6x in
+the helpful direction.
+
+| artifact | path (all on F:, originals untouched) | verified |
+|---|---|---|
+| label filter | `F:/rwkv_lmdb/label_filter_db_id` | 20,000 entries |
+| train, users 1-5000 | `F:/rwkv_lmdb/train_db_5k_h1_id` | 1,483,984 entries, **card_features width 44**, **0 users missing** |
+| eval, users 5001-10000 | `F:/rwkv_lmdb/test_db_5k_id` | **card_features width 44**, **0 users missing** |
+
+Width 44 = 24 original columns - 1 (Anki card state, dropped per Andrew 2026-08-09) + 21 new
+real-timestamp columns, i.e. the model input goes **92 -> 112**.
+
+**TWO CORRECTNESS FIXES ARE BAKED IN**, both found and fixed during the build and neither part of
+the original plan:
+1. **The -1 sentinel was being SUMMED into `elapsed_*_cumulative`** (reported by obezag on Discord).
+   Because the feature is `log(1+x)`, storing `C-1` gave `log(C)` where `log(1+C)` was meant -- and
+   at C=1 that is exactly the value the sentinel encodes, so 3.9% of non-first reviews were
+   indistinguishable from "no history".
+2. **Intervals were START-to-START, not END-to-START** (Andrew). The `-id` set corrected timestamps
+   to SHOW time, which is why it looked done, but `review_time.diff()` still carried the previous
+   review's duration. Fixed for `elapsed_seconds` (per card) and `t_since_any_review` (per user);
+   deliberately NOT for `elapsed_days` (a calendar-day index) or the age features (already anchored
+   to show time). Worth 31.6% on sub-minute gaps, ~0% beyond a day.
+
+**OPS LESSON FOR ANY FUTURE REBUILD: the WHOLE-USER (eval) config must drop to `PROCESSES=2`.**
+Each worker holds an entire user's matrix and those are now 1.8x wider, so the inherited
+`PROCESSES=6` exhausted 64 GB and died on a 4 MB allocation. The train config is unaffected -- it
+chunks at 16384. (Compounded by a concurrent training run whose four fetch workers measured ~9.7 GB
+EACH, against the ~2.6 GB CLAUDE.md records.)
+
+**STILL OWED before a candidate can be judged on these DBs:**
+* **re-base the champion** -- re-run it on the new DBs; cross-rebuild numbers are NOT comparable;
+* training/eval tomls pointing at the new paths, with `RWKV_ID_FEATURES=1`;
+* the **Rust input-width port** (92 -> 112) for the deploy path.
+
+---
+
 # Input features from real timestamps — THE DATASET IS BUILT; this is now an implementation plan
 
 > **★ STATUS CORRECTION 2026-07-26.** This page was written as "planning only — needs a new
