@@ -1295,6 +1295,38 @@ unchanged, which is what catches ANY accidental whole-table statistic) and
 after touching `srs_model.py`), the 100-user de-risk build (ON-vs-OFF on `-id`; the `-id`-vs-published
 comparison is INVALID since `size` moves for ~30% of users from the dataset swap alone), a rebuilt
 `label_filter_db`, and the Rust input-width port.
+**★★ GENERATION 2 (Andrew 2026-08-20, "we still have to do another LMDB rebuild") -- 21 -> 23 columns,
+input 112 -> 114, params 558,212 -> 565,252 (verified by constructing the model). Adds the two
+features his coverage audit found designed-but-never-implemented: `scaled_sibling_gap` and
+`card_predates_first_review`.** New dbs `train_db_5k_h1_id2` / `test_db_5k_id2`; `label_filter_db_id`
+is REUSED (it selects WHICH reviews count, not what they contain). Runner
+`scratchpad/features_rebuild/run_rebuild2.cmd`, tomls `*_id2.toml`. Ran CPU-only inside featA's own
+runtime, so featB measures the COMPLETE bundle instead of a 21-column one -- ~11 h saved versus
+rebuilding after featB.
+**★ THE DISK BUDGET WAS WRONG BY 2.5x: LMDB map_size is SPARSE on Windows, so the file LENGTH is the
+RESERVATION, not the allocation.** Gen 1 occupies **115.8 + 115.9 GiB**, not the 372.5 + 232.8 every
+plan quoted. Found by accident -- deleting two finished 27.9 GiB de-risk dbs returned **3 GiB**. Use
+`GetCompressedFileSize` (or measure free space before/after) for any sparse store; `Get-ChildItem |
+Measure Length` is fiction there.
+**★ COVERAGE WAS MEASURED BEFORE COMMITTING, AND IT LOWERS THE PRIOR:** the sibling gap is defined on
+only **~10-16% of rows**, and the CEILING (rows whose note had another card created earlier) is
+**~17%**. `preset_age` was dropped from gen 1 at 7.1%; the deck-tree level reached 49.2% and tied
+(iter 50). **Pre-registered: this column is unlikely to move the gate.** It ships anyway on the
+asymmetry -- **a column IN the db can be ablated without a rebuild, a column OUT cannot** -- which
+is also why the redundancy screen is now interpretation, not a gate.
+⚠ **BUT THE ABLATION MECHANISM DOES NOT EXIST YET (checked in code, not assumed):
+`RWKV_ZERO_FEATURES` is HARD-REFUSED under `RWKV_ID_FEATURES=1`** (`srs_model.py:438`,
+`srs_model_rnn.py:63`) -- correctly, since the rebuild drops the card-state column so `=22` would
+mask `day_of_week`. **OWED: a NAME-based `RWKV_ABLATE_FEATURES` resolved through
+`CARD_FEATURE_COLUMNS`**, in BOTH model files, with a smoke. ⚠ Do NOT write it while a chain is
+mid-flight: a **plain eval is the only path that TorchScript-compiles the model**, which is how
+iter 48 lost an eval.
+**★ A THIRD COLUMN WAS REJECTED BY A RULE WRITTEN DOWN FIRST:** `scaled_sibling_count` ships only if
+>=30% of rows have >=1 prior sibling card; measured 17%, so it does not. Pre-registering the
+threshold is what makes that a decision rather than a rationalisation.
+⚠ **`mk_features_ab.py` NOW TAKES AN ARM FILTER** (`python mk_features_ab.py featB`). It rewrites BOTH
+runners and featA's was RUNNING -- cmd.exe re-reads a batch file from a saved byte offset, the trap
+that cost iters 43 and 46.
 **✗ ITER 51 FAILED 2026-08-16 20:31 -- NOT a reject, no number produced** (`iter51_muon`,
 `RWKV_MUON_POLAR=1`: a per-step Polar-Express Newton-Schulz schedule replacing Muon's single fixed
 triple). Died hollow -- 410 good steps, then `Nan from RWKV-7` on all 3,684 remaining batches. ~0.5 h

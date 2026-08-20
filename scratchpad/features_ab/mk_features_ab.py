@@ -35,6 +35,7 @@ before it could cost a re-base.
 Usage: .venv/Scripts/python.exe scratchpad/features_ab/mk_features_ab.py
 """
 import io
+import sys
 import os
 import re
 
@@ -71,9 +72,9 @@ ARMS = {
         why="CONTROL: champion recipe with KD OFF on the OLD 92-dim DBs.",
     ),
     "featB": dict(
-        train_db="F:/rwkv_lmdb/train_db_5k_h1_id",
-        val_db="F:/rwkv_lmdb/test_db_5k_id",
-        eval_db="F:/rwkv_lmdb/test_db_5k_id",
+        train_db="F:/rwkv_lmdb/train_db_5k_h1_id2",
+        val_db="F:/rwkv_lmdb/test_db_5k_id2",
+        eval_db="F:/rwkv_lmdb/test_db_5k_id2",
         lf_db="F:/rwkv_lmdb/label_filter_db_id",
         idf="1",                      # ON -> 112-dim
         zero="",                      # the rebuild DROPPED the card-state column at source
@@ -269,11 +270,27 @@ def validate(text):
 
 
 if __name__ == "__main__":
-    # Param counts differ ONLY by the input FC: 92 -> 112 dims x the 320-wide FC = +6,400,
-    # measured by the idfeat diagnostic (558,212 -> 564,612). Baked into a runner guard so an
-    # arm that silently ran at the wrong width cannot be mistaken for a result.
+    # Param counts differ ONLY by the input FC: 92 -> 114 dims x the 320-wide FC = +7,040.
+    # 564,612 was the 112-dim figure; generation 2 adds scaled_sibling_gap and
+    # card_predates_first_review, i.e. 2 more dims = +640. Baked into a runner guard so an arm
+    # that silently ran at the wrong width cannot be mistaken for a result.
     ARMS["featA"]["params"] = "558212"
-    ARMS["featB"]["params"] = "564612"
+    ARMS["featB"]["params"] = "565252"
+
+    # ⚠ ARM FILTER, added 2026-08-20. This script rewrites BOTH runners, and featA's was RUNNING
+    # when generation 2 was prepared. cmd.exe re-reads a batch file from a saved BYTE OFFSET
+    # every time a command returns, so rewriting a live runner makes it resume mid-garbage --
+    # the documented trap that cost iters 43 and 46. Pass an arm name to regenerate only that
+    # arm; with no argument it still writes both, which is correct only when neither is running.
+    only = sys.argv[1:] or None
+    if only:
+        missing = [a for a in only if a not in ARMS]
+        assert not missing, "unknown arm(s): %s" % missing
+        for a in list(ARMS):
+            if a not in only:
+                del ARMS[a]
+        print("ARM FILTER: writing only %s" % ", ".join(only))
+
     for arm, cfg in ARMS.items():
         d = os.path.join("scratchpad", "features_ab", arm)
         os.makedirs(d, exist_ok=True)

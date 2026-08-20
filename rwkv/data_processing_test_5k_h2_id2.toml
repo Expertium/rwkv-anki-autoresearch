@@ -1,0 +1,23 @@
+# -id EVAL db, GENERATION 2 -- users 5001-10000, the eval half only. Same two added columns as
+# the gen-2 train db; eval feeds the same feature vector, so a train-only rebuild would silently
+# score a mismatched layout.
+#
+# PROCESSES=2, NOT 6. WHOLE-USER format (MAX_BATCH_SIZE=2097152), so each worker holds an entire
+# user's feature matrix -- now 46 columns instead of 24. At 6 workers, beside a training run whose
+# fetch workers were measured at ~9.7 GB each, that exhausted 64 GB and died on a 4 MB allocation.
+#
+# map_size 250 GB is SPARSE; generation 1 actually allocates ~116 GiB.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id2"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 2
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

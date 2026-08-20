@@ -75,7 +75,11 @@ def run(flag, want):
 
 
 def main():
-    ok = [run("0", 92), run("1", 112)]
+    # 114 = 68 ID-encoding dims + (24 base - 1 dropped card-state + 23 new). The 23 became
+    # 21 + 2 on 2026-08-20 when Andrew's coverage audit found scaled_sibling_gap and
+    # card_predates_first_review had been designed and never implemented. The literal is
+    # deliberate: deriving it from id_features would make this smoke agree with itself.
+    ok = [run("0", 92), run("1", 114)]
     print("\n" + ("WIDTH_ALL_PASS" if all(ok) else "WIDTH_FAILED"))
     sys.exit(0 if all(ok) else 1)
 

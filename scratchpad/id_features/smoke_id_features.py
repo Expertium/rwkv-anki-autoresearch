@@ -10,7 +10,7 @@ WHAT EACH HALF PROVES
 
 * OFF -- the column list is the original 24 and the published dataset still processes. This is the
   gate that lets the change be committed while every live run still reads the existing LMDBs.
-* ON -- on the `-id` set: the vector is 24-1+21 = 44 columns, every value is finite (the NaN
+* ON -- on the `-id` set: the vector is 24-1+23 = 46 columns, every value is finite (the NaN
   landmine is what this is really watching), and three leakage properties hold.
 
 ★ THE LEAKAGE CHECKS ARE THE POINT. Everything else here would pass even if the features were
@@ -77,9 +77,12 @@ def off():
 def on():
     print("=== RWKV_ID_FEATURES ON: correctness + leakage on the -id dataset ===")
     check("scaled_state dropped", "scaled_state" not in CARD_FEATURE_COLUMNS)
-    check("21 new columns appended", all(c in CARD_FEATURE_COLUMNS for c in idf.NEW_COLUMNS),
+    check("23 new columns appended", all(c in CARD_FEATURE_COLUMNS for c in idf.NEW_COLUMNS),
           f"{len(CARD_FEATURE_COLUMNS)} columns total")
-    check("width is 24-1+21 = 44", len(CARD_FEATURE_COLUMNS) == 44,
+    # 23, not 21, since 2026-08-20: Andrew's coverage audit found scaled_sibling_gap and
+    # card_predates_first_review were designed here and never added to NEW_COLUMNS. The
+    # literal is deliberate -- comparing against len(NEW_COLUMNS) would make it self-agreeing.
+    check("width is 24-1+23 = 46", len(CARD_FEATURE_COLUMNS) == 46,
           str(len(CARD_FEATURE_COLUMNS)))
     if not IDD.is_dir():
         print(f"  [SKIP] -id dataset not at {IDD}")

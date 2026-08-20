@@ -1,0 +1,27 @@
+# -id TRAIN db, GENERATION 2 -- users 1-5000. Adds the two columns Andrew's 2026-08-20 coverage
+# audit found missing (scaled_sibling_gap, card_predates_first_review), so card_features is 46
+# wide and the model input is 114. Built BESIDE _id, which stays readable until this one is
+# verified; _id is deleted only after check_db passes here.
+#
+# DISK: map_size 400 GB is SPARSE and the logical size is NOT the cost. Measured on generation 1
+# with GetCompressedFileSize: this db actually allocates ~116 GiB, not 372.5. The plan's
+# "605 GB needed" was logical and overstated the real cost ~2.5x.
+#
+# PROCESSES=4, not the 6 generation 1 used. Chunking at 16384 does bound each worker, and 6 was
+# proven safe beside a training run once -- but free RAM measured 18.9 GB when this launched, the
+# frame is 2 columns wider, and an OOM here would take the concurrent featA run (7.75 h) with it.
+# The rebuild has ~8 h of slack against a ~4 h job, so the asymmetry says buy the insurance.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_id2"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 4
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

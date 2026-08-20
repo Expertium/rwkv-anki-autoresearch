@@ -78,6 +78,14 @@ NEW_COLUMNS = [
     "scaled_creation_batch_pos_1h",
     # -- preset: the AGE is dead (defined for 1 row in 14); ship only the flag --
     "is_default_preset",
+    # -- THE TWO OMISSIONS, added 2026-08-20 after Andrew's coverage audit --
+    # Andrew's sibling gap, in its deployable (non-leaking) form: seconds since the END of the
+    # most recent review of a DIFFERENT card of the same note. See sibling_gap_seconds().
+    "scaled_sibling_gap",
+    # Andrew's "probably not important, but we can try": was this card created before the user
+    # ever reviewed anything? Separates imported/pre-existing collections from cards made by a
+    # user who was already studying.
+    "card_predates_first_review",
 ]
 
 # Measured 2026-08-03 over 300 users / 24,306,799 reviews, stride-16 across the TRAIN half 1-5000
@@ -110,6 +118,11 @@ STATISTICS_ID = {
     "creation_batch_pos_1h_std": 1.9252,
     "deck_depth_mean": 1.2703,
     "deck_depth_std": 1.6451,
+    # Added 2026-08-20 with the sibling gap. Same methodology (stride sample of the TRAIN half
+    # only) but measured by scratchpad/features_rebuild/sibling_stats.py, not feature_stats_id.py.
+    # PLACEHOLDER -- overwritten with the 300-user measurement before the rebuild launches.
+    "sibling_gap_mean": 9.3354,
+    "sibling_gap_std": 4.2198,
 }
 
 
@@ -290,6 +303,85 @@ def _deck_depths(df_decks_raw):
     return depth
 
 
+def sibling_gap_seconds(df):
+    """Seconds since the END of the most recent review of a DIFFERENT card of the same note.
+
+    ⚠ THIS IS NOT ANDREW'S LITERAL FORMULA, AND THE DIFFERENCE IS A LEAK. His example takes
+    `min(|t_now - t_sib|)` over ALL siblings, which for card A1 reviewed on day 100 includes A3's
+    day-110 review -- a future event. Anki knows a sibling's PAST reviews when it schedules a card
+    and not its future ones, so the leaking form is not deployable, and `size` would be identical
+    so no gate would catch it. Restricted to PRECEDING siblings the min collapses:
+
+        min over PAST siblings of |t_now - t_sib|  ==  t_now - max(t_sib)
+
+    i.e. plain recency, no `min` needed. Andrew's own example is unchanged by the restriction (its
+    nearest sibling is the past one); the two forms diverge only in the leaking case.
+
+    METHOD -- the block trick, which makes this O(n log n) rather than a per-row scan over 372 M
+    rows. Sort by (note_id, review_time). Within a note, a maximal run of consecutive rows sharing
+    one card is a BLOCK; adjacent blocks have different cards by construction. So for EVERY row of
+    block b, the most recent different-card review is the last row of block b-1 -- one shift over
+    blocks instead of a search over siblings.
+
+    END-to-START like every other interval here (Andrew 2026-08-19): the previous sibling review's
+    ANSWER time (`review_time + duration`) is the start of the gap. Clipped at 0 for the overlap
+    case, and -1 (the pipeline's sentinel) where the note has no preceding sibling review at all --
+    which covers single-card notes, a note's first block, and rows whose note_id is missing.
+
+    Returns a float64 array aligned to `df`'s current row order.
+    """
+    import pandas as pd
+
+    n = len(df)
+    if n == 0:
+        return np.zeros(0, dtype=np.float64)
+
+    rt = df["review_time"].to_numpy(dtype=np.int64).astype(np.float64)
+    dur = df["duration"].to_numpy(dtype=np.int64).astype(np.float64)
+    nid = pd.to_numeric(df["note_id"], errors="coerce").to_numpy(dtype=np.float64)
+    cid = pd.to_numeric(df["card_id"], errors="coerce").to_numpy(dtype=np.float64)
+
+    out = np.full(n, -1.0, dtype=np.float64)
+    valid = np.isfinite(nid) & np.isfinite(cid)
+    if not valid.any():
+        return out
+
+    idx = np.flatnonzero(valid)
+    # STABLE sort: `df` is already sorted by review_time (asserted by the caller), so a stable
+    # sort on note_id alone preserves time order inside each note. A non-stable sort would break
+    # the whole block argument silently.
+    order = idx[np.argsort(nid[idx], kind="stable")]
+    note_s = nid[order]
+    card_s = cid[order]
+    rt_s = rt[order]
+    end_s = rt_s + dur[order]
+
+    m = order.size
+    new_note = np.empty(m, dtype=bool)
+    new_note[0] = True
+    new_note[1:] = note_s[1:] != note_s[:-1]
+    new_block = new_note.copy()
+    new_block[1:] |= card_s[1:] != card_s[:-1]
+    block = np.cumsum(new_block) - 1
+    nb = int(block[-1]) + 1
+
+    # Last row of each block wins the scatter, which is exactly the row we want.
+    b_last = np.zeros(nb, dtype=np.int64)
+    b_last[block] = np.arange(m, dtype=np.int64)
+    b_note = np.zeros(nb, dtype=np.float64)
+    b_note[block] = note_s
+    b_end = end_s[b_last]
+
+    prev_end = np.full(nb, np.nan, dtype=np.float64)
+    same_note = b_note[1:] == b_note[:-1]
+    prev_end[1:] = np.where(same_note, b_end[:-1], np.nan)
+
+    row_prev_end = prev_end[block]
+    gap = (rt_s - row_prev_end) / 1000.0
+    out[order] = np.where(np.isnan(row_prev_end), -1.0, np.maximum(gap, 0.0))
+    return out
+
+
 def add_id_features(df, df_cards, df_decks_raw):
     """Add every column in NEW_COLUMNS to `df`, in place. Requires `review_time` (epoch ms).
 
@@ -428,6 +520,25 @@ def add_id_features(df, df_cards, df_decks_raw):
     # that is one constant 81% of the time. 67.4% of users never leave the default preset, so the
     # flag ("this user bothered to configure this deck") carries most of what the age could.
     df["is_default_preset"] = (np.nan_to_num(pid, nan=-1.0) == _DEFAULT_ID).astype(np.float64)
+
+    # ---------------- the two omissions (2026-08-20) ----------------
+    # Sibling recency. The note stream pools every review of a note, so it has SEEN these reviews;
+    # whether its recurrence encodes the GAP to the nearest one is a separate claim and is what
+    # scratchpad/features_rebuild/sibling_redundancy_screen.py measures. Kept in the rebuild either
+    # way, because a column that is IN the DB can be ablated for free by zeroing it, while a column
+    # that is OUT costs another full rebuild to add.
+    sib = sibling_gap_seconds(df)
+    df["scaled_sibling_gap"] = np.where(
+        sib == -1.0, 0.0, _std("sibling_gap", _log_t(np.maximum(sib, 0.0)))
+    )
+
+    # Was the card created before this user ever reviewed anything? `rt[0]` is the user's first
+    # review in their own frame, so for every row after the first this is strictly historical, and
+    # for the first row it compares against that row's own timestamp -- knowable at deploy time
+    # either way. Separates an imported/pre-existing collection from cards made mid-study.
+    df["card_predates_first_review"] = np.where(
+        card_ts, (cid < float(rt[0])).astype(np.float64), 0.0
+    )
 
     for c in NEW_COLUMNS:
         assert c in df.columns, f"id_features did not emit {c}"

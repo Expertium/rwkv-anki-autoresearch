@@ -1,3 +1,93 @@
+# ★★ GENERATION-2 REBUILD (Andrew 2026-08-20): "we still have to do another LMDB rebuild"
+
+> *"Let's do bundle first, but we still have to do another LMDB rebuild"*
+
+**Both omissions are now implemented and the rebuild is running.** `NEW_COLUMNS` goes 21 -> 23,
+card_features 44 -> 46, model input 112 -> **114**, params 558,212 -> **565,252** (verified by
+constructing the model, not by arithmetic). New dbs `train_db_5k_h1_id2` / `test_db_5k_id2`;
+`label_filter_db_id` is REUSED because it selects which reviews count, not what they contain.
+
+### Why this cost no GPU time
+featA reads the OLD 92-dim dbs and the `_id` dbs had no reader, so a CPU-only rebuild ran fully
+inside featA's own runtime. Doing it in this window means featB measures the COMPLETE 23-column
+bundle instead of a 21-column one we would then have had to re-measure -- about 11 h saved against
+the alternative ordering (run featB on 21, rebuild, run a third arm on 23).
+
+### ★ THE DISK PLAN WAS WRONG BY 2.5x, IN THE SAFE DIRECTION
+This page budgeted "605 GB against 889 GB free". That is the **logical** size: LMDB map_size is
+sparse on Windows and the file length equals the map, not the allocation. Measured with
+`GetCompressedFileSize`, generation 1 actually occupies **115.8 GiB (train) + 115.9 (test)**, not
+372.5 + 232.8. The tell arrived by accident -- deleting two finished 27.9 GiB de-risk dbs returned
+**3 GiB**, not 55.8.
+**The rule: for any sparse-allocating store, `Get-ChildItem | Measure Length` reports the RESERVATION
+and free-space arithmetic built on it is fiction.** Use `GetCompressedFileSize`, or measure free
+space before and after.
+
+### ★ COVERAGE MEASURED FIRST, AND IT LOWERS THE PRIOR ON THE SIBLING GAP
+`scratchpad/features_rebuild/sibling_stats.py`, stride sample of the TRAIN half only:
+
+| quantity | coverage |
+|---|---|
+| rows with a preceding sibling review (**the gap**) | **~10-16%** |
+| rows whose note had >=1 OTHER card created earlier (**the ceiling**) | **~17%** |
+
+For scale: `preset_age` was DROPPED from generation 1 for being defined on 1 row in 14 (7.1%), and
+the deck-tree parent level reached **49.2%** and returned an exact tie (iter 50). The sibling gap
+sits between them and much nearer the dropped one. **Pre-registered expectation: this column is
+unlikely to move the gate.** It ships anyway because Andrew asked for it and because of the
+asymmetry below.
+
+### ★ THE ASYMMETRY THAT DECIDED WHAT SHIPS
+**A column that is IN the db can be ablated without rebuilding; a column that is OUT costs a full
+rebuild to add.** So the cheap error is to include a column that turns out dead, and the expensive
+error is to omit one. That is why the low-coverage sibling gap is in, and why the redundancy screen
+is now evidence for INTERPRETING the result rather than a gate on shipping it.
+
+⚠ **AND THE ABLATION MECHANISM DOES NOT EXIST YET -- checked, not assumed.** `RWKV_ZERO_FEATURES` is
+**hard-refused** whenever `RWKV_ID_FEATURES=1` (`srs_model.py:438`, mirrored at
+`srs_model_rnn.py:63`). The refusal is CORRECT on its own terms: the rebuild drops the card-state
+column at the source, so the historical `=22` would silently mask `day_of_week` instead. But it also
+means the family-level ablation plan below is **not executable today**.
+**OWED, and it is small:** a NAME-based `RWKV_ABLATE_FEATURES=scaled_sibling_gap,tod_sin` resolved
+through `CARD_FEATURE_COLUMNS`, which is immune to the renumbering the numeric guard exists to
+prevent. It must land in **both** `srs_model.py` and `srs_model_rnn.py` (three-way parity) with a
+smoke case, and the numeric refusal stays.
+**⚠ DO NOT WRITE IT WHILE A CHAIN IS MID-FLIGHT.** A chain's later phases are new processes that
+import whatever is on disk then, and a **plain eval is the only path that TorchScript-compiles the
+model** -- which is exactly how iter 48 lost an eval to a `@torch.jit.ignore` return-type bug that
+the compile-side check had passed. Land it when no eval is pending, and run
+`scratchpad/parity3/smoke_scripted_eval.sh` after.
+
+### ★ A THIRD COLUMN WAS CONSIDERED AND REJECTED BY A PRE-REGISTERED RULE
+`scaled_sibling_count` (how many siblings existed as of review time) is the high-coverage half of
+Andrew's interference intuition and the note stream plausibly does not encode it. The rule was
+written down BEFORE the number: ship it only if >=30% of rows have >=1 prior sibling card. Measured
+**17%**. It does not ship. Recording the threshold in advance is what makes this a decision rather
+than a rationalisation.
+
+### The non-leaking form, restated because the code now depends on it
+Andrew's literal `min(|t_now - t_sib|)` over ALL siblings includes FUTURE sibling reviews. Restricted
+to preceding siblings it collapses to `t_now - max(t_sib)`, i.e. plain recency with no `min`.
+`id_features.sibling_gap_seconds()` implements that with a block trick (sort by note+time; adjacent
+blocks differ by card, so the answer for every row of block b is the last row of block b-1), which
+is O(n log n) instead of a per-row sibling scan over 372 M rows. END-to-START like every other
+interval here, clipped at 0, sentinel -1 where there is no preceding sibling.
+
+### Smokes, all green before launch
+* `smoke_id_features.py` -- **PREFIX INVARIANCE at exactly 0.000e+00**, and it covers the new
+  columns automatically because it iterates `NEW_COLUMNS`. Finiteness, determinism, the
+  `create_sample` partition assert (42106, 46), causal-clip checks all pass.
+* `smoke_id_features_width.py` -- 92 and 114 agree across the training class, the deploy RNN class
+  and `CARD_FEATURE_COLUMNS`.
+* Param count 565,252 verified by constructing `SrsRWKV`, and baked into featB's runner guard.
+
+### ⚠ The generator now takes an ARM FILTER
+`mk_features_ab.py` rewrites BOTH runners, and featA's was RUNNING. cmd.exe re-reads a batch file
+from a saved byte offset, so rewriting a live runner makes it resume mid-garbage -- the trap that
+cost iters 43 and 46. `python mk_features_ab.py featB` now regenerates one arm only.
+
+---
+
 # ★★ FEATURE-COVERAGE AUDIT + PER-FEATURE TESTING (Andrew, 2026-08-20)
 
 > *"I was thinking we should try each new feature separately. Also, you forgot the number of days
