@@ -1,3 +1,65 @@
+# ★★ FEATURE-COVERAGE AUDIT + PER-FEATURE TESTING (Andrew, 2026-08-20)
+
+> *"I was thinking we should try each new feature separately. Also, you forgot the number of days
+> since the closest sibling review, check if there are any other features you forgot."*
+
+## What was implemented vs what this page proposed
+
+The rebuild shipped **21** columns. Cross-checking them against this page's own candidate table:
+
+| candidate | priority | in the rebuild? |
+|---|---|---|
+| time-of-day raw + circular-mean deviation | high | YES (4 cols) |
+| real-phase calendar cycles | high | YES (5 cols: dow, doy, is_weekend) |
+| first review - card creation | high | YES |
+| seconds-resolution time since any review | high | YES |
+| creation-batch 1min/1h/1d + position | med | YES (4 cols) |
+| user tenure | med | YES |
+| deck age at review, is-default, depth, card-predates-deck | med | YES (4 cols) |
+| preset age | med | DROPPED ON PURPOSE -- defined for 1 row in 14 |
+| `card_id - note_id` gap / session count per day | skip | correctly skipped |
+| **SIBLING REVIEW GAP** | **queued** | **NO -- MISSED** |
+| **card created before vs after the user's first-ever review** | **low** | **NO -- MISSED** |
+
+### The two genuine omissions
+
+1. **Days since the nearest PRECEDING sibling review** (Andrew's, filed 2026-08-18 with its own
+   section below). It was analysed here -- including the correction that a `min` over ALL siblings
+   leaks the future, so the deployable form is "time since the most recent sibling review" -- and
+   then simply never added to `NEW_COLUMNS`. Filing a feature is not implementing it, and nothing in
+   the pipeline notices the difference.
+   ⚠ Its **CPU redundancy screen was also never run**: regress the true sibling gap on the champion's
+   note-stream state and read the R2. High R2 means the note stream already carries it (the iter-50
+   outcome) and it should be dropped; low R2 means it adds information the recurrence cannot derive.
+   That screen costs ~90 min of CPU and gates whether it deserves a slot at all.
+2. **Card created before vs after the user's first-ever review** -- `low`, Andrew's own "probably not
+   important, but we can try". Cheap (one boolean) and never added.
+
+Neither can be added without ANOTHER rebuild, since both are stored columns.
+
+## ★ PER-FEATURE TESTING: the cost, and what to do instead
+
+Andrew asked to try each feature separately. Priced honestly at the measured ~7.75 h per arm
+(KD-off, 1 WS epoch + decay + a 2500-user eval):
+
+| granularity | arms | GPU time |
+|---|---|---|
+| one at a time (21, or 23 with the omissions) | 22-24 | **~170-186 h = 7-8 days** |
+| by FAMILY (time-of-day / calendar / recency+ages / deck / creation-batch / preset) | 7 | **~54 h** |
+| bundle now, then ablate only what won | 2 + k | 15.5 h + 7.75 h per ablation |
+
+**RECOMMENDATION: bundle first, ablate second** -- which is what the running A/B already does.
+The bundle answers the decision that actually gates everything ("is the new pipeline worth
+adopting?") in 15.5 h. If it wins, ablating the winners is a targeted follow-up on a *smaller* set.
+If it loses, per-feature runs would mostly be measuring noise around zero, 21 times.
+
+⚠ **The one case that argues for going finer FIRST:** a harmful feature can mask a helpful one in a
+bundle. That is real, but it is cheaper to detect it *after* a null bundle -- by ablating families,
+7 arms not 21 -- than to pay for 21 arms up front on the chance that it happened.
+
+**If Andrew wants finer granularity anyway, FAMILY level is the right unit**: 7 arms, ~54 h, and the
+families are already the natural groupings in `NEW_COLUMNS` (they are even commented as such).
+
 # ★★★ STATUS: THE REBUILD IS DONE (2026-08-20 01:27). Everything below is the PLAN it was built from.
 
 Andrew authorized it 2026-08-19; it completed in **~4 hours of wall clock**, not the ~23 h this page
