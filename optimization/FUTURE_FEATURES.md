@@ -73,6 +73,42 @@ blocks differ by card, so the answer for every row of block b is the last row of
 is O(n log n) instead of a per-row sibling scan over 372 M rows. END-to-START like every other
 interval here, clipped at 0, sentinel -1 where there is no preceding sibling.
 
+### ★ THE BLOCK TRICK IS VERIFIED AGAINST BRUTE FORCE, NON-VACUOUSLY
+`scratchpad/features_rebuild/verify_sibling_gap.py` recomputes the gap the obvious O(n^2) way --
+each row scans its own prefix for the latest different-card review of the same note -- and compares.
+User 101, **37,122 rows, 3,035 defined, 2,986 nonzero: max |delta| = 0.000e+00.**
+
+⚠ **THE FIRST VERSION OF THAT CHECK WAS VACUOUS AND SAID `0.000e+00` ANYWAY.** It ran on user 1,
+who has **4005 cards and 4005 notes -- not one multi-card note** -- so it compared an all-sentinel
+array against an all-sentinel array. The file now REFUSES to report agreement unless the reference
+contains >200 defined rows and >100 nonzero gaps. Same family as the parity harness's rule about
+randomizing zero-init params before comparing: **an agreement between two empty results is not
+evidence, and it looks exactly like success.**
+⚠ A second self-inflicted one, the same ten minutes: an unchecked `str.replace()` silently failed to
+match, left `df.head(0)` in place, and produced a "contradiction" between brute force and the block
+trick that was entirely my own harness. **Assert the match count on every programmatic edit** -- the
+repo already learned this for runner generators; it applies to throwaway scripts too.
+
+### ★ PER-USER COVERAGE IS FAR MORE SKEWED THAN THE AGGREGATE (`sibling_value_check.py`)
+
+| user | reviews | sibling gap defined | card_predates_first_review = 1 |
+|---|---|---|---|
+| 1 | 22,430 | **0.00%** (4005 cards / 4005 notes) | 0.14% |
+| 2 | 69,765 | **0.41%** | **49.94%** |
+| 101 | 37,122 | **8.18%** | 17.50% |
+
+Two readings, and they point opposite ways:
+* **The sibling gap is near-dead for most users.** User 2 has 53% of NOTES carrying >1 card yet only
+  **2.03% of REVIEWS** land on them -- multi-card notes exist and are barely studied. The ~10-16%
+  aggregate is carried by a minority of users; the per-user p10 is 0.0000.
+  Where it IS defined the shape is bimodal and sensible: user 101's median gap is **0.00 days**
+  (p90 ~30 min -- burial off, same session) while user 2's is **118 days** (p90 2.8 years -- two
+  cards of one note that simply never met). Only the first mode is "sibling interference".
+* **`card_predates_first_review` is the stronger of the two omissions, and that was not expected**
+  (Andrew filed it `low`, "probably not important"). It ranges 0.14% -> 49.94% across three users,
+  i.e. it separates a user who imported a collection wholesale from one who built it while studying.
+  That is a user-level property the model currently has no column for.
+
 ### Smokes, all green before launch
 * `smoke_id_features.py` -- **PREFIX INVARIANCE at exactly 0.000e+00**, and it covers the new
   columns automatically because it iterates `NEW_COLUMNS`. Finiteness, determinism, the
