@@ -219,3 +219,61 @@ uniform decay reproduces.
   28.2%, which moved the verdict from "don't bother" to "marginal" — so the bug mattered.
 * **Do not pipe a background job through `tail`.** The output file *is* the record; the first
   ablation run kept only its last 22 lines and lost three of four users' rows.
+
+---
+
+# THE HUNT, EXECUTED (2026-08-20) — results
+
+The GPU freed at 05:18 when rgate finished, and the chained waiter started the matrix
+automatically at 05:20:28. No idle GPU.
+
+## 1. `base` — PASS, 24m37s
+
+`DONE_EXIT_0`. WS 12 min, decay 11 min, 20-user eval 1m17s — matching the ~25 min the harness was
+designed for. All gates fired: artifact-at-expected-step, validation-actually-ran, derived alpha
+guard.
+
+**`DIAG_STEPS=546` is now confirmed by execution**, not assumed — `base_ws_546.pth` and
+`base_d_546.pth` both exist, which is what the gate requires.
+
+## 2. `resume` — PASS. The highest-value target, and the fix had never been run
+
+The outage broke this path and yesterday's `make_resume.py` fix had only ever been *read*. Staged a
+simulated crash (base's step-50/200/400 checkpoints in a fresh dir, final checkpoint absent), then
+ran the real recovery:
+
+```
+appended keys absent from the source toml: LOAD_MODEL_FOLDER, LOAD_MODEL_NAME
+[resume-skip] epoch 0: skipping the first 400 already-trained groups (resume at global step 401)
+exit=0     reached step 545/546     res_ws_546.pth written
+```
+
+The first line **names the bug it was fixed for**: the old replace-only code silently never wrote
+those two keys, which made `train_rwkv` die on an `AttributeError`, swallow it, exit 0, and let the
+runner log "WS OK" after 8 seconds.
+
+Writing a correct toml was never the question. Firing the skip, reaching the final step, and not
+swallowing an error are — and only execution shows those.
+
+## 3. `idfeat` — PASS, and it changed from a negative probe into a real one
+
+Planned as "does a 92-dim mismatch fail *loudly*". The rebuild finishing at 01:27 turned it into a
+genuine end-to-end test of the new-features path: **exit 0, trained to step 546 on the rebuilt DBs,
+564,612 params** = 558,212 + 20 new input dims × the 320-wide input FC. Exactly the expected arithmetic.
+
+### ⚠ TWO REAL TRAPS IT SURFACED, both aimed at the champion re-base
+
+1. **THE KD DUMP IS INVALID ON THE REBUILT DBs.** `size` moves for ~30% of users from the dataset
+   swap alone, so the batch composition its per-step `labels_sum` checksum guards no longer matches
+   — it would hard-exit 43, or worse, distil against mismatched batches. The re-base must either
+   regenerate the dump on the new DBs or drop KD. **That is not a small call: iters 32/35/39/45
+   banked ~0.0019 from KD.** Found in 25 minutes instead of 9 hours into a re-base.
+2. **`write_decay_setup.py` and `write_eval_toml.py` hardcode the OLD db paths** (`train_db_5k_h1`,
+   `F:/rwkv_lmdb/test_db_5k`, `label_filter_db`). Any runner built for the new DBs gets a WS phase on
+   112-dim data and decay/eval phases silently pointed at 92-dim data. Fix the generators before the
+   re-base, not after.
+
+## Still open
+
+`qat` — the quant-aware path, which was silently **inert** for every track-2 run until `70185c7`.
+`assert_qat_live.py` covers the config; only a real run covers the kernels.
