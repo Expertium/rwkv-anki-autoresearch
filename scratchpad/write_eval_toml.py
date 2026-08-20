@@ -9,6 +9,14 @@ import os
 import re
 import sys
 
+# ⚠ DB PATHS ARE ENV-OVERRIDABLE (2026-08-20). They were HARDCODED to the 92-dim DBs, so a
+# runner built for the rebuilt 112-dim data got a WS phase on the new inputs and decay/eval
+# phases silently pointed at the old ones. Found by the idfeat diagnostic before it could
+# cost a re-base. Defaults are the OLD paths, so every existing runner is byte-identical.
+_VALDB = os.environ.get("RWKV_VAL_DB", "F:/rwkv_lmdb/test_db_5k")
+_EVALDB = os.environ.get("RWKV_EVAL_DB", "F:/rwkv_lmdb/test_db_5k")
+_LFDB = os.environ.get("RWKV_LABEL_FILTER_DB", "label_filter_db")
+
 folder, prefix, out, fa, fi = sys.argv[1:6]
 user_start = sys.argv[6] if len(sys.argv) > 6 else "5001"
 user_end = sys.argv[7] if len(sys.argv) > 7 else "6000"
@@ -30,9 +38,9 @@ FILE_IMM = "{fi}"
 MODEL_PATH = "{path}"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
-DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_PATH = "{_EVALDB}"
 DATASET_LMDB_SIZE = 250_000_000_000
-LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_PATH = "{_LFDB}"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 RAW = false
 RAW_DB_PATH = "raw/result_db"

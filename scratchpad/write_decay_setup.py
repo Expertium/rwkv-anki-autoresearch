@@ -14,6 +14,14 @@ import re
 import shutil
 import sys
 
+# ⚠ DB PATHS ARE ENV-OVERRIDABLE (2026-08-20). They were HARDCODED to the 92-dim DBs, so a
+# runner built for the rebuilt 112-dim data got a WS phase on the new inputs and decay/eval
+# phases silently pointed at the old ones. Found by the idfeat diagnostic before it could
+# cost a re-base. Defaults are the OLD paths, so every existing runner is byte-identical.
+_VALDB = os.environ.get("RWKV_VAL_DB", "F:/rwkv_lmdb/test_db_5k")
+_EVALDB = os.environ.get("RWKV_EVAL_DB", "F:/rwkv_lmdb/test_db_5k")
+_LFDB = os.environ.get("RWKV_LABEL_FILTER_DB", "label_filter_db")
+
 folder, ws_prefix, decay_prefix, out, train_db, ustart, uend, depochs = sys.argv[1:9]
 peak_lr = sys.argv[9] if len(sys.argv) > 9 else "1e-3"
 max_len = sys.argv[10] if len(sys.argv) > 10 else "110000"
@@ -45,9 +53,9 @@ VALIDATE_USERS_END = 5010
 
 TRAIN_DATASET_LMDB_PATH = "{train_db}"
 TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
-VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_PATH = "{_VALDB}"
 VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
-LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_PATH = "{_LFDB}"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
 # 4 fetch workers (was 7, Andrew 2026-07-08): each costs ~2.6 GB RAM and fetch runs far
