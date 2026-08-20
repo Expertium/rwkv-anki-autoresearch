@@ -134,6 +134,34 @@ change. Cost of the check: one `txn.stat()` per db, which is metadata, not a sca
 at 20:18:48 and the loop reniced them within 30 s. A one-shot renice would have lapsed silently at
 exactly the phase boundary -- which is the phase whose generation-1 counterpart OOM'd.
 
+### ★★ THE REDUNDANCY SCREEN RAN (2026-08-20) -- THE NOTE STATE DOES CARRY SIBLING RECENCY
+
+The item owed from Andrew's own 2026-08-18 filing. `scratchpad/features_rebuild/
+sibling_redundancy_screen.py`: walk user 101 through the DEPLOY RNN path with the iter-53 champion,
+capture the **INCOMING** note state at each review (what the model holds when it predicts THAT
+review), ridge-regress the true sibling gap on it, 70/30 held out.
+
+| regressor | held-out R2 |
+|---|---|
+| **note state (1,440 dims)** | **+0.4431** |
+| SHUFFLED target, same dims | -0.1749  (the overfitting floor) |
+| review index (1 dim) | +0.0282  (trivial baseline) |
+
+The state dimension came out at exactly **1,440**, matching the recorded note state size -- a free
+cross-check that the right stream was captured.
+
+**READING: a null on `scaled_sibling_gap` is EXPECTED and would be uninformative.** This is iter 50's
+shape -- the hierarchy already brackets the information, so the model gains nothing from being handed
+it explicitly. It does NOT mean sibling recency is irrelevant to recall; it means the recurrence
+already reconstructs most of it.
+
+⚠ **AND THE DAY-RESOLUTION VERSION UNDER-TESTS THE SHIPPED COLUMN, which is why a seconds-resolution
+run followed.** The target above is built from the published set's `day_offset`, and user 101's
+MEDIAN gap is **0.00 days** (p90 ~30 min) -- so most targets collapse to zero and the regression is
+largely predicting SAME-DAY vs EARLIER. The column we ship is seconds-resolution end-to-start, and
+the sub-day structure is exactly where that user's mass lives. The `--id` mode puts the real target
+and the state in the same frame; day mode alone would have supported a broader claim than it earns.
+
 ### ★★ PRE-REGISTERED: HOW featB - featA GETS READ (written 2026-08-20 20:15, BEFORE any number)
 
 Recording this now because the alternative is deciding the bar after seeing the result, which is
