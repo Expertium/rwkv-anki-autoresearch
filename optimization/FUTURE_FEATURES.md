@@ -2,7 +2,21 @@
 
 > *"Let's do bundle first, but we still have to do another LMDB rebuild"*
 
-**Both omissions are now implemented and the rebuild is running.** `NEW_COLUMNS` goes 21 -> 23,
+**✓ DONE 2026-08-20 21:15:05, `DONE_EXIT_0`, 3 h 57 m** (17:18 -> 21:15), entirely inside featA's
+runtime and therefore at zero GPU cost.
+
+| db | entries | width | actual GiB |
+|---|---|---|---|
+| `train_db_5k_h1_id2` | **1,483,984** (identical to gen 1) | 46 | 118.3 |
+| `test_db_5k_id2` | **170,384** (identical to gen 1) | 46 | 118.5 |
+
+Both entry counts match generation 1 exactly, which is the integrity check: chunking is unchanged
+and the added columns are per-review, so a DIFFERENT count would have meant row filtering had moved.
+Gen 2 costs +2.2% of disk for +4.5% of columns, because the 68 ID-encoding dims are unchanged.
+Generation 1 is KEPT as a verified fallback -- F: has 414 GiB free, so reclaiming its 231.7 GiB buys
+nothing.
+
+**Both omissions are implemented.** `NEW_COLUMNS` goes 21 -> 23,
 card_features 44 -> 46, model input 112 -> **114**, params 558,212 -> **565,252** (verified by
 constructing the model, not by arithmetic). New dbs `train_db_5k_h1_id2` / `test_db_5k_id2`;
 `label_filter_db_id` is REUSED because it selects which reviews count, not what they contain.

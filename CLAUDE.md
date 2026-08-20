@@ -1295,7 +1295,11 @@ unchanged, which is what catches ANY accidental whole-table statistic) and
 after touching `srs_model.py`), the 100-user de-risk build (ON-vs-OFF on `-id`; the `-id`-vs-published
 comparison is INVALID since `size` moves for ~30% of users from the dataset swap alone), a rebuilt
 `label_filter_db`, and the Rust input-width port.
-**★★ GENERATION 2 (Andrew 2026-08-20, "we still have to do another LMDB rebuild") -- 21 -> 23 columns,
+**★★ GENERATION 2 DONE 2026-08-20 21:15:05 (`DONE_EXIT_0`, 3 h 57 m, zero GPU cost -- it ran inside
+featA's runtime). `train_db_5k_h1_id2` 1,483,984 entries / `test_db_5k_id2` 170,384, BOTH width 46
+and BOTH entry counts IDENTICAL to gen 1 -- the integrity check, since chunking is unchanged and a
+different count would mean row filtering had moved. Gen 1 kept as a fallback (414 GiB free).**
+**(Andrew: "we still have to do another LMDB rebuild") -- 21 -> 23 columns,
 input 112 -> 114, params 558,212 -> 565,252 (verified by constructing the model). Adds the two
 features his coverage audit found designed-but-never-implemented: `scaled_sibling_gap` and
 `card_predates_first_review`.** New dbs `train_db_5k_h1_id2` / `test_db_5k_id2`; `label_filter_db_id`
