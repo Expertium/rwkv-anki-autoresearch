@@ -109,6 +109,17 @@ Two readings, and they point opposite ways:
   i.e. it separates a user who imported a collection wholesale from one who built it while studying.
   That is a user-level property the model currently has no column for.
 
+### ★ GEN 1 AND GEN 2 AGREE EXACTLY ON ROW STRUCTURE (checked 2026-08-20 20:20)
+`check_db` on both train dbs: **entries = 1,483,984 in BOTH**, width 44 vs 46. Chunking is unchanged
+(`MAX_BATCH_SIZE = 16384`) and the two added columns are per-review values, so an identical count is
+what "additive in columns" has to mean -- and a DIFFERENT count would have been the cheap signal
+that something in row filtering had moved. This makes gen 1 -> gen 2 a genuine single-variable
+change. Cost of the check: one `txn.stat()` per db, which is metadata, not a scan.
+
+★ The priority loop also earned itself here: phase 2 spawned **7 fresh workers at Normal priority**
+at 20:18:48 and the loop reniced them within 30 s. A one-shot renice would have lapsed silently at
+exactly the phase boundary -- which is the phase whose generation-1 counterpart OOM'd.
+
 ### ★★ PRE-REGISTERED: HOW featB - featA GETS READ (written 2026-08-20 20:15, BEFORE any number)
 
 Recording this now because the alternative is deciding the bar after seeing the result, which is
