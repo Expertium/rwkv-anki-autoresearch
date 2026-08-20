@@ -1737,6 +1737,16 @@ waiter polls before re-arming it** -- a waiter is only as correct as the log it 
 ⚠ The resumed tail's DROPOUT DRAWS differ from an uninterrupted run (weights/optimizer exact),
 so iter 54's number is a fair measurement but the run is not bit-reproducible.
 
+**⚠⚠ THE SINGLE-WITNESS RULE RECURRED 2026-08-20, IN A WATCHER WRITTEN THE SAME DAY -- SO STATE IT
+SHARPLY: NEVER IDENTIFY A CHAINED RUNNER BY PID.** A featA watcher pinned the WS phase's pid. A
+runner is a CHAIN (WS -> decay -> eval) and every phase is a NEW process, so the normal transition
+two minutes after `featA WS_OK` read as `featA DOWN`. Nothing was wrong; the alert measured its own
+witness. **Identify the runner by COMMAND LINE** (the `cmd.exe` wrapper spans all phases) **and
+require TWO witnesses**: process gone AND no terminal marker in its log. A finished chain writes the
+marker, so gone+marker is SUCCESS and only gone+no-marker is a death. Knowing the rule below was not
+enough to avoid re-implementing the bug -- which is the argument for the two-witness pattern being
+the DEFAULT shape of any monitor here, not a fix applied after a false alarm.
+
 **⚠ THE FLIGHT-RECORDER HANG SIGNAL BREAKS AT MIDNIGHT (2026-08-18, one false alarm).** The
 recorder writes `flight_YYYYMMDD.csv`, so at 23:59:47 it stops appending to yesterday's file and
 starts today's. A monitor that resolves the filename ONCE at launch then watches a file nothing
