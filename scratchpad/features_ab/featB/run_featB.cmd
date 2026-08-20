@@ -57,8 +57,8 @@ set RWKV_ID_FEATURES=1
 set RWKV_ZERO_FEATURES=
 REM db overrides consumed by write_decay_setup.py / write_eval_toml.py, which used to
 REM hardcode the 92-dim paths -- the trap the idfeat diagnostic caught.
-set RWKV_VAL_DB=F:/rwkv_lmdb/test_db_5k_id
-set RWKV_EVAL_DB=F:/rwkv_lmdb/test_db_5k_id
+set RWKV_VAL_DB=F:/rwkv_lmdb/test_db_5k_id2
+set RWKV_EVAL_DB=F:/rwkv_lmdb/test_db_5k_id2
 set RWKV_LABEL_FILTER_DB=F:/rwkv_lmdb/label_filter_db_id
 REM KD explicitly CLEARED, never merely unset, so an inherited value cannot turn the
 REM control into a treatment -- the false-green shape that bit the rgate smoke.
@@ -85,7 +85,7 @@ if not exist "%DIR%\featB_ws_%STEPS%.pth" (
 )
 REM The arm must have used the input width it claims. This is the one check that
 REM catches RWKV_ID_FEATURES failing to reach the workers.
-findstr /C:"Trainable parameters: 564612" "%DIR%\ws_%STAMP%.log" >nul
+findstr /C:"Trainable parameters: 565252" "%DIR%\ws_%STAMP%.log" >nul
 if not %ERRORLEVEL%==0 (
   echo %TAG% WRONG_PARAM_COUNT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_33 %DATE% %TIME% >> "%LOG%"
@@ -94,7 +94,7 @@ if not %ERRORLEVEL%==0 (
 echo %TAG% WS_OK %TIME% >> "%LOG%"
 
 REM ---- PHASE B: decay, ratio 1.0 ----
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/features_ab/featB featB_ws featB_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id 1 5000 1.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/features_ab/featB featB_ws featB_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id2 1 5000 1.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% DSETUP_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_22 %DATE% %TIME% >> "%LOG%"
@@ -136,7 +136,7 @@ if not %ERRORLEVEL%==0 (
 )
 REM The eval toml must point at THIS arm's db, or the arm silently scores on the
 REM other arm's feature width. This is trap #2 made into a guard.
-findstr /C:"F:/rwkv_lmdb/test_db_5k_id" "%DIR%\eval.toml" >nul
+findstr /C:"F:/rwkv_lmdb/test_db_5k_id2" "%DIR%\eval.toml" >nul
 if not %ERRORLEVEL%==0 (
   echo %TAG% EVAL_DB_MISMATCH %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_34 %DATE% %TIME% >> "%LOG%"

@@ -109,6 +109,52 @@ Two readings, and they point opposite ways:
   i.e. it separates a user who imported a collection wholesale from one who built it while studying.
   That is a user-level property the model currently has no column for.
 
+### ★★ PRE-REGISTERED: HOW featB - featA GETS READ (written 2026-08-20 20:15, BEFORE any number)
+
+Recording this now because the alternative is deciding the bar after seeing the result, which is
+how a null becomes "promising" and a small win becomes "decisive". The sibling-count threshold
+earlier today is the precedent: the rule was written first and it cleanly rejected a column I
+wanted to like.
+
+**What the comparison is.** featA and featB are the SAME recipe -- iter 53's, minus KD -- differing
+only in the db paths and `RWKV_ID_FEATURES`. So `B - A` is the value of the new input pipeline and
+nothing else.
+**KD is off in BOTH arms and NOT by choice:** the d=128 teacher's `features2card` has `in_dim = 92`
+and cannot forward-pass a 114-dim row, so a KD dump cannot be produced for arm B. Comparing arm B
+against the KD-ON champion would confound the features with removing KD (~0.0019 across iters
+32/35/39/45).
+**⚠ NEITHER ARM IS COMPARABLE TO ITER 53.** They are a new KD-off generation. Do not put their
+absolute numbers in the champion table, and do not report `featB - iter53` as the features' effect.
+
+**The `size` gate does not apply ACROSS the arms.** The dataset swap alone moves the equalized
+review count for ~30% of users, so gate #1 is only meaningful WITHIN an arm (arm B vs a future arm
+B'). Check it within-arm; a cross-arm `size` difference is expected, not a pipeline bug.
+
+**The bands, fixed in advance (both modes, raw, vs featA, with p < 0.0001):**
+
+| `B - A` | reading | what happens next |
+|---|---|---|
+| **>= +0.0010 both modes** | large, i.e. ~5-10 accepted iterations in one step | adopt as the trunk; the 7-arm FAMILY ablation is then worth its ~54 h |
+| **+0.0003 to +0.0010 both** | real and clears the 7.5e-5 floor decisively | adopt (the rebuild cost is already sunk; what remains is one champion re-base plus the Rust input-width port), but do NOT spend 7 arms -- ablate only the 2-3 families with a mechanism story |
+| **< +0.0003, or mixed sign** | the 23 columns as designed do not pay | do NOT adopt; record which families to attack differently, and do not run per-feature arms, which would measure noise 23 times |
+
+The >= 0.0010 band is set by Andrew's 2026-08-19 steer -- *"I don't think that chasing 0.0001 is
+worth it... focus on major changes that are likely to have a large impact"* -- against the reference
+points that the whole A0 -> A18 width ladder cost +0.00053 imm and iters 32-53 accumulated ~+0.0019
+over ten accepted iterations.
+
+**If featB is WORSE, check these THREE things before believing it.** More input dims at unchanged
+trunk capacity can genuinely hurt, but three artefacts look identical to that:
+1. the param guard -- `Trainable parameters: 565252` must appear in arm B's WS log (the guard
+   already fails the run if not), which is what catches `RWKV_ID_FEATURES` not reaching the workers;
+2. within-arm `size` -- if arm B's equalized counts are internally inconsistent, that is a pipeline
+   bug and not a result;
+3. the eval db -- arm B's `eval.toml` must name `test_db_5k_id2`, since scoring 114-dim weights
+   against a 112- or 92-dim db is a silent shape mismatch. The runner greps for it.
+
+**Per-feature testing stays gated on the bundle winning.** 23 single arms is 7-8 days of GPU; the
+whole reason for bundle-first is that a null bundle makes those 23 arms measurements of noise.
+
 ### Smokes, all green before launch
 * `smoke_id_features.py` -- **PREFIX INVARIANCE at exactly 0.000e+00**, and it covers the new
   columns automatically because it iterates `NEW_COLUMNS`. Finiteness, determinism, the
