@@ -278,8 +278,15 @@ def preflight(path):
         problems.append(
             f"endlocal at line {min(_el) + 1} precedes the DONE_EXIT_ echo at line {max(_de) + 1}: "
             f"%LOG% is out of scope there, so the marker is silently never written")
-    if sum(1 for ln in lines if "DONE_EXIT_0" in ln) != 1:
-        problems.append("expected exactly one DONE_EXIT_0 line (the waiter's success signal)")
+    # Count only lines that EMIT the marker, not lines that READ it. A gated waiter legitimately
+    # tests a predecessor's exit code with `findstr /B /C:"DONE_EXIT_0 "`, and the old substring
+    # test counted those as extra emissions and failed a correct runner. The `endlocal` check three
+    # lines up already used this predicate; this one had drifted from it.
+    _emit = [ln for ln in lines if ln.strip().lower().startswith("echo done_exit_0")]
+    if len(_emit) != 1:
+        problems.append(
+            "expected exactly one emitted DONE_EXIT_0 line (the runner's success signal), found "
+            f"{len(_emit)}")
 
     return problems, notes
 
