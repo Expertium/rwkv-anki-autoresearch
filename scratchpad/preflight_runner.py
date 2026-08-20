@@ -87,6 +87,12 @@ def preflight(path):
     # ---- configs: exist, or generated earlier in this same runner ------------------------
     generated = {}   # normalized out-path -> line number
     for n, ln in enumerate(lines):
+        # ⚠ A REM line MENTIONING these tools is prose, not an invocation. Without this the
+        # parser reads the comment's words as positional arguments and reports a missing
+        # checkpoint that no runner ever asked for. Same false-positive class as the %VAR%
+        # check, which already skips REM.
+        if ln.strip().upper().startswith("REM"):
+            continue
         m = re.search(r"(write_decay_setup|write_eval_toml)\.py\s+(.+)$", ln)
         if not m:
             continue
@@ -97,6 +103,11 @@ def preflight(path):
                 break
 
     for n, ln in enumerate(lines):
+        # ⚠ REM lines mentioning these tools are prose, not invocations (see the note at the
+        # config-generation loop above). Every parser over `lines` needs this guard, not just
+        # the first one -- which is why the first fix did not stop the false positive.
+        if ln.strip().upper().startswith("REM"):
+            continue
         for cfg in re.findall(r"--config\s+(\S+)", ln):
             p = expand(cfg).strip('"')
             key = os.path.normpath(p).replace("\\", "/").lower()
@@ -114,6 +125,11 @@ def preflight(path):
     # write_decay_setup will later search for, or the decay silently finds nothing.
     trained = {}    # (folder, prefix) -> line number of the train_rwkv call that writes it
     for n, ln in enumerate(lines):
+        # ⚠ REM lines mentioning these tools are prose, not invocations (see the note at the
+        # config-generation loop above). Every parser over `lines` needs this guard, not just
+        # the first one -- which is why the first fix did not stop the false positive.
+        if ln.strip().upper().startswith("REM"):
+            continue
         if "train_rwkv" not in ln:
             continue
         m = re.search(r"--config\s+(\S+)", ln)
@@ -132,6 +148,11 @@ def preflight(path):
             notes.append(f"could not read {os.path.basename(p)}: {e}")
 
     for n, ln in enumerate(lines):
+        # ⚠ REM lines mentioning these tools are prose, not invocations (see the note at the
+        # config-generation loop above). Every parser over `lines` needs this guard, not just
+        # the first one -- which is why the first fix did not stop the false positive.
+        if ln.strip().upper().startswith("REM"):
+            continue
         m = re.search(r"write_decay_setup\.py\s+(\S+)\s+(\S+)\s+(\S+)", ln)
         if not m:
             continue
