@@ -144,6 +144,7 @@ full per-iteration notes live in [research_5k_verbose.md](research_5k_verbose.md
 | 56 | 1–5000 | 0.2976ᵛʳ | 0.2653ᵛʳ | +0.0030 / +0.0017 | exact | rejected | 0.985 / 1.0 (vs iter 53) | 558,212 | 0 | invented | Linear LR decay shape. Real but sub-bar vs iter 45; loses to iter 53. Even perfect stacking fails. |
 | 57 | 1-5000 | 0.2977 | 0.2654 | +0.0031 / +0.0018 | exact | rejected (tie) | 0.99 / 1.0 (vs iter 53) | 558,225 | 0 | invented | Learnable channel-mixer exponent. Exact tie vs iter 45. All 4 live exponents moved 2.0->1.26-1.86 and bought nothing. |
 | 58 | 1-5000 | 0.2978 | 0.2654 | +0.0032 / +0.0018 | exact | rejected | 1.0 / 1.0 (vs iter 53) | 558,212 | 0 | invented | KD alpha_decay 0.5->0.25. Loses, as 0.9 did. 0.5 is an interior optimum; lever CLOSED. |
+| 59 | 1-5000 | 0.2977 | 0.2654 | +0.0031 / +0.0019 | exact | rejected (tie) | 1.0 / 1.0 (vs iter 53) | 558,536 | 0 | invented | FSRS retrievability gate on the delta rule. Exact tie. Gain learned NEGATIVE on L0 -- opposite the FSRS sign. |
 
 **`vs old (a / i)` = how far this row still is from the OLD d=128 model** (Andrew's ask, 2026-08-12). `row - baseline` for ahead / imm, so **positive = still worse, negative = we have beaten it**. Baseline = `pretrain/RWKV_trained_on_101_4999.pth` unquantized, restricted to the **VAL half 5001-7500** (the only set candidates are scored on) = **0.294612 / 0.263561**; its full-range 5001-10000 numbers (0.296385 / 0.264905) are a different user set and are not used here, which is why the reference row itself reads `-- (ref)`.
 

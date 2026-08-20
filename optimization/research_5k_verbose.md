@@ -3072,3 +3072,64 @@ untested, and is now the natural way to collect that gain, since the KD-schedule
 * **First run named for its lever with no number in its path**, under the completion-order
   convention — and the only one of the four in flight that could not acquire a lying slug.
 * **Deploy debt: none** — a training-schedule change, forward pass untouched.
+
+## iter 59 — FSRS retrievability gate on the delta rule (`RWKV_RGATE=card`) — REJECTED as an exact tie
+
+**The lever.** `rhat = (1 + dt/s)^(-d)` computed in log space from the row's own elapsed time, then
+`a_logit += gain * (1 - rhat)` on the two card layers, `gain` zero-init. +324 params. The idea: a
+card you have probably forgotten should overwrite its memory slot harder than one you still know.
+
+| comparison | ahead | imm |
+|---|---|---|
+| vs **iter 45** (controlled) | −0.000028 | −0.000071 |
+| vs **iter 53** (the gate) | −0.000202 | −0.000255 |
+
+Both controlled deltas sit inside the ±7.5e-5 floor — a literal tie. size 0/2500, nan_users 0.
+Both-modes rule: the lever changes `a` in the WKV recurrence, i.e. the shared trunk.
+
+### Fourth consecutive "used the freedom, gained nothing"
+
+`rgate_gain` is zero-init and trained to **−0.3516** (card L0) and **+0.0519** (card L1). The gate
+was learned and used; the loss did not move.
+
+| iter | lever | parameter moved | result |
+|---|---|---|---|
+| 48 | R(t) → rating logits | learned, sign-correct | exact tie |
+| 50 | deck level embedding | L2 = 1.766 | exact tie |
+| 57 | channel-mixer exponent | 2.0 → 1.26–1.86 | exact tie |
+| **59** | **retrievability gate** | **gain 0 → −0.352** | **exact tie** |
+
+### ★ The sign contradicts the intuition the lever was built on
+
+The lever adds `gain · (1 − rhat)`, and `(1 − rhat)` **rises as expected recall falls**. Layer 0's
+gain went **negative**, so the model chose to update the state **less** when it predicts you have
+forgotten — the opposite of the FSRS-motivated direction, and the opposite of what the code comment
+asserts (*"FSRS sign: lower expected recall => larger state update"*). Layer 1 kept the intended sign
+at ⅐ the magnitude.
+
+Given the freedom, the trunk preferred to **damp** the delta-rule rate on long gaps rather than boost
+it. That is consistent with the 2026-08-19 finding that the delta rule is already massively
+load-bearing (zeroing `a` costs +0.208 imm): its rate is not something the model wants perturbed.
+
+This is a small but genuine piece of evidence against importing FSRS's retrievability intuition
+directly into the recurrence.
+
+### Family
+
+First entry in an **FSRS-structure-injection** family — **0/1, deprioritized not closed**. This is
+*not* the iters-46/48 family, which routed information *between heads*; this injects an external
+functional *form* into the recurrence. A second variant must inject a different structure, and should
+reckon with the sign result before assuming the FSRS direction is the helpful one.
+
+### Ops
+
+* Clean 12.3 h run (WS 17:02–21:23, decay to 02:13, eval to 05:18), `DONE_EXIT_0`.
+* Its 2026-08-18 smoke failure was **stale** — the hermetic fix landed six minutes later, and the
+  smoke was re-verified on 08-19 *with* the contaminating `RWKV_RGATE` deliberately set (OFF 0 keys /
+  ON 8 keys, +324 params, inertness exactly 0.000e+00).
+* Carries the two step-verification gates added 08-19, after preflight found it verified **neither**
+  training phase's output.
+* ⚠ **Reading the diagnostic required the final checkpoint.** A lexicographic glob sort returns
+  `i55_d_50.pth` *after* `i55_d_10935.pth`, and the step-50 values differ (gain −0.324 vs −0.352).
+  Sort by the parsed step — same wrong-checkpoint class as iter 47's first run.
+* **Deploy debt: none** — rejected.
