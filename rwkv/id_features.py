@@ -118,9 +118,14 @@ STATISTICS_ID = {
     "creation_batch_pos_1h_std": 1.9252,
     "deck_depth_mean": 1.2703,
     "deck_depth_std": 1.6451,
-    # Added 2026-08-20 with the sibling gap. Same methodology (stride sample of the TRAIN half
-    # only) but measured by scratchpad/features_rebuild/sibling_stats.py, not feature_stats_id.py.
-    # PLACEHOLDER -- overwritten with the 300-user measurement before the rebuild launches.
+    # Added 2026-08-20 with the sibling gap. Same TRAIN-half-only stride sampling as the other
+    # constants, measured by scratchpad/features_rebuild/sibling_stats.py.
+    # ⚠ PROVENANCE: 40 users / 269,346 DEFINED rows, not the 300 users the others used. The
+    # 300-user job was still running when the rebuild had to launch, and waiting was not worth
+    # it: this constant is a fixed affine transform of one column, which the input FC absorbs,
+    # and the block comment above records the existing nine being off by up to 24% on resample
+    # and kept deliberately. Sampling error on the mean is ~0.7 (SE over users), i.e. well inside
+    # that. Re-derive at the next rebuild if a 300-user number is wanted.
     "sibling_gap_mean": 9.3354,
     "sibling_gap_std": 4.2198,
 }
