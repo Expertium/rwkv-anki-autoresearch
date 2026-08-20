@@ -155,6 +155,16 @@ shape -- the hierarchy already brackets the information, so the model gains noth
 it explicitly. It does NOT mean sibling recency is irrelevant to recall; it means the recurrence
 already reconstructs most of it.
 
+**✓ CONFIRMED AT SECONDS RESOLUTION -- the shipped quantity, not a coarsening of it.** Same user,
+`-id` frame so target and state share a frame: **R2 +0.3068**, floor -0.2188, trivial baseline
++0.0008. Target std 2.706 (vs 0.743 in day mode) and only **1.6%** of targets at exactly zero, so the
+sub-day structure really is present and the day-mode number was not an artefact of the collapse.
+Lower than day mode's 0.4431, as it should be -- sub-day recency is harder to reconstruct -- but
+decisively above the floor.
+**=> the note stream reconstructs roughly a third of the variance of the exact column we ship.** The
+remaining ~69% is the honest counterweight: the state does NOT fully encode it, so there is room in
+principle. Against ~10-16% coverage, the expected value stays low.
+
 ⚠ **AND THE DAY-RESOLUTION VERSION UNDER-TESTS THE SHIPPED COLUMN, which is why a seconds-resolution
 run followed.** The target above is built from the published set's `day_offset`, and user 101's
 MEDIAN gap is **0.00 days** (p90 ~30 min) -- so most targets collapse to zero and the regression is
@@ -182,6 +192,41 @@ absolute numbers in the champion table, and do not report `featB - iter53` as th
 **The `size` gate does not apply ACROSS the arms.** The dataset swap alone moves the equalized
 review count for ~30% of users, so gate #1 is only meaningful WITHIN an arm (arm B vs a future arm
 B'). Check it within-arm; a cross-arm `size` difference is expected, not a pipeline bug.
+
+**⚠⚠ CORRECTION TO THIS PRE-REGISTRATION, found 2026-08-20 22:00 while reading the redundancy
+screen's output. `featB - featA` IS NOT "the 23 new features". IT BUNDLES FOUR CHANGES**, and the
+paragraph above that called it "the value of the new input pipeline and nothing else" was wrong about
+the "nothing else":
+
+1. **the 23 new columns** -- the intended variable;
+2. **END-to-START intervals** instead of start-to-start (Andrew 2026-08-19). Verified gated on
+   `"review_time" in df.columns` (`data_processing.py:208,279`), so it can ONLY ever exist on the
+   `-id` set -- it is inseparable from the swap by construction, not by oversight;
+3. **the cumsum sentinel fix** (obezag's report: the -1 first-review sentinel was being summed into
+   `elapsed_*_cumulative`). This one is NOT dataset-gated (`:333-337`) -- but the OLD dbs were built
+   BEFORE it landed (`9ebf23d`), so they carry the buggy cumulative values baked in and featB's do
+   not;
+4. **the dataset swap itself**, published -> `-id`.
+
+**Why this does NOT invalidate the comparison, and what it does change.** The decision on the table
+is "adopt the new input pipeline?", and the pipeline IS all four -- so `B - A` is still the right
+quantity for THAT decision, and the bands below stand. What changes is ATTRIBUTION:
+* a NULL would NOT mean "the 23 features are worthless" -- it could equally be features helping while
+  something else costs, or the reverse;
+* a WIN would not be attributable to the features specifically;
+* **item 3 is a BUG FIX and should be adopted whatever the bundle says.** If featB wins partly
+  because of it, that is a reason to rebuild the control, not to credit the features.
+
+**A first, weak datapoint on component 4, free from the redundancy screen.** The same champion,
+same `RWKV_ID_FEATURES=0`, same user 101, run on published vs `-id`: imm 0.323313 -> 0.323779
+(**-0.000466**), ahead 0.357672 -> 0.357775 (**-0.000103**), `size` 23,190 IDENTICAL on both. So the
+swap alone looks slightly NEGATIVE, not positive -- but this is ONE user, at inference time only,
+with a model trained on published-derived data, so the `-id` inputs are mildly off-distribution for
+it. Treat it as "the swap is not a large free win", nothing more.
+
+**If the bundle wins and attribution matters, the clean follow-up is one arm at
+`RWKV_ID_FEATURES=0` on the gen-2 dbs** -- that isolates items 2-4 from item 1 for one 7.75 h run,
+and it is the arm to spend on before any per-family ablation.
 
 **The bands, fixed in advance (both modes, raw, vs featA, with p < 0.0001):**
 

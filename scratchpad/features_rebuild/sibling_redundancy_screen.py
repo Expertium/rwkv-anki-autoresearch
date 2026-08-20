@@ -68,8 +68,22 @@ sys.path.insert(0, os.getcwd())
 from rwkv import run_as_rnn  # noqa: E402
 
 CKPT = "scratchpad/iter53_muonlora/i53_d_10935.pth"
-DATA = Path(r"C:\Users\Andrew\anki-revlogs-10k")
-USERS = [int(a) for a in sys.argv[1:]] or [101]
+
+# ★ TWO MODES, and the second one exists because the first UNDER-TESTS the shipped column.
+#
+# Day mode (the published set) answers "does the note state encode sibling recency AT ALL". It came
+# back R2 +0.4431 vs a -0.1749 floor on user 101 -- but that user's MEDIAN gap is 0.00 days, so a
+# day-resolution target collapses most of the mass to zero and the regression is largely predicting
+# SAME-DAY vs EARLIER. The column we actually ship is seconds-resolution end-to-start, and the
+# sub-day structure is precisely where user 101's mass lives (p90 ~30 min).
+#
+# Seconds mode (the -id set) puts the real target and the state in the SAME frame, so it tests what
+# the column adds rather than a coarsening of it. Pass --id to select it.
+ID_MODE = "--id" in sys.argv
+DATA = Path(r"C:\Users\Andrew\anki-revlogs-10k-id" if ID_MODE
+            else r"C:\Users\Andrew\anki-revlogs-10k")
+LABEL_DB = "F:/rwkv_lmdb/label_filter_db_id" if ID_MODE else "label_filter_db"
+USERS = [int(a) for a in sys.argv[1:] if not a.startswith("-")] or [101]
 
 cap = {"states": []}
 _orig_run = run_as_rnn.RNNProcess.run
@@ -179,7 +193,14 @@ for uid in USERS:
     df = pd.read_parquet(DATA / "revlogs" / ("user_id=%d" % uid))
     dfc = pd.read_parquet(DATA / "cards", filters=[("user_id", "=", uid)])
     df = df.merge(dfc.drop(columns=["user_id"], errors="ignore"), on="card_id", how="left")
-    gap = sibling_gap_days(df)
+    if ID_MODE:
+        # The SHIPPED quantity, from the same frame: seconds since the END of the most recent
+        # review of a different card of the same note.
+        import rwkv.id_features as _idf
+        df = df.sort_values("review_time", kind="stable").reset_index(drop=True)
+        gap = _idf.sibling_gap_seconds(df)
+    else:
+        gap = sibling_gap_days(df)
     n_def = int((gap >= 0).sum())
     print("user %d: %d rows, %d with a preceding sibling review (%.2f%%)"
           % (uid, len(df), n_def, 100.0 * n_def / max(len(df), 1)), flush=True)
@@ -187,7 +208,7 @@ for uid in USERS:
         print("  skipping -- too few defined rows to regress on", flush=True)
         continue
     try:
-        run_as_rnn.run(data_path=DATA, model_path=CKPT, label_db_path="label_filter_db",
+        run_as_rnn.run(data_path=DATA, model_path=CKPT, label_db_path=LABEL_DB,
                        label_db_size=40_000_000_000, user_id=uid, verbose=False)
     except Exception as exc:  # noqa: BLE001
         print("  walk ended: %s: %s" % (type(exc).__name__, exc), flush=True)
@@ -209,8 +230,12 @@ idx = np.asarray(allidx, dtype=np.float64).reshape(-1, 1)
 assert float(y.std()) > 1e-6, "VACUOUS: the target is constant"
 
 print("")
+print("--- MODE: %s" % ("SECONDS (-id, the shipped quantity)" if ID_MODE else "DAYS (published)"))
 print("--- REGRESSION on %d rows, note-state dim %d, target std %.3f"
       % (X.shape[0], X.shape[1], float(y.std())))
+_z = float((y == 0.0).mean())
+print("--- fraction of targets at exactly 0: %.3f%s"
+      % (_z, "  <-- a day-resolution artefact if high" if not ID_MODE else ""))
 r2_state = ridge_r2(X, y)
 r2_shuf = ridge_r2(X, np.random.default_rng(1).permutation(y))
 r2_idx = ridge_r2(idx, y)
