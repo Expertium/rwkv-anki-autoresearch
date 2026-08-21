@@ -1295,6 +1295,34 @@ unchanged, which is what catches ANY accidental whole-table statistic) and
 after touching `srs_model.py`), the 100-user de-risk build (ON-vs-OFF on `-id`; the `-id`-vs-published
 comparison is INVALID since `size` moves for ~30% of users from the dataset swap alone), a rebuilt
 `label_filter_db`, and the Rust input-width port.
+**★★★ 2026-08-21 -- ONE `dtype=torch.int32` WAS DESTROYING ENTITY IDENTITY, AND ONE HALF OF IT IS
+PRE-EXISTING. `data_processing.create_sample` stored every id stream as int32. FIXED to int64
+(`167fa15`) with a value-comparison guard, because a narrowing cast is invisible to every banner and
+shape check -- saturation is not an error, it is a silent value change.**
+* **BUG A, PRE-EXISTING, AFFECTS THE CHAMPION.** The NaN-metadata fill is written
+  `ID_PLACEHOLDER + card_id` precisely to give each such card a UNIQUE placeholder. ID_PLACEHOLDER
+  is 3.14e17, so int32 SATURATED them all to INT32_MIN and they collapsed into **ONE note and ONE
+  deck**. Measured on the PUBLISHED set: **19.28% of all reviews carry a NaN note_id** (per-user
+  median 4.1%, mean 22.1%, p90 70.0%; 4 users in 60 above 95%). Published user 101 goes from **1
+  distinct note id to 3,277** once widened. So ~a fifth of the training data has had no note/deck
+  stream identity for the entire project.
+* **BUG B, NEW, INVALIDATES BOTH -id REBUILDS.** `-id` keeps RAW epoch-ms ids (~1.7e12): card_id is
+  int64 so it WRAPPED (7,693 of 15,191 values negative); note/deck/preset go through the NaN-fill as
+  float64 so they SATURATED -> **n_unique == 1 for every user tested, in gen 1 AND gen 2**. A wrap
+  collision also makes a card's genuine FIRST review probe-eligible while `add_queries` gave it no
+  query row -> `KeyError` in `insert_probes`, which killed featB's fetch worker and DEADLOCKED the
+  run (GPU 0% for 69 min).
+* **GEN 1 AND GEN 2 ARE DELETED / SUPERSEDED. GEN 3 (`*_id3`) is the first correct -id build.**
+* ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
+  still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
+  would enter the bundle as a fifth component, and at 19% of reviews it could dwarf the features.
+  Rebuilding the published dbs re-bases the champion and is **Andrew's call**.
+* Guards: `smoke_id_dtype.py` asserts ENTITY IDENTITY SURVIVES (distinct ids in the sample ==
+  distinct in the frame), not merely "no exception" -- a no-exception smoke passes on the broken
+  build. `scratchpad/chain_watch.sh` follows whichever ARM is live and alarms on a STALL as well as
+  a death; the old watcher followed featA by name and exited when featA finished, which is why featB
+  sat deadlocked unnoticed.
+
 **★★ GENERATION 2 DONE 2026-08-20 21:15:05 (`DONE_EXIT_0`, 3 h 57 m, zero GPU cost -- it ran inside
 featA's runtime). `train_db_5k_h1_id2` 1,483,984 entries / `test_db_5k_id2` 170,384, BOTH width 46
 and BOTH entry counts IDENTICAL to gen 1 -- the integrity check, since chunking is unchanged and a
