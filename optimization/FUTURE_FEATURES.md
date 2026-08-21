@@ -172,6 +172,48 @@ largely predicting SAME-DAY vs EARLIER. The column we ship is seconds-resolution
 the sub-day structure is exactly where that user's mass lives. The `--id` mode puts the real target
 and the state in the same frame; day mode alone would have supported a broader claim than it earns.
 
+### ★★★ FAMILY PREDICTABILITY TABLE (Andrew's ask, 2026-08-21) -- WHICH ABLATION ARMS ARE WORTH GPU
+
+`scratchpad/features_rebuild/family_predictability.py` -- 12 TRAIN-half users, 120,000 rows, ridge
+held out 70/30. Each family's columns are z-scored, then aggregated as
+`1 - sum SS_res / sum SS_tot`, so every column counts equally. Read a cell as: **"if this family
+were deleted, how much of it could be reconstructed from that predictor set?"**
+
+| target family | from OLD | tod | cal | recy | deck | batch | prst | omis | from ALL other NEW | OLD+NEW |
+|---|---|---|---|---|---|---|---|---|---|---|
+| time-of-day | 0.216 | - | 0.010 | 0.008 | 0.050 | 0.056 | 0.027 | 0.023 | **0.093** | 0.262 |
+| **calendar** | **0.023** | 0.009 | - | 0.004 | 0.009 | 0.003 | 0.000 | 0.000 | **0.023** | **0.044** |
+| recency+ages | 0.222 | 0.011 | 0.007 | - | 0.271 | 0.067 | 0.058 | 0.107 | 0.351 | 0.460 |
+| deck | 0.490 | 0.054 | 0.012 | 0.290 | - | 0.264 | 0.230 | 0.140 | 0.608 | 0.679 |
+| creation-batch | 0.489 | 0.178 | 0.005 | 0.079 | 0.468 | - | 0.017 | 0.300 | 0.608 | 0.667 |
+| preset | 0.529 | 0.106 | 0.002 | 0.146 | 0.507 | 0.184 | - | 0.024 | 0.562 | 0.668 |
+| omissions | 0.291 | 0.062 | 0.001 | 0.203 | 0.244 | 0.244 | 0.010 | - | 0.425 | 0.494 |
+
+**THE ARM RANKING THIS IMPLIES, if the bundle wins:**
+1. **calendar — the cleanest arm in the set.** 0.023 from the old features AND 0.023 from the whole
+   rest of the bundle. Nothing else carries it, so its ablation is the one guaranteed to measure
+   what it removes. It is also the family whose design rationale was strongest: the original vector
+   has only `day_offset`-derived PSEUDO-phase cycles, so true wall-clock phase was unavailable.
+2. **time-of-day** — 0.216 old / 0.093 rest. Mostly its own carrier.
+3. **recency+ages** and **omissions** — 0.35 / 0.43 from the rest. Interpretable but partly shared.
+4. **deck, creation-batch, preset — DO NOT ablate individually.** Each is ~0.5 predictable from the
+   OLD features alone and 0.56-0.61 from the rest of the bundle, and they predict each other
+   heavily (preset from deck 0.507, batch from deck 0.468). Removing any one leaves its information
+   in the other two, so all three arms would likely read null regardless of whether the information
+   matters. Ablate the three TOGETHER or not at all.
+
+**=> the 7-arm sweep should be 4 arms**: calendar, time-of-day, recency+ages+omissions, and
+deck+batch+preset as ONE group. ~31 h instead of ~54 h, and every arm actually measures something.
+
+**⚠ `is_default_deck` AND THE DATASET SEMANTICS.** It has ZERO variance in the 120k sample, and the
+direct count explains why AND uncovers something else: `deck_id == 1` fires on **0.72% of `-id`
+reviews (10/40 users)** but **2.35% of PUBLISHED reviews (30/40 users)** -- same users, same
+2,686,511 rows. Published factorizes deck ids per user, so `deck_id == 1` there means *the user's
+first deck by factorization index*, not Anki's Default deck. Only `-id`, which keeps raw ids,
+measures what `is_default_deck` claims to. So the column is not broken on `-id`; it is rare and
+finally CORRECT. The same reasoning applies to `is_default_preset`, whose 0.529 predictability from
+OLD should be re-read with that in mind.
+
 ### ★★ PER-ROW REDUNDANCY SCREEN (2026-08-21, CPU-only) -- IT SETTLES THE ABLATION GRANULARITY
 
 `scratchpad/features_rebuild/feature_redundancy_screen.py`, 4 users / 60,000 rows, ridge held out
