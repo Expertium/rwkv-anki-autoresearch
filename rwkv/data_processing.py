@@ -573,11 +573,41 @@ def create_sample(
     module_infos = {}
     ids = {}
     for submodule in RWKV_SUBMODULES:
+        # ★ int64, NOT int32 (2026-08-21). This single dtype caused TWO separate corruptions, one
+        # of them present since long before the -id work:
+        #
+        #  A. PRE-EXISTING. The NaN-metadata fill a few lines above is written as
+        #     `ID_PLACEHOLDER + card_id` precisely so each such card gets a UNIQUE placeholder.
+        #     ID_PLACEHOLDER is 3.14e17, so int32 SATURATED every one of them to INT32_MIN and
+        #     they all collapsed into ONE note and ONE deck -- defeating the line's whole purpose.
+        #     Measured on the published set: 19.28% of ALL reviews carry a NaN note_id (per-user
+        #     median 4.1%, mean 22.1%, p90 70.0%; 4 users in 60 above 95%). So ~a fifth of the
+        #     training data has had no note/deck stream identity for the entire project.
+        #
+        #  B. NEW WITH -id. That dataset deliberately keeps RAW Anki epoch-ms ids (~1.7e12), which
+        #     do not fit in int32 at all. card_id is int64 in the frame so it WRAPPED (7,693 of
+        #     15,191 stored values negative, with rare cross-card collisions); note/deck/preset go
+        #     through the NaN-fill as float64 so they SATURATED, giving n_unique == 1 for every
+        #     user tested. A collision also makes a card's genuine FIRST review probe-eligible
+        #     while add_queries gave it no query row -- the KeyError that killed featB's fetch
+        #     worker and deadlocked the run.
+        #
+        # Widening is safe: these tensors are only ever used for grouping and id-encoding in
+        # Python (prepare_batch already casts deck to int64 at :259). They never reach the CUDA
+        # kernel, which takes from_perm/to_perm and those stay int32.
+        _vals = section_df[submodule].to_numpy()
         ids[submodule] = torch.tensor(
-            section_df[submodule].to_numpy(),
-            dtype=torch.int32,
+            _vals,
+            dtype=torch.int64,
             device=device,
             requires_grad=False,
+        )
+        # THE GUARD, and it is the durable part. A silent narrowing cast is invisible in every
+        # banner and every shape check; only a value comparison catches it. Costs one pass.
+        _back = ids[submodule].cpu().numpy().astype("float64")
+        assert np.allclose(_back, np.asarray(_vals, dtype="float64")), (
+            f"{submodule}: id values changed when cast to the stored dtype -- narrowing/overflow. "
+            f"max |id| = {np.abs(np.asarray(_vals, dtype='float64')).max():.0f}"
         )
 
     for submodule in RWKV_SUBMODULES:
