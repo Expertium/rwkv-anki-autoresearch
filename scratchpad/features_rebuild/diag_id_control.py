@@ -27,11 +27,11 @@ os.environ.setdefault("RWKV_ID_FEATURES", "0")
 from rwkv.prepare_batch import get_data  # noqa: E402
 
 DBS = [
-    ("OLD  (published)", "train_db_5k_h1", 400_000_000_000),
-    ("GEN2 (-id)", "F:/rwkv_lmdb/train_db_5k_h1_id2", 400_000_000_000),
-    ("GEN3 (-id, FIXED)", "F:/rwkv_lmdb/train_db_5k_h1_id3", 400_000_000_000),
+    ("TEST published (what EVAL reads)", "F:/rwkv_lmdb/test_db_5k", 250_000_000_000),
+    ("TEST gen3 (-id, FIXED)", "F:/rwkv_lmdb/test_db_5k_id3", 250_000_000_000),
 ]
-USERS = [1, 101, 209, 417]
+# eval users -- the test dbs hold 5001-10000, so the train-half users are not present
+USERS = [5001, 5002, 5010, 5050]
 
 for label, path, size in DBS:
     if not os.path.exists(path):

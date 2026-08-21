@@ -1,0 +1,30 @@
+# ★ THE PUBLISHED EVAL DB, REBUILT 2026-08-21 WITH THE int64 ID FIX -- and NOTHING ELSE.
+# Same dataset, same users, same format as test_db_5k. The ONLY difference is that entity ids are
+# no longer saturated to INT32_MIN, so note/deck streams regain per-entity identity.
+#
+# WHY: eval reads this db and groups by the ids stored in it, while DEPLOY (run_as_rnn, and the
+# Rust engine) keys its states on the RAW full-precision id. Measured on the published test db:
+# user 5010 had note n_unique == 1 across ALL 171,933 of its scored rows. So every recorded eval
+# number was measured on a grouping deploy does not use, and the champion 0.297523 / 0.265191 is
+# NOT its deploy accuracy. Scoring the UNCHANGED champion against this db measures what it would
+# actually do in Anki. No retraining, no champion re-base -- purely a measurement.
+#
+# PROCESSES 6 -> 4: whole-user format, and the eval that follows wants RAM.
+# 5k-phase EVAL (test) db for the SECOND half, users 5001-10000 -- the primary held-out eval set + the
+# d=128 baseline eval set. Whole-user format (MAX_BATCH_SIZE=2097152, allowable=1048576) like the existing
+# test_db. Lives on F: (4 TB USB, roomy; eval reads are one-shot, not latency-critical). 1 thread, cpu-build.
+# Resumable. Sparse map_size (250 GB) -- monitor FREE space, not the logical file size.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_fix"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 4
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
