@@ -393,6 +393,14 @@ deltas so dead ends aren't re-run.
   `buttons_py_vs_rust.py` (the 4 button intervals, Python vs Rust), `smoke_qat_jit.py` (CPU,
   seconds: proves QAT compiles as a ScriptModule, dispatches to the jit-ignored kernel, and
   matches eager bit-for-bit — i.e. `RWKV_NO_JIT=1` is not structurally required by QAT).
+  **`smoke_id_identity.py`** (2026-08-21 -- do TRAINING and DEPLOY agree on WHICH ROWS ARE THE SAME
+  ENTITY? Compares the actual PARTITION, not merely entity counts, and **proves its own
+  non-vacuity** by re-running against a simulated int32 store and requiring >=1 case to detect it;
+  8 do, and they are exactly the two real bugs. Users are picked by NaN-metadata rate (0.0 / 66.8 /
+  99.6%) -- a smoke sampling only user 1 would have passed on the broken build. ⚠ The simulation
+  MUST use `torch.tensor(float64, dtype=int32)`, which SATURATES; `numpy.astype(int32)` WRAPS and is
+  nearly injective, so a wrap-based simulation reports the guard vacuous everywhere. Getting that
+  backwards was this file's first version.)
   `smoke_id_features_width.py` (2026-08-16 — the §9 three-way check for `RWKV_ID_FEATURES`, which
   CANNOT live in `parity_train_vs_rnn.py` because that harness is single-stack: asserts the training
   class, the deploy RNN class and `CARD_FEATURE_COLUMNS` agree on the width at BOTH 92 and 112).

@@ -29,7 +29,7 @@ from rwkv.prepare_batch import get_data  # noqa: E402
 DBS = [
     ("OLD  (published)", "train_db_5k_h1", 400_000_000_000),
     ("GEN2 (-id)", "F:/rwkv_lmdb/train_db_5k_h1_id2", 400_000_000_000),
-    ("GEN1 (-id)", "F:/rwkv_lmdb/train_db_5k_h1_id", 400_000_000_000),
+    ("GEN3 (-id, FIXED)", "F:/rwkv_lmdb/train_db_5k_h1_id3", 400_000_000_000),
 ]
 USERS = [1, 101, 209, 417]
 
