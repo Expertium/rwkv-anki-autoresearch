@@ -179,7 +179,7 @@ held out 70/30. Each family's columns are z-scored, then aggregated as
 `1 - sum SS_res / sum SS_tot`, so every column counts equally. Read a cell as: **"if this family
 were deleted, how much of it could be reconstructed from that predictor set?"**
 
-| target family | from OLD | tod | cal | recy | deck | batch | prst | omis | from ALL other NEW | OLD+NEW |
+| target family | from OLD | tod | cal | recy | deck | batch | prst | sib | from ALL other NEW | OLD+NEW |
 |---|---|---|---|---|---|---|---|---|---|---|
 | time-of-day | 0.216 | - | 0.010 | 0.008 | 0.050 | 0.056 | 0.027 | 0.023 | **0.093** | 0.262 |
 | **calendar** | **0.023** | 0.009 | - | 0.004 | 0.009 | 0.003 | 0.000 | 0.000 | **0.023** | **0.044** |
@@ -187,7 +187,42 @@ were deleted, how much of it could be reconstructed from that predictor set?"**
 | deck | 0.490 | 0.054 | 0.012 | 0.290 | - | 0.264 | 0.230 | 0.140 | 0.608 | 0.679 |
 | creation-batch | 0.489 | 0.178 | 0.005 | 0.079 | 0.468 | - | 0.017 | 0.300 | 0.608 | 0.667 |
 | preset | 0.529 | 0.106 | 0.002 | 0.146 | 0.507 | 0.184 | - | 0.024 | 0.562 | 0.668 |
-| omissions | 0.291 | 0.062 | 0.001 | 0.203 | 0.244 | 0.244 | 0.010 | - | 0.425 | 0.494 |
+| **sibling-gap** | 0.370 | 0.102 | -0.000 | 0.034 | 0.226 | 0.280 | 0.020 | - | 0.363 | 0.458 |
+| card-predates-1st | 0.213 | 0.021 | 0.002 | 0.372 | 0.262 | 0.208 | -0.000 | 0.132 | 0.527 | 0.546 |
+
+**⚠ THE SIBLING GAP GETS ITS OWN ROW NOW (Andrew caught this: *"I don't see sibling interval gap
+in the table"*).** It was buried in a family I had labelled "omissions" -- a name describing MY
+process (features I forgot to implement) rather than the features' meaning, grouped with
+`card_predates_first_review`, which is unrelated: note-level interference vs collection provenance.
+They were together only because both were added late. Split, each stands alone.
+
+**★ AND MEASURED PROPERLY IT IS THE WEAKEST NEW COLUMN.** Pooled numbers disagreed 3.6x across
+samples (0.103 on 4 users, 0.370 on 12), so `sibling_gap_peruser.py` measures it PER USER and ONLY
+on rows where the gap is defined:
+
+| statistic | R2 of the gap from the 23 original inputs |
+|---|---|
+| per-user median | **0.267** |
+| p10 / p90 | 0.178 / 0.435 |
+| min / max | -0.002 / 0.469 |
+| pooled (52,430 rows) | 0.316 |
+| shuffled floor | -0.001 |
+
+Pooled sits near the per-user median, so the pooled fit is NOT leaning on between-user structure.
+**⚠ AND IT CORRECTS THE EARLIER PER-COLUMN SCREEN'S 0.103**: that regression ran over ALL rows,
+~90% of which carry the sentinel 0.0, so its R2 conflated "can you tell which rows are sentinel"
+with "can you predict the gap". Restricting to defined rows is the correct question and roughly
+triples the answer.
+
+**THE SIBLING GAP IS THEREFORE SQUEEZED FROM THREE SIDES**, each measured independently:
+* **coverage** -- defined on a per-user median of **4.1%** of rows (p90 26.8%), and 8 of 20 users
+  had too few defined rows to even fit;
+* **derivable from the current row** -- ~27% median;
+* **already in the recurrence** -- the champion's NOTE STATE reconstructs **31%** of it at
+  seconds resolution (`sibling_redundancy_screen.py`).
+It ships because it is already in the db and costs nothing to keep, but the pre-registered
+expectation that it will not move the gate is now supported by three independent measurements
+rather than one.
 
 **THE ARM RANKING THIS IMPLIES, if the bundle wins:**
 1. **calendar — the cleanest arm in the set.** 0.023 from the old features AND 0.023 from the whole

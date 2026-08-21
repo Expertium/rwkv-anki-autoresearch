@@ -64,10 +64,16 @@ FAMILY = {
     "creation-batch": ["scaled_creation_batch_1min", "scaled_creation_batch_1h",
                        "scaled_creation_batch_1d", "scaled_creation_batch_pos_1h"],
     "preset": ["is_default_preset"],
-    "omissions": ["scaled_sibling_gap", "card_predates_first_review"],
+    # ⚠ NOT an "omissions" family. That label named MY process (features I forgot to implement),
+    # not the features' meaning, and it hid Andrew's sibling gap inside a bookkeeping bucket. The
+    # two are also semantically unrelated -- note-level interference vs collection provenance --
+    # so grouping them measured nothing. Each stands alone.
+    "sibling-gap": ["scaled_sibling_gap"],
+    "card-predates-1st": ["card_predates_first_review"],
 }
 SHORT = {"time-of-day": "tod", "calendar": "cal", "recency+ages": "recy", "deck": "deck",
-         "creation-batch": "batch", "preset": "prst", "omissions": "omis"}
+         "creation-batch": "batch", "preset": "prst", "sibling-gap": "sib",
+         "card-predates-1st": "cp1st"}
 
 
 def family_r2(X, Y, seed=0, lam=10.0):
