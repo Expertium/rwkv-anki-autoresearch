@@ -99,13 +99,21 @@ print("")
 print("=== RESULTS ===")
 res = {}
 for arm in ARMS:
-    a = load("result/RWKV-%s.jsonl" % arm) or load("result/RWKV-%s-s0.jsonl" % arm)
-    i = load("result/RWKV-P-%s.jsonl" % arm) or load("result/RWKV-P-%s-s0.jsonl" % arm)
+    # ⚠ ONLY THE MERGED FILE COUNTS. eval_sharded writes per-shard `-s0.jsonl` as it goes and
+    # merges into the unsharded name at the END, behind a completeness gate that requires every
+    # rostered user to be merged or explicitly NaN-skipped. Reading the shard file would let this
+    # script compute a BAND from a partially evaluated arm and print it as a verdict -- a premature
+    # number is worse than no number, because it is the one that gets acted on. If the merged file
+    # is absent the arm is simply not done.
+    a = load("result/RWKV-%s.jsonl" % arm)
+    i = load("result/RWKV-P-%s.jsonl" % arm)
     if a is None or i is None:
-        print("  %s: results not present yet" % arm)
+        part = load("result/RWKV-%s-s0.jsonl" % arm)
+        extra = " (shard file has %d users so far)" % len(part) if part else ""
+        print("  %s: eval not COMPLETE -- no merged result jsonl yet%s" % (arm, extra))
         continue
     res[arm] = (a, i)
-    print("  %s: ahead n=%d, imm n=%d" % (arm, len(a), len(i)))
+    print("  %s: ahead n=%d, imm n=%d  (merged)" % (arm, len(a), len(i)))
 
 if len(res) < 2:
     print("")
