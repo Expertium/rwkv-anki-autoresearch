@@ -72,9 +72,9 @@ ARMS = {
         why="CONTROL: champion recipe with KD OFF on the OLD 92-dim DBs.",
     ),
     "featB": dict(
-        train_db="F:/rwkv_lmdb/train_db_5k_h1_id2",
-        val_db="F:/rwkv_lmdb/test_db_5k_id2",
-        eval_db="F:/rwkv_lmdb/test_db_5k_id2",
+        train_db="F:/rwkv_lmdb/train_db_5k_h1_id3",
+        val_db="F:/rwkv_lmdb/test_db_5k_id3",
+        eval_db="F:/rwkv_lmdb/test_db_5k_id3",
         lf_db="F:/rwkv_lmdb/label_filter_db_id",
         idf="1",                      # ON -> 114-dim
         zero="",                      # the rebuild DROPPED the card-state column at source
@@ -274,6 +274,19 @@ if __name__ == "__main__":
     # 564,612 was the 112-dim figure; generation 2 adds scaled_sibling_gap and
     # card_predates_first_review, i.e. 2 more dims = +640. Baked into a runner guard so an arm
     # that silently ran at the wrong width cannot be mistaken for a result.
+    # ★ featA2 -- the FIXED CONTROL (Andrew 2026-08-21: "Sure, re-run featA").
+    # featA ran on published dbs whose entity ids were saturated to INT32_MIN, so it is not a
+    # clean control for a featB built on fixed dbs. Same recipe, same seed, same everything --
+    # only the two db paths change, to the id-fixed rebuilds of the SAME published dataset.
+    # Param count is unchanged at 558,212: the fix touches stored ids, not the model.
+    ARMS["featA2"] = dict(
+        ARMS["featA"],
+        train_db="train_db_5k_h1_fix",
+        val_db="F:/rwkv_lmdb/test_db_5k_fix",
+        eval_db="F:/rwkv_lmdb/test_db_5k_fix",
+        why="FIXED CONTROL: featA's recipe on the id-fixed published dbs.",
+    )
+    ARMS["featA2"]["params"] = "558212"
     ARMS["featA"]["params"] = "558212"
     ARMS["featB"]["params"] = "565252"
 
