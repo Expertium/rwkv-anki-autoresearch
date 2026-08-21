@@ -241,6 +241,17 @@ worth it... focus on major changes that are likely to have a large impact"* -- a
 points that the whole A0 -> A18 width ladder cost +0.00053 imm and iters 32-53 accumulated ~+0.0019
 over ten accepted iterations.
 
+**HOW THE TWO ARMS GET LOGGED (decided in advance, 2026-08-21).** Neither arm is a champion
+candidate: both are KD-off and neither is comparable to iter 53, so neither can be an accept.
+* Log BOTH to `research_log.jsonl` with **`number: null`** and `status` `control` / `treatment`,
+  plus one `research_5k_verbose.md` section covering the pair, and rebuild `log.md`.
+* Do NOT assign iteration numbers. The numbering convention is "the Nth RESULT in the champion
+  lineage", and these two are a phase decision beside it. Assigning numbers would put two non-
+  comparable rows into a table whose whole meaning is comparability.
+* An iteration number is earned only if the pipeline is ADOPTED and a champion RE-BASE run follows
+  on the gen-2 dbs -- that run is the first thing in the lineage again, and it takes the next number
+  at its own verdict.
+
 **If featB is WORSE, check these THREE things before believing it.** More input dims at unchanged
 trunk capacity can genuinely hurt, but three artefacts look identical to that:
 1. the param guard -- `Trainable parameters: 565252` must appear in arm B's WS log (the guard
