@@ -1312,6 +1312,16 @@ shape check -- saturation is not an error, it is a silent value change.**
   collision also makes a card's genuine FIRST review probe-eligible while `add_queries` gave it no
   query row -> `KeyError` in `insert_probes`, which killed featB's fetch worker and DEADLOCKED the
   run (GPU 0% for 69 min).
+* **★★ AND IT WAS A TRAIN-vs-DEPLOY DIVERGENCE -- EXACTLY WHAT THE THREE-WAY-PARITY RULE EXISTS
+  FOR, AND NO GATE CAUGHT IT.** TRAINING grouped rows by the **int32-truncated** id stored in the
+  LMDB. DEPLOY (`run_as_rnn`) keys its state dicts on the **raw frame value**
+  (`self.note_states[row["note_id"]]`, :152), i.e. full precision. Measured on published user 101:
+  training saw **1** note entity, deploy saw **3,277**. So for every NaN-metadata card the two paths
+  computed a different quantity -- training pooled them into one note state, deploy gave each its
+  own -- and each path was self-consistent in isolation, which is precisely the failure mode §9
+  predicts. The fix makes both full precision. **Add an id-identity case to the parity harness**;
+  `parity_train_vs_rnn.py` is single-stack and structurally cannot see this, exactly like the
+  `RWKV_ID_FEATURES` width check that needed its own smoke.
 * **GEN 1 AND GEN 2 ARE DELETED / SUPERSEDED. GEN 3 (`*_id3`) is the first correct -id build.**
 * ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
   still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
