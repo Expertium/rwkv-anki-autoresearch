@@ -22,6 +22,16 @@ featA2 completed **WS (15:39)** and **decay**, and was stopped at the start of i
 Its runner therefore never generated `eval.toml`, which is why resuming needs the eval-only runner
 below rather than a re-launch of `run_featA2.cmd` (that would redo 8 h of training).
 
+## ⚠ THE PAUSE LEFT A TERMINAL MARKER IN featA2.log
+
+Killing the eval let the runner's own error branch write `featA2 EVAL_FAILED_-1` and
+`DONE_EXIT_25` before the cmd exited. So **`featA2.log` now carries a terminal marker for a run
+that did not fail on its merits** -- the decay it depended on completed fine.
+
+Consequence: any waiter polling `featA2.log` fires INSTANTLY. That is the same trap as featB's
+dead log, created by the pause itself rather than by a crash. The eval-only runner writes to its
+own `featA2_evalonly.log`, so it is unaffected; only re-arming something on `featA2.log` is unsafe.
+
 ## Step 1 — finish featA2's eval
 
 ```
