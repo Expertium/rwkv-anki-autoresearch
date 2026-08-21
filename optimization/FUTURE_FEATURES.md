@@ -172,6 +172,52 @@ largely predicting SAME-DAY vs EARLIER. The column we ship is seconds-resolution
 the sub-day structure is exactly where that user's mass lives. The `--id` mode puts the real target
 and the state in the same frame; day mode alone would have supported a broader claim than it earns.
 
+### ★★ PER-ROW REDUNDANCY SCREEN (2026-08-21, CPU-only) -- IT SETTLES THE ABLATION GRANULARITY
+
+`scratchpad/features_rebuild/feature_redundancy_screen.py`, 4 users / 60,000 rows, ridge held out
+70/30. **R2_old** = predictability of a new column from the 23 ORIGINAL per-row features;
+**R2_all** = from the originals PLUS the other 22 new columns. Shuffled floor is ~-0.001, so
+anything above ~0.01 is real.
+
+| family | R2_old (new info?) | R2_all (intra-family redundancy) |
+|---|---|---|
+| time-of-day (4 cols) | **0.08-0.20** | 0.26-0.44 |
+| calendar (5) | **0.02-0.12** | 0.11-0.65 |
+| recency+ages (3) | 0.12-0.39 | 0.49-0.71 |
+| deck (4) | 0.24-0.46, +1 dead | 0.75-0.91 |
+| creation-batch (4) | 0.23-**0.66** | **0.83-0.95** |
+| preset (1) | **0.67** | 0.92 |
+| the two omissions | 0.10 / 0.17 | 0.28 / 0.60 |
+
+**★ THE HEADLINE, AND IT IS A GPU DECISION: R2_all IS 0.6-0.95 FOR MOST COLUMNS, SO PER-FEATURE
+ARMS WOULD LARGELY MEASURE SHARED INFORMATION.** Removing ONE column leaves its information sitting
+in its siblings, so a single-column ablation is expected to read as null even for a column that
+matters. This converts "23 arms is expensive" (7-8 days) into "23 arms is also UNINFORMATIVE", which
+is a much stronger reason to ablate by FAMILY. The creation-batch four are the extreme case at
+0.83-0.95 -- four columns doing roughly one column's work.
+
+**★ WHAT IS GENUINELY NEW PER-ROW:** time-of-day and calendar, at R2_old 0.02-0.20. That matches
+their design rationale exactly -- the existing vector has only `day_offset`-derived PSEUDO-phase
+cycles, so true wall-clock phase was unavailable. `dow_cos` is the most novel single column in the
+whole set at 0.022.
+
+**★ WHAT IS LARGELY ALREADY THERE:** `is_default_preset` (0.67) and `scaled_creation_batch_1d`
+(0.66) are two thirds reconstructible from the current row alone, and `scaled_t_since_any_review`
+is 0.39 -- unsurprising, since `scaled_elapsed_seconds` is already an input and the two differ only
+by "this card" vs "any card".
+
+**⚠ `is_default_deck` IS NEAR-CONSTANT (std 0.006) on these users and its R2 is UNDEFINED, not bad.**
+A column with no variance carries nothing whatever its redundancy. ⚠ Four users is too few to call
+it dead globally -- default-deck usage is a per-user habit -- so this needs a wider count before
+dropping it. The first version of the screen printed **R2 = -2.0e9** here; the tool now refuses
+rather than clamps, because a clamped -1e9 still reads as a value.
+
+**WHAT THIS SCREEN CANNOT SEE, so it is not over-read:** it is PER-ROW. It cannot tell whether the
+RECURRENCE could derive a column over time from its state -- that needs a state dump, which is what
+`sibling_redundancy_screen.py` does for one column and found ~31%. So a LOW R2_old means "not
+trivially present in the current row", NOT "unavailable to the model". A HIGH R2_old is the
+decisive direction.
+
 ### ★★ PRE-REGISTERED: HOW featB - featA GETS READ (written 2026-08-20 20:15, BEFORE any number)
 
 Recording this now because the alternative is deciding the bar after seeing the result, which is
