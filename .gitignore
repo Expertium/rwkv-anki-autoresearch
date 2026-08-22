@@ -130,3 +130,9 @@ reference/pq_cb_shift_c80_m5b12.txt
 scratchpad/bughunt/diag_*/*.pth
 scratchpad/bughunt/diag_*/*.log
 scratchpad/bughunt/*.bak
+
+# workload-efficiency replay: per-user intermediates are large and regenerable
+scratchpad/workload/out/
+scratchpad/workload/tables/
+scratchpad/workload/logs/
+scratchpad/workload/*.log
