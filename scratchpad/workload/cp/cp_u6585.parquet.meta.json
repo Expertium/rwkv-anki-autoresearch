@@ -1,0 +1,21 @@
+{
+ "user": 6585,
+ "step_days": 50,
+ "n_checkpoints": 6,
+ "n_default_param_checkpoints": 0,
+ "min_train_rows": 400,
+ "min_active": 20,
+ "recency": true,
+ "floor_days": 1.0,
+ "has_v1_control": true,
+ "seconds": 50.38285049999831,
+ "dr_levels": [
+  0.99,
+  0.95,
+  0.9,
+  0.85,
+  0.8,
+  0.75,
+  0.7
+ ]
+}

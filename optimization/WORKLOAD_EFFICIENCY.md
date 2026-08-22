@@ -52,22 +52,43 @@ Stratified by collection size, because size spans three orders of magnitude (5th
 Total: **65 users, 906k reviews, 6.75 h on 2 threads.** `select_users.py` refuses to re-pick a
 user an earlier phase already replayed, so the phases compose without silently shrinking.
 
-### Parameters: FSRS-7 is *not* re-optimized
+### ★ Parameters: FSRS-7 is re-optimized at every checkpoint (v2)
 
-srs-benchmark already stores the per-user optimized 34-parameter vector for all 10,000 users
-(`result/FSRS-7-short-secs.jsonl`, written 2026-06-26). Re-running the optimizer would
-reproduce it at enormous cost. The vector used is copied into each output's `.meta.json`, so a
-re-benchmark overwriting the source file cannot silently change what was measured.
+**v1 read each user's parameters from `result/FSRS-7-short-secs.jsonl` and that was wrong**
+(Andrew, 2026-08-22). Those stored vectors are the *final* ones, fitted on all
+TimeSeriesSplit folds but the last — so they have already seen roughly 80 % of the user's
+history, **including the future relative to almost every replay day**. v1 therefore measured a
+clairvoyant FSRS-7 against a frozen RWKV.
 
-⚠ The **non-equalized** file is the right one. The `-equalize_test_with_non_secs` variant's
-parameters genuinely differ (median max-abs difference **0.094** over 200 users, max 1.28) —
-equalization changes which rows *train*, not only which rows score — and the canonical replay
-table is the full raw stream, which is what the plain `--short --secs` pipeline fits.
+v2 (`checkpoint_arm.py`) fits the parameters at each checkpoint on the prefix available *then*,
+through srs-benchmark's own training path (`script._fit_trainable_weights`, imported after
+setting `sys.argv`, so it is the benchmark's optimizer and not a reimplementation).
 
-The `sched_penalties` variant is run as a second FSRS arm. Its two penalties exist to stop
-FSRS-7 asking for sub-second intervals at high DR, which is *precisely* the regime this study
-measures, and its accuracy is within noise of the plain variant (README: RMSE 0.3438 vs
-0.3437). It is arguably the fairer scheduler-side arm.
+Three consequences, all in the same direction:
+
+- **`--recency` is on.** It is the best FSRS-7 variant on the leaderboard (RMSE 0.3414 vs
+  0.3437) and it is what a realistic deployment uses. Weighting formula is the benchmark's own
+  (`script._apply_recency_weighting`): `0.0667 + 0.9333·(i/n)^11.25`, with `n` the *prefix*
+  length, which is what an optimizer run on day *D* would actually compute.
+- **Below 400 training rows the arm falls back to DEFAULT parameters** rather than fitting.
+  That is not a fudge — it is what Anki does, and it makes the early checkpoints honest instead
+  of unfittable.
+- **RWKV needs no re-run, and that asymmetry is the whole point of the project.** Its weights
+  are frozen and user-independent, and the interval after review *j* depends only on reviews
+  1…*j*, so v1's stored intervals are already exactly what it would have produced at any
+  checkpoint with only the past in hand.
+
+Cost: **11.4 s for a full 20k-row fit on one thread**, scaling roughly linearly — 1,572
+checkpoints across 65 users came to ~2 h on two threads.
+
+⚠ The remaining hindsight is in the *active-card mask*, which looks one review into the future
+to ask whether the card was still in rotation and in the review queue. It is identical for both
+arms so it cannot bias the ratio, but the card set at day *D* is chosen with knowledge of
+*D+1*. That is unavoidable in a replay design.
+
+*(v1 detail, kept because the sensitivity runs above used it: the non-equalized parameter file
+is the right one — the `-equalize_test_with_non_secs` vectors genuinely differ, median max-abs
+0.094 over 200 users — and the `sched_penalties` variant was run as a second FSRS arm.)*
 
 ---
 
@@ -122,6 +143,35 @@ Effect on user 5100, floored share of workload:
 67–83 %.** Those two rows are not usable as efficiency numbers; they are reported for
 completeness and should be read as "both algorithms want sub-day intervals here".
 `--queue all` reproduces the unfiltered version as a sensitivity check.
+
+### 2.3b ★ v2: the active-card mask was wrong twice, and the second version costs a factor of 2
+
+**First error (found 2026-08-22).** v1 asked whether the card's *next* review found it in the
+review queue. That peeks one review into the future, and it is far too strict: for user 5530
+the median active-card count was **zero**, so 37 of that user's 40 checkpoints were discarded
+outright. Replaced by a past-only test — the card's last review at or before *D* had
+`state == 2` and `rating > 1`, i.e. it was a review card and did not lapse. Median active count
+went from 0–163 to 221–3908 across the users checked.
+
+**Second problem, which the fix exposed.** A past-only mask cannot know a card is abandoned. At
+user 5100, day 300, only **22 of 187** active cards are ever reviewed again — that user keeps
+adding cards and dropping old ones. Those phantom cards are **not neutral between the arms**:
+
+| card set | F/R @ 90 %, user 5100 |
+|---|---|
+| every active card (past-only) | **0.441** |
+| cards actually reviewed again (`alive`) | **0.814** |
+
+A factor of ~2 turns on a definition, so both are reported and neither is buried.
+
+**`alive` is the primary**, for two reasons. A card the user never touches again generates no
+workload in reality under *any* scheduler, so charging both algorithms for it is a phantom; and
+those are exactly the cards for which we have no outcome evidence, since nothing was ever
+observed. The hindsight is in selecting the *population*, never in either algorithm's decision,
+and it is identical for both arms.
+
+The mechanism behind the gap is the same one §5 identifies: the two models disagree most on
+mature, long-interval cards, which is what abandoned cards mostly are.
 
 ### 2.4 A card is active *between* two observed reviews
 
@@ -256,7 +306,95 @@ row and nothing in either training objective constrains the curve's *shape* acro
 
 ---
 
-## 5. Results — n = 65 users, 906k reviews
+## 5. Results (v2) — 65 users, 1,361 checkpoints, FSRS-7 refit at every one
+
+### The headline is not a single number, it is a curve in how much data FSRS has
+
+At the same nominal desired retention, RWKV-Curve costs **more** reviews/day than FSRS-7 —
+median ratio 0.60–0.89 across 70–95 % DR, i.e. RWKV needs roughly **1.1–1.7×** the work.
+Significant at every level at or below 95 %.
+
+Per-user ratio = that user's total FSRS workload ÷ total RWKV workload, pooled over their
+checkpoints. Alive cards (§2.3b).
+
+| DR | median | geomean | p25…p75 | frac > 1 | sign-test p |
+|---|---|---|---|---|---|
+| 99 % | 0.995 | 0.938 | 0.80…1.10 | 0.43 | 0.443 |
+| 95 % | 0.889 | 0.752 | 0.56…1.04 | 0.30 | **0.0022** |
+| 90 % | 0.809 | 0.593 | 0.57…1.11 | 0.37 | **0.043** |
+| 85 % | 0.755 | 0.465 | 0.38…1.10 | 0.33 | **0.011** |
+| 80 % | 0.698 | 0.388 | 0.28…1.03 | 0.30 | **0.0022** |
+| 75 % | 0.610 | 0.329 | 0.21…0.93 | 0.19 | **0.00004** |
+| 70 % | 0.596 | 0.290 | 0.19…0.80 | 0.17 | **0.00002** |
+
+**But that average hides the finding that actually matters.** Split the same checkpoints by how
+many reviews FSRS's optimizer had available, and the ratio is monotone in it:
+
+| FSRS training rows | n checkpoints | 90 % | 85 % | 80 % | 75 % | 70 % |
+|---|---|---|---|---|---|---|
+| **< 400 (default params)** | 48 | **1.386** | **1.905** | **2.241** | **2.120** | **1.781** |
+| 400 – 2k | 243 | 0.989 | 0.968 | 0.895 | 0.859 | 0.912 |
+| 2k – 8k | 641 | 0.873 | 0.915 | 0.909 | 0.846 | 0.822 |
+| 8k – 25k | 390 | 0.706 | 0.736 | 0.743 | 0.720 | 0.684 |
+| > 25k | 39 | 0.505 | 0.454 | 0.446 | 0.437 | 0.439 |
+
+**On a collection too new to optimize, RWKV-Curve is the cheaper scheduler by 1.4–2.2×.**
+Parity arrives at roughly 400–2,000 reviews, and past that FSRS-7 pulls away, reaching 2× on
+the largest collections. That is the honest shape of the answer: a frozen, user-independent net
+wins exactly where a per-user optimizer has nothing to fit, and loses once it does.
+
+### ⚠ Correction to what I reported mid-run
+
+I said the re-optimization "consistently gives a higher ratio (+0.04 to +0.12), so the
+clairvoyant parameters were flattering FSRS-7". **On the primary card set that is not
+supported.** The clean within-run A/B — same users, days, cards and mask, only the parameter
+vector differing — comes out non-significant at every DR level and changes sign:
+
+| DR | final w | refit w | change | p |
+|---|---|---|---|---|
+| 95 % | 0.820 | 0.889 | +0.069 | 0.450 |
+| 90 % | 0.695 | 0.809 | +0.115 | 1.000 |
+| 85 % | 0.600 | 0.755 | +0.155 | 0.615 |
+| 80 % | 0.771 | 0.698 | −0.073 | 0.801 |
+| 75 % | 0.690 | 0.610 | −0.080 | 0.526 |
+| 70 % | 0.521 | 0.596 | +0.074 | 0.155 |
+
+The two results are consistent once stated properly: the clairvoyance **does** matter, but as a
+function of *when* in the history you look, not as a uniform shift. Pooling a user's early and
+late checkpoints averages it away. The training-rows table is where the effect lives, and it is
+large there.
+
+So Andrew's correction was necessary — without the refit, the whole cold-start half of the
+result is invisible, because every checkpoint would have carried end-of-history parameters.
+
+### The absolute anchor
+
+Median over users of pooled W_model ÷ W_actual, alive cards, same days:
+
+| DR | FSRS / actual | RWKV / actual |
+|---|---|---|
+| 90 % | 1.35 | 2.30 |
+| 85 % | **0.50** | **1.24** |
+| 80 % | 0.24 | 0.80 |
+
+The users' real review load is reproduced by FSRS-7 at DR ≈ 88 % and by RWKV-Curve at
+DR ≈ 83 %. Observed retention across these rows is 0.859, so FSRS lands almost exactly on it
+and RWKV about 3 pp low — the same under-shoot the horizon analysis below predicts.
+
+### Sensitivity: the phantom-card set
+
+Repeating everything on *all* active cards rather than the alive subset gives median 0.53–0.89
+and p ≤ 0.006 everywhere — same direction, significant, but the levels differ by up to a factor
+of two (§2.3b). The active set is dominated by accumulated dead cards: median 838 active per
+checkpoint against 13 alive.
+
+---
+
+## 5b. v1 results (superseded parameters, kept for the mechanism analysis)
+
+*The tables below used the stored final parameters and the future-peeking mask, so their
+LEVELS are superseded by §5. The calibration and horizon analysis is still the best evidence
+for WHY the two curves differ, and nothing in v2 contradicts it.*
 
 ### The headline
 
@@ -394,6 +532,13 @@ monotone above 90 % — which is exactly why the real table pools 24 users.
 
 **It does not change any gate.** Nothing here is a research-phase accept/reject: the acceptance
 gate is LogLoss on the VAL half, RWKV-Curve still wins it, and no champion moves.
+
+**★ The cold-start result is the one with product consequences.** RWKV-Curve is the cheaper
+scheduler on collections too new for FSRS to optimize (1.4-2.2x at 70-90% DR), reaches parity
+around 400-2,000 reviews, and loses past that. A frozen user-independent net has no warm-up,
+which is exactly the regime where a per-user optimizer has nothing to fit. If this model ever
+ships, that is the claim it can make honestly, and "beats FSRS-7 everywhere on workload" is
+not.
 
 **It does add a target the LogLoss gate is blind to.** The curve's shape across `t` is
 unconstrained by the training objective, and it is the only thing interval inversion depends on.
