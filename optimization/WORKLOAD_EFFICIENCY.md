@@ -78,13 +78,12 @@ Three consequences, all in the same direction:
   1…*j*, so v1's stored intervals are already exactly what it would have produced at any
   checkpoint with only the past in hand.
 
-Cost: **11.4 s for a full 20k-row fit on one thread**, scaling roughly linearly — 1,572
-checkpoints across 65 users came to ~2 h on two threads.
+Cost: **11.4 s for a full 20k-row fit on one thread**, scaling roughly linearly — 1,361
+checkpoints across 65 users came to **0.94 h on two threads**.
 
-⚠ The remaining hindsight is in the *active-card mask*, which looks one review into the future
-to ask whether the card was still in rotation and in the review queue. It is identical for both
-arms so it cannot bias the ratio, but the card set at day *D* is chosen with knowledge of
-*D+1*. That is unavoidable in a replay design.
+⚠ The remaining hindsight is in the choice of card *population* — see §2.3b, where the
+past-only mask and the alive subset are compared and both reported. Neither touches either
+algorithm's decision, and both arms are always summed over identical cards.
 
 *(v1 detail, kept because the sensitivity runs above used it: the non-equalized parameter file
 is the right one — the `-equalize_test_with_non_secs` vectors genuinely differ, median max-abs
