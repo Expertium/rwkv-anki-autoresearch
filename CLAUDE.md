@@ -1940,6 +1940,30 @@ All hooks stay in-repo, env-gated, default off.
   spinning a full core for hours. **CHECK + KILL orphan pythons after every run** — but inspect
   command lines first: the spare `pythonw` are the bridge/controller, the ~80000s-CPU python is
   Andrew's FSRS benchmark, and he also runs a Reddit bot + liveplot. **Do not kill those.**
+  **★ AND AN ORPHAN HOLDS ITS LMDB OPEN INDEFINITELY (2026-08-24).** A featA2 fetch worker from
+  08-21 was still holding `F:/rwkv_lmdb/test_db_5k_fix` **three days later** (10 CPU-seconds
+  total, parent long dead), which made the directory un-renameable with a bare `Access is
+  denied` and no indication of why. Diagnose in this order, because the obvious suspect is
+  usually wrong: rename a fresh dir on the same volume (rules out permissions), then
+  `[IO.File]::Open(path,'Open','ReadWrite','None')` on `data.mdb` (proves a handle exists), then
+  find the process by START TIME + near-zero CPU + dead ParentProcessId. My first two theories --
+  my own verification handle, then F: permissions -- were both wrong.
+- **★★ `F:/rwkv_lmdb/test_db_5k_fix` AND `train_db_5k_h1_id3` ARE NOW JUNCTIONS TO
+  `C:\rwkv_lmdb\` (2026-08-24). DO NOT DELETE `C:\rwkv_lmdb` — it is not scratch, it is those two
+  databases.** They were moved to the SSD for speed: measured random-read throughput went
+  25.1 -> 643 MB/s and 8.1 -> 346 MB/s (**25x and 43x**); junction overhead is ~10% vs a direct
+  C: path. The F: paths are junctions precisely so nothing had to be edited — the db paths are
+  hardcoded absolute strings in runners *and inside their `findstr` guard assertions*, so a path
+  edit is the clone-a-runner failure mode waiting to happen. `test_db_5k_id3` (37 MB/s) and
+  `test_db_5k` (35 MB/s) are still real directories on F:.
+  ⚠ **Move them with `lmdb.Environment.copy(dst, compact=True)`, never a file copy** — these are
+  SPARSE, so a plain copy materialises the reservation (`test_db_5k_fix` would land as its
+  232 GB apparent size, not 103 GB). And budget ~7% GROWTH, not a saving: compaction wrote
+  110.6 GB from a 103.0 GB source, because the sparse source's allocated extents undercount what
+  a densely-written copy needs. Tools: `scratchpad/workload/move_lmdb.py` (copy + verify) and
+  `finalize_lmdb.py` (rename -> junction -> verify through it -> delete original). They are two
+  scripts because verifying and renaming in one process fails: the verifier's own handle blocks
+  the rename.
 - **⚠⚠ OPS -- CLONING A RUNNER MEANS UPDATING EVERY STRING THAT DEPENDS ON THE LEVER, NOT JUST
   THE LEVER. Three failures on 2026-08-18, same shape, one of them caught live.**
   * **iter 54 phase 2a: the ENV was wrong, the guard right.** The champion uses KD alpha **0.9
