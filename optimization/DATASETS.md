@@ -134,3 +134,117 @@ change** — no LMDB rebuild, no disk, ~6-7 h.
 preprocessing cost — but it **is** the eval set, so it is usable only for the final
 shipped model after research closes, exactly as upstream does with its two checkpoints
 (trained on 101-4999 and 5000-10000).
+
+## The interval definition: `elapsed_seconds` is answer-to-answer, and it should be end-to-start
+
+Andrew, 2026-08-29: *"given that the dataset has different interval lengths now and it matters for
+same-day reviews, once we're done with RWKV, should we make a third table for srs-benchmark?"*
+
+### The three definitions
+
+A revlog row is written when the user **answers**, so `id` is the answer time and `duration` is how
+long that review took. Writing `show(k) = id(k) - duration(k)`:
+
+| definition | formula | who uses it |
+|---|---|---|
+| answer-to-answer | `id(k) - id(k-1)` | **the public dataset's `elapsed_seconds`** (`build_parquet.py`: `review_time = entry.id`, then `.diff()`) |
+| show-to-show | `show(k) - show(k-1)` | the `-id` set's naive diff |
+| **end-to-start** | `show(k) - id(k-1)` | what memory decay actually spans |
+
+    end_to_start = elapsed_seconds - duration(k)
+
+⚠ It is the **current** review's duration that comes off, not the previous one. Show-to-show is the
+one that differs by `duration(k-1)`. Easy to get backwards.
+
+### ★ It needs NO new dataset
+
+`duration` and `elapsed_seconds` are BOTH columns of the public `anki-revlogs-10k`. The corrected
+interval is a one-line transform of data everyone already has -- no `-id` build, no HF upload, no
+reprocessing. That is what makes this proposable upstream at all.
+
+### Measured, 40 stride-sampled users / 2.18 M reviews (`scratchpad/hybrid100k/interval_def_effect.py`)
+
+| | same-day (30.8% of rows) | longer interval (69.2%) |
+|---|---|---|
+| median gap | 485 s | 531,311 s |
+| duration as a fraction of the gap, median | **1.70%** | 0.0012% |
+| ...p90 | **13.83%** | 0.01% |
+| ...p99 | **65.22%** | 0.07% |
+| rows shrinking >= 10% | 13.9% | 0.0% |
+| corrected gap goes NEGATIVE | **0.559%** | 0.000% |
+
+**The effect lives entirely in a TAIL, and a median-only read would dismiss it.** 1.7% sounds
+negligible; 13.9% of same-day rows moving by a tenth or more does not, and those are the short
+learning-step reviews where short-term modelling is actually differentiated. (Same shape as the
+median-vs-max error that cost iter 51.)
+
+**On longer intervals the correction is numerically invisible**, so it cannot touch the
+"Without same-day reviews" table at all.
+
+### ★ THE REAL ARGUMENT IS NOT PRECISION, IT IS THAT `elapsed_seconds` IS NOT KNOWABLE AT PREDICTION TIME
+
+`elapsed_seconds(k) = end_to_start(k) + duration(k)`. At the moment of prediction the user has been
+shown the card and has **not answered yet**, so `duration(k)` does not exist. The benchmark feeds it
+anyway, inside the interval -- and `duration(k)` correlates with the outcome, because a review the
+user struggles with takes longer. So the current interval carries a whisper of the label.
+
+This is the same issue our own DEPLOY CONTRACT already handles by **zeroing the most recent
+review's duration** (Andrew, 2026-07-27). We removed `duration(k)` from the duration column and left
+it inside the interval column.
+
+That reframes the question. It is not "is a more precise interval nicer", it is **"is a
+prediction-time-unavailable, outcome-correlated quantity being fed to every algorithm"**. The answer
+is yes, for 30.8% of rows, by a median 1.7% and a p90 of 13.8%.
+
+### RECOMMENDATION: not a third table -- a measurement, then probably a FIX to the second one
+
+1. **A third table would be near-duplicate.** It cannot differ from "Without same-day reviews" at
+   all, so it could only ever shadow "With same-day reviews". Two nearly-identical tables invite the
+   reader to pick one, which is the wrong framing for what is a correction rather than a variant.
+2. **Measure before proposing.** Re-run 2-3 algorithms (FSRS-6, FSRS-7, and one seconds-aware
+   baseline) with `elapsed_seconds - duration` and see whether any RANKING moves. Cheap: one-line
+   transform, no new data.
+3. **PRE-REGISTERED PREDICTION: aggregate LogLoss moves less than the gap between adjacent rows of
+   the with-same-day table, and no ranking changes.** A 1.7% median change in `t` moves a forgetting
+   curve very little. If that is right, this is a footnote and a `--interval-def` option, not a
+   table. If a ranking DOES move, it is a correction worth making properly.
+4. **The negative rows need a stated rule first.** 0.559% of same-day rows have `duration(k)`
+   exceeding the whole recorded gap. Clamp to 0 (the same choice `FUTURE_FEATURES.md` reached for
+   the NaN landmine, and for the same reason: the real gap is bounded by the review's own duration,
+   so it genuinely is ~0). Do not leave it implicit.
+5. **Disclose the interest.** RWKV tops both tables today and is one of the seconds-aware
+   algorithms, so a short-interval correction is not a neutral proposal coming from us. Say so in
+   the issue, and let the measurement stand on its own.
+
+**Timing: after the RWKV work, as Andrew said.** Nothing here is urgent, and the measurement is
+worth more once we can also report what it does to our own entry.
+
+### DECIDED (Andrew, 2026-08-29): a FLAG, not a third table
+
+> *"Yeah, having a flag for it seems reasonable."*
+
+So the upstream proposal is an option alongside the existing `--secs`, not a new results table.
+Scheduled AFTER the RWKV work; nothing here is started.
+
+**The hook is ONE site, three lines.** `features/base.py::_process_time_intervals` is the only
+place `delta_t_secs` is derived (everything else matching `elapsed_seconds` in the tree is inside
+`.venv`):
+
+    if self.config.use_secs_intervals:
+        df["delta_t_secs"] = df["elapsed_seconds"] / 86400
+        df["delta_t_secs"] = df["delta_t_secs"].map(lambda x: max(0, x))
+
+Two facts that make this cheaper than expected:
+* It already sits behind `use_secs_intervals` (the `--secs` flag), so the new option goes next to
+  an existing one rather than introducing a new axis.
+* **It already clamps at 0.** So the negative-row rule I recommended for the 0.559% of same-day
+  rows where `duration(k)` exceeds the whole gap is the behaviour the code ALREADY has -- the
+  subtraction inherits it for free, and nothing new has to be specified.
+
+`delta_t` (days) stays untouched, which is correct: the correction is invisible at day resolution
+(median 0.0012%).
+
+**Order of work when it starts:** implement the flag, run the 2-3 algorithm comparison, and only
+then open the issue -- with the measurement, the pre-registered prediction ("no ranking changes"),
+and the disclosure that RWKV is ours and is seconds-aware.
+

@@ -44,7 +44,12 @@ os.chdir(REPO)
 sys.path.insert(0, REPO)
 os.environ.setdefault("RWKV_ID_FEATURES", "0")
 
-from rwkv.data_processing import create_sample, get_rwkv_data  # noqa: E402
+from rwkv.data_processing import (  # noqa: E402
+    ID_PLACEHOLDER,
+    create_sample,
+    get_rwkv_data,
+    nan_id_fill,
+)
 
 PUB = Path(r"C:\Users\Andrew\anki-revlogs-10k")
 IDD = Path(r"C:\Users\Andrew\anki-revlogs-10k-id")
@@ -56,12 +61,34 @@ fails = []
 # small factorized int; NaN decks already share ONE placeholder by design), so this is collected
 # globally and asserted once, rather than demanded per case.
 bites = []
+# streams/users where the OLD deploy fill rule (a bare constant for note_id) WOULD change the
+# partition -- the evidence that this file can now see a fill-RULE divergence, which it could
+# not before 2026-08-26 (BUG C).
+fill_bites = []
 
 
 def check(name, ok, detail=""):
     print("  [%s] %s%s" % ("PASS" if ok else "FAIL", name, ("  -- " + detail) if detail else ""))
     if not ok:
         fails.append(name)
+
+
+def deploy_ids(d, name):
+    """What run_as_rnn actually keys its state dicts on, by CALLING the shared implementation.
+
+    ⚠ NOT a reimplementation of deploy, and that distinction is the whole point. Until
+    2026-08-26 this file used `df[name]` -- the frame AFTER the TRAINING-side fill -- as
+    "deploy's view", so both sides of the comparison inherited the same fill and the check was
+    structurally incapable of seeing a fill-RULE difference. It caught Bug A only because that
+    was a STORAGE truncation downstream of the shared fill. `nan_id_fill` is literally the
+    function `run_as_rnn.add_id` calls, and `<name>_is_nan` is exactly the condition it
+    branches on. A guard that MODELS the other path can only test what the model assumes.
+    """
+    flag_col = name + "_is_nan"
+    flag = (d[flag_col].to_numpy().astype(bool) if flag_col in d.columns
+            else np.zeros(len(d), dtype=bool))
+    kept = d[name].to_numpy().astype(np.int64)
+    return np.where(flag, nan_id_fill(name, d["card_id"].to_numpy()), kept), flag
 
 
 def partition(labels):
@@ -106,7 +133,8 @@ for label, root, users in CASES:
             if name not in df.columns:
                 continue
             train_lab = smp.ids[name].numpy()[real][order]
-            deploy_lab = df.sort_values("review_th", kind="stable")[name].to_numpy()
+            _sorted = df.sort_values("review_th", kind="stable")
+            deploy_lab, _nan_flag = deploy_ids(_sorted, name)
             if len(train_lab) != len(deploy_lab):
                 check("%s u%-4d %-9s row counts align" % (label, uid, name), False,
                       "%d vs %d" % (len(train_lab), len(deploy_lab)))
@@ -125,6 +153,16 @@ for label, root, users in CASES:
             # where the frame column is float64 after the NaN-fill merge -- and float->int32 in
             # torch SATURATES, pinning every oversized value to INT32_MIN. Saturation is what
             # collapsed 3,277 notes into 1; wrapping never would. Reproduce the real path.
+            # ★ SECOND NON-VACUITY ARM (BUG C): can this file see a FILL-RULE divergence?
+            # Replay the OLD deploy rule -- a bare constant for note_id, which pooled every
+            # NaN-note card into ONE stream while training gave each its own -- and require the
+            # partition comparison to notice. If it does not, the fix above is untested.
+            if name == "note_id" and bool(_nan_flag.any()):
+                old_rule = np.where(_nan_flag, np.int64(ID_PLACEHOLDER),
+                                    _sorted[name].to_numpy().astype(np.int64))
+                if partition(old_rule) != partition(train_lab):
+                    fill_bites.append("%s u%d %s" % (label, uid, name))
+
             if not (label == "PUBLISHED" and uid == 1):  # u1 published was healthy even when broken
                 broken = torch.tensor(deploy_lab.astype(np.float64),
                                       dtype=torch.int32).numpy().astype(np.int64)
@@ -139,6 +177,14 @@ for b in bites:
 # PUBLISHED note_id is Bug A (ID_PLACEHOLDER saturation); -id card/note/deck is Bug B.
 check("the PARTITION check is NON-VACUOUS (>=1 case detects the real int32 store)",
       len(bites) >= 1, "%d cases" % len(bites))
+
+print("")
+print("NON-VACUITY (fill rule): the OLD constant note_id fill would change the partition in "
+      "%d case(s):" % len(fill_bites))
+for b in fill_bites:
+    print("   " + b)
+check("the guard DETECTS a fill-RULE divergence (>=1 case sees the pre-BUG-C deploy rule)",
+      len(fill_bites) >= 1, "%d cases" % len(fill_bites))
 
 print("")
 print("ALL PASS" if not fails else "FAILURES (%d): %s" % (len(fails), fails[:4]))

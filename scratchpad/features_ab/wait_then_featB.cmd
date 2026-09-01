@@ -1,68 +1,49 @@
 @echo off
-REM =========================================================================================
-REM Arm featB behind featA, gated on BOTH preconditions.
+REM ===========================================================================================
+REM PHASE 3: featB -- the new-features arm. Andrew 2026-09-01: "let's move on to phase 3 then."
 REM
-REM featB cannot start until two independent things are true, and a waiter that checks only the
-REM first would launch a 7.75 h arm against a missing or half-built db:
-REM   1. featA finished CLEANLY (a nonzero terminal code means there is no control arm, so the
-REM      comparison has nothing to be measured against);
-REM   2. the generation-2 rebuild finished cleanly AND its test db passes check_db at width 46.
+REM Waits for the fixc arm, which currently owns the GPU. Anchored findstr -- the unanchored form
+REM matches this file's own prose and fires instantly.
 REM
-REM ANCHORED grep: findstr /B /C: anchors on the token at line start. The unanchored form matches
-REM any line that merely MENTIONS it, including a waiter's own startup echo, and fires instantly.
-REM That is why the echo below says TERMINAL MARKER and never spells the token.
-REM =========================================================================================
+REM ---- WHAT featB's NUMBER WILL AND WILL NOT MEAN ----
+REM featB trains on the `-id` gen-3 dbs, so against its control (featA2) it bundles THREE changes:
+REM   1. the 23 real-timestamp feature columns (width 92 -> 114, params 558,212 -> 565,252)
+REM   2. END-TO-START intervals -- these are automatic on any `-id` build, gated on the DATASET
+REM      rather than on a flag, so they cannot be switched off there
+REM   3. the dataset itself (`-id` vs published), which shifts `size` for ~30% of users
+REM Bug C is held CONSTANT: id3 was built 2026-08-24 and _fix on 08-21, both before the
+REM nan_id_fill fix of 08-26. So that is one thing NOT in the bundle.
+REM
+REM ★ THE BUNDLE IS NOW PARTLY SEPARABLE, WHICH IT WAS NOT IN AUGUST. The e2sc/fixc pair measures
+REM component 2 directly on the published set, so featB - featA2 minus that gives features+dataset.
+REM Component 3 is irreducible: the new features REQUIRE real timestamps, which only `-id` has.
+REM
+REM ⚠ featB died 2026-08-21 on the int32 id bug (a wrap collision made a card's genuine first
+REM review probe-eligible with no query row -> KeyError in insert_probes -> the fetch worker died
+REM and the run DEADLOCKED at 0% GPU for 69 minutes). That is fixed, and id3 is verified healthy:
+REM 3,275 distinct card ids and 2,087 note ids over 25 sampled keys, versus the n_unique==1 per
+REM user that the broken generations produced.
+REM
+REM No angle brackets or arrows in REM lines -- cmd parses redirection before REM.
+REM ===========================================================================================
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
+set LOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\features_ab\wait_featB.log
+set PREVLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\fixc_arm\fixc_arm.log
 
-set PREVLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\features_ab\featA\featA.log
-set RBLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\features_rebuild\rebuild2.log
-set NEXT=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\features_ab\featB\run_featB.cmd
-set WLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\features_ab\wait_featB.log
+echo ===== featB waiter armed %DATE% %TIME% ===== >> "%LOG%"
 
-echo waiter armed %DATE% %TIME% -- polling featA for its TERMINAL MARKER > "%WLOG%"
-
-:loop
+:waitprev
 findstr /B /C:"DONE_EXIT_" "%PREVLOG%" >nul 2>&1
-if %ERRORLEVEL%==0 goto checks
-timeout /t 60 /nobreak >nul
-goto loop
-
-:checks
-echo featA finished %DATE% %TIME% >> "%WLOG%"
-findstr /B /C:"DONE_EXIT_" "%PREVLOG%" >> "%WLOG%"
-
-REM ---- precondition 1: featA exited cleanly ----
-findstr /B /C:"DONE_EXIT_0 " "%PREVLOG%" >nul 2>&1
-if not %ERRORLEVEL%==0 (
-  echo ABORT featA did not finish cleanly -- no control arm %DATE% %TIME% >> "%WLOG%"
-  exit /b 21
+if errorlevel 1 (
+  ping -n 121 127.0.0.1 >nul
+  goto waitprev
 )
+echo fixc arm finished %DATE% %TIME% >> "%LOG%"
 
-REM ---- precondition 2: the generation-2 rebuild finished cleanly ----
-findstr /B /C:"DONE_EXIT_0 " "%RBLOG%" >nul 2>&1
-if not %ERRORLEVEL%==0 (
-  echo ABORT gen-2 rebuild did not finish cleanly %DATE% %TIME% >> "%WLOG%"
-  exit /b 22
-)
-
-REM ---- precondition 3: the eval db is really there, at the right WIDTH ----
-REM check_db reads entry count from metadata and the width from the first record, so this costs
-REM about a second and it is the check that catches a db built without RWKV_ID_FEATURES.
-.venv\Scripts\python.exe scratchpad/features_rebuild/check_db.py F:/rwkv_lmdb/test_db_5k_id2 2000 46 >> "%WLOG%" 2>&1
-if not %ERRORLEVEL%==0 (
-  echo ABORT gen-2 eval db failed check_db %DATE% %TIME% >> "%WLOG%"
-  exit /b 23
-)
-
-if not exist "%NEXT%" (
-  echo ABORT featB runner MISSING %DATE% %TIME% >> "%WLOG%"
-  exit /b 24
-)
-
-echo launching featB %DATE% %TIME% >> "%WLOG%"
-call "%NEXT%"
-echo featB returned %ERRORLEVEL% %DATE% %TIME% >> "%WLOG%"
-REM The waiter's own terminal marker, in its OWN log. Before endlocal, or WLOG expands to empty.
-echo DONE_EXIT_0 %DATE% %TIME% >> "%WLOG%"
+REM featB does not DEPEND on fixc succeeding -- they are independent experiments sharing a GPU --
+REM so this waits for the marker but does not gate on DONE_EXIT_0.
+call C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\features_ab\featB\run_featB.cmd
+echo featB returned %ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+echo DONE_EXIT_0 %DATE% %TIME% >> "%LOG%"
 endlocal & exit /b 0

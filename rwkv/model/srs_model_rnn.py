@@ -9,6 +9,7 @@ from rwkv.data_processing import (
 )
 from rwkv.model.rwkv_rnn_model import RWKV7RNN
 from rwkv.model.srs_model import interleave_schedule, is_excluded
+from rwkv import fsrs_stream as _fsrs
 import torch
 from rwkv import id_features as _idf
 
@@ -66,6 +67,27 @@ class SrsRWKVRnn(ModuleType):
         assert all(0 <= i < self.card_features_dim for i in _zero_feats), (
             f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
         )
+        # RWKV_ABLATE_FEATURES: the NAME-based mask, mirroring srs_model.py so the deploy path
+        # matches a model trained with a column ablated. Names resolve through the LIVE
+        # CARD_FEATURE_COLUMNS and an unknown name raises -- a silent no-op here would make the
+        # deploy path disagree with training while every shape check still passed, which is the
+        # exact train-vs-deploy divergence shape CLAUDE.md section 9 exists to catch.
+        _ablate_names = [
+            t.strip() for t in os.environ.get("RWKV_ABLATE_FEATURES", "").split(",") if t.strip()
+        ]
+        _unknown = [n for n in _ablate_names if n not in CARD_FEATURE_COLUMNS]
+        assert not _unknown, (
+            f"RWKV_ABLATE_FEATURES names not in the active layout: {_unknown}. "
+            f"RWKV_ID_FEATURES={'1' if _idf.enabled() else '0'}, "
+            f"{len(CARD_FEATURE_COLUMNS)} card-feature columns."
+        )
+        _ablate_idx = [CARD_FEATURE_COLUMNS.index(n) for n in _ablate_names]
+        assert len(CARD_FEATURE_COLUMNS) + _idf.ID_ENCODING_DIMS == self.card_features_dim, (
+            "input layout changed: card features are no longer the leading block"
+        )
+        _zero_feats = sorted(set(_zero_feats) | set(_ablate_idx))
+        if _ablate_names:
+            print(f"[feat-mask] (rnn) ablating by name {_ablate_names} -> dims {sorted(_ablate_idx)}")
         self.input_feat_mask_on = len(_zero_feats) > 0
         _mask = torch.ones(self.card_features_dim)
         for _i in _zero_feats:
@@ -178,6 +200,21 @@ class SrsRWKVRnn(ModuleType):
         # cannot drift -- see interleave_schedule()'s docstring for the placement rule.
         self.ilv_spread = os.environ.get("RWKV_ILV_SPREAD", "0") == "1"
         self.ilv_sched = interleave_schedule(self.stream_depths, self.ilv_spread)
+
+        # RWKV_FSRS_CARD: deploy mirror of srs_model.py's V1 card core. Empty ModuleList when
+        # off -- zero parameters, nothing to compile, byte-identical.
+        self.fsrs_cores = torch.nn.ModuleList()
+        self.fsrs_r1 = 0
+        if _fsrs.is_on():
+            assert self.stream_depths[0] == 0, (
+                "RWKV_FSRS_CARD replaces the card stream; its arch must declare card_id with "
+                "n_layers=0 (scratchpad/hybrid100k/arch_fsrs_v1.py)."
+            )
+            self.fsrs_cores.append(
+                _fsrs.FsrsCardCore(anki_rwkv_config.d_model, _fsrs.n_free_dims())
+            )
+            self.fsrs_r1 = CARD_FEATURE_COLUMNS.index("rating_1")
+            print("[fsrs] (rnn) V1 card core ON: n_free=" + str(_fsrs.n_free_dims()))
         if self.interleave_on:
             print(f"[interleave] (rnn) round-robin layer schedule ON: "
                   f"order={self.stream_names} depths={self.stream_depths} "
@@ -477,7 +514,8 @@ class SrsRWKVRnn(ModuleType):
         # reassigns batch_start to the masked tensor before indexing the column). Same inversion
         # of data_processing's standardization, so train and deploy feed the gate the same number.
         log_dt_B = None
-        if self.rgate_on:
+        # RWKV_FSRS_CARD needs the same quantity (as DAYS), so this is not rgate-only.
+        if self.rgate_on or len(self.fsrs_cores) > 0:
             log_dt_B = (
                 card_features[:, self.rgate_col].to(card_features.dtype) * self.rgate_std
                 + self.rgate_mean
@@ -508,11 +546,35 @@ class SrsRWKVRnn(ModuleType):
             states = []
             for _i, _nm in enumerate(self.stream_names):
                 _st = state_by_entity[_nm]
-                states.append(
-                    _copy.deepcopy(_st) if _st is not None
-                    else self.rwkv_modules[_i].init_state()
-                )
+                if _i == 0 and len(self.fsrs_cores) > 0:
+                    # The card slot holds the FSRS (3 + n_free) state, not an RWKV state.
+                    # ⚠ Do NOT fall through to init_state(): a 0-layer module returns a DICT,
+                    # which every tensor op below would then fail on. All-zeros is the
+                    # documented "no prior state" sentinel, so a fresh card needs nothing else.
+                    states.append(
+                        _copy.deepcopy(_st) if _st is not None
+                        else torch.zeros(1, 3 + self.fsrs_cores[0].n_free)
+                    )
+                else:
+                    states.append(
+                        _copy.deepcopy(_st) if _st is not None
+                        else self.rwkv_modules[_i].init_state()
+                    )
             x_il = card_rwkv_input
+            # V1: the FSRS card core, in the card stream's own slot -- BEFORE the rounds, which
+            # is exactly where card layer 0 would have run in the training path. The card stream
+            # has depth 0 under this flag, so it sits out every round and this is its only
+            # contribution. `states[0]` is the (3 + n_free) FSRS state, not an RWKV state.
+            for _core in self.fsrs_cores:
+                assert log_dt_B is not None
+                _t_days = torch.exp(log_dt_B) / 86400.0
+                _rating = (
+                    card_features[:, self.fsrs_r1:self.fsrs_r1 + 4]
+                    .to(torch.float32).argmax(dim=-1) + 1
+                ).to(x_il.dtype)
+                _st = states[0].to(x_il.dtype).to(x_il.device)
+                x_il, _r_out, _st = _core.review(x_il, _t_days, _rating, _st)
+                states[0] = _st
             v0s = [torch.empty(0) for _ in range(len(states))]
             for _r in range(max(self.stream_depths)):
                 for _i in range(len(states)):

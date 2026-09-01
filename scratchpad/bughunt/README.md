@@ -277,3 +277,39 @@ genuine end-to-end test of the new-features path: **exit 0, trained to step 546 
 
 `qat` — the quant-aware path, which was silently **inert** for every track-2 run until `70185c7`.
 `assert_qat_live.py` covers the config; only a real run covers the kernels.
+
+## Item 3 (`idfeat`) — the open half is now CLOSED, on CPU (2026-08-29)
+
+**The arm that ran did not test what this matrix says it tests.** `diag_idfeat/ws.toml` points at
+`F:/rwkv_lmdb/train_db_5k_h1_id`, a **matching-width** database, so `idfeat_ws_546.pth` proves the
+features path *executes* end-to-end and says nothing about the mismatch case. (It also ran against
+a gen-1 `-id` build, which CLAUDE.md now records as superseded by `*_id3` — harmless, since a
+diagnostic's logloss is meaningless, but do not read that checkpoint as anything else.)
+
+The untested half — *does a wrong-width LMDB fail LOUDLY?* — needs no GPU, because a shape
+disagreement is a shape disagreement on CPU. `scratchpad/parity3/smoke_width_mismatch.py`, seconds:
+
+| path | matched | fed the other layout |
+|---|---|---|
+| TRAINING (`features2card`) | accepted | **raises** (TorchScript RuntimeError), both directions |
+| DEPLOY (`button_heads`) | accepted | **raises** (`AssertionError`), both directions |
+
+**PASS — a wrong-width database cannot reach either path silently.** This matters because the
+features phase keeps two database generations side by side, and pointing a run at the wrong one is
+a one-character edit in a toml.
+
+**The asymmetry is worth knowing even though the verdict is green.** Deploy asserts the width
+explicitly (`srs_model_rnn.py:398`); training has **no width assert at all** and is protected only
+by the first `Linear`'s own shape check. That implicit protection does fire today — measured, not
+assumed — but it would stop firing the moment anything upstream pads or reshapes, and nothing would
+announce that. If a width assert is ever added to `srs_model.py`, this smoke is what says whether
+it was needed.
+
+⚠ **AND THE SMOKE CAUGHT ITSELF BEING VACUOUS FIRST.** Its initial version called `button_heads`
+with only the features, so every deploy arm raised `TypeError: missing 5 required positional
+arguments` — for the missing arguments, not the width. All four *mismatch* cases duly reported
+"raises" and would have been recorded as a pass. What exposed it was the **matched-width arm**,
+which must be ACCEPTED and instead raised the same TypeError. That arm is not padding: a test whose
+negative cases all fail for a shared irrelevant reason is indistinguishable from a working one
+unless something is also required to succeed.
+

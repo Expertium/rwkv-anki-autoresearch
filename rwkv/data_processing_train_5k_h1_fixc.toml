@@ -1,0 +1,18 @@
+# END-TO-END CONTROL (`fixc`), built with CURRENT code so it pairs with the e2s dbs.
+# Identical to its _e2s twin except LMDB_PATH: the interval correction is applied by the
+# RWKV_E2S_PUBLISHED env var at build time, NOT here, and this arm must run without it.
+# A diff of the two tomls therefore shows exactly one changed line.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_fixc"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 6
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

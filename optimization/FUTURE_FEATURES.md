@@ -1154,3 +1154,109 @@ the rebuild removes the state column at the source, so the mask is obsolete, not
    plus a fresh parity trace. Not a blocker for measuring the features, but it is a gap the moment
    one is adopted.
 
+---
+
+## ★★ IMPORTED DECKS: card/note ids SURVIVE import, deck ids DO NOT (measured 2026-08-26)
+
+Andrew asked whether an imported deck's creation date is the import date. Measured on
+`anki-revlogs-10k-id` rather than reasoned from Anki internals
+(`scratchpad/hybrid100k/deck_import_probe.py`, `import_discriminate.py`).
+
+**Test 1 -- does the same id appear in more than one user's collection?** A shared deck is
+downloaded by many people, so a preserved id shows up repeatedly; a reassigned one cannot.
+120 users, 2,493,654 cards:
+
+| id kind | distinct | shared across users |
+|---|---|---|
+| card_id | 2,167,992 | **5.36%** |
+| note_id | 1,597,817 | **5.61%** |
+| deck_id | 22,488 | **0.00%** (1 id) |
+
+=> **deck_id is REASSIGNED at import; card_id and note_id are PRESERVED.** So a deck's
+"creation date" is when the deck appeared in THIS user's collection -- the user-local quantity
+we want. A card's is the ORIGINAL AUTHOR's.
+
+**Test 2 -- how many cards are actually imported?** 77.1% of cards have `card_id < deck_id`, but
+that is NOT the import rate: a user who studies in Default, later creates a deck and moves the
+cards in produces the identical signature. The first review discriminates -- a moved card was
+being STUDIED before its deck existed, an imported one cannot have been. 40 users, 344,382 cards:
+
+| category | share |
+|---|---|
+| native (card newer than its deck) | 51.9% |
+| moved (studied before the deck existed) | 13.6% |
+| **import-consistent** (older card, first review only after the deck) | **34.6%** |
+
+Import-consistent card-to-deck gap: **median 946 days**, p90 2,222, max 3,751. A card created
+2.6 years before the deck it lives in and untouched until that deck appeared is a shared deck.
+
+### What this does to the planned features
+
+**⚠ "First review − card creation" (listed HIGH, Andrew's #3) is contaminated for ~35% of rows.**
+It is NOT leakage -- no future information -- but the column means two different things by row:
+"how long after making this card did I first study it" for native cards, and "how long ago did a
+stranger make this card" for imported ones. The naive reading is wrong a third of the time, and
+the median offset is over two years, so the contamination is large, not marginal.
+
+**⚠ CORRECTION (Andrew, 2026-08-26): DO NOT collapse this into `max(card_id, deck_id)`.** An
+earlier version of this section proposed exactly that as "the fix". Andrew: *"If a card was
+created before the deck was created, that's a 'this card is imported' signal, we shouldn't throw
+it away, no?"* He is right, and the proposal was a REGRESSION against the plan this very
+document already had -- the feature table above already lists **`card − deck creation`**, which
+IS the import gap, and annotates creation-batch as an "import-vs-handmade signal".
+
+**Give the model BOTH ages as separate columns and let it combine them.** With
+`review_time − card_id` and `review_time − deck_id` both present:
+* their DIFFERENCE is `deck_id − card_id`, the import gap -- a linear combination, reachable by
+  any linear layer;
+* its SIGN is the import indicator;
+* and `max(card_id, deck_id)` is just `deck_id + relu(card_id − deck_id)`, which the input MLP
+  (92 -> 320 -> 80, with a nonlinearity) computes trivially if it wants it.
+
+So the two columns STRICTLY DOMINATE the max: everything the max offers is derivable from them,
+plus the gap the max destroys. And we are not capacity-limited (capacity-at-5k is 0/3), so an
+extra column the model can ignore costs far less than information it cannot recover.
+
+**THE GENERALIZABLE LESSON, and it is why the wrong answer looked right:** the observation that
+raw `card_age` means two different things by row is CORRECT. The remedy inferred from it was not.
+**When a feature is ambiguous, ship the column that RESOLVES the ambiguity -- never collapse the
+feature to average the ambiguity away.** Preprocessing that destroys information cannot be undone
+downstream; a redundant column can always be ignored.
+
+**Deck / preset ages are unaffected and stay clean** -- they were already user-local, and this
+measurement is the reason we now know that rather than assume it.
+
+**An `is_imported` flag is derivable and causal** if wanted:
+`(card_id < deck_id) AND (first_review_of_this_card > deck_id)`. Both inputs are in the past at
+every row after the first.
+
+### Filtered (cram) decks are NOT in this dataset -- checked, not assumed (2026-08-26)
+
+Andrew asked how filtered decks would interact with the deck-derived columns (`deck age at
+review`, `card - deck creation`). The worry is sound: a cram deck created yesterday would make
+a card owned for years look brand new, and would invert the import-gap sign -- a worse error
+than the "moved" case.
+They do not arise. `scratchpad/hybrid100k/filtered_deck_probe.py`, 40-60 users:
+
+| signal a filtered deck would leave | measured |
+|---|---|
+| cards referencing a deck absent from the decks table (a dangling `did`) | 7 of 1,608,074 = **0.0004%**, in 1 of 60 users |
+| decks with `preset_id == 0` (Anki's filtered-deck config marker) | **none**, of 7,378 decks |
+| tiny transient decks | median size 34, p90 165, only 1.7% singletons |
+
+=> the export resolves to the **home** deck (`odid`), not the filtered deck's `did`. Filtered
+decks appear neither as deck rows nor as card references, so every deck-derived column is safe
+from this failure mode and needs no sentinel. (Filtered decks do touch the REVLOG side, where
+`filter_revlog` already drops `review_kind == 3` rescheduling rows with `ease_factor == 0`.)
+
+⚠ Separately, **4.66% of cards have a `deck_id` newer than their LAST review** -- impossible for
+a live home deck. This is NOT filtered decks (those would have shown as dangling references); it
+is the same reorganization case as the 13.6% "moved" group, with the card no longer being
+studied. Benign, and already covered by the moved caveat.
+
+**On the sentinel question, for whoever hits a genuinely unusable deck reference: do NOT use -1.**
+It happens to work under a `max()` (which degrades to `card_id`), but this codebase has already
+paid for that shape once -- clamping `elapsed_seconds` to the `-1` sentinel propagated into a
+per-card cumulative sum and became `log(negative)`. A sentinel is safe only if every consumer
+knows about it, and later consumers cannot be checked. Write the fallback explicitly: if the deck
+reference is unusable, use `card_id` alone.

@@ -45,6 +45,20 @@ def preflight(path):
     problems = []
     notes = []
     text = io.open(path, encoding="ascii", errors="replace", newline="").read()
+    # ⚠ MIXED LINE ENDINGS MUST BE REPORTED, NOT SILENTLY PARSED (fixed 2026-08-30).
+    # The splitter below prefers "\r\n" whenever any CRLF is present. On a file that is mostly LF
+    # with a few CRLF lines -- which is what you get by editing a Write-tool-authored runner from
+    # PowerShell -- that collapses 96 real lines into 8 giant ones, and EVERY check downstream
+    # then reports confident nonsense: variables "never set", a missing `cd /d` that is present,
+    # and a DONE_EXIT_0 line that cannot be found. Three misleading findings and no hint of the
+    # real cause. Mixed endings are also a genuine hazard in their own right: cmd.exe re-reads a
+    # batch file from a saved BYTE OFFSET, which is what truncated iter 46's training log.
+    n_crlf = text.count("\r\n")
+    n_lone_lf = text.count("\n") - n_crlf
+    if n_crlf and n_lone_lf:
+        return [f"MIXED line endings ({n_crlf} CRLF, {n_lone_lf} lone LF) -- normalize the file "
+                f"before trusting any other check; a mixed file parses as garbage here and is a "
+                f"byte-offset hazard for cmd.exe"], []
     lines = text.split("\r\n") if "\r\n" in text else text.split("\n")
 
     # ---- variables: declared before first use --------------------------------------------
@@ -272,12 +286,31 @@ def preflight(path):
     # exits 0, writes no marker, and every chained waiter polls forever. Cost 45 min of idle GPU
     # on 2026-08-18 after iter 53 had ALREADY finished cleanly. The vars-before-use check above
     # cannot catch it: endlocal invalidates variables mid-file, not at a line the parser sees.
-    _el = [n for n, ln in enumerate(lines) if ln.strip().lower() == "endlocal"]
+    # ⚠ NESTING IS LEGITIMATE AND THE OLD CHECK COULD NOT SEE IT (fixed 2026-08-30). A runner that
+    # isolates each phase's env -- `setlocal` ... teacher flags ... `endlocal` ... `setlocal` ...
+    # student flags -- pops only the INNER scope, so a %LOG% set in the OUTER scope survives.
+    # Verified by EXECUTION, not by reading: a nested endlocal leaves %LOG% intact and the marker
+    # is written correctly. The old "any endlocal before any marker" heuristic fired on every such
+    # runner, and a guard that cries wolf on correct files is a guard that gets ignored -- which
+    # would eventually let the real bug through. Track DEPTH and complain only when an endlocal
+    # closes the OUTERMOST scope (depth 1 -> 0) before the marker, which is the case that really
+    # empties %LOG%.
+    _depth = 0
+    _fatal_el = None
+    for n, ln in enumerate(lines):
+        s = ln.strip().lower()
+        if s == "setlocal" or s.startswith("setlocal "):
+            _depth += 1
+        elif s == "endlocal" or s.startswith("endlocal "):
+            _depth -= 1
+            if _depth <= 0 and _fatal_el is None:
+                _fatal_el = n
     _de = [n for n, ln in enumerate(lines) if ln.strip().startswith("echo DONE_EXIT_")]
-    if _el and _de and min(_el) < max(_de):
+    if _fatal_el is not None and _de and _fatal_el < max(_de):
         problems.append(
-            f"endlocal at line {min(_el) + 1} precedes the DONE_EXIT_ echo at line {max(_de) + 1}: "
-            f"%LOG% is out of scope there, so the marker is silently never written")
+            f"endlocal at line {_fatal_el + 1} closes the OUTERMOST scope before the DONE_EXIT_ "
+            f"echo at line {max(_de) + 1}: %LOG% is out of scope there, so the marker is silently "
+            f"never written")
     # Count only lines that EMIT the marker, not lines that READ it. A gated waiter legitimately
     # tests a predecessor's exit code with `findstr /B /C:"DONE_EXIT_0 "`, and the old substring
     # test counted those as extra emissions and failed a correct runner. The `endlocal` check three

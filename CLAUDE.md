@@ -236,6 +236,16 @@ deltas so dead ends aren't re-run.
   to the next -- is ORDINARY WORK, not a decision needing sign-off. Do not end a turn with "say the
   word and I'll launch"; launch it and report the result. This is what [[work-autonomously]] already
   said and the loop had drifted from.
+  **★★ TIGHTENED 2026-08-30, and this is the operative form: "not to stop unless there is a
+  decision for *me* to make or unless the GPU/CPU is already busy and there is nothing to do but
+  wait."** Exactly TWO reasons may end a turn without continuing: (1) a decision that is genuinely
+  Andrew's -- the list below; (2) compute is busy AND nothing else can be advanced. **Both halves
+  of (2) are required.** A busy GPU does not license stopping while CPU work exists, and it almost
+  always does: the next runner, a CPU screen that could redirect a queued run, a guard, a smoke, a
+  verdict to log, the record to update. Everything else is ordinary work -- do it and report it.
+  Never end a turn with "say the word and I'll launch" or a menu of options; launch it. When
+  something IS his call, ask it while continuing everything that does not depend on the answer.
+  [[work-autonomously]]
   **What still needs Andrew:** (a) anything that changes the DEPLOY CONTRACT or state-size budget
   (e.g. spending bits on the +1 norm/index bit), (b) the ~4-day 10x endgame run, (c) deleting the
   LMDBs / starting the features rebuild, (d) anything that breaks a stated constraint of his
@@ -266,6 +276,28 @@ deltas so dead ends aren't re-run.
      pipeline's existing "no press yet" encoding — carry a literal 0.0. Now unified on 0.0.
   3. **The rectifier does not exist in `rust/rwkv-infer` at all**, so the deploy path could
      not have reproduced either version. On the port plan.
+  4. **★ THE INTERVAL ITSELF DIVERGES (found 2026-08-30, and it is live in the champion).**
+     TRAIN and EVAL use the dataset's `elapsed_seconds` = `answer(k) - answer(k-1)`, i.e.
+     **end-to-END**. A live Anki scheduler computes `now() - last_review_time` (jschoreels fork,
+     `rust/rwkv.rs:322`), which is **end-to-START** and structurally cannot be anything else --
+     `duration(k)` has not happened when the prediction is made. The two differ by exactly
+     `duration(k)`. **It is sharper for us than for anyone else: `duration` is input feature 7 and
+     the deploy contract already zeroes the most recent review's duration** for precisely this
+     reason -- so we remove it from the features and hand it back inside the interval.
+     Measured leak size: at a FIXED end-to-start gap, `duration(k)` still predicts failure at
+     **AUC 0.618** against a shuffled-within-bin floor of 0.4996 (`duration_leak_probe.py`,
+     2.18 M gaps); it moves the interval by >=10% on 11.1% of same-day rows and 0.00% of longer
+     ones. Being measured on the arm that matches deploy: `scratchpad/features_ab/e2s`, control
+     `featA2`. Full write-up `scratchpad/hybrid100k/INTERVAL_HANDOFF.md` sections 8-10.
+     ⚠ **A cross-project lesson came with it: an interval change can move the REVIEW COUNT, and
+     then the comparison is confounded before any model runs.** srs-benchmark's `delta_t > 0`
+     (`features/base.py:284`) deleted 0.172% of reviews whose corrected gap floored to zero, and
+     those rows were **2.7x easier than average** (6.09% failure vs 16.14%) -- deleting the easiest
+     rows raises mean logloss by itself, and it was **two thirds** of the effect being reported
+     (+0.000331 -> +0.000111 once sizes matched). Our pipeline is immune (no such filter; rows are
+     kept and only marked via `label_is_equalize`) and it is **CHECKED, not assumed**:
+     `scratchpad/features_rebuild/compare_db.py` asserts entry-count equality and is phase 0 of the
+     arm. Both pass -- train 1,483,984 / test 170,384, identical in both arms.
   Practical prompts: does the eval path apply every train-time transform that belongs to
   the model (rather than to the loss)? Do train/eval/deploy feed the same value for inputs
   that are unavailable at deploy time? Does the Rust engine implement it? Note that `imm`
@@ -838,6 +870,33 @@ Pairing needs identical db/MAX/seeds.
   train_rwkv): the WKV floor is NO LONGER dominant.** Plain step = 578 ms GPU: elementwise/other 78%, WKV
   recurrence 18%, gemm 5% => the chunked-matmul (fla delta-rule) rewrite is DEAD as a priority (addresses
   <=18%); the new top surface is the PyTorch elementwise mass.
+- **★★ CURRENT STATE, MEASURED 2026-08-31/09-01 ON THE d=80 INTERLEAVED TRUNK (quiet machine).
+  Everything above this bullet is the d=32 era; the numbers below are the live ones.**
+  Full narrative + every closed lead: `optimization/DISPATCH_PLAN.md`.
+  * **BANKED, BIT-EXACT: `perm_gather` on the INTERLEAVED path (`srs_model.py:1249`). +5.5%
+    throughput, GPU kernel 1,213 -> 892 ms/step (-26.4%).** It was wired on the SEQUENTIAL gather
+    (`:1080`) and missed on the interleaved one, which has been the champion's path since iter 41.
+    Verified BIT-IDENTICAL over 40 steps (`scratchpad/dispatch/cmp_traces.py`), so **no re-base and
+    no seed pair** -- and the champion's recorded numbers stand.
+  * **⚠ `train_rwkv.py`'s own profiler comment ("237 ms of GPU kernel time inside a ~1450 ms step")
+    IS STALE -- it is dated 2026-07-27 and interleaving landed 2026-08-11.** Do not build anything
+    on it; it is what made the whole phase open on "85% dispatch-bound, CUDA graphs first".
+  * **Interleaving costs 372 ms/step of GPU time** (1,213 with, 841 without) -- real, but only ~38%
+    of the gap to that stale figure, so it does not fully explain it. NOT a revert proposal: iter 41
+    is an accepted accuracy win and the protocol leaves GPU speed untimed.
+  * **`RWKV_EMPTY_CACHE_EVERY=1` IS CORRECT AND IS WORTH 26%** -- `=0` measured 17.8k vs 24.0k
+    rev/s, with GPU kernel time 1,369 -> 4,321 ms/step. ⚠ My argument for turning it off was
+    backwards: I measured an 8.2 GB peak on a 12.28 GB card **while the flag was active** and read
+    that as proof it was unnecessary. **Before removing a control, ask whether the evidence against
+    it was produced by it.**
+  * **The 273 `cudaStreamSynchronize`/step are CAUSED BY `empty_cache`** (they vanish at `=0`), and
+    are not independently removable: `=0` replaces them with 80 `cudaFree` calls at ~15 ms EACH plus
+    `Command Buffer Full` stalls.
+  * **CUDA graphs are CONDITIONAL, not queued.** 18,756 launches/step cost 218 ms of a 1,121 ms
+    step, but graph capture needs STABLE ADDRESSES and `empty_cache` every step is the opposite.
+    Test coexistence FIRST; if they cannot, it is 19% against a measured 26% and graphs lose.
+  * MAX downward is closed (65536 already optimal). MAX=98304 is +14.3% rev/s but **-34% optimizer
+    steps** -- a phase-5 tuning lever, not a speedup.
 - **torch.compile: WORKS on Windows (triton-windows in venv; the old "blocked" claim was STALE — Andrew
   caught it 2026-07-03) but SHELVED at an honest 1.05x.** Whole-graph compile hits Python 3.12's fixed
   C-recursion cap in Dynamo (RecursionErrors swallowed by the NaN-except -> HOLLOW steps -> a fake 1.27x
@@ -917,7 +976,92 @@ helps anyway. Detail + the two measurement lessons: `research_5k_verbose.md` ite
 
 ⚠ iters 32 and 34 are not directly comparable to their neighbours: the gate basis changed to the RECTIFIED metric at iter 33, and iter 34 changed the training budget. Per-iteration detail: `research_5k_verbose.md`. Full superseded champion blocks (env strings, ckpt paths, caveats): `HISTORY.md`.
 
-### ★ THE ENDGAME, ORDERED (Andrew 2026-07-26 — this is a SEQUENCE, not a menu)
+### ★★★ THE PLAN, ORDERED (Andrew 2026-08-30) — THIS SUPERSEDES EVERY EARLIER ORDERING
+
+> *"Let's stop making the model smaller and just focus on speedups -> then finish eval of featA ->
+> then do featB -> then more algorithmic improvements -> then final HP tuning **with QAT on** ->
+> then the final run with QAT and larger epoch budget -> then we'll see if there is anything left
+> to squeeze from CPU inference."*
+
+His reason, and it is the honest one: *"it's getting hard to keep track of all the experiments."*
+So this list is the single source of order. Anything not on it is not scheduled.
+
+| # | phase | state |
+|---|---|---|
+| 1 | **Training speedups** (dispatch-bound) | NEXT. Plan: `optimization/DISPATCH_PLAN.md` |
+| 2 | **Finish the features CONTROL eval** | owed: ~2.3 h GPU (see the naming note below) |
+| 3 | **featB** — the new-features arm | runner exists; died 08-21 on the id bug, never re-run |
+| 4 | **More algorithmic improvements** | the research loop, gate unchanged |
+| 5 | **Final HP tuning, WITH QAT ON** | ⚠ NEW — all prior tuning was PLAIN |
+| 6 | **The final run: QAT + larger epoch budget** | the old "10x endgame", both arms |
+| 7 | **CPU inference** — whatever is left to squeeze | `optimization/CPU_INFERENCE.md` |
+
+**★ "STOP MAKING THE MODEL SMALLER" CLOSES A WHOLE LINE OF WORK.** The parameter-ratio gate, the
+<=100k hybrid arms, and the FSRS-core V1/V2 experiments are all DONE or SHELVED. Do not propose a
+size reduction as an iteration. Size is now whatever falls out of phases 4-6.
+* iters 60 (arm A) and 61 (arm B) are the recorded verdicts; both rejected, and together they
+  showed the parameter-efficiency curve has a knee below 558k and that widening the feature
+  pathway does not substitute for recurrent capacity.
+* **V1 (FSRS-7 card core) is SHELVED, wired and verified but never trained.** 16/16 parity checks
+  green, inert when off, 488,858 params. It is shelved on SPEED, not on doubt: 0.166 steps/s,
+  ~9x slower than an arm (~32 h/run), because it replaces a fused CUDA kernel with a Python loop
+  of ~40 ops per review into a step that is 85% dispatch-bound. Full state:
+  `optimization/HYBRID_100K.md` sections 13-14. If phase 1 lands a large dispatch win, V1 becomes
+  cheap enough to reconsider — that is the only condition under which it returns.
+
+⚠ **PHASE 2 NAMING: Andrew said "finish eval of featA", and `featA` is COMPLETE.** The arm with no
+number is **featA2** — the control retrained on the Bug-A-FIXED published dbs
+(`train_db_5k_h1_fix`), trained but never evaluated. That is what phase 2 means; `run_featA2_evalonly.cmd`
+exists. featA's own numbers are on the OLD dbs and are not a valid control for featB.
+
+⚠⚠ **PHASE 3 IS CONFOUNDED AND ANDREW SHOULD SEE THIS BEFORE IT RUNS.** featB changes TWO things at
+once, because `elapsed_end_to_start` (landed 2026-08-19) is gated on the DATASET, not on a flag: it
+runs whenever `review_time` is present, which is true of every `-id` build. `train_db_5k_h1_id3` was
+built 08-24. **So featB = new features AND end-to-start together, and no `-id` database with
+end-to-end intervals exists.** The features A/B cannot separate them.
+**The cheap resolution needs no rebuild:** the interval question is a ONE-LINE transform on the
+PUBLISHED set (`elapsed_seconds - duration(k)/1000`), because `duration` and `elapsed_seconds` are
+both public columns. That isolates the interval definition with features held fixed, and it is the
+same experiment as the srs-benchmark hand-off. Details + the per-dataset formula trap:
+`scratchpad/hybrid100k/INTERVAL_HANDOFF.md`. The alternative -- a 4th `-id` generation with the
+correction disabled -- is ~23 h of preprocessing to un-bundle what one line answers for free.
+
+**★ PHASE 5 IS NEW AND IS NOT A REPEAT.** Every previous HP tune was PLAIN; the champion HPs were
+confirmed against 19 alternatives without QAT. QAT changes the loss landscape (the tax is
++0.002286/+0.003486 even with learnable catalogs), so the plain optimum is not known to be the
+quant-aware optimum. Budget it as a real phase, not a re-confirmation.
+
+**What phase 6 inherits, unchanged from the old plan:** two arms (plain 10x, then a warm-started
+QAT fine-tune on its final -- NOT QAT from scratch, iter 40 measured that at +0.0118), the 10+2
+WS:decay split, augmentation stays OFF, and the three 1-epoch assumptions (warmup 200, wd,
+dropout) to reconsider first. The detail is preserved below.
+
+---
+
+### (superseded) THE ENDGAME, ORDERED (Andrew 2026-07-26)
+> Kept for the phase-6 detail it carries -- the two arms, the cost model, the QAT-tax
+> decomposition and the augmentation/KD-dump interaction. Its ORDER is superseded by the table
+> above.
+
+> **★★ ORDER AMENDED (Andrew 2026-08-29): a TRAINING-SPEED phase is inserted before step 1.**
+> *"Let's do it after the three arms but before continuing with new features and algorithmic
+> improvements."* So: **three hybrid arms -> DISPATCH SPEEDUP -> algorithmic loop -> features ->
+> 10x run.** Plan: `optimization/DISPATCH_PLAN.md`.
+> **THE FINDING THAT MOTIVATED IT:** the step is **CPU-DISPATCH-BOUND, not kernel-bound** -- 237 ms
+> of GPU kernel time in a ~1,450 ms step (16%), 90,576 op dispatches, 199 ms of pure
+> `cudaLaunchKernel`. Confirmed live on hybrid arm A: **mean GPU utilisation 31%, 17% of samples at
+> literal 0%.** Amdahl ceiling ~6x, realistic target 2-3x.
+> ⚠ **Do not repeat the "9x from a smaller model" framing.** 9x is an ARITHMETIC ratio and
+> arithmetic is 16% of the step; arm A's real 1.41x comes from having 9 layer-steps instead of 13,
+> i.e. fewer DISPATCHES, not from the width cut.
+> **Why after the arms specifically:** the profile is d=80. If an arm promotes, the trunk becomes
+> d=32-shaped and the dispatch profile changes, so profiling first would characterise a trunk we may
+> not keep.
+> **The constraint that shapes the work: BIT-EXACT OR RE-BASE.** Every banked speedup so far was
+> bit-exact by design. A numerics-changing training speedup forces a champion re-run (~9.5 h) plus a
+> seed pair before any later candidate can be attributed. CUDA graphs with padded static-shape
+> buckets are the top candidate and can be bit-exact; **their old "variable shapes" blocker has
+> inverted, because padding wastes GPU COMPUTE, which is only 16% of the step.**
 > *"We'll do a run with 10x the current epoch budget, but only at the end, after algorithmic
 > improvements and adding new input features."*
 1. **Algorithmic improvements** — the current research loop, unchanged (gate, families, conduct
@@ -1330,12 +1474,42 @@ shape check -- saturation is not an error, it is a silent value change.**
   predicts. The fix makes both full precision. **Add an id-identity case to the parity harness**;
   `parity_train_vs_rnn.py` is single-stack and structurally cannot see this, exactly like the
   `RWKV_ID_FEATURES` width check that needed its own smoke.
+* **★★ BUG C (2026-08-26, AUDIT): THE int64 FIX DID NOT FINISH THE JOB, AND IT CREATED A NEW
+  TRAIN/DEPLOY DIVERGENCE. Full report + probes: `scratchpad/hybrid100k/ID_FILL_BUGS.md`.**
+  (a) `ID_PLACEHOLDER + card_id` is computed in a **float64** column (`note_id` holds NaN at
+  that moment), and 3.14e17 is far past 2^53, so float64 spacing there is **64** and the low
+  bits of card_id are rounded away BEFORE create_sample's int64 cast. Intended-vs-actual
+  distinct placeholders over 49,186 cards: **published 49,186 -> 812 (98.3% lost)**, **-id
+  49,186 -> 30,869 (37.2% lost)**. The int64 fix widened the DESTINATION; the VALUE was already
+  destroyed upstream.
+  (b) **TRAINING fills `note_id` with `ID_PLACEHOLDER + card_id` (one note per card); DEPLOY's
+  `run_as_rnn.add_id` fills it with the bare CONSTANT (ALL such cards share one note).** Bug A's
+  shape with the direction reversed -- before the int64 fix both paths collapsed, so the fix is
+  what made them diverge. Affects the 19.28% of reviews with a NaN note_id. TRAINING is the
+  correct side. `deck_id`/`preset_id` use a constant on both sides and are fine.
+  (c) **`smoke_id_identity.py` cannot see this**: it models deploy as `df[name]`, i.e. the frame
+  AFTER the training-side fill, so both sides of its comparison inherit the same fill rule. It
+  catches STORAGE truncation downstream of the fill and is blind to a fill-RULE difference.
+  **A parity guard that MODELS the other path only tests what it already assumes is shared.**
+  ⚠ **THIS GATES THE PUBLISHED-DB REBUILD.** Rebuilding with only the int64 fix still loses
+  98.3% of note identity on 19% of reviews. Both fixes must land first, or the rebuild banks a
+  smaller version of the same bug and re-bases the champion for nothing.
 * **GEN 1 AND GEN 2 ARE DELETED / SUPERSEDED. GEN 3 (`*_id3`) is the first correct -id build.**
 * ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
   still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
   would enter the bundle as a fifth component, and at 19% of reviews it could dwarf the features.
   Rebuilding the published dbs re-bases the champion and is **Andrew's call**.
-* Guards: `smoke_id_dtype.py` asserts ENTITY IDENTITY SURVIVES (distinct ids in the sample ==
+  **★★ THE FIX IS NOW MEASURED, 2026-08-30, and it is worth more than most accepted iterations.**
+  featA2 finished (ahead **0.298186** / imm **0.265588**, n=2500, nan_users 0) against featA
+  (0.298334 / 0.265757). Same recipe, same seed, same KD-off env -- the ONLY difference is the
+  id-fixed dbs. **Bug A costs +0.000148 ahead / +0.000169 imm, p=4.6e-13 / 2.3e-27**, i.e. it
+  clears the 0.0001 accept bar in BOTH modes on its own.
+  **=> The champion lineage trained on `train_db_5k_h1`, which still carries Bug A, so ~0.00015 in
+  both modes is sitting on the table unclaimed** -- larger than iters 39, 45 or 53 individually.
+  That re-prices the rebuild decision: it is no longer "a re-base for cleanliness", it is a re-base
+  that BUYS a measured gain. Still Andrew's call, but the cost/benefit is now known rather than
+  assumed, and this number is what the "could dwarf the features" worry above was guessing at.
+* Guards: **`smoke_id_identity.py`** (this doc said `smoke_id_dtype.py`; no such file exists -- corrected 2026-08-26) asserts ENTITY IDENTITY SURVIVES (distinct ids in the sample ==
   distinct in the frame), not merely "no exception" -- a no-exception smoke passes on the broken
   build. `scratchpad/chain_watch.sh` follows whichever ARM is live and alarms on a STALL as well as
   a death; the old watcher followed featA by name and exited when featA finished, which is why featB
@@ -1364,13 +1538,28 @@ only **~10-16% of rows**, and the CEILING (rows whose note had another card crea
 (iter 50). **Pre-registered: this column is unlikely to move the gate.** It ships anyway on the
 asymmetry -- **a column IN the db can be ablated without a rebuild, a column OUT cannot** -- which
 is also why the redundancy screen is now interpretation, not a gate.
-⚠ **BUT THE ABLATION MECHANISM DOES NOT EXIST YET (checked in code, not assumed):
-`RWKV_ZERO_FEATURES` is HARD-REFUSED under `RWKV_ID_FEATURES=1`** (`srs_model.py:438`,
-`srs_model_rnn.py:63`) -- correctly, since the rebuild drops the card-state column so `=22` would
-mask `day_of_week`. **OWED: a NAME-based `RWKV_ABLATE_FEATURES` resolved through
-`CARD_FEATURE_COLUMNS`**, in BOTH model files, with a smoke. ⚠ Do NOT write it while a chain is
-mid-flight: a **plain eval is the only path that TorchScript-compiles the model**, which is how
-iter 48 lost an eval.
+**✓ THE ABLATION MECHANISM NOW EXISTS -- `RWKV_ABLATE_FEATURES`, landed 2026-08-29, CPU-only,
+default OFF and inert** (both model files, plus `scratchpad/parity3/smoke_ablate_features.py`,
+7 checks green). Comma-separated COLUMN NAMES resolved through the LIVE `CARD_FEATURE_COLUMNS`, so
+one name denotes the same column in both layouts; it unions with the index-based mask and prints
+the dims it resolved. It exists because `RWKV_ZERO_FEATURES` is HARD-REFUSED under
+`RWKV_ID_FEATURES=1` (`srs_model.py`, `srs_model_rnn.py`) -- correctly, since the rebuild drops the
+card-state column so `=22` would mask `day_of_week`.
+**★ AN UNKNOWN NAME RAISES, and that is the design point, not a nicety:** a typo that silently
+ablated nothing would yield a candidate identical to the champion and a clean null, which reads as
+"the feature does not matter" when it means "the experiment did not run". Same family as the rgate
+control that inherited its treatment from `os.environ`.
+**Rust needs no change:** the engine already honours `RWKV_ZERO_FEATURES`, which takes DIMS, and the
+banner prints the resolved dims -- so an ablated model deploys by passing that list. Only if an
+ablated model ever becomes champion does the standing recommendation apply (bake the mask into the
+exported safetensors instead of an env var).
+⚠ The smoke proves the COMPILE half in 4 env combinations but runs no scripted FORWARD; run
+`smoke_scripted_eval.sh` before any launch that sets the flag. ⚠ Two of the smoke's own
+expectations were stale on first run (it asserted gen-1's 44 cols / 112 width, and picked
+`day_of_week` for its "the name really moves between layouts" check -- index 17, which sits BEFORE
+the dropped column at 22 and therefore does not move). Both were the TEST being wrong, and the
+second would have passed vacuously: **a moves-between-layouts check must pick a column after the
+drop point.**
 **★ A THIRD COLUMN WAS REJECTED BY A RULE WRITTEN DOWN FIRST:** `scaled_sibling_count` ships only if
 >=30% of rows have >=1 prior sibling card; measured 17%, so it does not. Pre-registering the
 threshold is what makes that a decision rather than a rationalisation.
@@ -1682,9 +1871,45 @@ Andrew 2026-07-30: *"Accept it, do compaction and then run the HP tuner."* Full 
 
 **THE STANDARD TRAINING ENV — put ALL of these in every new run `.cmd` from now on:**
 
+> ★ **2026-09-01: nothing to add here for the PermGather speedup — it is a CODE fix, on by
+> default** (`RWKV_PERM_GATHER` defaults to "1"; `=0` is the escape hatch). It is bit-identical, so
+> runs before and after it are directly comparable and no env var records which side you are on.
+> Worth +5.5% throughput. Detail in the speed section above and `optimization/DISPATCH_PLAN.md`.
+
     set RWKV_MUON_BATCHED=1     REM batched Newton-Schulz, 35x fewer matmul dispatches
     set RWKV_NO_JIT=1           REM required by torch.compile (worth ~0 alone: 1.003x)
     set RWKV_QAT_COMPILE=1      REM fuses the 26 mixer forwards
+
+**★★★ AND THE END-TO-START DBS, IN TRAIN *AND* EVAL (Andrew 2026-08-30, verbatim: "e2s should be
+used both in train AND eval. That should be the new default for all future runs").**
+
+    TRAIN_DATASET_LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_e2s"
+    set RWKV_VAL_DB=F:/rwkv_lmdb/test_db_5k_e2s
+    set RWKV_EVAL_DB=F:/rwkv_lmdb/test_db_5k_e2s
+
+**WHY IT IS A DEFAULT AND NOT AN EXPERIMENT: it closes a train/deploy divergence** (§9 case 4). A
+live Anki scheduler computes `now() - last_review_time` = **end-to-START**, and structurally cannot
+do otherwise, because `duration(k)` has not happened when the prediction is made. Training on
+end-to-END fed the model a quantity deploy can never supply -- and one that correlates with the
+outcome (at a fixed gap, `duration(k)` predicts failure at AUC 0.618). We already zero the most
+recent duration as a FEATURE for exactly that reason, then handed it back inside the interval.
+**Set them EXPLICITLY; the defaults in `write_eval_toml.py` / `write_decay_setup.py` stay on the old
+paths so existing runners remain byte-reproducible** -- the same convention as the speed flags above.
+
+⚠ **THREE CONSEQUENCES, none optional:**
+1. **THIS RE-BASES THE CHAMPION.** Every number in the record -- iter 53 included -- is end-to-END.
+   An e2s run is NOT comparable to them, so the champion recipe must be re-run on the e2s dbs to
+   establish the new baseline before any candidate is gated against it.
+2. **★ THE KD DUMP MUST BE REGENERATED FIRST, and nothing will tell you if it is not.**
+   `C:\rwkv_kd_dump\t128_seedpair_65k` holds teacher logits computed on end-to-END inputs. Its only
+   identity check is `labels_sum`, and labels are RATINGS, which the interval does not touch -- so a
+   champion re-run on e2s dbs would PASS the checksum while distilling toward predictions for a
+   different input. Identical in shape to the augmentation/KD incompatibility already recorded: the
+   checksum proves LABEL alignment and gets read as proving BATCH alignment. Regenerate the dump
+   with the teacher forwarding the e2s batches.
+3. **The `-id` datasets already do this automatically** -- `elapsed_end_to_start` is gated on the
+   presence of `review_time`, not on a flag -- so a future `-id` rebuild needs no change, and the
+   featB confound noted elsewhere in this file is resolved in the direction of e2s.
 
 plus **`MAX_TRAIN_GLOBAL_LEN = 65536`** and **`NUM_FETCH_PROCESSES = 2`** in the toml.
 Defaults stay OFF in code, so these must be set EXPLICITLY; old runs stay reproducible.
@@ -1948,9 +2173,32 @@ All hooks stay in-repo, env-gated, default off.
   `[IO.File]::Open(path,'Open','ReadWrite','None')` on `data.mdb` (proves a handle exists), then
   find the process by START TIME + near-zero CPU + dead ParentProcessId. My first two theories --
   my own verification handle, then F: permissions -- were both wrong.
-- **★★ `F:/rwkv_lmdb/test_db_5k_fix` AND `train_db_5k_h1_id3` ARE NOW JUNCTIONS TO
-  `C:\rwkv_lmdb\` (2026-08-24). DO NOT DELETE `C:\rwkv_lmdb` — it is not scratch, it is those two
-  databases.** They were moved to the SSD for speed: measured random-read throughput went
+- **★★ SEVERAL `F:/rwkv_lmdb/*` PATHS ARE JUNCTIONS TO `C:\rwkv_lmdb\`. DO NOT DELETE
+  `C:\rwkv_lmdb` — it is not scratch, it is those databases.**
+  **UPDATED 2026-08-30 (the 08-24 list is stale):** `test_db_5k_fix` was DELETED with the other
+  two superseded dbs, so its junction is gone too. The current junctions are
+  **`train_db_5k_h1_id3`**, **`train_db_5k_h1_e2s`** and **`test_db_5k_e2s`** — the last two moved
+  after Andrew made e2s the default, because reading a db from F: costs **2.2x per step**
+  (the C:-hosted teacher dump ran 1.40 steps/s, the same dump on F: 0.63, GPU utilisation 8% =
+  starved on reads, not computing).
+  **✓ CONFIRMED BY THE OUTCOME, not just the microbenchmark:** after the move, the e2s teacher
+  dump ran **2 h 03 m** for 10,935 steps -- against 2 h 10 m for the original C:-hosted dump and a
+  **4.7 h projection while it was on F:**. The WS phase then resumed the champion's normal
+  **0.905 steps/s** (reference 0.92). So the penalty was I/O and the move removed it entirely.
+  ⚠ **Deleting a junction is not deleting a copy, and the two paths need different tools.**
+  `Remove-Item -Recurse` on the F: path deletes THROUGH the link and destroys the C: data. Safe
+  order: delete the real C: directory first, THEN remove the now-dangling link with
+  `[IO.Directory]::Delete(path, $false)`. (`cmd /c rmdir` also removes a link without following,
+  but the harness blocks that invocation.)
+- **★ DELETED 2026-08-30, with Andrew's authorization, to make room:** `train_db_5k_h1` (91.0 GB),
+  `train_db_5k_h1_fix` (103.4 GB) and `C:\rwkv_lmdb\test_db_5k_fix` (103.0 GB) — **297.4 GB freed,
+  C: 52.2 -> 328 GB.** All three are end-to-END and so superseded by the e2s default; the first two
+  additionally carry Bug A / Bug C. **They are REBUILDABLE in ~80 min each** from the read-only
+  `anki-revlogs-10k`, so what was given up is bit-reproducibility of iter 53 and featA2 *until* a
+  rebuild, not data. Their results are already in the record.
+  ⚠ Measure LMDB sizes with `GetCompressedFileSize` — these are SPARSE, and `Get-ChildItem |
+  Measure Length` and `Scripting.FileSystemObject.Size` BOTH report the map_size RESERVATION
+  (372.5 GB), which is fiction. Free-space before/after is the other reliable method. They were moved to the SSD for speed: measured random-read throughput went
   25.1 -> 643 MB/s and 8.1 -> 346 MB/s (**25x and 43x**); junction overhead is ~10% vs a direct
   C: path. The F: paths are junctions precisely so nothing had to be edited — the db paths are
   hardcoded absolute strings in runners *and inside their `findstr` guard assertions*, so a path
@@ -2017,10 +2265,11 @@ All hooks stay in-repo, env-gated, default off.
   then yield idle and STOP beating the heartbeat. `/compact <focus>` fires only from a FRESH (<=30 min) +
   focus-bearing flag (stale/empty = purged). Never hand-create `pending_compact.txt`. The injector is 24/7
   (ClaudeLoopController every 3 min; acts only on a stale heartbeat) and may inject EXACTLY `/compact <focus>`
-  or a short `Continue` -- nothing else Claude-originated. (Since 2026-07-03 the **Telegram bridge**
-  (`claude-automation/telegram_bridge.py`, task `ClaudeTelegramBridge`) additionally injects messages
-  AUTHORED BY ANDREW from his authenticated Telegram account + mirrors chat output to his phone -- human
-  steering, not self-injection. Master switch `telegram_bridge_active.txt`; see automation README.)
+  or a short `Continue` -- nothing else Claude-originated. **The Telegram bridge is RETIRED (Andrew 2026-08-30)** --
+  superseded by Dispatch in the Claude app; task `ClaudeTelegramBridge` is Disabled at the scheduler
+  and its processes stopped. ⚠ Removing its master switch had NOT stopped it: the task kept firing
+  every 5 min and idling on the absent flag. Reversible (code + config untouched). So the injector is
+  now the ONLY injection source, and the two-form limit governs all of it.
 - **★★ NEVER TOUCH A RUNNING `.cmd` -- AND `git checkout` IS NOT A SAFE UNDO (cost iters 43 AND 46).**
   cmd.exe re-reads a batch file from a saved BYTE OFFSET every time a command returns, so any edit that
   shifts bytes past that offset makes it resume mid-garbage. Three things follow, learned the expensive way:

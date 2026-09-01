@@ -75,6 +75,32 @@ STATISTICS = {
 ID_PLACEHOLDER = 314159265358979323
 
 
+def nan_id_fill(name, card_ids):
+    """The value a NaN `name` id is replaced with. ONE implementation, THREE callers.
+
+    ⚠ THIS FUNCTION EXISTS BECAUSE THE TWO PATHS DISAGREED (BUG C, 2026-08-26). Training filled
+    `note_id` with `ID_PLACEHOLDER + card_id` -- one note per card, which is the point -- while
+    `run_as_rnn.add_id` filled it with the bare CONSTANT, pooling every NaN-note card in the
+    collection into ONE note stream. Over the 19.28% of reviews with a NaN note_id the two paths
+    grouped rows differently, each self-consistently, which is the §9 failure mode verbatim.
+    A shared function makes that divergence impossible rather than merely tested.
+
+    ⚠ int64 THROUGHOUT. ID_PLACEHOLDER is 3.14e17, past float64's exact-integer limit of 2^53
+    where the spacing is 64, so doing this arithmetic in float64 silently merges any two cards
+    created within 64 ms. Callers must not write the result into a float64 column.
+
+    `deck_id` / `preset_id` take the bare constant on every path: unlike note_id they are
+    deliberately pooled ("pretend these cards are all in the same deck"), so a constant is the
+    intent, not an accident.
+
+    Returns an int64 array shaped like `card_ids` (0-d for a scalar input).
+    """
+    base = np.int64(ID_PLACEHOLDER)
+    if name == "note_id":
+        return base + np.asarray(card_ids, dtype=np.int64)
+    return np.full(np.shape(card_ids), base, dtype=np.int64)
+
+
 def scale_elapsed_days(x):
     return (
         np.where(x == -1, 0, np.log(1 + 1e-5 + x)) - STATISTICS["elapsed_days_mean"]
@@ -218,6 +244,11 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
         # rows -- turning a clean single-variable comparison into a coverage difference. Published
         # data has no `review_time`, so live runs are untouched by construction.
         df = _idf.clamp_negative_gaps(df)
+    else:
+        # PUBLISHED set: the same correction with the OTHER formula, opt-in via
+        # RWKV_E2S_PUBLISHED=1. Default OFF, so every existing db and run is untouched. This
+        # isolates the interval definition from the -id features, which featB otherwise bundles.
+        df = _idf.elapsed_end_to_start_published(df)
     df_len = len(df)
     df["user_id"] = user_id
     df["review_th"] = range(1, df.shape[0] + 1)
@@ -280,11 +311,28 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
         df = df.drop(columns=["review_time"])
 
     # find cards with a nan note_id and fill them with a unique value individually
+    #
+    # ⚠ THE ARITHMETIC MUST BE int64, AND ASSIGNED AS A WHOLE COLUMN (BUG C, 2026-08-26).
+    # `df["note_id"]` holds NaN here, so pandas types it float64. Writing
+    # `ID_PLACEHOLDER + card_id` into it did the addition in float64, and ID_PLACEHOLDER is
+    # 3.14e17 -- far past float64's exact-integer limit of 2^53, where the spacing is 64. Any
+    # two card_ids closer than 64 therefore collapsed onto the SAME placeholder, destroying the
+    # per-card uniqueness this fill exists to create, BEFORE create_sample's int64 cast ever
+    # ran: 98.3% of it lost on the published set (factorized ids are dense), 37.2% on -id
+    # (cards created within 64 ms of each other, i.e. every bulk add or import). The
+    # 2026-08-21 int32 -> int64 fix widened the DESTINATION while the VALUE was already gone.
+    # Detail + probe: scratchpad/hybrid100k/ID_FILL_BUGS.md, placeholder_precision.py.
     card_id_nan_mask = df["note_id"].isna()
     df["note_id_is_nan"] = card_id_nan_mask.astype(int)
-    card_id_nan_card_ids = df[card_id_nan_mask]["card_id"]
-    df.loc[card_id_nan_mask, "note_id"] = ID_PLACEHOLDER + card_id_nan_card_ids
+    _mask = card_id_nan_mask.to_numpy()
+    _fill = nan_id_fill("note_id", df["card_id"].to_numpy())
+    _kept = df["note_id"].fillna(0).to_numpy().astype(np.int64)
+    df["note_id"] = np.where(_mask, _fill, _kept)
     assert not df["note_id"].isna().any()
+    # the uniqueness the fill claims to provide, asserted rather than assumed
+    assert df.loc[card_id_nan_mask, "note_id"].nunique() == int(
+        df.loc[card_id_nan_mask, "card_id"].nunique()
+    ), "note_id placeholders collided -- the fill is not per-card"
 
     # find cards with a nan deck_id and fill them all to a new unique value to pretend as though these cards are all in the same deck
     deck_id_nan_mask = df["deck_id"].isna()

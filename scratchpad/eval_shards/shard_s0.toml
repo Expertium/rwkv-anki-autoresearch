@@ -1,9 +1,9 @@
-FILE_AHEAD = "RWKV-qtaxg_i45kd-s0"
-FILE_IMM = "RWKV-P-qtaxg_i45kd-s0"
-MODEL_PATH = "scratchpad/iter45_kddecay/qtaxg_i45kd_d_10935.pth"
+FILE_AHEAD = "RWKV-fixc-s0"
+FILE_IMM = "RWKV-P-fixc-s0"
+MODEL_PATH = "scratchpad/fixc_arm/fixc_d_10935.pth"
 DEVICE = "cuda"
 DTYPE = "bfloat16"
-DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_fixc"
 DATASET_LMDB_SIZE = 250_000_000_000
 LABEL_FILTER_LMDB_PATH = "label_filter_db"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000

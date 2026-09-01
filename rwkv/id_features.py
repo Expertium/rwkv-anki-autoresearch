@@ -205,6 +205,15 @@ def elapsed_end_to_start(df):
     """
     if "review_time" not in df.columns or "duration" not in df.columns or not len(df):
         return df
+    # ★ GROUPED BY CARD, AND THAT IS WHAT MAKES IT IDENTICAL TO PR #2 -- not a deviation from it.
+    # The PR writes a PLAIN frame `.shift()`, but it runs inside the BUILDER, on the frame in
+    # PROTOBUF ORDER (per-card blocks), BEFORE `sort_values("review_time")`. Its shift is therefore
+    # per-card by virtue of the ordering. THIS function runs on the already-SORTED parquet, where
+    # the previous row is almost always a DIFFERENT card reviewed seconds earlier.
+    # ⚠ MEASURED: copying the plain shift literally shortened EVERY gap bucket by a median 100%,
+    # including gaps over a day -- it would have destroyed every interval in the -id dbs, silently.
+    # `smoke_end_to_start.py` caught it. Same semantics, different ordering, so the faithful
+    # translation is the groupby.
     answer_prev = (df["review_time"] + df["duration"]).groupby(df["card_id"]).shift()
     gap_s = ((df["review_time"] - answer_prev) / 1000.0).clip(lower=0.0)  # clamp BEFORE the cast
     out = np.floor(gap_s.to_numpy())
@@ -214,14 +223,56 @@ def elapsed_end_to_start(df):
     # state-0 row -- history truncated before the export window -- gets NaN from the groupby shift
     # and is missed by the state-0 test. Measured: 1 row in 3,817,339 over 40 users, affecting 1 of
     # them. Vanishingly rare per row, CERTAIN across 5,000 users, and one NaN poisons a whole user.
-    # It duly killed the rebuild 31 minutes in, which is the assert below doing its job.
-    #
-    # ⚠ Upstream's own value for such a row is a CROSS-CARD diff (it diffs the whole frame in
-    # protobuf order and only overwrites state-0 rows with -1), i.e. the gap to a different card's
-    # last review. That is meaningless, so the sentinel is the honest replacement, not a regression.
+    # ⚠ The PR has no equivalent because its ungrouped shift never produces NaN; that is a
+    # consequence of the ordering difference above, not a semantic difference.
     no_prev = np.isnan(out) | (df["elapsed_seconds"] == -1).to_numpy()
     out[no_prev] = -1.0
     assert not np.isnan(out).any(), "elapsed_end_to_start produced NaN outside the sentinel rows"
+    df = df.copy()
+    df["elapsed_seconds"] = out.astype("int64")
+    return df
+
+
+def elapsed_end_to_start_published(df):
+    """END-of-previous to START-of-this, for the PUBLISHED dataset. Opt-in: RWKV_E2S_PUBLISHED=1.
+
+    ⚠ THE FORMULA IS NOT THE SAME AS `elapsed_end_to_start`, and the difference is the whole point
+    of having two functions. The two datasets put a different timestamp under the same name:
+
+        published : the row id is the ANSWER time, and `elapsed_seconds` is answer-to-answer,
+                    so                end_to_start = elapsed_seconds - duration(k)
+        -id       : `review_time` is the SHOW time, so the PREVIOUS duration comes off instead.
+
+    Both compute `show(k) - answer(k-1)`. Applying the -id formula here would subtract the wrong
+    review's duration and be silently wrong -- no shape changes, no error, just a different number.
+
+    WHY THIS QUANTITY. Decay runs from when the user last finished being shown the answer to when
+    the card is next SHOWN. `duration(k)` is time spent AFTER the retrieval already happened.
+    Stronger still: `duration(k)` does not exist at prediction time and it CORRELATES with the
+    outcome, so the stored interval leaks a whisper of the label. This repo's own deploy contract
+    already zeroes the most recent duration for exactly that reason -- and then leaves it inside
+    the interval column.
+
+    `duration` is MILLISECONDS. The -1 first-review sentinel is preserved; a corrected gap that
+    would go negative is clamped to 0 BEFORE the int cast, because flooring -0.4 gives -1 and
+    would silently mint a fake first review. Measured on 40 users: 0.559% of same-day rows need
+    that clamp, and the existing sentinel handling covers the rest.
+    """
+    if not os.environ.get("RWKV_E2S_PUBLISHED") == "1":
+        return df
+    if "elapsed_seconds" not in df.columns or "duration" not in df.columns or not len(df):
+        return df
+    assert "review_time" not in df.columns, (
+        "RWKV_E2S_PUBLISHED is for the PUBLISHED dataset. This frame has `review_time`, i.e. it "
+        "is the -id set, where elapsed_end_to_start already applies the correction with the "
+        "OTHER formula -- running both would subtract two durations."
+    )
+    es = df["elapsed_seconds"].to_numpy().astype("float64")
+    dur_s = df["duration"].to_numpy().astype("float64") / 1000.0
+    sentinel = es == -1
+    out = np.floor(np.maximum(es - dur_s, 0.0))   # clamp BEFORE the cast
+    out[sentinel] = -1.0
+    assert not np.isnan(out).any()
     df = df.copy()
     df["elapsed_seconds"] = out.astype("int64")
     return df

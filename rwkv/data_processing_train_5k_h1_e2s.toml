@@ -1,0 +1,34 @@
+# END-TO-START interval arm (RWKV_E2S_PUBLISHED=1). Identical to its _fix twin except
+# for LMDB_PATH -- the correction is applied by the ENV VAR at build time, not here, so
+# a diff of the two tomls shows exactly one changed line and the arms cannot drift.
+# On F: because C: has only 69 GB free.
+# ★ THE PUBLISHED TRAIN DB, REBUILT 2026-08-21 WITH THE int64 ID FIX -- and NOTHING ELSE.
+# Andrew 2026-08-21: "Sure, re-run featA". This is the fixed CONTROL for the features A/B.
+#
+# Same dataset (published), same users, same chunking, same everything as train_db_5k_h1. The only
+# difference is that entity ids are no longer saturated to INT32_MIN, so note/deck streams regain
+# per-entity identity for the ~19% of reviews whose cards lack metadata.
+#
+# Stays on C: beside the original, deliberately: featA read from the M.2 the first time, so keeping
+# it there makes the re-run I/O-identical. 91 GiB actual against 173 GiB free.
+# (featB reads gen-3 from F:, which is slower -- that changes wall-clock, not the result, since
+# batch order is fixed by get_groups and the seed rather than by fetch timing.)
+# 5k-phase TRAIN db for the FIRST half, users 1-5000 -- the primary training set. sc8k format
+# (MAX_BATCH_SIZE=16384 -> 8192-review chunks), matching the h2k16 champion recipe. Lives on C: (fast M.2;
+# training reads it every step). label_filter is read only to mark the metric-only label_is_equalize flag;
+# a train user absent from it -> empty equalize (fine, unused in training). 1 thread, cpu-build. Resumable.
+# Sparse map_size (400 GB) -- monitor FREE space on C:, not the logical file size.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k"
+
+LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_e2s"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 6
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

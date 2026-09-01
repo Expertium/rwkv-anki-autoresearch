@@ -3133,3 +3133,182 @@ reckon with the sign result before assuming the FSRS direction is the helpful on
   `i55_d_50.pth` *after* `i55_d_10935.pth`, and the step-50 values differ (gain −0.324 vs −0.352).
   Sort by the parsed step — same wrong-checkpoint class as iter 47's first run.
 * **Deploy debt: none** — rejected.
+
+## iter 60 — hybrid arm A: pure shrink to d=32 (84,007 params) — REJECTED on the ratio gate
+
+First of the three arms answering Andrew's 2026-08-24 ask: *"it's probably possible to compress
+RWKV even further by using a much simpler recurrent core for interval lengths + grades, and
+allocating >=99% of parameters to how other input features are processed. Try to make a hybrid
+FSRS-RWKV with <=100k parameters."*
+
+**Arm A is the CONTROL for that hypothesis, not a test of it.** It is a proportional shrink —
+d=32 (H=2, K=16), depths 2/1/2/2/2 = 9 layer-steps, `features_fc_mult=4` unchanged — so the budget
+is split the way the champion splits it, just smaller. Arms B and C are the ones that reallocate.
+
+Recipe identical to the champion (seed 4321, WS 1 epoch, decay ratio 1.0, Muon with
+`INCLUDE_LORA`, KD alpha 0.9 WS / 0.5 decay), so the only variables are `RWKV_ARCH_MODULE` and this
+arm's own `RWKV_STRIP_CMIX`.
+
+### The verdict
+
+| mode | champion (iter 53) | arm A | cost | ratio per 100k | bar |
+|---|---|---|---|---|---|
+| ahead | 0.297523 | 0.300233 | +0.002711 | 0.000572 | 0.0001 |
+| imm | 0.265191 | 0.268577 | +0.003386 | 0.000714 | 0.0001 |
+
+dparams = 474,205, so the budget was **0.000474 per mode**. Overspent 5.7x on ahead and 7.1x on
+imm. size 0/2500 identical, nan_users 0, and `p_worse` is 1.4e-288 / 0.0 — this is not a marginal
+call. Card state does fall 2,880 -> 1,152 floats, but the ratio gate prices accuracy against
+parameters and that is what it failed.
+
+### ★ THE FINDING: THE PARAMETER-EFFICIENCY CURVE HAS A KNEE, AND WE WERE PAST IT
+
+| ladder | params | ratio | cost ahead / imm |
+|---|---|---|---|
+| A0 -> A18 | 2,762,884 -> 558,212 | 4.95x | +0.00096 / +0.00053 |
+| **iter 53 -> arm A** | **558,212 -> 84,007** | **6.6x** | **+0.00271 / +0.00339** |
+
+A comparable size ratio at roughly **5x the cost per mode**. The width ladder had already taken the
+cheap shrinkage; below ~558k the curve turns up sharply.
+
+**This is the useful part, because it reframes the <=100k target rather than closing it.** <=100k
+is not reachable by shrinking *this* architecture — which is precisely the premise Andrew's hybrid
+proposal questioned. The proposal's claim is that the recurrent core is doing work a much simpler
+core could do, and that the budget belongs in the feature pathway instead. Arm A does not test
+that claim; it establishes what the claim has to beat.
+
+### Method notes worth keeping
+
+* **A partial read at 1,548/2,500 users predicted +0.002766 / +0.003368, within 6e-5 of the final.**
+  Cheap early signal, and safe here because the subsample was checked for representativeness first
+  — the champion's own mean over those users was 0.297814 vs its full-set 0.297523 — rather than
+  assumed. ⚠ `paired_pvalue.compare` refuses an intersection below 2,000 users, so the preview had
+  to be computed separately; that guard is correct and should not be relaxed to allow previews.
+* **Measured rates** (useful for costing arms B and C and the endgame): WS 1.437 steps/s, decay
+  **1.780** steps/s, eval 1,097 users/h = 2.28 h. Total 6 h 02 m per arm. Decay is 24% faster than
+  WS because it skips validation — the champion shows the same pattern (0.907 -> 0.957).
+* **The KD dump transferred to a different student architecture**, as predicted from mechanism: it
+  replays the d=128 teacher by step index and checksums `labels_sum`, both of which depend on batch
+  composition and not on the student. `checksum OK` at every step of an 84k-param run confirms it.
+
+### Ops — the first launch died in 9 seconds, and the fix changed a guard's shape
+
+Phase 0a's scripted-eval smoke loads the CHAMPION's d=80 checkpoint, but the runner had already set
+this arm's d=32 arch, so `load_state_dict` produced ~200 size mismatches. The line was copied from
+`run_iter52.cmd`, where arch and checkpoint matched — **the exact clone-inheritance failure the
+generator exists to prevent, committed inside the generator.** Arm A's `DONE_EXIT_45` then fired
+B's waiter and B's fired C's; all three were dead in 40 seconds. That is the chain working
+correctly, and it means a phase-0 bug takes out the whole queue.
+
+**★ THE REUSABLE PART: PRESENCE WAS THE WRONG PREDICATE.** The old assert said "a champion arch
+string must not APPEAR in an arm's runner". Which arch is in force in a `.cmd` is **positional**, so
+appearance cannot answer it. Both checks are now positional and assert BOTH ends — the last
+`set RWKV_ARCH_MODULE` before the smoke must be the champion's, the last one before `train_rwkv`
+must be the arm's. A one-ended check would have passed the broken runner.
+
+⚠ A nested `setlocal`/`endlocal` was the obvious fix and was rejected: `preflight_runner.py`'s
+endlocal check WAS **nesting-blind** (FIXED 2026-08-31 — it now tracks depth and fires only when an
+`endlocal` closes the OUTERMOST scope; verified against a synthetic defect, and it independently
+flags `run_iter53.cmd`, the runner that finished cleanly and never announced it) and flagged the
+inner `endlocal` as the stray-endlocal bug it
+was built for. A plain set + explicit restore has the same guarantee with no scoping for a linter
+or a reader to model.
+
+---
+
+## iter 61 — hybrid arm B: the feature MLP doubled at fixed depths (100,263 params) — REJECTED on the ratio gate
+
+Arm A's architecture with `features_fc_mult` 4 → 8: **+16,256 params spent ENTIRELY on the feature
+MLP**, at identical per-stream depths (2/1/2/2/2, 9 layer-steps, d=32). This is the direct test of
+Andrew's hybrid premise — *"allocate ≥99% of parameters to how other input features are
+processed"* — at a fixed recurrent core.
+
+ahead **0.300360**, imm **0.268761**; Δparams 457,949 gives a budget of 0.000458/mode, and the
+measured ratios are 0.000620 ahead / 0.000779 imm. size 0/2500, nan_users 0.
+
+### ★ THE RESULT IS THE A-vs-B CONTRAST, NOT THE VERDICT
+
+B is arm A with the feature MLP doubled and **everything else identical**, and it is WORSE in
+**both** modes: ahead +0.002837 vs A's +0.002711, imm +0.003570 vs +0.003386. So 16,256 extra
+parameters, placed exactly where the hypothesis says they belong, bought a small **negative**.
+
+**At this scale the feature pathway is not the binding constraint, and widening it does not
+substitute for recurrent capacity.** Combined with iter 60's knee finding — 558k → 84k costs ~5×
+per parameter what 2.76M → 558k did — the two arms together say the ≤100k target is reachable
+neither by shrinking this architecture proportionally nor by rebalancing its budget toward the
+feature MLP.
+
+⚠ Arm C (`features_fc_mult` 12, streams cut to 1/1/1/1 — the extreme form) produced **no verdict**:
+it faults with a CUDA illegal memory access, localised to the interleave path.
+
+Timings, for costing future work: WS 1.480 steps/s, decay 1.755, eval 1,097 users/h, 5 h 57 m end
+to end.
+
+---
+
+## featA2 — the features-A/B control on the id-fixed dbs — and it PRICES THE BUG A FIX
+
+Not a candidate. featA ran on published dbs whose entity ids were saturated to `INT32_MIN`, so it
+was not a clean control for a featB built on fixed dbs. featA2 is the same recipe, same seed, same
+KD-off env; **only the two db paths change**, to the id-fixed rebuilds of the same dataset.
+
+ahead **0.298186**, imm **0.265588** (n=2500, nan_users 0).
+
+### ★ THE UNPLANNED RESULT IS WORTH MORE THAN THE CONTROL
+
+| | featA (ids saturated) | featA2 (fixed) | delta | p |
+|---|---|---|---|---|
+| ahead | 0.298334 | **0.298186** | **+0.000148** | 4.6e-13 |
+| imm | 0.265757 | **0.265588** | **+0.000169** | 2.3e-27 |
+
+**The Bug A int32 fix clears the 0.0001 accept bar in BOTH modes on its own**, and is larger than
+iters 39, 45 or 53 individually. Since the champion lineage trained on `train_db_5k_h1`, which
+still carried Bug A, **that gain was sitting unclaimed** — which re-priced the published-db rebuild
+from "a re-base for cleanliness" to "a re-base that BUYS a measured gain".
+
+⚠ Both arms are KD-OFF, so neither number is comparable to iter 53.
+
+---
+
+## e2sc — the E2S CHAMPION RE-BASE — the new reference, and NOT a candidate
+
+Andrew, 2026-08-30: *"e2s should be used both in train AND eval. That should be the new default for
+all future runs."* Every earlier number in this file is end-to-END and is **not comparable** to
+anything measured from here on.
+
+iter 53's recipe, byte-identical except three db paths. ahead **0.297888**, imm **0.265676**
+(n=2500, nan_users 0, size gate 0/2500 vs iter 53).
+
+### Why it is a default and not an experiment
+
+It closes a **train/deploy divergence**. A live Anki scheduler computes
+`now() − last_review_time` (jschoreels fork, `rust/rwkv.rs:322`), evaluated before the user
+answers — so deploy is **end-to-START** and structurally cannot be anything else, because
+`duration(k)` has not happened yet. Training on end-to-END fed the model a quantity deploy can
+never supply, and one that correlates with the outcome: at a **fixed** end-to-start gap,
+`duration(k)` still predicts failure at **AUC 0.618** against a shuffled-within-bin floor of
+0.4996. Sharper still, we already zero the most recent duration as *feature 7* for exactly that
+reason — and then handed it back inside the interval.
+
+### ⚠ THE DELTA VS ITER 53 BUNDLES THREE CHANGES AND MUST NOT BE QUOTED AS THE INTERVAL'S COST
+
+−0.000366 ahead / −0.000484 imm, but that is the interval **plus** the Bug A fix (measured
++0.000148/+0.000169 BETTER) **plus** the Bug C placeholder-precision fix (unmeasured, same class,
+also expected better). Two of the three should have HELPED, so **the interval's own cost is larger
+than the observed gap** — roughly ≥0.0005 ahead and ≥0.00065 imm before Bug C is accounted for.
+The `fixc` arm (end-to-END on current code, same everything else) is what isolates it.
+
+Note imm degraded MORE than ahead (0.000484 vs 0.000366), the direction pre-registered in
+`scratchpad/features_ab/e2s/PREREG.md` on the grounds that imm predicts the CURRENT review's
+rating and that is the review whose duration leaks.
+
+### Ops
+
+The KD teacher dump had to be **regenerated** on the e2s batch stream. The existing dump holds
+logits computed on end-to-END inputs and its only identity check is a per-step `labels_sum` — and
+labels are RATINGS, which the interval does not touch. A student on e2s dbs would therefore have
+PASSED the checksum while distilling toward predictions for different inputs: the same shape as the
+augmentation/KD incompatibility already recorded, where a checksum that proves LABEL alignment gets
+read as proving BATCH alignment.
+
+Costs, with both dbs moved to the SSD: dump 2 h 03 m, WS 3 h 13 m, decay 3 h 10 m, eval 3 h 36 m.

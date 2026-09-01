@@ -1,0 +1,46 @@
+# HYBRID ARM V1: FSRS-7 (S_long, S_short, D) replaces the card stream's WKV; the trunk EMITS the 34 parameters per review
+# Priced at 488858 parameters (assert_arch.py re-checks this in phase 0).
+#
+# Clone of the champion's i53_ws.toml with ONLY the save folder and prefix changed -- the arm is
+# entirely in the .cmd's RWKV_ARCH_MODULE + RWKV_STRIP_CMIX, so this comparison is arch-only.
+# The training recipe (budget, LR, warmup, KD, seed) is the champion's, unchanged.
+#
+# WHY THE KD DUMP IS STILL VALID FOR A DIFFERENT STUDENT. The dump replays the d=128 TEACHER's
+# outputs by step index and verifies a per-step `labels_sum` checksum. Batch composition depends
+# on the db, the user range, MAX_TRAIN_GLOBAL_LEN, the fetch-process count and the seeds -- never
+# on the student's architecture. So a smaller student consumes the same dump.
+# The corollary is the trap recorded in CLAUDE.md: the checksum proves LABEL alignment and says
+# nothing about INPUTS, so any input-side change invalidates the dump while it keeps passing.
+# WARNING: the data-affecting fields below MUST stay identical to the dump's. Do not "tidy" them.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "train_db_5k_h1"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/hybrid100k"
+SAVE_MODEL_PREFIX = "hyv1_ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

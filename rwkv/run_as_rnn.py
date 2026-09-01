@@ -13,6 +13,7 @@ from rwkv.config import (
 from rwkv.data_processing import (
     CARD_FEATURE_COLUMNS,
     ID_PLACEHOLDER,
+    nan_id_fill,
     scale_cum_new_cards_today,
     scale_cum_reviews_today,
     scale_day_offset_diff,
@@ -255,7 +256,16 @@ class RNNProcess:
 
         def add_id(name):
             if np.isnan(row[name]):
-                row[name] = ID_PLACEHOLDER
+                # ⚠ note_id gets a PER-CARD placeholder, matching data_processing.py's training
+                # fill (BUG C, 2026-08-26). A bare constant here pooled EVERY NaN-note card in
+                # the collection into ONE note stream, while training gave each its own -- a
+                # silent train/deploy divergence over the 19.28% of reviews with a NaN note_id,
+                # and Bug A's shape with the direction reversed. deck_id / preset_id keep the
+                # bare constant: training does the same for them, so the partitions agree.
+                # The literal VALUE never has to match across paths -- ids are only dict keys
+                # here, and the id encoding is a random code cached per distinct id -- but the
+                # PARTITION must. Detail: scratchpad/hybrid100k/ID_FILL_BUGS.md.
+                row[name] = int(nan_id_fill(name, row["card_id"]))
                 row[f"{name}_is_nan"] = 1.0
             else:
                 row[f"{name}_is_nan"] = 0.0

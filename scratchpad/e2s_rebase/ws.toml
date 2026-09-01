@@ -1,0 +1,43 @@
+# E2S CHAMPION RE-BASE, WS phase (2026-08-30). iter 53's recipe, byte-identical except
+# the three db paths. This establishes the new baseline that future candidates are gated
+# against; iter 53's own numbers are end-to-END and are NOT comparable to it.
+# ITER 53 = MUON ON THE EXCLUDED LoRA MATRICES (RWKV_MUON_INCLUDE_LORA=1), on the iter-45
+# CHAMPION recipe. Clone of scratchpad/iter45_kddecay/i45_ws.toml with ONLY the save folder and
+# prefix changed -- the lever is entirely in the .cmd's env.
+# ⚠ Data-affecting fields (db, users, MAX_TRAIN_GLOBAL_LEN, fetch processes) MUST stay identical
+# to the t128_seedpair_65k dump's: KD replays that dump by step index and its per-step labels_sum
+# checksum hard-exits 43 on any divergence. Do not "tidy" them.
+# (Written 2026-08-17: mk53.py generated the runner but never this file, so the WS phase would
+# have died on a missing config. Same omission as iter 54's.)
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_e2s"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_e2s"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/e2s_rebase"
+SAVE_MODEL_PREFIX = "e2sc_ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
