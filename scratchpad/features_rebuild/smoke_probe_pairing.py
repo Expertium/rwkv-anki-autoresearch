@@ -113,6 +113,18 @@ def run_id_case(db, size, user_id, expect_at_least, insert_probes, get_data, lmd
             # 2. THE FIX -- the real function must survive and drop exactly the unpairable rows.
             out, meta = insert_probes(data, 1.0, 12345)
             n_ok += 1
+
+            # 2b. THE EVAL PATH. equalize_only=True is what a RECTIFIED eval runs, and it was
+            # not covered until 2026-09-01. The filter sits after the equalize narrowing so it
+            # is structurally shared -- but "structurally shared" is an argument, and this is a
+            # measurement. featB's eval reads test_db_5k_id3, which has unpairable rows, so an
+            # uncovered eval path would have killed the run four hours after the training
+            # phase survived it.
+            try:
+                insert_probes(data, 1.0, 12345, equalize_only=True)
+            except KeyError as exc:
+                failures.append("user %s chunk %s: equalize_only path raised KeyError %s"
+                                % (user_id, batch, exc))
             if meta is not None:
                 n_probe_targets = meta.target.shape[0]
                 if n_probe_targets != len(elig) - len(bad):

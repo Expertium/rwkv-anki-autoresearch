@@ -1486,7 +1486,19 @@ shape check -- saturation is not an error, it is a silent value change.**
   * **-id ONLY, and PROVEN so:** neither `elapsed_end_to_start*` re-sorts, so the published/e2s
     lineage cannot produce it -- 0 unpairable in **3,769,040** eligible targets over 796 chunks of
     `train_db_5k_h1_e2s`, vs hits in `train_db_5k_h1_id3` AND `test_db_5k_id3` (the eval phase
-    would have died too). Rate ~1 in 5,646-22,201 targets.
+    would have died too).
+  * **⚠ THE RATE IS HEAVILY SKEWED BY USER, and a stride sample badly understates it.** Two
+    stride samples over users 1-694 found 1 unpairable target per 2,654-22,201 -- and the live
+    featB log then reported **user 1503 dropping 22 of 331 picked targets in ONE chunk (6.6%)**,
+    i.e. ~275 unpairable eligible rows in a single chunk. Most users have 0-1; a few have
+    hundreds. Quote the per-user distribution, never the sampled mean, and note that a stride
+    sample is the wrong instrument for a skewed rate.
+  * **The dropped rows are genuine FIRST reviews, so the filter RESTORES the intended semantics
+    rather than costing signal** -- `first_mask` exists precisely to exclude first reviews and
+    was failing to. (Proven, not assumed: `shortfall == 0` means the card has exactly one
+    is_first_review row and it is the unpairable one.) The converse row -- positionally first but
+    NOT a genuine first -- is still skipped, which is a small pre-existing loss on every db and
+    is unchanged.
   * **FIXED 2026-09-01 in `insert_probes`:** unpairable targets are now FILTERED OUT (a first
     review cannot be probed -- the imm task needs a prior review, so there is nothing to pair
     against; dropping it is the correct semantics, not a workaround) and REPORTED via
