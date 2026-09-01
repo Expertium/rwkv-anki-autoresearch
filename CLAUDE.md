@@ -990,7 +990,7 @@ So this list is the single source of order. Anything not on it is not scheduled.
 |---|---|---|
 | 1 | **Training speedups** (dispatch-bound) | **DONE** — +5.5% bit-exact (PermGather on the interleaved path); four leads closed. `optimization/DISPATCH_PLAN.md` |
 | 2 | **Finish the features CONTROL eval** | **DONE** — featA2 0.298186 / 0.265588; prices the Bug A fix at +0.000148 / +0.000169 |
-| 3 | **featB** — the new-features arm | **RUNNING** since 2026-09-01 20:36 (~10 h). Died TWICE on the `insert_probes` KeyError (08-21, 09-01); root-caused and fixed 09-01 — see BUG B |
+| 3 | **featB** — the new-features arm | **RUNNING** since 2026-09-01 20:36 (~10 h, 0.931 steps/s). Died TWICE on the `insert_probes` KeyError (08-21, 09-01); root-caused and fixed 09-01 — see BUG B. **Gen-4 rebuild is armed behind it** (Bug C fix; see GEN 4) |
 | 4 | **More algorithmic improvements** | the research loop, gate unchanged |
 | 5 | **Final HP tuning, WITH QAT ON** | ⚠ NEW — all prior tuning was PLAIN |
 | 6 | **The final run: QAT + larger epoch budget** | the old "10x endgame", both arms |
@@ -1541,6 +1541,33 @@ shape check -- saturation is not an error, it is a silent value change.**
   98.3% of note identity on 19% of reviews. Both fixes must land first, or the rebuild banks a
   smaller version of the same bug and re-bases the champion for nothing.
 * **GEN 1 AND GEN 2 ARE DELETED / SUPERSEDED. GEN 3 (`*_id3`) is the first correct -id build.**
+* **★★ GEN 4 (`*_id4`) IS ARMED AND CHAINED BEHIND featB (Andrew 2026-09-01: "since we will
+  almost certainly adopt timestamp features, we need the fixes").** Gen 3 was built **2026-08-24,
+  two days BEFORE the `nan_id_fill` fix**, so it still carries **Bug C** -- verified in the
+  artifact, not inferred from dates: **39,599 NaN-note cards -> 24,707 distinct placeholders
+  (ratio 0.6239, 37.2% of note identity lost)**. Gen 4 is gen 3 **plus that single fix**; the only
+  other data_processing change since is `elapsed_end_to_start_published`, which is inert on an
+  `-id` frame.
+  **✓ THAT MAKES gen3-vs-gen4 THE CLEAN ID-FIX MEASUREMENT THE RECORD HAS NEVER HAD** -- same
+  generation, same code, one variable -- i.e. the shape whose absence forced the featA2
+  retraction. If featB's recipe is re-run on gen 4, the re-base and the measurement are the same
+  run, at no extra GPU cost.
+  **⚠ NOT STARTED IMMEDIATELY, AND THE PRECEDENT DOES NOT TRANSFER.** Gen 2 ran beside featA
+  because featA's fetch workers were ~9.7 GB; **featB's measured 18.3 GB each with 10.9 GB of 63.9
+  free**, and gen 3's own config header records a rebuild exhausting 64 GB and dying beside a
+  training run. Starting early buys nothing (nothing consumes gen 4 until featB reports) and risks
+  a 10 h run. `wait_then_rebuild4.cmd` therefore waits on **TWO** conditions -- featB's terminal
+  marker **AND >=25 GB free RAM** -- because a marker alone is satisfied by a dead-and-relaunched
+  featB.
+  **Guards, and the first two are the point of the build:** `assert_bugc_fixed.py` (phase 0b --
+  `nan_id_fill` is exact, and it **proves its own non-vacuity** by simulating the float64 path and
+  requiring it to collapse: 4096 -> 65) and **`check_db_idfill.py`, which reads the FINISHED
+  database back**. "The fix is live in code" and "this database was built with it" are different
+  claims, and conflating them is exactly what produced the retracted featA2 number.
+  Built on **F:** (615 GiB free; C: has 138 and already holds the e2s pair and gen 3), **beside**
+  gen 3 -- nothing is deleted, and `train_db_5k_h1_id3` is featB's live database. ⚠ Training from
+  F: costs ~2.2x per step, so if gen 4 becomes a training target it should move to C: behind a
+  junction, which needs gen 3 deleted first -- **Andrew's call, and only after featB reports.**
 * ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
   still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
   would enter the bundle as a fifth component, and at 19% of reviews it could dwarf the features.

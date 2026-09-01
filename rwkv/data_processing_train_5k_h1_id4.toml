@@ -1,0 +1,42 @@
+# GENERATION 4 -- the -id TRAIN db, users 1-5000, rebuilt to carry the BUG C fix.
+#
+# WHY GEN 4 EXISTS. Andrew 2026-09-01: "since we will almost certainly adopt timestamp features,
+# we need the fixes". Generation 3 was built 2026-08-24, two days BEFORE the nan_id_fill fix, so
+# it still writes `ID_PLACEHOLDER + card_id` through a float64 column. ID_PLACEHOLDER is 3.14e17,
+# past float64's exact-integer limit of 2^53 where the spacing is 64, so cards created within
+# 64 ms of each other silently share a note. Measured ON gen 3 itself: 39,599 NaN-note cards
+# collapse to 24,707 distinct placeholders (ratio 0.6239, 37.2% of note identity lost).
+#
+# THIS IS THE ONLY INTENDED DIFFERENCE FROM GEN 3. The only data_processing commit between the
+# gen-3 build and now is b502a5e, whose other change (elapsed_end_to_start_published) is inert
+# here -- it returns early unless RWKV_E2S_PUBLISHED=1 and asserts the frame has no review_time,
+# which every -id frame does. So gen3 -> gen4 is a single-variable step, which additionally makes
+# the pair the clean measurement of the id fixes' ACCURACY value that no existing pair provides
+# (the featA/featA2 and iter53/fixc pairs both straddle the 2026-08-19 sentinel fix and were
+# retracted for it on 2026-09-01).
+#
+# ⚠ BUILT BESIDE GEN 3, NEVER OVER IT. train_db_5k_h1_id3 is the live featB run's database.
+# Gen 3 is deleted only on Andrew's say-so, and only after check_db + check_db_idfill pass here.
+#
+# DISK: map_size is SPARSE, so the logical 400 GB is not the cost -- measured ~116 GiB allocated.
+# Built on F: (615 GiB free); C: has only ~138 GiB and already holds the e2s pair and gen 3.
+# ⚠ Training from F: costs ~2.2x per step (measured), so if this db becomes a training target it
+# should move to C: behind a junction first -- which needs gen 3 deleted to make room.
+#
+# PROCESSES=4 matches gen 3, which was proven safe beside a training run. Do not raise it: gen 3's
+# own header records 6 workers exhausting 64 GB and dying beside a run with lighter fetch workers
+# than featB's (measured 18.3 GB each on 2026-09-01).
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_id4"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 4
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

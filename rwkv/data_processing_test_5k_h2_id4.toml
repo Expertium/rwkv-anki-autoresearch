@@ -1,0 +1,31 @@
+# GENERATION 4 -- the -id EVAL db, users 5001-10000, rebuilt to carry the BUG C fix.
+# Companion to data_processing_train_5k_h1_id4.toml; see that file for why gen 4 exists.
+#
+# THE EVAL DB MUST BE REBUILT TOO. Eval feeds the same feature vector and keys the same note
+# stream, so scoring a gen-4 model on gen-3 test data would mix two note-identity conventions --
+# a silent divergence of exactly the kind §9 exists to catch. Measured on gen 3's test db, the
+# NaN-note collapse is present there as well.
+#
+# PROCESSES=2, NOT 4. WHOLE-USER format (MAX_BATCH_SIZE=2097152), so each worker holds an entire
+# user's 46-column feature matrix. Gen 3's header records 6 workers exhausting 64 GB beside a
+# training run; 2 is the value gen 3 actually used and completed with.
+#
+# LABEL FILTER IS REUSED, NOT REBUILT. label_filter_db_id selects WHICH reviews count, not what
+# they contain, so it is feature- and id-fill-independent. Rebuilding it would cost an hour for a
+# byte-identical result.
+#
+# map_size 250 GB is SPARSE; the real allocation is ~116 GiB. Built on F: beside gen 3.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id4"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 2
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]
