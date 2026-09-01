@@ -11,13 +11,25 @@ use std::collections::HashMap;
 // Model dims (H heads, K head-dim, C d_model) and per-stream layer counts are DERIVED from
 // the weight shapes at load time (see Model::load) so the engine auto-adapts to any arch.
 const LN_EPS: f64 = 1e-5;
-/// Input width and the two card-feature columns the button probes rewrite. These are the CARD
-/// block's own indices (rwkv/model/srs_model_rnn.py: `CARD_FEATURE_COLUMNS.index(...)` = 8 and 9),
-/// and the card block is the PREFIX of the 92-dim input -- verified empirically on the reference
-/// traces: feats_proc[.,9..13] is a valid one-hot on every row and feats_imm has 0.0 at both.
-pub(crate) const FEATURE_DIM: usize = 92;
+/// The two card-feature columns the button probes rewrite. These are the CARD block's own indices
+/// (rwkv/model/srs_model_rnn.py: `CARD_FEATURE_COLUMNS.index(...)` = 8 and 9), and the card block
+/// is the PREFIX of the input -- verified empirically on the reference traces: feats_proc[.,9..13]
+/// is a valid one-hot on every row and feats_imm has 0.0 at both.
+///
+/// ⚠ THESE TWO ARE LAYOUT-STABLE AND THAT IS CHECKED, NOT ASSUMED. `RWKV_ID_FEATURES=1` drops
+/// `scaled_state` at index 22 and appends 23 columns, so every index AFTER 22 shifts. 8 and 9 sit
+/// before the drop point and are therefore unmoved in both layouts. (A column after it would need
+/// to be derived per layout -- the same trap that made a features smoke pass vacuously in Python.)
 pub(crate) const COL_DUR: usize = 8;
 pub(crate) const COL_R1: usize = 9;
+
+/// The input width used to be `const FEATURE_DIM: usize = 92`. It is now DERIVED at load from
+/// `features2card.0.weight`, like H/K/C/stream_layers/arch already were -- the file's own header
+/// says those are derived "so the engine auto-adapts to any arch", and this constant was the one
+/// exception. `RWKV_ID_FEATURES=1` makes the real width 114, so a hardcoded 92 would have refused
+/// to load a features model at all (and `RWKV_ZERO_FEATURES` would have refused to mask it).
+/// See `Model::feature_dim` / `FastModel::feature_dim`; both read the SAME tensor, so the two
+/// paths cannot disagree -- the divergence class this crate is most prone to.
 const GN_EPS: f64 = 64e-5;
 const L2_EPS: f64 = 1e-12;
 
@@ -1041,6 +1053,9 @@ pub struct Model {
     k: usize,              // head dim = c / h
     c: usize,              // d_model (derived from weights)
     stream_layers: Vec<usize>, // layers per stream (derived by counting blocks)
+    /// Input width, derived from `features2card.0.weight` at load: 92 for the published layout,
+    /// 114 under `RWKV_ID_FEATURES=1`. Was a hardcoded const until 2026-09-02.
+    feature_dim: usize,
     /// GAP 8. `stream_slot[m]` = which CANONICAL entity slot module `m` implements, where the
     /// canonical order is the fixed `[card, deck, note, preset, user]` every caller uses to key
     /// its per-entity state maps. Identity for the historical arch; `[0,2,1,3,4]` for the iter-41
@@ -1140,6 +1155,10 @@ impl Model {
         // Zeroing input column j is exactly equivalent to zeroing feature j (y = Wx+b is linear in
         // x), so it is done ONCE here on the weight rather than per-call on the features: free at
         // runtime, and impossible to forget at one of the three call sites (model.rs x2, fast.rs).
+        // Input width, DERIVED rather than assumed -- 92 for the published layout, 114 under
+        // RWKV_ID_FEATURES=1. Read once here and stored on the model so every consumer agrees.
+        let feature_dim = get(&w, "features2card.0.weight")?.dims2()?.1;
+
         if let Ok(spec) = std::env::var("RWKV_ZERO_FEATURES") {
             let dims: Vec<usize> = spec
                 .split(',')
@@ -1149,15 +1168,10 @@ impl Model {
                 let key = "features2card.0.weight";
                 let wt = get(&w, key)?;
                 let (out, n_in) = wt.dims2()?;
-                if n_in != FEATURE_DIM {
-                    return Err(anyhow!(
-                        "{key} has {n_in} inputs, expected {FEATURE_DIM} -- refusing to mask"
-                    ));
-                }
                 let mut buf = wt.to_vec2::<f32>()?;
                 for &d in &dims {
-                    if d >= FEATURE_DIM {
-                        return Err(anyhow!("RWKV_ZERO_FEATURES dim {d} >= {FEATURE_DIM}"));
+                    if d >= n_in {
+                        return Err(anyhow!("RWKV_ZERO_FEATURES dim {d} >= input width {n_in}"));
                     }
                     for row in buf.iter_mut().take(out) {
                         row[d] = 0.0;
@@ -1475,6 +1489,7 @@ impl Model {
             k,
             c,
             stream_layers,
+            feature_dim,
             stream_slot,
             arch,
             s_space: s_space_t,
@@ -1497,6 +1512,13 @@ impl Model {
     /// (H heads, K head-dim, C d_model) derived from the weights.
     pub fn dims(&self) -> (usize, usize, usize) {
         (self.h, self.k, self.c)
+    }
+
+    /// Input width derived from the weights: 92 for the published layout, 114 under the
+    /// `RWKV_ID_FEATURES` timestamp features. Callers that build feature rows must use this
+    /// rather than assuming a width.
+    pub fn feature_dim(&self) -> usize {
+        self.feature_dim
     }
 
     /// Layers per stream [card, deck, note, preset, user].
@@ -2002,14 +2024,15 @@ impl Model {
     /// One counterfactual probe row: `scaled_duration` zeroed, grade one-hot set to `button`.
     fn probe_row(&self, feats: &Tensor, button: usize) -> Result<Tensor> {
         let mut v: Vec<f32> = feats.flatten_all()?.to_vec1()?;
-        if v.len() != FEATURE_DIM {
-            return Err(anyhow!("probe_row: expected {FEATURE_DIM} features, got {}", v.len()));
+        let fd = self.feature_dim;
+        if v.len() != fd {
+            return Err(anyhow!("probe_row: expected {fd} features, got {}", v.len()));
         }
         v[COL_DUR] = 0.0;
         for k in 0..4 {
             v[COL_R1 + k] = if k == button { 1.0 } else { 0.0 };
         }
-        Ok(Tensor::from_vec(v, (1, FEATURE_DIM), &self.dev)?)
+        Ok(Tensor::from_vec(v, (1, fd), &self.dev)?)
     }
 
     pub fn imm_prob(&self, out_p_logits: &Tensor) -> Result<f32> {

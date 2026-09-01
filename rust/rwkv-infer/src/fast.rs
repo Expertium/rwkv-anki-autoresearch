@@ -106,6 +106,18 @@ impl FastModel {
         Ok(Self { c, h, k, stream_layers, stream_slot, num_curves, num_points, s_space, point_space, arch, compress, fw, fwt })
     }
 
+    /// Input width, read from the SAME tensor `Model::feature_dim` derives it from, so the two
+    /// engines cannot disagree about it. `fwt` holds linear weights pre-transposed to (in,out),
+    /// so `d0` is the input width: 92 for the published layout, 114 under RWKV_ID_FEATURES.
+    ///
+    /// Deliberately NOT threaded through `build()` like `arch` and `stream_slot` are. Those are
+    /// threaded because FastModel never sees the raw shapes it would need to re-derive them, so
+    /// an independent derivation could disagree. That reason does not apply here: this reads the
+    /// weight itself, which is the single source both paths use.
+    pub fn feature_dim(&self) -> Result<usize> {
+        Ok(self.lt("features2card.0.weight")?.d0)
+    }
+
     fn raw(&self, key: &str) -> Result<&FastW> {
         self.fw.get(key).ok_or_else(|| anyhow!("fast: missing raw weight {key}"))
     }
@@ -764,20 +776,21 @@ impl FastModel {
         states: &[Option<FastStreamState>; 5],
         desired_retention: f32,
     ) -> Result<[f32; 4]> {
-        use crate::model::{COL_DUR, COL_R1, FEATURE_DIM};
-        if feats.len() != FEATURE_DIM {
+        use crate::model::{COL_DUR, COL_R1};
+        let fd = self.feature_dim()?;
+        if feats.len() != fd {
             return Err(anyhow!(
-                "button_intervals: expected {FEATURE_DIM} features, got {}",
+                "button_intervals: expected {fd} features, got {}",
                 feats.len()
             ));
         }
         const NB: usize = 4;
 
-        // 4 probe rows, row-major (NB, FEATURE_DIM).
-        let mut probe = Vec::with_capacity(NB * FEATURE_DIM);
+        // 4 probe rows, row-major (NB, fd).
+        let mut probe = Vec::with_capacity(NB * fd);
         for k in 0..NB {
             probe.extend_from_slice(feats);
-            let row = &mut probe[k * FEATURE_DIM..(k + 1) * FEATURE_DIM];
+            let row = &mut probe[k * fd..(k + 1) * fd];
             row[COL_DUR] = 0.0;
             for j in 0..4 {
                 row[COL_R1 + j] = if j == k { 1.0 } else { 0.0 };

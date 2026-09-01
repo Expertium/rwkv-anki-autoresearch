@@ -67,6 +67,29 @@ fn write_preds(user: i64, review_th: Vec<i64>, pred_imm: Vec<f32>, pred_ahead: V
     Ok(())
 }
 
+/// Does this trace's feature width match the model's? Both are DERIVED, so a mismatch means the
+/// trace and the checkpoint came from different feature layouts -- 92 (published) against 114
+/// (`RWKV_ID_FEATURES`), the two that now coexist.
+///
+/// ⚠ WORTH FAILING LOUDLY, because the silent version is not obviously wrong. A trace narrower
+/// than the model would be read as a shorter row and the engine would march on over misaligned
+/// memory; a wider one would silently truncate. Either way the numbers stay plausible and the
+/// parity gate -- which scores MEAN LogLoss -- can absorb a surprising amount of that before it
+/// notices. That is exactly how the missing `RWKV_ZERO_FEATURES` mask survived: the gate passed
+/// while the two paths were computing different formulas, and only a per-review comparison showed
+/// it. A shape check is the cheap version of that lesson.
+fn check_trace_width(model: &Model, trace_width: Option<usize>, trace: &str) -> Result<()> {
+    let want = model.feature_dim();
+    match trace_width {
+        Some(got) if got != want => Err(anyhow::anyhow!(
+            "{trace}: feats_imm is {got} wide but the checkpoint expects {want}. The trace and the \
+             model come from different feature layouts (92 = published, 114 = RWKV_ID_FEATURES); \
+             re-export the trace from the matching checkpoint."
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// FAST path: plain-Rust f32 forward (fast.rs) at B=1, with per-step state compression applied in the
 /// fast engine (parity with the candle path to ~1e-5; verify with RWKV_USE_CANDLE A/B).
 fn run_user_fast(model: &Model, user: i64) -> Result<()> {
@@ -75,8 +98,9 @@ fn run_user_fast(model: &Model, user: i64) -> Result<()> {
     let trace = format!("{}/trace_user_{user}.safetensors", ref_dir());
     let t = candle_core::safetensors::load(&trace, &dev)?;
 
-    let feats_imm: Vec<Vec<f32>> = t.get("feats_imm").unwrap().to_vec2()?; // (N,92)
+    let feats_imm: Vec<Vec<f32>> = t.get("feats_imm").unwrap().to_vec2()?; // (N, feature_dim)
     let feats_proc: Vec<Vec<f32>> = t.get("feats_proc").unwrap().to_vec2()?;
+    check_trace_width(model, feats_imm.first().map(|r| r.len()), &trace)?;
     let route: Vec<Vec<i64>> = t.get("route").unwrap().to_vec2()?; // (N,4): [card,note,deck,preset]
     let elapsed: Vec<f32> = t.get("elapsed_seconds").unwrap().to_vec1()?;
     let review_th: Vec<i64> = t.get("review_th").unwrap().to_vec1()?;
@@ -139,8 +163,9 @@ fn run_user_candle(model: &Model, user: i64) -> Result<()> {
     let trace = format!("{}/trace_user_{user}.safetensors", ref_dir());
     let t = candle_core::safetensors::load(&trace, &dev)?;
 
-    let feats_imm = t.get("feats_imm").unwrap(); // (N,92)
+    let feats_imm = t.get("feats_imm").unwrap(); // (N, feature_dim)
     let feats_proc = t.get("feats_proc").unwrap();
+    check_trace_width(model, feats_imm.dims2().ok().map(|(_, w)| w), &trace)?;
     let route: Vec<Vec<i64>> = t.get("route").unwrap().to_vec2()?; // (N,4): [card,note,deck,preset]
     let elapsed: Vec<f32> = t.get("elapsed_seconds").unwrap().to_vec1()?;
     let review_th: Vec<i64> = t.get("review_th").unwrap().to_vec1()?;
