@@ -531,7 +531,7 @@ fn synth_states(model: &Model, b: usize, dev: &Device) -> Result<[Option<Batched
 fn bench_synth(model: &Model, secs: f64, b: usize) -> Result<()> {
     let dev = Device::Cpu;
     let states = synth_states(model, b, &dev)?;
-    let feats_b = Tensor::rand(0f32, 1f32, (b, 92), &dev)?;
+    let feats_b = Tensor::rand(0f32, 1f32, (b, model.feature_dim()), &dev)?;
     // one untimed warm call (allocate buffers) then timed loop
     let _ = model.review_batched(&feats_b, &states)?;
     let mut total: u64 = 0;
@@ -896,7 +896,7 @@ fn bench_synth_fast(model: &Model, secs: f64, b: usize) -> Result<()> {
     }
     let states: [Option<fast::FastStreamState>; 5] =
         states.try_into().map_err(|_| anyhow::anyhow!("stream count"))?;
-    let feats: Vec<f32> = Tensor::rand(0f32, 1f32, (b, 92), &dev)?.flatten_all()?.to_vec1()?;
+    let feats: Vec<f32> = Tensor::rand(0f32, 1f32, (b, model.feature_dim()), &dev)?.flatten_all()?.to_vec1()?;
 
     let _ = model.fast.review_batched(&feats, b, &states)?; // warm
     let mut total: u64 = 0;
@@ -970,8 +970,8 @@ fn bench_buttons(model: &Model, secs: f64) -> Result<()> {
     };
     let mut s1 = mk(1)?;
     let mut s4 = mk(4)?;
-    let f1: Vec<f32> = Tensor::rand(0f32, 1f32, (1, 92), &dev)?.flatten_all()?.to_vec1()?;
-    let f4: Vec<f32> = Tensor::rand(0f32, 1f32, (4, 92), &dev)?.flatten_all()?.to_vec1()?;
+    let f1: Vec<f32> = Tensor::rand(0f32, 1f32, (1, model.feature_dim()), &dev)?.flatten_all()?.to_vec1()?;
+    let f4: Vec<f32> = Tensor::rand(0f32, 1f32, (4, model.feature_dim()), &dev)?.flatten_all()?.to_vec1()?;
 
     // Warm the centroid indices with real reviews before ANY timing, so the compressed path is
     // measured as deploy runs it. 32 is far past what a warm search needs to settle.
@@ -1036,7 +1036,7 @@ fn bench_mt(model: &Model, secs: f64, b: usize, threads: usize) -> Result<()> {
     use std::sync::atomic::{AtomicU64, Ordering};
     let dev = Device::Cpu;
     let states = synth_states(model, b, &dev)?; // shared read-only
-    let feats_b = Tensor::rand(0f32, 1f32, (b, 92), &dev)?;
+    let feats_b = Tensor::rand(0f32, 1f32, (b, model.feature_dim()), &dev)?;
     let _ = model.review_batched(&feats_b, &states)?; // warm
     let total = AtomicU64::new(0);
     let t0 = Instant::now();
