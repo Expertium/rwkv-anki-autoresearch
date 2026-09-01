@@ -81,6 +81,25 @@ if not %ERRORLEVEL%==0 (
 )
 echo REBUILD4 TARGETS_OK %TIME% >> "%LOG%"
 
+REM ---- PHASE 0d: the END-TO-START LABEL FILTER, which gen 4 is built against ----
+REM Andrew 2026-09-01: "We should have delta_t > 0 though, to make our methodology closer to
+REM that of srs-benchmark." We already HAD delta_t 0 -- it comes from create_features. What was
+REM missing is that find_equalize read the parquet directly and never applied the interval
+REM correction, so the filter was evaluated on END-TO-END gaps while training and eval use
+REM end-to-start. With SECS=true that filter is not interval-independent.
+REM
+REM It must run BEFORE the dbs, because label_is_equalize is BAKED INTO the LMDB at build time.
+REM Adopting it later would cost a second 4 h rebuild, which is the whole reason it is here.
+REM Resumable: find_equalize skips users already present, so a re-run is cheap.
+if exist "%DIR%\lf4_%STAMP%.log" del /q "%DIR%\lf4_%STAMP%.log"
+.venv\Scripts\python.exe -u -m rwkv.find_equalize_test_reviews --config rwkv/find_equalize_id_e2s.toml > "%DIR%\lf4_%STAMP%.log" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo REBUILD4 LABELFILTER_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_17 %DATE% %TIME% >> "%LOG%"
+  exit /b 17
+)
+echo REBUILD4 LABELFILTER_OK %TIME% >> "%LOG%"
+
 REM ---- PHASE 1: the TRAIN db ----
 if exist "%DIR%\train4_%STAMP%.log" del /q "%DIR%\train4_%STAMP%.log"
 .venv\Scripts\python.exe -u -m rwkv.data_processing --config rwkv/data_processing_train_5k_h1_id4.toml > "%DIR%\train4_%STAMP%.log" 2>&1
@@ -125,19 +144,21 @@ if not %ERRORLEVEL%==0 (
 )
 echo REBUILD4 TEST_OK %TIME% >> "%LOG%"
 
-REM ---- PHASE 3: gen 4 must score the SAME REVIEWS as gen 3 ----
-REM `size` IS the stored label_is_equalize count and that comes from the LABEL FILTER DB, which
-REM gen 3 and gen 4 share (label_filter_db_id). So identical counts are REQUIRED, and a
-REM difference is a build bug -- rows dropped, a different filter, or a chunking change.
-REM check_db verifies entry counts and column width, i.e. the SHAPE; it cannot see whether the
-REM same reviews ended up marked as scored. This is the check that can.
-REM Non-fatal by design: the dbs are already built and verified at this point, so a mismatch is
-REM information for a human, not a reason to discard four hours of work.
+REM ---- PHASE 3: gen 4 must score a DIFFERENT set from gen 3, and that expectation is INVERTED ----
+REM ⚠ THIS CHECK MEANT THE OPPOSITE ONE HOUR AGO. When gen 4 was going to reuse
+REM label_filter_db_id, identical counts were REQUIRED and a difference was a build bug. Adding
+REM phase 0d flipped it: gen 4 now scores an end-to-start-selected set, so it MUST differ from
+REM gen 3 by roughly 0.19%. A guard whose meaning depends on a config decision has to be revisited
+REM whenever that decision moves -- exactly the stale-guard failure that rejected iter 54's decay
+REM and nearly rejected decayshape's.
+REM
+REM So the informative outcome here is exit 1 (they differ). Exit 0 would mean the NEW label
+REM filter did not take effect and the point of phase 0d was silently missed.
 .venv\Scripts\python.exe scratchpad/features_rebuild/compare_equalize.py F:/rwkv_lmdb/test_db_5k_id3 250000000000 F:/rwkv_lmdb/test_db_5k_id4 250000000000 5001 20 53 >> "%LOG%" 2>&1
-if not %ERRORLEVEL%==0 (
-  echo REBUILD4 EQUALIZE_DIFFERS_FROM_GEN3 -- INVESTIGATE, dbs are built %DATE% %TIME% >> "%LOG%"
+if %ERRORLEVEL%==1 (
+  echo REBUILD4 EQUALIZE_DIFFERS_FROM_GEN3 -- EXPECTED, the e2s label filter took effect %TIME% >> "%LOG%"
 ) else (
-  echo REBUILD4 EQUALIZE_MATCHES_GEN3 %TIME% >> "%LOG%"
+  echo REBUILD4 EQUALIZE_IDENTICAL_TO_GEN3 -- SUSPICIOUS, did phase 0d take effect? %DATE% %TIME% >> "%LOG%"
 )
 
 REM Terminal marker BEFORE endlocal: endlocal restores the pre-setlocal environment, so %LOG%

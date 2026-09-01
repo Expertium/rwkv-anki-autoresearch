@@ -642,6 +642,52 @@ The H=2/K=16 / 193,724-param champion on the 1500-user data-variety recipe, its 
    check catches a 1-review perturbation on 3 of 2,500 users; `compare_equalize` returns 1 across
    label filters. **Snapshot the `-id` baseline from featB when it lands** -- a lineage with no
    baseline must not be gated by treating its first candidate as the reference.
+   **⚠⚠ CORRECTION 2026-09-01, and I told Andrew the wrong thing first: WE ALREADY HAVE
+   `delta_t > 0`.** I wrote "we have no `delta_t > 0` filter", generalising this file's own line
+   about the LMDB builder (`data_processing` genuinely has none -- every review row is stored) to
+   the whole pipeline. But `find_equalize_test_reviews.py` calls **`create_features`**, i.e.
+   srs-benchmark's own code, and `features/base.py:284` is `df[df["delta_t"] > 0]`. That is
+   precisely why our `size` reproduces their published jsonls. **Two different filters, one name:
+   the SCORED set has always honoured `delta_t > 0`; the STORED rows never did.**
+   **THE REAL GAP, and it is narrower and live:** `find_equalize` reads the parquet DIRECTLY and
+   never went through `get_rwkv_data`, so the filter was evaluated on **END-TO-END** gaps while
+   training and eval had moved to end-to-start. With `SECS = true` that filter is **not**
+   interval-independent (`delta_t := elapsed_seconds / 86400`, base.py:127/227), so WHICH rows
+   floor to zero depends on the definition. Consequence: rows whose end-to-start gap is zero
+   stayed in the scored set, so the model was scored on reviews srs-benchmark's own rule deletes.
+   **FIXED (Andrew 2026-09-01: "We should have delta_t > 0 though, to make our methodology closer
+   to that of srs-benchmark").** `find_equalize_test_reviews.py` now applies the SAME two
+   functions `get_rwkv_data` calls, in the same order, gated on the DATASET -- not a second
+   implementation, because the two datasets need different formulas (published subtracts THIS
+   review's duration, `-id` the PREVIOUS one) and the wrong one is silently wrong.
+   **MEASURED, 60 published eval users / 3,151,582 rows: 0.1907% of rows leave, and they are
+   1.46x EASIER than average (7.07% vs 10.31% failure, -9.8 sigma)** -- so removing them RAISES
+   mean LogLoss on its own. Consistent with Andrew's 0.172% on the full 10k in srs-benchmark.
+   ⚠ **Small samples flip the sign of the difficulty claim**: 8 users said 1.24x easier, 24 users
+   said 0.86x *harder*, 60 users says 1.46x easier at -9.8 sigma. Do not quote a direction from a
+   handful of users; the probe now prints a sigma and refuses a verdict under 2.
+   **★★ AND THE SCORED SET IS RE-SELECTED, NOT MERELY SHRUNK.** The folds come from
+   `TimeSeriesSplit` over the SURVIVING rows, so dropping rows shifts every boundary and reviews
+   ENTER the scored set too -- measured **-1437 / +87** on user 5402. I expected a subset and the
+   smoke caught me. **=> a per-user LogLoss is computed over a DIFFERENT set of reviews, not a
+   smaller one, so old numbers cannot be corrected proportionally; the lineage needs its own
+   baseline.**
+   **WHAT GEN 4 DOES (my call, delegated by Andrew: "I'll let you figure out what size number to
+   consider 'correct'"):** gen 4 builds against a NEW **`label_filter_db_id_e2s`**
+   (`rwkv/find_equalize_id_e2s.toml`, phase 0d of `run_rebuild4.cmd`). `label_filter_db` and
+   `label_filter_db_id` are **NOT** touched -- featB is scored against the latter and rebuilding
+   in place would silently re-base a finished experiment.
+   **=> THE "CORRECT" SIZE FOR FUTURE new-features + e2s RUNS IS WHATEVER GEN 4 PRODUCES.**
+   Snapshot it with `size_baseline.py snapshot id_e2s` from the first gen-4 eval, and gate every
+   later candidate against that.
+   **THE TRADE I ACCEPTED, stated rather than buried:** this forfeits the clean gen3-vs-gen4 Bug C
+   measurement, because gen 4 now differs from gen 3 in two ways instead of one. It is unavoidable
+   at acceptable cost -- `label_is_equalize` is **baked into the LMDB at build time**, so adopting
+   the filter later means a second ~4 h rebuild. Methodology alignment was a directive; the Bug C
+   number was a nice-to-have I had invented.
+   Verified by EXECUTION, not by reading: the modified filter ran on users 5001/5002 and moved
+   them **12,625 -> 12,595 (-0.238%)** and **229,050 -> 227,995 (-0.461%)** against
+   `label_filter_db_id`. Smoke: `scratchpad/features_rebuild/smoke_equalize_e2s.py`.
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
 4./5. **★ CURRENT RULE (Andrew 2026-08-10, TIGHTENED): each mode's RAW improvement vs the CURRENT
    champion must be >= 0.0001 in BOTH modes.** No rounding step -- a raw +0.000088 now FAILS.

@@ -32,7 +32,7 @@ DATA_PATH = "../anki-revlogs-10k-id"
 
 LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_id4"
 LMDB_SIZE = 400_000_000_000
-LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
 USER_START = 1

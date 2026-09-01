@@ -10,9 +10,12 @@
 # user's 46-column feature matrix. Gen 3's header records 6 workers exhausting 64 GB beside a
 # training run; 2 is the value gen 3 actually used and completed with.
 #
-# LABEL FILTER IS REUSED, NOT REBUILT. label_filter_db_id selects WHICH reviews count, not what
-# they contain, so it is feature- and id-fill-independent. Rebuilding it would cost an hour for a
-# byte-identical result.
+# ⚠ THE LABEL FILTER IS *NOT* REUSED ANY MORE, and the old rationale no longer holds. It is
+# feature- and id-fill-independent, yes -- but it is NOT interval-independent: with SECS=true
+# the srs-benchmark filter is `delta_t > 0` on `elapsed_seconds / 86400`, so which rows survive
+# depends on end-to-end vs end-to-start. Generation 4 therefore builds against
+# label_filter_db_id_e2s, whose selection is evaluated on the interval the model is actually
+# trained and scored on. See rwkv/find_equalize_id_e2s.toml.
 #
 # map_size 250 GB is SPARSE; the real allocation is ~116 GiB. Built on F: beside gen 3.
 DEVICE = "cpu"
@@ -21,7 +24,7 @@ DATA_PATH = "../anki-revlogs-10k-id"
 
 LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id4"
 LMDB_SIZE = 250_000_000_000
-LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
 USER_START = 5001

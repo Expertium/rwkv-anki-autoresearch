@@ -11,6 +11,7 @@ import lmdb
 
 from rwkv.parse_toml import parse_toml
 from rwkv.utils import save_tensor
+import rwkv.id_features as _idf
 
 rwkv_config = parse_toml()
 lmdb_env = None
@@ -51,6 +52,37 @@ def process(user_id):
             return
 
     df = pd.read_parquet(rwkv_config.DATA_PATH / "revlogs" / f"{user_id=}")
+
+    # ★★ THE EQUALIZE FILTER MUST SEE THE INTERVAL THE MODEL IS ACTUALLY TRAINED AND SCORED ON
+    # (Andrew 2026-09-01: "We should have delta_t > 0 though, to make our methodology closer to
+    # that of srs-benchmark").
+    #
+    # We already HAVE `delta_t > 0` -- it comes from `create_features` itself
+    # (features/base.py:284), which is why our `size` reproduces srs-benchmark's published jsonls.
+    # What was missing is that this file reads the parquet DIRECTLY and never went through
+    # `data_processing.get_rwkv_data`, so the filter was evaluated on END-TO-END intervals while
+    # training and eval had moved to end-to-start. With `SECS = true` that filter is NOT
+    # interval-independent: `delta_t := elapsed_seconds / 86400` (base.py:127,227), so WHICH rows
+    # floor to zero depends on the interval definition.
+    #
+    # Consequence of leaving it: rows whose end-to-start gap is zero stayed in the scored set, so
+    # the model was asked to predict recall across a zero-length gap on reviews srs-benchmark's
+    # own rule deletes. Measured on 60 eval users / 3,151,582 rows: 0.1907% of rows, and they are
+    # 1.46x EASIER than average (7.07% vs 10.31% failure, -9.8 sigma), so scoring them lowers
+    # mean LogLoss for free.
+    #
+    # ⚠ THE SAME TWO FUNCTIONS `get_rwkv_data` CALLS, IN THE SAME ORDER, AND THAT IS THE POINT.
+    # The two datasets need DIFFERENT formulas (published subtracts THIS review's duration, -id
+    # the PREVIOUS one), and applying the wrong one is silently wrong -- no shape changes, no
+    # error, just a different number. Re-deriving it here would be a second implementation to
+    # keep in sync; calling the same functions makes divergence impossible. Gated on the DATASET
+    # exactly as they are, so a published build is untouched unless RWKV_E2S_PUBLISHED=1.
+    if "review_time" in df.columns:
+        df = _idf.elapsed_end_to_start(df)
+        df = _idf.clamp_negative_gaps(df)
+    else:
+        df = _idf.elapsed_end_to_start_published(df)
+
     try:
         df = create_features(df.copy(), config=config)
     except ValueError as err:

@@ -1,0 +1,41 @@
+# -id label_filter, users 1-10000, with the equalize selection evaluated on END-TO-START
+# intervals. Andrew 2026-09-01: "We should have delta_t > 0 though, to make our methodology
+# closer to that of srs-benchmark."
+#
+# WHAT CHANGED, AND IT IS NOT THAT WE GAINED THE FILTER. We already HAD `delta_t > 0` -- it comes
+# from `create_features` itself (features/base.py:284), which is why our `size` reproduces
+# srs-benchmark's published jsonls. What was missing is that `find_equalize_test_reviews.py` read
+# the parquet DIRECTLY and never applied the interval correction, so the filter was evaluated on
+# END-TO-END gaps while training and eval had moved to end-to-start. With `SECS = true` the filter
+# is NOT interval-independent (`delta_t := elapsed_seconds / 86400`), so which rows floor to zero
+# depends on the definition. That file now applies the same correction `get_rwkv_data` does, by
+# calling the same two functions, so the formula cannot diverge between the paths.
+#
+# MEASURED on 60 published eval users / 3,151,582 rows: 0.1907% of rows leave, and they are
+# 1.46x EASIER than average (7.07% vs 10.31% failure, -9.8 sigma). Removing them RAISES mean
+# LogLoss on its own -- a re-base, not a regression. Consistent with Andrew's 0.172% on the full
+# 10k in srs-benchmark.
+#
+# ⚠ THE SCORED SET IS RE-SELECTED, NOT MERELY SHRUNK. The folds come from TimeSeriesSplit over the
+# SURVIVING rows, so dropping rows shifts every boundary and some reviews ENTER the scored set:
+# measured -1437/+87 on user 5402. A per-user LogLoss is therefore computed over a different set
+# of reviews, not a smaller one, which is why this needs its own baseline rather than a
+# proportional correction to the old numbers.
+#
+# ⚠ NEW PATH ON PURPOSE -- `label_filter_db_id` is NOT overwritten. featB (generation 3) is scored
+# against it, and rebuilding it in place would silently re-base a finished experiment.
+#
+# Feature-INDEPENDENT, so RWKV_ID_FEATURES does not apply. The -id branch of the correction is
+# selected by the DATASET (`review_time` present), not by a flag, so nothing needs setting here.
+DATA_PATH = "../anki-revlogs-10k-id"
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+ALGO = "FSRS-6"
+SHORT = true
+SECS = true
+
+USER_START = 1
+USER_END = 10000
+
+PROCESSES = 4
