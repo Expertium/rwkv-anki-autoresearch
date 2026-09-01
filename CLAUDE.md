@@ -1555,6 +1555,30 @@ shape check -- saturation is not an error, it is a silent value change.**
   That re-prices the rebuild decision: it is no longer "a re-base for cleanliness", it is a re-base
   that BUYS a measured gain. Still Andrew's call, but the cost/benefit is now known rather than
   assumed, and this number is what the "could dwarf the features" worry above was guessing at.
+  **⚠⚠ RETRACTED 2026-09-01 -- THE "ONLY DIFFERENCE" SENTENCE ABOVE IS FALSE, AND THIS NUMBER MUST
+  NOT PRICE THE REBUILD.** featA trained on `train_db_5k_h1`, **built 2026-07-03**
+  (`data_processing_train_5k_h1.toml` + commit `ed0400e`); featA2 trained on `train_db_5k_h1_fix`,
+  built **2026-08-21**. The two straddle commit **`c7883dc` (2026-08-19)**, which stopped the -1
+  sentinel being SUMMED into the cumulative elapsed columns -- a **GLOBAL** input change hitting
+  every card's second review onward (3.9% of rows on an exact collision, 15.4% distorted by
+  >0.05 sigma). So `+0.000148 / +0.000169` is **Bug A PLUS the sentinel fix**, not Bug A.
+  `data_processing.py:373` says so in as many words: *"Every model trained before this date learned
+  the buggy column, so cross-generation comparisons were already invalid."* The warning was in the
+  codebase before either arm ran and was not applied to the arms.
+  **Corroborated independently, by concentration rather than by dates** -- Bug A only changes
+  grouping for cards with missing note metadata, so its effect must live in users who have them.
+  It does not (`scratchpad/features_rebuild/nan_note_concentration.py`, on the fixc/iter-53 pair
+  which has the same flaw): Spearman rho **-0.019** on ahead; imm runs the **WRONG WAY** (top
+  NaN-note quartile **-0.000067**, i.e. the fixed db is BETTER there); and the **621 users with
+  <0.5% NaN-note reviews -- for whom the id fixes can do literally nothing -- show the full effect
+  anyway** (+0.000047 / +0.000160). A global input change predicts exactly that; an id fix cannot.
+  **=> The id fixes remain justified on CORRECTNESS (Bug A collapsed ~19% of reviews into one note;
+  Bug C was a train/deploy divergence), and their ACCURACY value is UNMEASURED. Nothing in the
+  record isolates it.** Measuring it needs two dbs of the SAME generation differing only in the id
+  fill -- the shape the `fixc`/`e2sc` pair used for the interval, which is why that one is valid.
+  **THE GENERAL RULE, and it is the third instance this week: two runs are comparable only if their
+  DATABASES are, and a db is dated by when it was BUILT, not by what it is named.** Any future A/B
+  across a rebuild boundary must either rebuild both arms together or state the bundle explicitly.
 * Guards: **`smoke_id_identity.py`** (this doc said `smoke_id_dtype.py`; no such file exists -- corrected 2026-08-26) asserts ENTITY IDENTITY SURVIVES (distinct ids in the sample ==
   distinct in the frame), not merely "no exception" -- a no-exception smoke passes on the broken
   build. `scratchpad/chain_watch.sh` follows whichever ARM is live and alarms on a STALL as well as

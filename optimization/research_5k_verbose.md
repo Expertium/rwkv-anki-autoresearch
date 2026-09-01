@@ -3381,19 +3381,46 @@ Written to `scratchpad/features_ab/e2s/PREREG.md` before either arm reported, an
 Three-for-three on a pre-registered set is stronger evidence for the mechanism than the effect
 size alone, and it is why the predictions were written down before the arms landed.
 
-### ⚠ OPEN PUZZLE — the id fixes did NOT transfer to the KD-on regime
+### ★ THE fixc-vs-iter-53 GAP IS A CROSS-GENERATION ARTIFACT — resolved the same day
 
 fixc carries the Bug A and Bug C id fixes and is nonetheless **+0.000141 / +0.000084 WORSE than
-iter 53**. On the KD-OFF featA/featA2 pair those same fixes measured **+0.000148 / +0.000169
-BETTER**, clearing the accept bar in both modes on their own.
+iter 53**, while the same class of fix measured **+0.000148 / +0.000169 BETTER** on the KD-off
+featA/featA2 pair. That looked like a KD-regime interaction. It is not.
 
-Both cannot be quoted at once. Candidate explanations, none tested:
+**iter 53 trained on `train_db_5k_h1`, built 2026-07-03. fixc's dbs were built 2026-08-31.** The
+two straddle commit `c7883dc` (2026-08-19), which stopped the -1 sentinel being SUMMED into the
+cumulative elapsed columns — a **global** input change touching every card's second review onward
+(3.9% of rows on an exact collision, 15.4% distorted by >0.05 sigma). The delta is therefore
+cross-generation, and `data_processing.py:373` had already said so: *"Every model trained before
+this date learned the buggy column, so cross-generation comparisons were already invalid."*
 
-* the fixes help a KD-off student and not a KD-on one (the teacher's logits were computed on
-  Bug-A data, so restoring note identity may put the student and teacher further apart);
-* the arms differ in test db as well as train db, so a small basis shift rides along;
-* one of the two measurements is closer to the noise floor than its p-value suggests.
+**The concentration test settles it independently of the dates**, which matters because a
+date-based argument only shows a comparison *could* be contaminated. Bug A and Bug C change
+grouping ONLY for cards with missing note metadata, so their effect must live in users who have
+such cards. It does not:
 
-**Do not quote the featA2 gain as transferable to the champion until this is settled.** It was
-being used to price the published-db rebuild as "a re-base that buys a measured gain"; that
-framing is now unsupported in the regime the champion actually trains in.
+| statistic | ahead | imm |
+|---|---|---|
+| Spearman rho(NaN-note rate, delta) | **-0.019** | -0.123 |
+| top NaN-note quartile mean delta | +0.000155 | **-0.000067** (fixc BETTER) |
+| bottom quartile mean delta | +0.000045 | +0.000159 |
+| **621 users with <0.5% NaN-note reviews** | **+0.000047** | **+0.000160** |
+
+imm runs the *wrong way*, and users for whom the id fixes can do literally nothing show the full
+effect anyway. A global input-encoding change predicts exactly that pattern; an id fix cannot
+produce it.
+
+### ⚠ THIS RETRACTS THE featA2 PRICING, WHICH HAS THE SAME FLAW
+
+featA used `train_db_5k_h1` (July) and featA2 used `train_db_5k_h1_fix` (2026-08-21) — also
+straddling 08-19. So **"+0.000148 / +0.000169 = the Bug A fix" is Bug A PLUS the sentinel fix**,
+and must not be used to price the published-db rebuild as "a re-base that buys a measured gain".
+
+**The id fixes stay justified on CORRECTNESS** — Bug A collapsed ~19% of reviews into a single
+note, and Bug C was an outright train/deploy divergence — **but their ACCURACY value is
+UNMEASURED**, and nothing in the record isolates it. Measuring it needs two databases of the SAME
+generation differing only in the id fill: exactly the shape `fixc`/`e2sc` used, which is why the
+interval number above is trustworthy and these two are not.
+
+**The rule this is the third instance of: two runs are comparable only if their DATABASES are, and
+a database is dated by when it was BUILT, not by what it is named.**
