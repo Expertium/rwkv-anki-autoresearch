@@ -72,6 +72,30 @@ class ProbeMeta:
         self.query = query      # (m,) paired imm query row's new position
 
 
+_unpairable_seen = 0
+
+
+def _note_unpairable(data, n_dropped, n_picked):
+    """Report probe targets dropped for having no imm query row. Bounded, but never silent.
+
+    Rare by construction (2 rows across 768 chunks / 100 users on train_db_5k_h1_id3), so the
+    first few are printed in full. It is reported at all because a silent drop is exactly the
+    failure class this project keeps paying for: the run would complete, the number would look
+    fine, and nothing would say the probe set had quietly shrunk. If this ever prints at volume,
+    the frame ordering has drifted much further than the 60 s duration cap explains -- that is a
+    dataset problem, not a probe problem, and it should be investigated rather than tolerated.
+    """
+    global _unpairable_seen
+    _unpairable_seen += 1
+    if _unpairable_seen <= 5 or _unpairable_seen % 1000 == 0:
+        print(
+            "[probe] user %s chunk %s-%s: dropped %d of %d probe targets with no imm query row "
+            "(genuine first review not first in frame order); %d so far in this worker"
+            % (data.user_id, data.start_th, data.end_th, n_dropped, n_picked, _unpairable_seen),
+            flush=True,
+        )
+
+
 def insert_probes(data: RWKVSample, density: float, base_seed,
                   equalize_only: bool = False) -> tuple:
     """Insert 4 counterfactual button-probe skip rows before selected real rows.
@@ -105,6 +129,44 @@ def insert_probes(data: RWKVSample, density: float, base_seed,
             + int(data.start_th) * 104729) % (2**63 - 1)
     rng = np.random.default_rng(seed)
     pick = elig_rows[rng.random(elig_rows.size) < density]
+
+    # ---- the paired imm query row, and why this is a FILTER rather than an assumption ----
+    # This used to read "exists for every non-first review; eligibility implies non-first" and
+    # index q_map directly. That implication is FALSE, and it killed featB's fetch worker twice
+    # (2026-08-21 and again 2026-09-01, both `KeyError` here).
+    #
+    # The two notions of "first" are computed from different things and nothing keeps them
+    # aligned:
+    #   * `first_mask` above is POSITIONAL -- the first real row of each card_id in this chunk.
+    #   * a query row exists iff `is_first_review == False`, and `is_first_review` is
+    #     `elapsed_days == -1`, which the -id builder sets from `state == 0`
+    #     (build_parquet_id.py:138) and only THEN sorts the frame by review_time (:142).
+    #
+    # So on the -id set a card's genuine first review need not be its first row. Anki caps
+    # `taken_millis` at 60 s, and `review_time = id - taken_millis` subtracts that CAP, so a
+    # capped neighbouring review can acquire a show time up to a minute early and sort ahead of
+    # the card's real first review. Ground truth, user 477 / card 1708127478116: review_th 73724
+    # is the first review (elapsed_days -1, took 11.5 s) yet 73723 (duration exactly 60000, the
+    # cap) sorts before it and carries elapsed_seconds -17. The genuine first review then passes
+    # the positional mask, has no query row, and raises.
+    #
+    # A first review CANNOT be probed -- the imm task needs a prior review, so there is nothing
+    # to pair against. Dropping such picks is therefore the correct semantics, not a workaround.
+    #
+    # ⚠ BIT-IDENTITY IS DELIBERATE. The rng draw happens BEFORE the filter and is untouched, and
+    # the filter is a no-op wherever the old implication held -- which is every published/e2s
+    # database, since neither `elapsed_end_to_start*` re-sorts the frame. So no existing number
+    # moves. Verified by scratchpad/features_rebuild/probe_query_mismatch.py.
+    review_ths = data.review_ths.numpy()
+    qmask = sk & (lab[:, _LBL_IS_QUERY] > 0.5)
+    q_rows = np.nonzero(qmask)[0]
+    q_map = {int(review_ths[q]): int(q) for q in q_rows}
+    if pick.size:
+        pairable = np.array([int(review_ths[r]) in q_map for r in pick], dtype=bool)
+        if not pairable.all():
+            _note_unpairable(data, int((~pairable).sum()), int(pick.size))
+            pick = pick[pairable]
+
     m = pick.size
     if m == 0:
         return data, None
@@ -114,12 +176,6 @@ def insert_probes(data: RWKVSample, density: float, base_seed,
     assert np.allclose(grade.sum(axis=1), 1.0), "target rows must carry a one-hot grade"
     pressed = grade.argmax(axis=1).astype(np.int64)  # the ACTUAL rating of the probed row
 
-    # imm query row of each target: same review_th, is_query row (exists for every
-    # non-first review; eligibility implies non-first)
-    review_ths = data.review_ths.numpy()
-    qmask = sk & (lab[:, _LBL_IS_QUERY] > 0.5)
-    q_rows = np.nonzero(qmask)[0]
-    q_map = {int(review_ths[q]): int(q) for q in q_rows}
     query_old = np.array([q_map[int(review_ths[r])] for r in pick], dtype=np.int64)
 
     # ---- build the new row order: 4 probes immediately BEFORE each target

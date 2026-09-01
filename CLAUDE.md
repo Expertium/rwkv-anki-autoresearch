@@ -988,9 +988,9 @@ So this list is the single source of order. Anything not on it is not scheduled.
 
 | # | phase | state |
 |---|---|---|
-| 1 | **Training speedups** (dispatch-bound) | NEXT. Plan: `optimization/DISPATCH_PLAN.md` |
-| 2 | **Finish the features CONTROL eval** | owed: ~2.3 h GPU (see the naming note below) |
-| 3 | **featB** — the new-features arm | runner exists; died 08-21 on the id bug, never re-run |
+| 1 | **Training speedups** (dispatch-bound) | **DONE** — +5.5% bit-exact (PermGather on the interleaved path); four leads closed. `optimization/DISPATCH_PLAN.md` |
+| 2 | **Finish the features CONTROL eval** | **DONE** — featA2 0.298186 / 0.265588; prices the Bug A fix at +0.000148 / +0.000169 |
+| 3 | **featB** — the new-features arm | **RUNNING** since 2026-09-01 20:36 (~10 h). Died TWICE on the `insert_probes` KeyError (08-21, 09-01); root-caused and fixed 09-01 — see BUG B |
 | 4 | **More algorithmic improvements** | the research loop, gate unchanged |
 | 5 | **Final HP tuning, WITH QAT ON** | ⚠ NEW — all prior tuning was PLAIN |
 | 6 | **The final run: QAT + larger epoch budget** | the old "10x endgame", both arms |
@@ -1464,6 +1464,40 @@ shape check -- saturation is not an error, it is a silent value change.**
   collision also makes a card's genuine FIRST review probe-eligible while `add_queries` gave it no
   query row -> `KeyError` in `insert_probes`, which killed featB's fetch worker and DEADLOCKED the
   run (GPU 0% for 69 min).
+  **⚠⚠ THAT LAST SENTENCE IS WRONG, AND BELIEVING IT COST A SECOND 10 h RUN (2026-09-01). The
+  `KeyError` IS NOT THE ID COLLISION AND WAS NEVER FIXED BY THE int64 CAST.** featB died at step
+  ~939 on the *gen-3* dbs -- built after every id fix -- with the identical
+  `KeyError` at `prepare_batch.py:123`. Diagnosed properly this time
+  (`scratchpad/features_rebuild/probe_query_mismatch.py`), and the real mechanism is ROW ORDERING:
+  * `insert_probes` eligibility is POSITIONAL -- the first real row of each `card_id` in the chunk.
+    A query row exists iff `is_first_review == False`, and `is_first_review` is `elapsed_days == -1`,
+    which `build_parquet_id.py:138` sets from **`state == 0`** and only THEN sorts the frame by
+    `review_time` (`:142`). Nothing keeps the two aligned.
+  * Anki caps `taken_millis` at **60 s**, and `review_time = id - taken_millis` subtracts that CAP,
+    so a capped neighbouring review can acquire a show time up to a minute early and sort AHEAD of
+    the card's genuine first review. That first review then passes the positional mask, has no
+    query row, and raises. Ground truth, user 477 card 1708127478116: `review_th` 73724 is the first
+    review (`elapsed_days` -1, 11.5 s) yet 73723 (`duration` exactly 60000) sorts before it and
+    carries `elapsed_seconds` **-17**.
+  * **The tell that separates the two stories is `shortfall = n_real - 1 - n_query` per card.** A
+    collision or a double-first gives 1; REORDERING gives **0** -- `add_queries` emitted exactly
+    the right number of query rows, they are just not on the row the positional mask spared. All
+    measured cases are 0, so the collision story is refuted, not merely unproven.
+  * **-id ONLY, and PROVEN so:** neither `elapsed_end_to_start*` re-sorts, so the published/e2s
+    lineage cannot produce it -- 0 unpairable in **3,769,040** eligible targets over 796 chunks of
+    `train_db_5k_h1_e2s`, vs hits in `train_db_5k_h1_id3` AND `test_db_5k_id3` (the eval phase
+    would have died too). Rate ~1 in 5,646-22,201 targets.
+  * **FIXED 2026-09-01 in `insert_probes`:** unpairable targets are now FILTERED OUT (a first
+    review cannot be probed -- the imm task needs a prior review, so there is nothing to pair
+    against; dropping it is the correct semantics, not a workaround) and REPORTED via
+    `_note_unpairable` rather than dropped silently. The rng draw happens BEFORE the filter and the
+    filter is a no-op wherever the old implication held, so **every published/e2s number is
+    bit-identical**. Guard: `scratchpad/features_rebuild/smoke_probe_pairing.py` -- it replays the
+    legacy indexing and REQUIRES it to raise, so it cannot pass vacuously on a clean db.
+  **THE REUSABLE LESSON: a crash was attributed to the bug being fixed that week, the fix shipped,
+  the crash was never re-run, and "That is fixed" entered the record as fact.** The two bugs shared
+  a symptom and nothing else. A diagnosis that is never re-tested against the failure it explains
+  is a hypothesis wearing a verdict's clothes.
 * **★★ AND IT WAS A TRAIN-vs-DEPLOY DIVERGENCE -- EXACTLY WHAT THE THREE-WAY-PARITY RULE EXISTS
   FOR, AND NO GATE CAUGHT IT.** TRAINING grouped rows by the **int32-truncated** id stored in the
   LMDB. DEPLOY (`run_as_rnn`) keys its state dicts on the **raw frame value**
@@ -2299,6 +2333,17 @@ All hooks stay in-repo, env-gated, default off.
   `.venv\Scripts\python.exe` does not exist.
   **THE RULE:** every generator assert in those files checked that stale text did not leak **IN**
   (no `iter45`, no `i53_`, KD schedule preserved). None checked that required setup **SURVIVED**.
+  **★ THE MIRROR-IMAGE GAP, hit 2026-09-01 in my own generator.** `mk_fixc_arm.py` asserted that
+  every line it CHANGED carried a db/tag token -- a check against stale text leaking in. It cannot
+  catch a line that SHOULD have changed and did not, because no substitution fires on it and the
+  line reads as unmodified. Result: `run_fixc_arm.cmd` logs "PHASE 4: rectified VAL-half eval on
+  the **e2s** test db" while correctly evaluating fixc. Harmless here only because the GUARD is
+  derived from cfg (`findstr /C:"...test_db_5k_fixc"`) while the prose was hardcoded -- so the
+  runner cannot actually act on the wrong db, it can only describe itself wrongly.
+  **A substitution-based generator needs BOTH directions: no stale token survives, AND every line
+  mentioning the old identity was visited.** Grep the output for the SOURCE arm's name and require
+  zero hits outside deliberate provenance comments. Same asymmetry as the bullet below (assert
+  what leaked IN vs assert what SURVIVED), which is why it was easy to repeat.
   Assert on the OUTPUT: every `%VAR%` the runner references must be declared before its first use,
   and `cd /d` must be present. Same family as the QAT env that was parsed-then-discarded -- the
   banner was truthful and the object it mutated was thrown away.

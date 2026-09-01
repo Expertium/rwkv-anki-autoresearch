@@ -3298,6 +3298,14 @@ also expected better). Two of the three should have HELPED, so **the interval's 
 than the observed gap** — roughly ≥0.0005 ahead and ≥0.00065 imm before Bug C is accounted for.
 The `fixc` arm (end-to-END on current code, same everything else) is what isolates it.
 
+**⬇ UPDATE 2026-09-01 — fixc reported, and the estimate above is REFUTED.** The interval's own
+cost is **+0.000225 / +0.000400**, i.e. SMALLER than the gap, not larger. The reasoning was sound
+but its premise was false: it assumed the Bug A/C fixes would HELP by roughly the +0.000148/+0.000169
+measured on featA/featA2, so the interval had to be paying for them. fixc shows they did not help
+here — it lands +0.000141 / +0.000084 WORSE than iter 53. **The lesson is the general one: a
+prediction that subtracts an effect measured in one regime from a bundle observed in another
+inherits the assumption that the effect transfers.** It did not.
+
 Note imm degraded MORE than ahead (0.000484 vs 0.000366), the direction pre-registered in
 `scratchpad/features_ab/e2s/PREREG.md` on the grounds that imm predicts the CURRENT review's
 rating and that is the review whose duration leaks.
@@ -3312,3 +3320,80 @@ augmentation/KD incompatibility already recorded, where a checksum that proves L
 read as proving BATCH alignment.
 
 Costs, with both dbs moved to the SSD: dump 2 h 03 m, WS 3 h 13 m, decay 3 h 10 m, eval 3 h 36 m.
+
+
+## fixc — the END-TO-END control that isolates the interval — CONTROL, not a candidate
+
+**ahead 0.297664 / imm 0.265275** (n=2500, VAL half, rectified, size 0/2500, nan_users 0,
+558,212 params). Ran 2026-09-01 02:45 → 19:07; dump 4 h 12 m, WS 4 h 35 m, decay 3 h 33 m,
+eval 3 h 58 m.
+
+### What it is
+
+The end-to-END twin of `e2sc`. Same id-fixed rebuild (`train_db_5k_h1_fixc` / `test_db_5k_fixc`),
+same champion recipe, same seed, KD dump regenerated on its own batch stream — with the
+end-to-start transform switched off and nothing else changed. So `e2sc − fixc` is the interval
+definition and only the interval definition.
+
+**The pair was ASSERTED before either arm trained, not assumed** (`assert_pair_single_variable.py`,
+phase 0b): identical entry counts (1,483,984), all five id streams byte-identical, and
+`card_features` differing on **8.420%** of entries. The third condition is the anti-false-green
+check — a pair that differed in nothing would sail through the first two and produce a beautifully
+clean null.
+
+### ★ THE RESULT: END-TO-START COSTS +0.000225 ahead / +0.000400 imm
+
+p = 7.41e-31 / 1.06e-116 (paired per-user Wilcoxon, n=2500).
+
+**This is the SIZE OF THE CORRECTION, not a rejection, and the distinction is the whole point.**
+A live Anki scheduler computes `now() − last_review_time`. It cannot do otherwise: `duration(k)`
+has not happened when the prediction is made. So end-to-start is not a candidate we are free to
+reject — it is what deploy computes. What the measurement buys is the knowledge that **every
+end-to-end number in this log, iter 53 included, is optimistic by about this much as a deploy
+estimate**. The gate basis moves; the model does not get worse.
+
+### The decomposition closes exactly
+
+| term | ahead | imm |
+|---|---|---|
+| fixc − iter 53 (everything except the interval) | +0.000141 | +0.000084 |
+| e2sc − fixc (the interval alone) | +0.000224 | +0.000401 |
+| **e2sc − iter 53 (the observed bundle)** | **+0.000365** | **+0.000485** |
+
+The parts sum to the whole to the last digit, which is what makes the three-arm structure worth
+its GPU time: the bundle was never attributable on its own.
+
+### ★ ALL THREE PRE-REGISTERED PREDICTIONS CONFIRMED — including the one I expected to fail
+
+Written to `scratchpad/features_ab/e2s/PREREG.md` before either arm reported, and tested by
+`interval_verdict.py`, which was also written first and not edited afterwards.
+
+1. **Both modes degrade by 0.0001–0.0005.** +0.000225 / +0.000400. ✓
+2. **imm degrades MORE than ahead.** Ratio **1.78**. ✓ — the one flagged as most likely wrong.
+   It is the signature the mechanism predicts: the leak is about the CURRENT review, and imm is
+   the mode that predicts the current review's rating. A leak-shaped effect should land there
+   hardest, and it does.
+3. **Concentrated in same-day rows.** By user quartile of same-day share, top vs bottom:
+   ahead 0.000380 vs 0.000058 (**6.6×**), imm 0.000751 vs 0.000119. ✓ — expected, because
+   subtracting a review duration of seconds is invisible against a multi-day interval and
+   material against a same-day one.
+
+Three-for-three on a pre-registered set is stronger evidence for the mechanism than the effect
+size alone, and it is why the predictions were written down before the arms landed.
+
+### ⚠ OPEN PUZZLE — the id fixes did NOT transfer to the KD-on regime
+
+fixc carries the Bug A and Bug C id fixes and is nonetheless **+0.000141 / +0.000084 WORSE than
+iter 53**. On the KD-OFF featA/featA2 pair those same fixes measured **+0.000148 / +0.000169
+BETTER**, clearing the accept bar in both modes on their own.
+
+Both cannot be quoted at once. Candidate explanations, none tested:
+
+* the fixes help a KD-off student and not a KD-on one (the teacher's logits were computed on
+  Bug-A data, so restoring note identity may put the student and teacher further apart);
+* the arms differ in test db as well as train db, so a small basis shift rides along;
+* one of the two measurements is closer to the noise floor than its p-value suggests.
+
+**Do not quote the featA2 gain as transferable to the champion until this is settled.** It was
+being used to price the published-db rebuild as "a re-base that buys a measured gain"; that
+framing is now unsupported in the regime the champion actually trains in.
