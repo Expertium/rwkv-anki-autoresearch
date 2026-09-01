@@ -125,6 +125,21 @@ if not %ERRORLEVEL%==0 (
 )
 echo REBUILD4 TEST_OK %TIME% >> "%LOG%"
 
+REM ---- PHASE 3: gen 4 must score the SAME REVIEWS as gen 3 ----
+REM `size` IS the stored label_is_equalize count and that comes from the LABEL FILTER DB, which
+REM gen 3 and gen 4 share (label_filter_db_id). So identical counts are REQUIRED, and a
+REM difference is a build bug -- rows dropped, a different filter, or a chunking change.
+REM check_db verifies entry counts and column width, i.e. the SHAPE; it cannot see whether the
+REM same reviews ended up marked as scored. This is the check that can.
+REM Non-fatal by design: the dbs are already built and verified at this point, so a mismatch is
+REM information for a human, not a reason to discard four hours of work.
+.venv\Scripts\python.exe scratchpad/features_rebuild/compare_equalize.py F:/rwkv_lmdb/test_db_5k_id3 250000000000 F:/rwkv_lmdb/test_db_5k_id4 250000000000 5001 20 53 >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo REBUILD4 EQUALIZE_DIFFERS_FROM_GEN3 -- INVESTIGATE, dbs are built %DATE% %TIME% >> "%LOG%"
+) else (
+  echo REBUILD4 EQUALIZE_MATCHES_GEN3 %TIME% >> "%LOG%"
+)
+
 REM Terminal marker BEFORE endlocal: endlocal restores the pre-setlocal environment, so %LOG%
 REM would expand to empty and the marker would be appended to "" instead.
 echo DONE_EXIT_0 %DATE% %TIME% >> "%LOG%"

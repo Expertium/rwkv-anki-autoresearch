@@ -613,7 +613,35 @@ LOAD_MODEL_NAME=`{prefix}_{step}` / STEP_OFFSET=step+1.
 The H=2/K=16 / 193,724-param champion on the 1500-user data-variety recipe, its q72u deploy config and the two findings that came out of it are archived to `HISTORY.md` (2026-08-10). The two that still matter are stated where they are used: **DATA VARIETY BEATS REPETITION** (1 epoch on ~1500 varied users >> 15 epochs on 100) and the WKV kernel is **K-dynamic**. The frozen QAT deploy truth (`champion_5k.json`, 0.306629/0.277893 quant-aware, 9-byte card / 27-byte note at 256x compression) is unchanged and is what the endgame's quant arm re-bases against; its recipe and artifacts are in the DEPLOY block of `HISTORY.md`.
 
 ### ACCEPTANCE GATE (research phase) -- accept iff ALL hold (record binary accepted/rejected per iter):
-1. "size" (equalized review count, 101-200) IDENTICAL to champion (data-integrity; any change = pipeline bug).
+1. "size" (equalized review count) IDENTICAL to champion (data-integrity; any change = pipeline bug).
+   **★★ THE GATE IS LINEAGE-SCOPED, AND THE LINEAGE IS DEFINED BY THE LABEL FILTER DB (Andrew
+   2026-09-01: "with e2s we need to start counting size from a new baseline" -- measured 2026-09-02,
+   and the trigger is NARROWER than the dataset generation).**
+   **`size` IS the stored `label_is_equalize` count**, which comes from `LABEL_FILTER_LMDB_PATH`.
+   Verified against the db itself: per-user equalized counts read out of `test_db_5k_e2s` match the
+   `size` field in `RWKV-e2sc.jsonl` exactly (users 5001/5137/5613/6104/7499).
+   **=> THE e2s SWITCH DID *NOT* MOVE `size`, so the published baseline carries across it
+   UNBROKEN.** Four eval dbs spanning the whole published lineage -- `test_db_5k` (July), `_fix`
+   (08-21), `_fixc` (08-31), `_e2s` (08-30) -- give **0 per-user mismatches out of 2,500 and an
+   identical 128,800,080 total**. Mechanism: all four set `LABEL_FILTER_LMDB_PATH = label_filter_db`,
+   and our pipeline has **no `delta_t > 0` filter** (srs-benchmark does, which is why the same
+   interval change deleted 0.172% of *their* reviews; we keep every row and only mark it).
+   So the gate still BRIDGES the e2s transition and can still catch a pipeline bug there -- more
+   useful than a re-base would have left it.
+   **What DOES move the baseline is swapping the LABEL FILTER, i.e. moving to `-id`**
+   (`label_filter_db_id`). Measured: user 5001 scores 12,625 on `test_db_5k_id3` vs 12,615 on
+   `test_db_5k_e2s`; 3 of 6 sampled users differ. That is why featB cannot be gated on `size`
+   against featA2 and is not a champion candidate.
+   **★ COROLLARY, and it is a free integrity check: gen 3 and gen 4 SHARE `label_filter_db_id`, so
+   their sizes MUST be identical.** A difference is a build bug, not a dataset property. Wired as
+   phase 3 of `run_rebuild4.cmd` via `scratchpad/features_rebuild/compare_equalize.py`
+   (non-fatal -- by then the dbs are built and verified, so a mismatch is information for a human).
+   **TOOLS:** `optimization/size_baseline.py snapshot|check <lineage> <result.jsonl>`, with
+   `optimization/size_baseline_published.json` already snapshotted from e2sc (2,500 users,
+   128,800,080). Both tools refuse to pass vacuously and both were proven able to FAIL: the size
+   check catches a 1-review perturbation on 3 of 2,500 users; `compare_equalize` returns 1 across
+   label filters. **Snapshot the `-id` baseline from featB when it lands** -- a lineage with no
+   baseline must not be gated by treating its first candidate as the reference.
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
 4./5. **★ CURRENT RULE (Andrew 2026-08-10, TIGHTENED): each mode's RAW improvement vs the CURRENT
    champion must be >= 0.0001 in BOTH modes.** No rounding step -- a raw +0.000088 now FAILS.
