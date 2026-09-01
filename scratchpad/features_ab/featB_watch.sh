@@ -35,8 +35,14 @@ prev=$(newest_mtime)
 while true; do
   sleep $POLL
 
-  marker=$(grep -c '^DONE_EXIT_' "$LOG" 2>/dev/null || echo 0)
-  alive=$(runner_alive); [ -z "$alive" ] && alive=0
+  # `grep -c` PRINTS 0 and EXITS 1 when nothing matches, so `|| echo 0` appended a second line
+  # and every poll then died on `[: 0\n0: integer expected`. The logic still fell through
+  # correctly, which is exactly why it went unnoticed -- a monitor that errors on its own normal
+  # path is one whose silence means nothing.
+  marker=$(grep -c '^DONE_EXIT_' "$LOG" 2>/dev/null)
+  case "$marker" in ''|*[!0-9]*) marker=0 ;; esac
+  alive=$(runner_alive)
+  case "$alive" in ''|*[!0-9]*) alive=0 ;; esac
   cur=$(newest_mtime)
   now=$(date +%s)
   [ "$cur" != "$prev" ] && { prev=$cur; last_change=$now; }
