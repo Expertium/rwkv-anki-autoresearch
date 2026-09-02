@@ -1090,3 +1090,46 @@ chain costed ~40% low — a full iteration is **9.2 h** and a decay-only **6.1 h
 **And the clamp turns out to fix a latent bug:** the original `1 + cos(pi/2*(1+x))` lets the LR
 *rise again* past `total_steps` (0.735 at t=20,000), where the clamped form pins it at 0.
 Unreachable through LambdaLR's counter, but wrong if it ever were.
+
+## ★ INVENTED, 2026-09-02: CALENDAR-AWARE FORGETTING CURVE (from the featB ahead/imm split)
+
+**Provenance: invented** (ours, from the featB measurement; the queue's next `adopted` slot is
+unaffected -- this is filed for the invented slot after it).
+
+**The observation.** featB moved imm +0.002371 and ahead +0.000303 (7.8:1; ~28:1 review-weighted).
+The structural reason is in `prepare_batch`: a real row's ahead label is the card's NEXT review, so
+the curve at row k is scored on review k+1 with only rows <= k as input, while the query row that
+scores the same event for imm carries review k+1's own feature vector -- including its time of day,
+weekday, day of year and seconds-since-any-review. The 10 clock columns are therefore visible to imm
+and invisible to ahead by construction. (Detail: `research_5k_verbose.md`, featB, "WHY AHEAD MOVED
+SO LITTLE".)
+
+**The lever.** The clock of the evaluation time is NOT unknown at prediction time: `tod`, `dow`,
+`doy` of the predicted review are deterministic functions of `review_time(k) + t`, and a live
+scheduler knows `now()` when it asks for R(now). So the curve head can be conditioned on the calendar
+phase of the point it is evaluated at, with no new input columns: for each of the `num_points`
+evaluation offsets (and for `label_elapsed_seconds` in the loss), compute `sin/cos` of the target
+tod/dow/doy from the row's `review_time` plus the offset, and feed them into the GRU head's
+per-point input (it already takes the offset `t`). Train, eval and deploy compute the same quantity
+(§9 three-way parity): Rust gets `review_time` per row already in the -id layout.
+
+**What it can be worth: bounded by the ablation.** `abl_clock` (armed) measures how much of featB's
+imm gain rests on the 10 clock columns; that number is the CEILING for ahead under this lever, since
+ahead would then see the same information for the scored review. If `abl_clock` costs imm < 0.0005,
+the lever is not worth a run.
+
+**Constraints it must respect.** (a) PAVA / monotonicity in t: a calendar-conditioned curve is no
+longer monotone in t by construction (a review at 03:00 can be predicted harder than one at 15:00 a
+few hours later). PAVA still rectifies at eval, and `RWKV_PAVA_LAMBDA` still trains toward
+monotonicity, so the deploy contract (zeroed duration + PAVA + no residual) is unchanged -- but the
+lever and the rectifier pull in opposite directions on exactly the diurnal wiggle, so measure the
+rect-vs-unrect gap on the candidate. (b) `-id` lineage only: needs `review_time`, which the
+published dbs do not carry. (c) Gate: this is a curve-side lever -> the curve-side exception
+applies (ahead >= +0.0001 at p<1e-4, imm not significantly worse).
+
+**Pre-registered counter-hypothesis.** The imm gain from the clock columns may come mostly from
+`t_since_any_review` (seconds since ANY card was reviewed -- session structure), which is NOT a
+function of `t` and cannot be supplied to ahead. If the ablation of `t_since_any_review` alone
+explains most of `abl_clock`, the lever's ceiling collapses; run that single-column ablation
+(~3 h, one eval) before building.
+

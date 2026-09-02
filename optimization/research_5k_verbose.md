@@ -3482,3 +3482,48 @@ verified in the artifact at ratio 0.6239).
 Adoption therefore re-bases on **generation 4**, which fixes Bug C *and* scores on an
 end-to-start-selected equalize set. featB is directional evidence that the features are worth
 having — strongly so on imm — not the number that ships.
+
+### ★ WHY AHEAD MOVED SO LITTLE — Andrew's question, 2026-09-02 ("Investigate why all new features combined improved ahead loss so little")
+
+**The imm/ahead ratio is 7.8:1 by user-mean (+0.002371 / +0.000303) and ~28:1 review-weighted
+(+0.002675 / +0.000097).** Every other accepted lever of this phase moved the two modes within ~2x of
+each other (iter 53 +0.000174/+0.000184; interleaving +0.000216..+0.000611 both; the e2s penalty
++0.000225/+0.000400), so the ratio is a property of THIS lever, not of the metric.
+
+**1. THE STRUCTURAL REASON, read from the pairing in `prepare_batch.py` (the `_selfkd_teacher_index`
+docstring, and `data_processing.py:292-303`).** A real row's ahead label is the card's NEXT review
+(`label_review_th = groupby("card_id")["review_th"].shift(-1)`), so the curve emitted at row k is
+scored on review k+1 at `label_elapsed_seconds`. The inputs available to that curve are rows <= k.
+The QUERY row that scores the SAME event for imm carries review k+1's OWN feature vector. So of the
+23 new columns, the 10 clock/recency ones (`tod`, `tod_dev`, `dow`, `doy`, `is_weekend`,
+`t_since_any_review`) describe the review being predicted -- **visible to imm, structurally
+invisible to ahead**. Ahead can use them only as a summary of PAST reviews' timing, which is a much
+weaker signal than "this review is happening at 03:00 after a 40 s gap". The 13 always-defined
+columns (tenure, ages, creation batch, deck depth, sibling gap) change slowly between k and k+1, so
+ahead inherits them almost intact -- and P2's refutation already said the gain lives there.
+This is the same shape as the closed ahead-vs-imm-gap family: the query row sees the exact context
+of the event, the ahead row cannot, and the new columns widened exactly the part of the context that
+only the query row sees.
+
+**2. THE PER-USER SHAPE agrees, and it is not a size story.** Per-user gains in the two modes are
+UNCORRELATED (Pearson 0.013, Spearman 0.172): different users benefit in each mode, i.e. different
+mechanisms. 85.4% of users improve on imm vs 59.0% on ahead (median +0.001407 vs +0.000305). By size
+decile the imm gain is flat (+0.0020..+0.0028 in every decile) while ahead is +0.000886 / +0.000572
+in the two SMALLEST deciles and +0.0001..+0.0004 with sign noise elsewhere (decile 9 is -0.000027;
+the top quartile is +0.000089 but still one-sided p=1.7e-06). Spearman(size, ahead gain) is only
+-0.047, so this is a few high-variance small users carrying the mean, not a clean cold-start
+effect -- the fraction improved is LOWEST in decile 1 (0.54). Read: the ahead gain is small and
+diffuse; the imm gain is universal.
+
+**3. WHAT DECIDES IT: the armed ablation chain (`scratchpad/feat_ablate/`, ~12 h after gen4base).**
+Zeroing the 10 clock columns at featB's input (`abl_clock`) should cost imm MUCH more than ahead;
+zeroing the 13 always-defined ones (`abl_struct`) should cost both. If instead `abl_clock` costs
+ahead as much as imm, the structural reading above is wrong and the ahead path IS using the clock
+columns through the state. Inference-time ablation measures RELIANCE, not value (retraining
+recovers some), but the question here is exactly reliance.
+
+**4. THE LEVER THIS IMPLIES (invented; filed in `PROPOSALS.md`): a CALENDAR-AWARE CURVE HEAD.** The
+target review's clock features are not unknown at prediction time -- `tod(k+1)`, `dow`, `doy` are
+DETERMINISTIC functions of `review_time(k) + t`, and a live scheduler knows `now()`. So the curve
+head could be conditioned on the calendar phase of the evaluation time without any new input, in
+train, eval AND deploy identically. `abl_clock`'s imm cost is the ceiling on what this can buy ahead.
