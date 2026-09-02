@@ -22,7 +22,21 @@ LOG=$DIR/featB.log
 STALL_LIMIT=2700          # 45 min without any file in the run dir being written
 POLL=300
 
-newest_mtime() { find "$DIR" -type f -newermt '1970-01-01' -printf '%T@\n' 2>/dev/null | sort -rn | head -1; }
+# ⚠ THE WITNESS MUST COVER EVERY PHASE, AND ORIGINALLY IT DID NOT. This watched only $DIR, which
+# WS and decay write to -- but the EVAL phase writes to scratchpad/eval_shards/ and result/, so it
+# reported "STALLED, nothing written for 45 min" at 03:29 on 2026-09-02 while the eval was
+# advancing normally through a memory-bound giant user (the shard log grew two minutes later and
+# power went 18 W -> 90 W).
+#
+# That is the single-witness failure this file's own header warns about, committed in the file
+# that warns about it: the alert measured the health of the place it happened to be looking, not
+# the health of the run. A chain that changes which files it writes needs a witness that follows
+# it -- so take the newest mtime across ALL the places featB writes, in any phase.
+newest_mtime() {
+  find "$DIR" scratchpad/eval_shards result -type f \
+       \( -name '*featB*' -o -path '*/featB/*' -o -name 'shard_*' \) \
+       -printf '%T@\n' 2>/dev/null | sort -rn | head -1
+}
 runner_alive() {
   powershell.exe -NoProfile -Command \
     "@(Get-CimInstance Win32_Process -Filter \"Name='cmd.exe'\" | Where-Object { \$_.CommandLine -like '*run_featB*' }).Count" \
