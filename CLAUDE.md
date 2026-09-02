@@ -1357,6 +1357,18 @@ a leftover. ⚠ The probe had to be restricted to `python.exe`: its own powershe
 that typed the pattern match it too, so the count could never reach 0 -- found by EXECUTING the probe
 before arming (6, then 5, then 2). Andrew's job is his; stopping it fires the chain within 2 min.
 
+**⟶ THE ADOPTED SLOT IS BUILT AND ARMED BEHIND realcyc (2026-09-02 22:30): `lorawd` =
+`RWKV_MUON_LORA_WD=0.05`, decoupled weight decay on the LoRA Muon group ONLY.** Provenance ADOPTED:
+Moonlight, arXiv 2502.16982 (Muon without wd -> unbounded norm growth; add decoupled wd), which is
+exactly iter 53's open worry (+62% LoRA norm, no brake); dose from the 2026-08-18 time-constant screen
+(PROPOSALS rank 8: 0.01 never engages, 0.05 acts on the run's timescale). Default 0.0 = byte-identical.
+Smoke `scratchpad/lorawd/smoke_lora_wd.py` (3 arms, identity-based, non-vacuous) PASS. Runner generated
+by `mk_lorawd.py gen4base` (control = gen4base, single-variable, both-direction guards, WS-log banner
+guard `LoRA in a wd=0.05 group`); **if realcyc promotes, run `mk_lorawd.py realcyc` BEFORE the waiter
+fires** (a called .cmd is not open until the call). PREREG: `scratchpad/lorawd/PREREG.md` (P1 both
+improve; P3 norm growth +62% -> under +25%, else uninterpretable; P4 a regression = the growth is
+load-bearing and the endgame needs no brake). Queue table: `PROPOSALS.md` "QUEUE STATE 2026-09-02".
+
 **>>> THE GPU IS BOOKED ~31 h DEEP: ITER 53 IS DONE AND ACCEPTED, FOUR JOBS REMAIN CHAINED**
 (re-armed 2026-08-17 21:47; iter 54 launched 2026-08-18 08:04). Each waiter is detached via WMI so
 Esc cannot kill it, and each polls the previous job's log with an ANCHORED

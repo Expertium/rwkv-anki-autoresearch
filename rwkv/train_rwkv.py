@@ -211,8 +211,17 @@ def get_optimizer(config, model):
     # is what those params already had in `other_params`. Only added when non-empty, so an arch
     # with no LoRA tensors cannot hand the optimizer an empty group.
     n_muon_groups = 4
+    # RWKV_MUON_LORA_WD (lorawd, 2026-09-02, ADOPTED from Moonlight / arXiv 2502.16982 "Muon is
+    # Scalable for LLM Training": Muon without weight decay lets weight norms grow without bound and
+    # degrades long runs; adding decoupled wd fixes it). iter 53 measured exactly that here -- the
+    # LoRA group's ||W||_F is +62% over the champion's and never saturates, because this group ran at
+    # wd=0.0. The DOSE is from the 2026-08-18 screen (PROPOSALS "RANK 8 RE-SPECIFIED"): the LR cancels
+    # in Muon's norm equilibrium, so the brake's time constant is 1/wd steps -- 0.01 (100k steps) never
+    # engages within a 21,870-step run, 0.05 (20k) acts on the run's own timescale. Default "0.0" ==
+    # byte-identical to iter 53. Applied ONLY to this group; every other group keeps its wd.
+    _lora_wd = float(os.environ.get("RWKV_MUON_LORA_WD", "0.0"))
     if lora_matrix_params:
-        groups.append({"params": lora_matrix_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
+        groups.append({"params": lora_matrix_params, "weight_decay": _lora_wd, "lr": config.PEAK_LR})
         n_muon_groups = 5
     groups.append({"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
     # Research iter 29 (2026-07-21): RWKV_MUON=1 -> hybrid Muon+AdamW (rwkv/muon.py).
@@ -235,7 +244,7 @@ def get_optimizer(config, model):
             g["cautious_wd"] = cautious_wd
         n_muon = sum(p.numel() for g in groups[:n_muon_groups] for p in g["params"])
         n_adam = sum(p.numel() for p in groups[-1]["params"])
-        _lora_note = (f", incl {sum(p.numel() for p in lora_matrix_params):,} LoRA in a wd=0 group"
+        _lora_note = (f", incl {sum(p.numel() for p in lora_matrix_params):,} LoRA in a wd={_lora_wd} group"
                       if lora_matrix_params else "")
         print(f"[muon] hybrid Muon+AdamW ON: muon_lr={muon_lr} momentum={muon_momentum} "
               f"cautious_wd={cautious_wd} "

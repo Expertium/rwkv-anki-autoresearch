@@ -1133,3 +1133,15 @@ function of `t` and cannot be supplied to ahead. If the ablation of `t_since_any
 explains most of `abl_clock`, the lever's ceiling collapses; run that single-column ablation
 (~3 h, one eval) before building.
 
+## ★ QUEUE STATE 2026-09-02 22:20 -- the features chain, then the ADOPTED slot
+
+| order | run | lever | provenance | control | state |
+|---|---|---|---|---|---|
+| 1 | gen4base (phase 2) | none -- the features lineage's baseline (gen 4, KD-off) | -- | -- | RUNNING (decay relaunched 21:49 after a WDDM deadlock with a stray GRU task) |
+| 2 | feat_ablate | inference-time ablation of featB's 23 columns in 4 groups | measurement | featB | armed on gen4base's marker |
+| 3 | rebuild5 (CPU) | gen-5 dbs, `RWKV_REAL_CYCLES=1` | -- | -- | armed on gen4base DECAY_OK + 25 GB RAM |
+| 4 | realcyc | real-time cycles replace the 7 pseudo cycles + row 11 | Andrew | gen4base | armed on ablation marker + rebuild5 success |
+| 5 | **lorawd** | **`RWKV_MUON_LORA_WD=0.05`** -- decoupled wd on the LoRA Muon group | **adopted** (Moonlight, arXiv 2502.16982; dose from the 2026-08-18 screen = rank 8) | gen4base, or realcyc if it promotes (`mk_lorawd.py realcyc`) | armed on realcyc's marker; `scratchpad/lorawd/PREREG.md` |
+| 6 | (invented slot) | calendar-aware curve head, IF `abl_clock` shows the clock columns carry >= 0.0005 of imm | invented | the then-champion | not built; ceiling comes from order 2 |
+| 7 | teacher retrain | a d=128 teacher native to the final layout (Andrew 2026-09-02: "as part of the algorithmic improvements plan") | infrastructure | -- | after the layout is settled by order 4 |
+
