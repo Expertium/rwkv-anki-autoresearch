@@ -45,7 +45,7 @@ print(f"helper={idf.input_width()} train={w_train} rnn={w_rnn} card_cols={w_cols
 assert idf.input_width() == want, "helper width"
 assert w_train == want, "SrsRWKV input Linear"
 assert w_rnn == want, "SrsRWKVRnn input Linear -- the deploy path disagrees with training"
-assert w_cols + idf.ID_ENCODING_DIMS == want, (
+assert w_cols + idf.id_encoding_dims() == want, (
     "CARD_FEATURE_COLUMNS disagrees with the model width -- the LMDB would be written with a "
     "different number of columns than the model consumes"
 )
@@ -62,8 +62,9 @@ print("WIDTH_OK")
 """
 
 
-def run(flag, want):
-    env = dict(os.environ, PYTHONPATH=REPO, RWKV_ID_FEATURES=flag, WANT_WIDTH=str(want))
+def run(flag, want, real_cycles="0"):
+    env = dict(os.environ, PYTHONPATH=REPO, RWKV_ID_FEATURES=flag, WANT_WIDTH=str(want),
+               RWKV_REAL_CYCLES=real_cycles)
     env.pop("RWKV_ZERO_FEATURES", None)
     p = subprocess.run([sys.executable, "-c", CHILD], cwd=REPO, env=env,
                        capture_output=True, text=True)
@@ -79,7 +80,10 @@ def main():
     # 21 + 2 on 2026-08-20 when Andrew's coverage audit found scaled_sibling_gap and
     # card_predates_first_review had been designed and never implemented. The literal is
     # deliberate: deriving it from id_features would make this smoke agree with itself.
-    ok = [run("0", 92), run("1", 114)]
+    # 110 = 40 ID dims + (24 - 1 + 23 + 24): RWKV_REAL_CYCLES=1 (2026-09-02) drops the 28 pseudo
+    # day-offset cycle dims from the encoding block and adds 24 real-time cycle columns to the
+    # card-feature block. Same discipline: the literal is deliberate.
+    ok = [run("0", 92), run("1", 114), run("1", 110, real_cycles="1")]
     print("\n" + ("WIDTH_ALL_PASS" if all(ok) else "WIDTH_FAILED"))
     sys.exit(0 if all(ok) else 1)
 

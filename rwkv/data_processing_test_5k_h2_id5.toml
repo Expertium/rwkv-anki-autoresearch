@@ -1,0 +1,29 @@
+# GENERATION 5 -- the -id TEST db, REAL-TIME CYCLES (RWKV_REAL_CYCLES=1). Gen 4 plus one
+# change: the 28 pseudo day-offset cycle dims are replaced by 24 real-time cycle columns
+# in the card-feature block (rwkv/id_features.py CYCLE_COLUMNS), so card_features is 70
+# wide and the model input 110. Andrew 2026-09-02: 'use real features for 3 days/week/
+# month/year/decade/century, so that every pseudo feature is replaced with its real
+# counterpart. If it requires an LMDB rebuild, ok.'
+#
+# THE RUNNER MUST SET RWKV_REAL_CYCLES=1 AND RWKV_ID_FEATURES=1. Both are read at import,
+# and a build without them silently reproduces gen 4 under a gen-5 name -- the runner's
+# phase-0 guard asserts the live width is 70 before spending the hours.
+#
+# label_filter_db_id_e2s is REUSED: the equalize selection depends on the interval
+# definition, not on which feature columns exist, so gen 5 scores the SAME reviews as
+# gen 4 -- which is what makes realcyc-vs-gen4base a size-gated single-variable pair.
+# Built on F: beside gen 4; nothing is deleted.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id5"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+USER_START = 5001
+USER_END = 10000
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 2
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

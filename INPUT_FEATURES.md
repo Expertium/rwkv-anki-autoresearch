@@ -89,7 +89,7 @@ the user's own running mean) and is the high-value form. **Every count is clippe
 |---|---|---|
 | 1 | Elapsed days | Days since this card's previous review (the interval length) |
 | 2 | Elapsed days, cumulative | Running sum of the card's intervals (card "calendar age") |
-| 3 | Elapsed seconds | Seconds since this card's previous review (**end-to-start** since 2026-08-30) |
+| 3 | Elapsed seconds | Seconds since this card's previous review (**end-to-start**) |
 | 4 | Elapsed-seconds sub-day phase | Where the interval falls within a 24 h day |
 | 5 | Elapsed seconds, cumulative | Running sum of the card's elapsed seconds |
 | 6 | Cumulative-seconds sub-day phase | 24 h phase of the cumulative clock |
