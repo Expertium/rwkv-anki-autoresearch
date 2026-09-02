@@ -38,4 +38,16 @@ SECS = true
 USER_START = 1
 USER_END = 10000
 
-PROCESSES = 4
+# ⚠ COST IS ~3 h, NOT THE "~1 h" THIS FILE'S ANCESTORS ASSUME. Measured 2026-09-02 on a
+# representative STRIDE of 20 users (not the first 20, which are unrepresentatively small),
+# while featB's eval was competing for CPU:
+#     PROCESSES = 4  ->  1.80 s/user  ->  5.00 h for 10,000 users
+#     PROCESSES = 8  ->  1.05 s/user  ->  2.92 h
+# so 8 it is. Both figures are UPPER bounds -- the real run starts after featB finishes.
+#
+# 8 is safe here despite gen 3's warning about worker counts: that warning is about
+# `data_processing`, whose whole-user feature matrices are the memory hog. find_equalize handles
+# one user at a time and is far lighter, and the 8-process run above completed under load.
+# The real mitigation is that this step is RESUMABLE -- it skips users already present -- so an
+# OOM costs a restart rather than the phase.
+PROCESSES = 8

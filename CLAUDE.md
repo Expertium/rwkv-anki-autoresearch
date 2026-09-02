@@ -688,6 +688,14 @@ The H=2/K=16 / 193,724-param champion on the 1500-user data-variety recipe, its 
    Verified by EXECUTION, not by reading: the modified filter ran on users 5001/5002 and moved
    them **12,625 -> 12,595 (-0.238%)** and **229,050 -> 227,995 (-0.461%)** against
    `label_filter_db_id`. Smoke: `scratchpad/features_rebuild/smoke_equalize_e2s.py`.
+   **⚠ COST: the label-filter phase is ~3 h, NOT the "~1 h" this repo has assumed since gen 2.**
+   Measured on a representative STRIDE of 20 users (not the first 20, which are
+   unrepresentatively small), under featB's eval load: PROCESSES=4 gives 1.80 s/user = **5.00 h**,
+   PROCESSES=8 gives 1.05 s/user = **2.92 h**. Set to 8; both are upper bounds since the real run
+   starts after featB. **So the full gen-4 chain is ~3 h label filter + ~4 h dbs = ~7 h**, not the
+   ~4 h the rebuild alone suggests -- budget accordingly. 8 workers are safe here despite gen 3's
+   warning, which is about `data_processing`'s whole-user matrices, not this; and the phase is
+   RESUMABLE, so an OOM costs a restart rather than the phase.
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
 4./5. **★ CURRENT RULE (Andrew 2026-08-10, TIGHTENED): each mode's RAW improvement vs the CURRENT
    champion must be >= 0.0001 in BOTH modes.** No rounding step -- a raw +0.000088 now FAILS.
