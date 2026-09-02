@@ -147,6 +147,18 @@ Whether the model still leans on them with real dow/doy and tenure available is 
 ablation arm (`abl_cycles`, checkpoint surgery on featB) is queued behind gen4base to answer it.
 If they are dead weight, the next rebuild drops 28 dims (114 → 86).
 
+**Superseded the same day by Andrew's directive: replace every pseudo cycle with its real
+counterpart — and row 11 with it.** `RWKV_REAL_CYCLES=1` (default off; needs `RWKV_ID_FEATURES=1`
+and a rebuild — generation 5) removes rows 40–46 from the encoding block **and drops row 11
+(pseudo-day-of-week, whose real counterpart is #19)**, and adds **24 card-feature columns** after
+row 35: for each period in {3, 7, 30, 100, 365.25, 3650, 36500} days, sin/cos of the
+**epoch-anchored UTC day index** of the review (`cyc{N}_sin/cos`) and of the card's first review
+(`cyc{N}_first_sin/cos`), with no random baseline — so the phase means the same thing for every
+user. The review-time 7 d and 365 d halves are *not* duplicated (they are #19/#20). Input becomes
+**109** (69 card features + 40 ID dims). Same math as the pseudo cycles, real clock instead of the
+user-relative one; and, being card-feature columns, they are name-ablatable. The `realcyc` run
+measures it against `gen4base`, size-gated and single-variable.
+
 What `featB` measured about these (2026-09-02, vs the 92-dim control `featA2`): **+0.000303 ahead /
 +0.002371 imm**, ~+0.00053 / +0.00273 once the end-to-start penalty inside the bundle is added
 back. The gain was **not** concentrated in same-day users, which points at the always-defined rows
