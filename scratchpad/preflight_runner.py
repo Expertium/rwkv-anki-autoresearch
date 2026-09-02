@@ -63,8 +63,16 @@ def preflight(path):
 
     # ---- variables: declared before first use --------------------------------------------
     setpos, usepos = {}, {}
+    # A `set` counts wherever cmd.exe executes one: at line start, after `do` in a `for ... do set`,
+    # or inside a parenthesised block. The original anchored at line start and reported
+    # `%FREEMB% never set` on `for /f %%R in ('...') do set FREEMB=%%R` -- the RAM-check pattern
+    # wait_then_rebuild4.cmd had already run successfully with (2026-09-02). REM lines are skipped
+    # so a comment that mentions `do set X=` cannot declare anything.
+    SET_RE = re.compile(r"(?:^\s*|\bdo\s+|\(\s*)set\s+([A-Za-z_][A-Za-z0-9_]*)=")
     for n, ln in enumerate(lines):
-        m = re.match(r"\s*set\s+([A-Za-z_][A-Za-z0-9_]*)=", ln)
+        if ln.strip().upper().startswith("REM"):
+            continue
+        m = SET_RE.search(ln)
         if m and m.group(1).upper() not in setpos:
             setpos[m.group(1).upper()] = n
         for var in re.findall(r"%([A-Za-z_][A-Za-z0-9_]*)%", ln):

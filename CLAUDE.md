@@ -2542,6 +2542,15 @@ All hooks stay in-repo, env-gated, default off.
   `findstr /B /C:"DONE_EXIT_"`** (terminal lines start with the token; prose never does) and do not
   write the token in non-terminal log lines. This is distinct from the known
   `DONE_EXIT_WSFAIL`-satisfies-the-grep gotcha.
+- ⚠ **A GUARD'S VERDICT MUST BE THE CHAIN'S EXIT STATUS (2026-09-02, caught within the hour).**
+  I armed `wait_then_rebuild5.cmd` after a preflight that had printed `PREFLIGHT_FAILED` --
+  because the call was `preflight | tail -2 && detach`, and `tail` exits 0. The pipe swallowed the
+  verdict and `&&` marched on. Never put a guard behind a pipe before `&&`; capture
+  `${PIPESTATUS[0]}` or run the guard bare. The failure itself was a FALSE POSITIVE in
+  `preflight_runner.py` -- it does not see a `set VAR=` inside `for /f ... do set VAR=%%R`, so it
+  reports `%FREEMB% never set` on the RAM-check pattern that `wait_then_rebuild4.cmd` ran
+  successfully with that morning ("RAM OK: 51250 MB free"). Fixed in the tool; but the order is
+  fix the tool -> preflight PASS -> arm, never "arm because I know why the guard is wrong".
 - ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
   relative script path exits instantly, silently, and still returns a pid.
 - ⚠ **NO `< > & | ^` IN `REM` COMMENTS** — cmd.exe processes REDIRECTION *before* it honours `REM`,
