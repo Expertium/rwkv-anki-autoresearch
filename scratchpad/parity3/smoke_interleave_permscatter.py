@@ -63,8 +63,17 @@ def build_model():
     return model
 
 
+def _db_path():
+    return os.environ.get("RWKV_SMOKE_DB", "train_db_5k_h1")
+
+
 def load_batch():
-    env = lmdb.open("train_db_5k_h1", map_size=400_000_000_000, readonly=True, lock=False)
+    # RWKV_SMOKE_DB overrides the db, default unchanged. `train_db_5k_h1` was DELETED
+    # 2026-08-30 when end-to-start became the default, so on this machine the smoke
+    # skipped silently -- a guard that cannot run is not a guard. Any train db with
+    # user 101 works: this compares two code paths on ONE batch, so the batch only has
+    # to be real, not canonical.
+    env = lmdb.open(_db_path(), map_size=400_000_000_000, readonly=True, lock=False)
     with env.begin(write=False) as txn:
         batches = json.loads(txn.get(b"101_batches"))
         b = min(batches, key=lambda x: x[2])  # smallest chunk of user 101
@@ -96,9 +105,11 @@ def run(model, pb, use_perm):
 
 
 def main():
-    if not os.path.isdir(os.path.join(REPO, "train_db_5k_h1")):
-        print("SKIP: train_db_5k_h1 not present")
+    db = _db_path()
+    if not os.path.isdir(db) and not os.path.isdir(os.path.join(REPO, db)):
+        print("SKIP: %s not present (set RWKV_SMOKE_DB to an available train db)" % db)
         sys.exit(0)
+    print("db: %s" % db)
 
     model = build_model()
     pb = load_batch()

@@ -973,6 +973,18 @@ Pairing needs identical db/MAX/seeds.
     (`:1080`) and missed on the interleaved one, which has been the champion's path since iter 41.
     Verified BIT-IDENTICAL over 40 steps (`scratchpad/dispatch/cmp_traces.py`), so **no re-base and
     no seed pair** -- and the champion's recorded numbers stand.
+    **⚠ SUPERSEDED BY UPSTREAM, AND MY VERSION WAS NEVER COMMITTED (2026-09-02).** Xemorr's
+    **PR #3 (`f6d7505`, 2026-08-23)** had already done this **a week before I "found" it**, and
+    does strictly more: `perm_gather` AND `perm_scatter` on the interleaved path. Merged into
+    `main`; my redundant hunk was removed surgically rather than reverted, because the same file
+    carried unrelated uncommitted work. **The lesson is cheap and I paid full price for it:
+    check the remote before writing the fix** -- `git fetch` costs seconds and I did not do it
+    until the commit step.
+    Verified on OUR champion db before letting `main` move: forward bit-identical over 1,141,200
+    elements, gradients bit-identical for all 354 params
+    (`scratchpad/parity3/smoke_interleave_permscatter.py`). ⚠ That smoke was **skipping silently**
+    here -- it hardcodes `train_db_5k_h1`, deleted 2026-08-30 -- so it now honours `RWKV_SMOKE_DB`
+    with the old path as the default. **A guard that cannot run is not a guard.**
   * **⚠ `train_rwkv.py`'s own profiler comment ("237 ms of GPU kernel time inside a ~1450 ms step")
     IS STALE -- it is dated 2026-07-27 and interleaving landed 2026-08-11.** Do not build anything
     on it; it is what made the whole phase open on "85% dispatch-bound, CUDA graphs first".
