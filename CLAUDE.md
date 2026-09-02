@@ -1700,6 +1700,15 @@ shape check -- saturation is not an error, it is a silent value change.**
   gen 3 -- nothing is deleted, and `train_db_5k_h1_id3` is featB's live database. ⚠ Training from
   F: costs ~2.2x per step, so if gen 4 becomes a training target it should move to C: behind a
   junction, which needs gen 3 deleted first -- **Andrew's call, and only after featB reports.**
+  **✓ MEASURED 2026-09-02 on gen4base, which trains from F: directly: 0.689 steps/s instantaneous
+  (0.579 cumulative incl. warm-up) vs featB's 0.931 on C: = 1.35x slower, NOT 2.2x.** The 2.2x
+  figure is real but was measured on the KD teacher DUMP (1.40 vs 0.63 steps/s), a forward-only
+  pass that is far more read-bound than a training step. Two workloads, two penalties; quote the
+  one that matches. At 1.35x gen4base's WS is ~4.4 h instead of 3.3 h and the whole run ~12-13 h
+  -- a cost worth paying once rather than interrupting a gate-critical run to move a database.
+  **Also owed on `run_gen4base.cmd` once it finishes (cannot touch a running `.cmd`):** its log
+  header echoes `FEATB START` and line 3's REM still describes featB -- cloned strings; the tag,
+  dbs and label filter are all correctly gen 4. Same class as the fixc "e2s test db" prose.
 * ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
   still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
   would enter the bundle as a fifth component, and at 19% of reviews it could dwarf the features.
