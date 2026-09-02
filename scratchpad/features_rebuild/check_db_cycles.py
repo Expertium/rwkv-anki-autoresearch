@@ -30,7 +30,16 @@ import lmdb  # noqa: E402
 
 from rwkv.prepare_batch import get_data  # noqa: E402
 
-CYC_LO, CYC_HI, WIDTH = 46, 70, 70
+from rwkv import id_features as _idf  # noqa: E402
+
+# Derived from the live layout, not hardcoded: the first version said 46..70 and the layout moved
+# to 45..69 the same afternoon when day_of_week was dropped as well. The env must carry the flags
+# the db was built with -- asserted, because a mismatch here would test the wrong columns.
+assert _idf.enabled() and _idf.real_cycles_enabled(), \
+    "run with RWKV_ID_FEATURES=1 RWKV_REAL_CYCLES=1 -- the layout this checks depends on both"
+WIDTH = _idf.card_feature_width()
+CYC_HI = WIDTH
+CYC_LO = WIDTH - len(_idf.CYCLE_COLUMNS)
 TOL = 0.02
 
 
@@ -84,8 +93,10 @@ def main():
     if n_rows == 0:
         print("[cycles] *** nothing measured -- VACUOUS, not a pass")
         return 48
-    print("[cycles] cols 46..69 as 12 (sin,cos) pairs: max |sin^2+cos^2-1| = %.4f  (tol %.2f)" % (worst_true, TOL))
-    print("[cycles] negative control, cols 45..68:     max |sin^2+cos^2-1| = %.4f  (must exceed tol)" % best_shift)
+    print("[cycles] cols %d..%d as 12 (sin,cos) pairs: max |sin^2+cos^2-1| = %.4f  (tol %.2f)"
+          % (CYC_LO, CYC_HI - 1, worst_true, TOL))
+    print("[cycles] negative control, cols %d..%d:     max |sin^2+cos^2-1| = %.4f  (must exceed tol)"
+          % (CYC_LO - 1, CYC_HI - 2, best_shift))
     print("[cycles] first-review halves non-constant within a card: %d (must be 0)" % bad_const)
     ok = worst_true < TOL and best_shift > TOL and bad_const == 0
     print("[cycles] %s" % ("OK -- real-time cycles are IN THE ARTIFACT and well-formed" if ok

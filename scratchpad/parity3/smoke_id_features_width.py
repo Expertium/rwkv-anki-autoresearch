@@ -80,10 +80,11 @@ def main():
     # 21 + 2 on 2026-08-20 when Andrew's coverage audit found scaled_sibling_gap and
     # card_predates_first_review had been designed and never implemented. The literal is
     # deliberate: deriving it from id_features would make this smoke agree with itself.
-    # 110 = 40 ID dims + (24 - 1 + 23 + 24): RWKV_REAL_CYCLES=1 (2026-09-02) drops the 28 pseudo
-    # day-offset cycle dims from the encoding block and adds 24 real-time cycle columns to the
-    # card-feature block. Same discipline: the literal is deliberate.
-    ok = [run("0", 92), run("1", 114), run("1", 110, real_cycles="1")]
+    # 109 = 40 ID dims + (24 - 2 + 23 + 24): RWKV_REAL_CYCLES=1 (2026-09-02) drops the 28 pseudo
+    # day-offset cycle dims from the encoding block AND the pseudo day_of_week column (its real
+    # counterpart is among the 23), and adds 24 real-time cycle columns to the card-feature
+    # block. Same discipline: the literal is deliberate.
+    ok = [run("0", 92), run("1", 114), run("1", 109, real_cycles="1")]
     print("\n" + ("WIDTH_ALL_PASS" if all(ok) else "WIDTH_FAILED"))
     sys.exit(0 if all(ok) else 1)
 

@@ -1730,6 +1730,39 @@ shape check -- saturation is not an error, it is a silent value change.**
   ⚠ The screen bounds the TEACHER's degradation, not the KD gain -- but at this size the bound is
   decisive on its own. Verdict + both arms' jsonls: `scratchpad/teacher_114/t114.log`,
   `result/RWKV{,-P}-t114{a,b}.jsonl`.
+* **★★ GEN 5 (`*_id5`) = REAL-TIME CYCLES, `RWKV_REAL_CYCLES=1` -- Andrew 2026-09-02: "use real
+  features for 3 days/week/month/year/decade/century, so that every pseudo feature is replaced with
+  its real counterpart. If it requires an LMDB rebuild, ok." + "11 is also a pseudo-calendar
+  feature, so make sure it also gets replaced."** The pseudo cycles (`prepare_batch.add_encodings`,
+  `DAY_OFFSET_ENCODE_PERIODS`) survived the -id rebuild by SCOPE -- it changed only the card-feature
+  block -- and were never calendar duplicates: an arbitrary seeded phase from the USER's first day,
+  so relative position only, plus a first-review-day half per period (4 dims x 7 = 28).
+  **THE FLAG (default OFF, needs `RWKV_ID_FEATURES=1`, needs a rebuild):** same math on the
+  epoch-anchored UTC day index of `review_time`, no baseline, so the phase means the same thing for
+  every user; each period keeps its first-review half; the review-time 7 d / 365 d halves are NOT
+  duplicated (they are dow/doy). **24 card-feature columns** (`id_features.CYCLE_COLUMNS`, the tail
+  of `CARD_FEATURE_COLUMNS`) replace 28 encoding dims, and **`day_of_week` (row 11) is dropped** too.
+  **Layout: 69 card features + 40 ID dims = 109 input; params 565,252 -> 563,652.** Three-way parity:
+  `prepare_batch.add_encodings`, `run_as_rnn.get_tensor` and the width contract
+  (`id_features.input_width` / `id_encoding_dims`, both model files' asserts) gate on the same flag;
+  Rust derives width from the weights. Because the cycles are card-feature columns they are
+  **name-ablatable** via `RWKV_ABLATE_FEATURES`, which the pseudo ones never were.
+  **VERIFIED BEFORE ANY CHAIN WAS ARMED, in three processes (the flag is read at import):** flag off
+  -> `prepare().start` BIT-IDENTICAL to a snapshot taken BEFORE the edits, on two users (that is what
+  protects gen4base, whose decay re-imports these files); flag on -> encoding block is IDs only, all
+  24 columns present as unit-circle pairs (2.2e-16), two users on the same UTC day agree on
+  `cyc3_sin`/`cyc36500_cos` to 1e-12, first halves constant within a card. Width smoke has the 109
+  case. ⚠ TWICE an edit to `id_features.py` failed on a multi-line anchor while a DEPENDENT edit
+  succeeded, leaving the -id import path broken for minutes -- caught by the verification, each time.
+  **Anchor on one certain line, then verify in a fresh process.**
+  **CHAIN:** `wait_then_rebuild5.cmd` fires on `gen4base DECAY_OK` (or a terminal marker) + >=25 GB
+  RAM -> `run_rebuild5.cmd` (preflight_gen5 -> width 69 -> Bug C guard -> targets -> train db +
+  check_db + idfill + **`check_db_cycles.py`** -> test db, same -> phase 3 compare vs gen 4, now
+  REQUIRED IDENTICAL since both share `label_filter_db_id_e2s`). Then `wait_then_realcyc.cmd`
+  fires on the ablation chain's marker AND `rebuild5.log` **DONE_EXIT_0** (success, not merely a
+  marker) -> `run_realcyc.cmd` = gen4base's recipe + the flag, guard 563,652, tag `realcyc`,
+  **control = gen4base, size-gated, single-variable, KD-off both.** Detail: `INPUT_FEATURES.md`
+  "Simplified view -- 114-dim layout" (the superseding note).
 * ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
   still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
   would enter the bundle as a fifth component, and at 19% of reviews it could dwarf the features.

@@ -48,8 +48,10 @@ CARD_FEATURE_COLUMNS = [
 # original 24. See optimization/FUTURE_FEATURES.md and rwkv/id_features.py.
 if _idf.enabled():
     # active_new_columns() = NEW_COLUMNS, plus the 24 real-cycle columns under RWKV_REAL_CYCLES=1.
+    # dropped_columns() = [scaled_state], plus day_of_week under RWKV_REAL_CYCLES=1 (its real
+    # counterpart dow_sin/cos is among the appended columns).
     CARD_FEATURE_COLUMNS = [
-        c for c in CARD_FEATURE_COLUMNS if c != _idf.DROPPED_COLUMN
+        c for c in CARD_FEATURE_COLUMNS if c not in _idf.dropped_columns()
     ] + list(_idf.active_new_columns())
 
 STATISTICS = {

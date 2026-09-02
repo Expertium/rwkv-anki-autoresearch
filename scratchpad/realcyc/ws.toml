@@ -1,0 +1,39 @@
+# realcyc WS phase -- TREATMENT: gen4base's recipe, byte-identical except the db paths, on the
+# GENERATION 5 dbs (RWKV_REAL_CYCLES=1: 24 real-time cycle columns replace the 28 pseudo
+# day-offset dims, pseudo day_of_week dropped; input 114 -> 109). Control = gen4base. Same
+# label filter (label_filter_db_id_e2s), so the pair is size-gated. KD OFF in both -- the d=128
+# teacher cannot forward the -id layouts (teacher-114 screen, 2026-09-02). The runner MUST
+# set RWKV_REAL_CYCLES=1; its param guard (563,652) is what catches the flag not reaching
+# the workers.
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_id5"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id5"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 1
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/realcyc"
+SAVE_MODEL_PREFIX = "rc_ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""

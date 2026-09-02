@@ -1,7 +1,8 @@
 # GENERATION 5 -- the -id TRAIN db, REAL-TIME CYCLES (RWKV_REAL_CYCLES=1). Gen 4 plus one
 # change: the 28 pseudo day-offset cycle dims are replaced by 24 real-time cycle columns
-# in the card-feature block (rwkv/id_features.py CYCLE_COLUMNS), so card_features is 70
-# wide and the model input 110. Andrew 2026-09-02: 'use real features for 3 days/week/
+# in the card-feature block (rwkv/id_features.py CYCLE_COLUMNS), and the pseudo day_of_week
+# column is dropped (its real counterpart dow_sin/cos is already there), so card_features is
+# 69 wide and the model input 109. Andrew 2026-09-02: 'use real features for 3 days/week/
 # month/year/decade/century, so that every pseudo feature is replaced with its real
 # counterpart. If it requires an LMDB rebuild, ok.'
 #

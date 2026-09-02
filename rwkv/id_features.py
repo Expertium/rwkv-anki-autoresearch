@@ -204,8 +204,25 @@ def id_encoding_dims():
 BASE_CARD_FEATURES = 24
 
 
+# Andrew 2026-09-02, after the cycles: "11 is also a pseudo-calendar feature, so make sure it
+# also gets replaced." Row 11 is `day_of_week`, the ((day_offset mod 7) - 3)/3 sawtooth counted
+# from the user's first day. Its real counterpart (dow_sin/dow_cos) is already in NEW_COLUMNS,
+# so "replace" means DROP it from the input vector under the same flag. The raw column stays in
+# the frame, like `state` does. Index 17 sits after COL_DUR/COL_R1 (8, 9), so those stay put.
+DROPPED_UNDER_REAL_CYCLES = "day_of_week"
+
+
+def dropped_columns():
+    """Base card-feature columns the -id layout removes from the input vector, in order."""
+    if not enabled():
+        return []
+    return [DROPPED_COLUMN] + ([DROPPED_UNDER_REAL_CYCLES] if real_cycles_enabled() else [])
+
+
 def card_feature_width():
-    return BASE_CARD_FEATURES - 1 + len(active_new_columns()) if enabled() else BASE_CARD_FEATURES
+    if not enabled():
+        return BASE_CARD_FEATURES
+    return BASE_CARD_FEATURES - len(dropped_columns()) + len(active_new_columns())
 
 
 def input_width():
