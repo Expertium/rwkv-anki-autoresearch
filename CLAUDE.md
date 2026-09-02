@@ -1335,6 +1335,19 @@ so its lever was live); `preflight_runner.py` now asserts the `endlocal` orderin
 runners pass.
 
 #### LIVE
+**⟶ 2026-09-02 21:39 -- gen4base PHASE 2 IS PARKED BEHIND ANDREW'S srs-benchmark GRU PRETRAIN.** The PC
+restart (~20:59) killed the chain at decay step 10681/10935 with nothing to resume (see the decay-
+checkpoint rule below). Phase 2 relaunched 21:05 and **DEADLOCKED in WDDM paging beside the GRU job
+that auto-started at 21:01**: decay alone 8.7 GB, together pinned at 11.7 of 12.28 GB, 100% util,
+ZERO steps for 16 min after step 485. Killed my tree (runner cmd FIRST so no failure marker could
+fire the waiters, then the python tree) -- VRAM fell to 4.5 GB = his job alone, so the sum is the
+cause. `scratchpad/gen4_base/wait_gpu_then_gen4base_p2.cmd` (pid 7088) polls for zero
+`reptile_trainer_gru` PYTHON processes, then calls `run_gen4base_p2.cmd` unchanged; the ablation /
+gen-5 / realcyc waiters (32476 / 22168 / 33340) stayed armed on `gen4base.log`, which carries no
+marker. ⚠ The probe had to be restricted to `python.exe`: its own powershell line and any bash shell
+that typed the pattern match it too, so the count could never reach 0 -- found by EXECUTING the probe
+before arming (6, then 5, then 2). Andrew's job is his; stopping it fires the chain within 2 min.
+
 **>>> THE GPU IS BOOKED ~31 h DEEP: ITER 53 IS DONE AND ACCEPTED, FOUR JOBS REMAIN CHAINED**
 (re-armed 2026-08-17 21:47; iter 54 launched 2026-08-18 08:04). Each waiter is detached via WMI so
 Esc cannot kill it, and each polls the previous job's log with an ANCHORED
