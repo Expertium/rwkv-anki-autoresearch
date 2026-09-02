@@ -47,9 +47,10 @@ CARD_FEATURE_COLUMNS = [
 # against the LMDBs it is read from. Off => this block does not execute and the list is the
 # original 24. See optimization/FUTURE_FEATURES.md and rwkv/id_features.py.
 if _idf.enabled():
+    # active_new_columns() = NEW_COLUMNS, plus the 24 real-cycle columns under RWKV_REAL_CYCLES=1.
     CARD_FEATURE_COLUMNS = [
         c for c in CARD_FEATURE_COLUMNS if c != _idf.DROPPED_COLUMN
-    ] + list(_idf.NEW_COLUMNS)
+    ] + list(_idf.active_new_columns())
 
 STATISTICS = {
     "elapsed_days_mean": 1.51,
@@ -539,7 +540,7 @@ def add_queries(section_df, equalize_review_ths):
     # only WHEN the review happens and what the card/deck are -- the same status as day_offset_diff
     # and deck_id_is_nan, which are kept today. The scheduler knows when it is showing a card.
     if _idf.enabled():
-        keep_columns = keep_columns + list(_idf.NEW_COLUMNS)
+        keep_columns = keep_columns + list(_idf.active_new_columns())
 
     reject_columns = [
         "rating",

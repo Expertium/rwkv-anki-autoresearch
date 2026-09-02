@@ -4,6 +4,7 @@ This script demonstrates RWKV run as an RNN.
 
 import numpy as np
 import pandas as pd
+from rwkv import id_features as _idf
 from rwkv.config import (
     DAY_OFFSET_ENCODE_PERIODS,
     ID_ENCODE_DIMS,
@@ -134,7 +135,12 @@ class RNNProcess:
             requires_grad=False,
         )
         features = add_id_encoding(features)
-        features = add_day_offset_encoding(features)
+        # RWKV_REAL_CYCLES=1: the pseudo day-offset cycles are gone from the input; their real
+        # counterparts arrive as CARD_FEATURE_COLUMNS above (id_features.CYCLE_COLUMNS), so the
+        # DEPLOY path must skip this block exactly as prepare_batch.add_encodings does -- the
+        # three-way parity rule. Default off => byte-identical.
+        if not _idf.real_cycles_enabled():
+            features = add_day_offset_encoding(features)
         features = features.unsqueeze(0)
         return features
 

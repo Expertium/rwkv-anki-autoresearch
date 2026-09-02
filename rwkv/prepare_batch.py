@@ -11,6 +11,7 @@ from rwkv.config import (
     RWKV_SUBMODULES,
 )
 from rwkv.data_processing import CARD_FEATURE_COLUMNS, ModuleData, RWKVSample
+from rwkv import id_features as _idf
 from rwkv.model.srs_model import PreparedBatch
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 from rwkv.utils import load_tensor
@@ -381,7 +382,11 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
                 # print("WARNING: zeroing out ids and rng")
                 # gather.append(torch.zeros_like(torch.stack(encodings)))
 
-            for period in DAY_OFFSET_ENCODE_PERIODS:
+            # RWKV_REAL_CYCLES=1: the pseudo day-offset cycles are replaced by real-time cycles
+            # computed at build time as card-feature columns (rwkv/id_features.py CYCLE_COLUMNS),
+            # so this block emits nothing and the encoding block is the 40 ID dims only. Default
+            # off => the loop below is byte-identical to before.
+            for period in ([] if _idf.real_cycles_enabled() else DAY_OFFSET_ENCODE_PERIODS):
                 # Randomly sampled baseline to improve generalization
                 baseline = torch.randint(low=0, high=period, size=(1,))
                 f = 2 * np.pi / period

@@ -140,16 +140,76 @@ def enabled():
 # card-feature half is what the flag changes. Derived rather than hardcoded per [[keep-optimizations-
 # arch-agnostic]] -- `card_features_dim = 92` was written in two model files and would have been a
 # silent shape mismatch the moment the rebuild landed.
-ID_ENCODING_DIMS = 68
+# The encoding block prepare_batch.add_encodings appends after the card features: the four ID
+# codes (12+12+8+8 = 40, rwkv/config.py ID_ENCODE_DIMS) plus, unless RWKV_REAL_CYCLES=1, the
+# seven pseudo day-offset cycles (7 periods x {review day, first-review day} x {sin, cos} = 28).
+_ID_CODE_DIMS = 40
+_PSEUDO_CYCLE_DIMS = 28
+ID_ENCODING_DIMS = _ID_CODE_DIMS + _PSEUDO_CYCLE_DIMS  # 68: the historical constant, flag off
+
+
+# ---- RWKV_REAL_CYCLES=1 (default OFF): replace the pseudo day-offset cycles with real ones ----
+# Andrew 2026-09-02: "use real features for 3 days/week/month/year/decade/century, so that every
+# pseudo feature is replaced with its real counterpart". The pseudo cycles (prepare_batch
+# add_encodings) are sin/cos of (baseline + day_offset) mod N, where day_offset counts from the
+# USER's first review and baseline is an arbitrary phase -- so they encode relative position only.
+# The real counterpart uses the same math on the epoch-anchored UTC day index of `review_time`
+# (integer days, like day_offset), so the phase means the same thing for every user. Each period
+# keeps its first-review-day half, as the pseudo ones had. The review-time 7 d and 365 d halves
+# already exist as dow/doy and are NOT duplicated, so 24 new card-feature columns replace 28
+# encoding dims: input 114 -> 110. Because they live in the card-feature block they are reachable
+# by RWKV_ABLATE_FEATURES by name, which the pseudo ones never were.
+# Requires RWKV_ID_FEATURES=1 (needs review_time) and a rebuild (they are computed at build time).
+CYCLE_PERIODS = [3, 7, 30, 100, 365.25, 3650, 36500]
+_CYCLES_WITH_REAL_REVIEW_HALF = (7, 365.25)   # dow / doy already cover the review-time half
+
+
+def _cycle_tag(p):
+    return "365" if p == 365.25 else str(int(p))
+
+
+def _build_cycle_columns():
+    cols = []
+    for p in CYCLE_PERIODS:
+        t = _cycle_tag(p)
+        if p not in _CYCLES_WITH_REAL_REVIEW_HALF:
+            cols += [f"cyc{t}_sin", f"cyc{t}_cos"]
+        cols += [f"cyc{t}_first_sin", f"cyc{t}_first_cos"]
+    return cols
+
+
+CYCLE_COLUMNS = _build_cycle_columns()
+assert len(CYCLE_COLUMNS) == 24, len(CYCLE_COLUMNS)
+
+
+def real_cycles_enabled():
+    on = os.environ.get("RWKV_REAL_CYCLES", "0") == "1"
+    if on and not enabled():
+        raise RuntimeError(
+            "RWKV_REAL_CYCLES=1 requires RWKV_ID_FEATURES=1: the real cycles are functions of "
+            "review_time, which only the -id layout carries."
+        )
+    return on
+
+
+def active_new_columns():
+    """Every column the -id layout appends to the base card features, in vector order."""
+    if not enabled():
+        return []
+    return list(NEW_COLUMNS) + (list(CYCLE_COLUMNS) if real_cycles_enabled() else [])
+
+
+def id_encoding_dims():
+    return _ID_CODE_DIMS if real_cycles_enabled() else ID_ENCODING_DIMS
 BASE_CARD_FEATURES = 24
 
 
 def card_feature_width():
-    return BASE_CARD_FEATURES - 1 + len(NEW_COLUMNS) if enabled() else BASE_CARD_FEATURES
+    return BASE_CARD_FEATURES - 1 + len(active_new_columns()) if enabled() else BASE_CARD_FEATURES
 
 
 def input_width():
-    return ID_ENCODING_DIMS + card_feature_width()
+    return id_encoding_dims() + card_feature_width()
 
 
 def _log_t(x):
@@ -596,7 +656,26 @@ def add_id_features(df, df_cards, df_decks_raw):
         card_ts, (cid < float(rt[0])).astype(np.float64), 0.0
     )
 
-    for c in NEW_COLUMNS:
+    # ---------------- REAL cycles (RWKV_REAL_CYCLES=1) ----------------
+    # Same math as the pseudo cycles in prepare_batch.add_encodings, on the epoch-anchored UTC
+    # day index instead of the user-relative day_offset, and with no random baseline: the phase
+    # is meaningful across users, which is the whole point. Integer days, like day_offset, so the
+    # 3-day cycle is stepped rather than continuous (time-of-day is its own column). `first_rt`
+    # is the first row of the card in frame order -- the same anchor creation_to_first_review
+    # uses, so the two features cannot disagree about when a card started.
+    if real_cycles_enabled():
+        day = np.floor(rt / _MS_PER_DAY)
+        day_first = np.floor(first_rt / _MS_PER_DAY)
+        for p in CYCLE_PERIODS:
+            f = 2.0 * np.pi / p
+            t = _cycle_tag(p)
+            if p not in _CYCLES_WITH_REAL_REVIEW_HALF:
+                df[f"cyc{t}_sin"] = np.sin(f * np.mod(day, p))
+                df[f"cyc{t}_cos"] = np.cos(f * np.mod(day, p))
+            df[f"cyc{t}_first_sin"] = np.sin(f * np.mod(day_first, p))
+            df[f"cyc{t}_first_cos"] = np.cos(f * np.mod(day_first, p))
+
+    for c in active_new_columns():
         assert c in df.columns, f"id_features did not emit {c}"
         v = df[c].to_numpy(dtype=np.float64)
         assert np.isfinite(v).all(), f"id_features emitted non-finite values in {c}"

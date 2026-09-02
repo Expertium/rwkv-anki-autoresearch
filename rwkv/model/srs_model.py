@@ -506,7 +506,7 @@ class SrsRWKV(ModuleType):
         # The card features occupy dims [0, len(CARD_FEATURE_COLUMNS)) of the input vector and the
         # ID encodings follow, which is why a column index IS an input dim (and why
         # RWKV_ZERO_FEATURES=22 masked `scaled_state`). Asserted rather than assumed.
-        assert len(CARD_FEATURE_COLUMNS) + _idf.ID_ENCODING_DIMS == self.card_features_dim, (
+        assert len(CARD_FEATURE_COLUMNS) + _idf.id_encoding_dims() == self.card_features_dim, (
             "input layout changed: card features are no longer the leading block"
         )
         _zero_feats = sorted(set(_zero_feats) | set(_ablate_idx))

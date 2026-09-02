@@ -82,7 +82,7 @@ class SrsRWKVRnn(ModuleType):
             f"{len(CARD_FEATURE_COLUMNS)} card-feature columns."
         )
         _ablate_idx = [CARD_FEATURE_COLUMNS.index(n) for n in _ablate_names]
-        assert len(CARD_FEATURE_COLUMNS) + _idf.ID_ENCODING_DIMS == self.card_features_dim, (
+        assert len(CARD_FEATURE_COLUMNS) + _idf.id_encoding_dims() == self.card_features_dim, (
             "input layout changed: card features are no longer the leading block"
         )
         _zero_feats = sorted(set(_zero_feats) | set(_ablate_idx))

@@ -1104,7 +1104,7 @@ So this list is the single source of order. Anything not on it is not scheduled.
 | 1 | **Training speedups** (dispatch-bound) | **DONE** — +5.5% bit-exact (PermGather on the interleaved path); four leads closed. `optimization/DISPATCH_PLAN.md` |
 | 2 | **Finish the features CONTROL eval** | **DONE** — featA2 0.298186 / 0.265588; prices the Bug A fix at +0.000148 / +0.000169 |
 | 3 | **featB** — the new-features arm | **RUNNING** since 2026-09-01 20:36 (~10 h, 0.931 steps/s). Died TWICE on the `insert_probes` KeyError (08-21, 09-01); root-caused and fixed 09-01 — see BUG B. **Gen-4 rebuild is armed behind it** (Bug C fix; see GEN 4) |
-| 4 | **More algorithmic improvements** | the research loop, gate unchanged |
+| 4 | **More algorithmic improvements** | the research loop, gate unchanged. **★ STOP CRITERION (Andrew 2026-09-02): keep going -- adopted AND invented, alternating -- until LogLoss is at most 0.2960 ahead \| 0.2650 imm.** On featB's basis imm (0.263217) is already under the bar and **ahead (0.297884) is the binding constraint, ~0.0019 away**; ⚠ gen 4 moves the absolute basis (e2s-selected equalize set removes ~0.19% of rows that are 1.46x easier), so read the target on the gen-4 lineage's numbers. First lever queued: `realcyc` (real-time cycles replace the pseudo day-offset ones, Andrew's directive) |
 | 5 | **Final HP tuning, WITH QAT ON** | ⚠ NEW — all prior tuning was PLAIN |
 | 6 | **The final run: QAT + larger epoch budget** | the old "10x endgame", both arms |
 | 7 | **CPU inference** — whatever is left to squeeze | `optimization/CPU_INFERENCE.md` |
