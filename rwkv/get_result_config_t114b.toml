@@ -1,0 +1,25 @@
+# TEACHER-114 SCREEN, arm T114B. Same checkpoint, same users, same published data; the arms
+# differ ONLY in whether `scaled_state` (index 22) is zeroed. See scratchpad/teacher_114/PLAN.md.
+# Arch comes from RWKV_ARCH_MODULE, NOT a file swap -- gen 4 is building in this same tree.
+# Checkpoint trained on 101-4999 -> 5001-10000 is fully held out.
+FILE_AHEAD = "RWKV-t114b"
+FILE_IMM = "RWKV-P-t114b"
+
+MODEL_PATH = "pretrain/RWKV_trained_on_101_4999.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 3_000_000_000
+
+USER_START = 5001
+USER_END = 5300
+
+# Modest: the LMDB build workers own most of the CPU while this runs (logloss is load-independent)
+NUM_FETCH_PROCESSES = 4
