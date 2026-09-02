@@ -709,6 +709,12 @@ The H=2/K=16 / 193,724-param champion on the 1500-user data-variety recipe, its 
    ~4 h the rebuild alone suggests -- budget accordingly. 8 workers are safe here despite gen 3's
    warning, which is about `data_processing`'s whole-user matrices, not this; and the phase is
    RESUMABLE, so an OOM costs a restart rather than the phase.
+   **✓ ACTUAL: 49 min 41 s (06:34:12 -> 07:23:53), i.e. 3.5x FASTER than the 2.92 h projection.**
+   The projection was measured while featB's eval was competing for CPU and was flagged as an
+   upper bound, so the caveat held -- but **the contention factor is ~3.5x, which is the number
+   worth carrying**: a CPU cost measured beside a live run overstates the free-machine cost by
+   roughly that much on this box. Measure timings on a quiet machine or label them as ceilings;
+   the same correction already applies to the CPU-side profiling numbers in the speed section.
 2. params <= **225,000**.   3. card AND note per-entity state UNCHANGED (deck/preset/global MAY grow freely).
 4./5. **★ CURRENT RULE (Andrew 2026-08-10, TIGHTENED): each mode's RAW improvement vs the CURRENT
    champion must be >= 0.0001 in BOTH modes.** No rounding step -- a raw +0.000088 now FAILS.
