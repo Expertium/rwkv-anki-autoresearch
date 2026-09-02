@@ -1709,6 +1709,27 @@ shape check -- saturation is not an error, it is a silent value change.**
   **Also owed on `run_gen4base.cmd` once it finishes (cannot touch a running `.cmd`):** its log
   header echoes `FEATB START` and line 3's REM still describes featB -- cloned strings; the tag,
   dbs and label filter are all correctly gen 4. Same class as the fixc "e2s test db" prose.
+* **★★ THE KD TEACHER DOES NOT SURVIVE THE 114-DIM LAYOUT -- SCREENED 2026-09-02, RE-LAY-OUT IS
+  DEAD (`scratchpad/teacher_114/`, pre-registered in its `PLAN.md` before launch).** featB ran
+  KD-OFF because the d=128 teacher's `features2card` in_dim is 92 and cannot forward 114 dims.
+  The cheap fix was to re-lay-out its input projection by column NAME into the 114 layout, which
+  costs exactly one thing: the teacher stops seeing `scaled_state`, the column the rebuild drops.
+  Measured directly on the published data the teacher was trained for, 300 users, size 0/300
+  mismatches, one variable (`RWKV_ZERO_FEATURES=22`, arch via `RWKV_ARCH_MODULE` -- NOT the file
+  swap `run_base5k_eval.cmd` uses, since gen 4 was building in the same tree):
+  **ahead 0.298203 -> 0.318650 (+0.020447), imm 0.268191 -> 0.276121 (+0.007930).** The
+  pre-registered abort line was 0.004 on imm; this is 2x past it, and on ahead the crippled
+  teacher (0.3187) is far WORSE than the student it would be teaching (featB 0.2979). A teacher
+  worse than its student cannot pay through target-variance reduction. **=> do NOT re-lay-out the
+  d=128 teacher.** The features phase therefore either (a) runs KD-OFF, featB's way, forfeiting the
+  ~0.0019 KD is worth to this lineage (iters 32/35/39/45), or (b) gets a teacher that natively
+  takes 114 dims -- a d=128 model retrained on gen 4 (a full big run, the honest option) or a frozen
+  gen-4 checkpoint used as a same-size teacher (cheap, but iter 46 showed a teacher that is not a
+  bigger/different function distils nothing). **That choice is Andrew's; it is the first open
+  decision of phase 4 and gen4base (KD-off) is the baseline either way.**
+  ⚠ The screen bounds the TEACHER's degradation, not the KD gain -- but at this size the bound is
+  decisive on its own. Verdict + both arms' jsonls: `scratchpad/teacher_114/t114.log`,
+  `result/RWKV{,-P}-t114{a,b}.jsonl`.
 * ⚠ **THE FEATURES A/B IS BLOCKED ON A DECISION, NOT ON COMPUTE:** featA ran on published dbs that
   still carry Bug A, so it is no longer a clean control for a featB built on fixed dbs -- the fix
   would enter the bundle as a fifth component, and at 19% of reviews it could dwarf the features.
