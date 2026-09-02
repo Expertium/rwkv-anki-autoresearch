@@ -1,8 +1,10 @@
 @echo off
 REM ======================================================================================
-REM gen4base -- the KD-off features recipe (featB's) re-based on the GEN-4 dbs (Bug C fixed, e2s-selected
-REM equalize set). Cloned from run_featB.cmd; header + START banner corrected 2026-09-02 after the run
-REM finished its WS phase (the PC restart killed it in decay; phase 2 is run_gen4base_p2.cmd).
+REM gen4base PHASE 2 (decay + eval), sliced from run_gen4base.cmd after the 2026-09-02 ~20:59 PC
+REM restart killed the chain at decay step 10681 of 10935. The decay saves only on validate_iter
+REM (VALIDATE_EVERY=100000), so nothing past step 50 survived; it re-runs from g4b_ws_10935.
+REM Env block is BYTE-IDENTICAL to phase 1. Appends to the SAME log so the armed waiters see
+REM DECAY_OK / DONE_EXIT_ exactly where they expect them.
 REM
 REM KD IS OFF IN BOTH ARMS, and not by preference: the teacher's features2card in_dim is
 REM 92 while the gen-2 DBs feed 114, so it cannot forward-pass them. Comparing a KD-off
@@ -67,32 +69,13 @@ set RWKV_KD_MIX=
 set RWKV_KD_ALPHA=
 
 if not exist "%DIR%" mkdir "%DIR%"
-echo ===== gen4base START %DATE% %TIME% ===== > "%LOG%"
+echo ===== gen4base PHASE 2 START %DATE% %TIME% ===== >> "%LOG%"
 
-REM ---- PHASE A: WS, 1 epoch ----
-if exist "%DIR%\ws_%STAMP%.log" del /q "%DIR%\ws_%STAMP%.log"
-.venv\Scripts\python.exe -u -m rwkv.train_rwkv --config scratchpad/gen4_base/ws.toml > "%DIR%\ws_%STAMP%.log" 2>&1
-if not %ERRORLEVEL%==0 (
-  echo %TAG% WS_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
-  echo DONE_EXIT_21 %DATE% %TIME% >> "%LOG%"
-  exit /b 21
-)
-REM Gate on the artifact AT THE EXPECTED STEP: exit 0 is not evidence, and an
-REM interrupted run leaves a checkpoint at the step it died on.
 if not exist "%DIR%\g4b_ws_%STEPS%.pth" (
-  echo %TAG% WS_SHORT %DATE% %TIME% >> "%LOG%"
+  echo %TAG% WS_MISSING_FOR_P2 %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_27 %DATE% %TIME% >> "%LOG%"
   exit /b 27
 )
-REM The arm must have used the input width it claims. This is the one check that
-REM catches RWKV_ID_FEATURES failing to reach the workers.
-findstr /C:"Trainable parameters: 565252" "%DIR%\ws_%STAMP%.log" >nul
-if not %ERRORLEVEL%==0 (
-  echo %TAG% WRONG_PARAM_COUNT %DATE% %TIME% >> "%LOG%"
-  echo DONE_EXIT_33 %DATE% %TIME% >> "%LOG%"
-  exit /b 33
-)
-echo %TAG% WS_OK %TIME% >> "%LOG%"
 
 REM ---- PHASE B: decay, ratio 1.0 ----
 .venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/gen4_base g4b_ws g4b_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id4 1 5000 1.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
