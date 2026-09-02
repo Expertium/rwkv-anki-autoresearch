@@ -72,6 +72,74 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 | 27 | Pseudo-decade cycle (3650 d) | Same as above for a 3650-day period |
 | 28 | Pseudo-century cycle (36500 d) | Same as above for a 36500-day period |
 
+## Simplified view — 114-dim layout (`RWKV_ID_FEATURES=1`, the `-id` rebuild)
+
+The `-id` databases (gen 3 onward; `featB` and every gen-4 run) feed a **114-dim** vector: the
+92-dim layout above **minus Card state (#16, dropped at the source)** plus **23 real-timestamp
+columns**, appended after the query flag. Source of truth: `rwkv/id_features.py` (`NEW_COLUMNS`,
+`DROPPED_COLUMN`). Rows 1–15 and 36–46 are unchanged from the table above; the numbering shifts
+by one because #16 is gone. Sin/cos pairs are one row, as above.
+
+Two things to know when reading it. **Timezones are unknown** — `review_time` is epoch-ms with no
+offset — so #17, #19 and #20 are UTC-based; #18 is the one that cancels the shift (deviation from
+the user's own running mean) and is the high-value form. **Every count is clipped at review time**
+(#29–#32): the model is never told how many cards the user went on to create later that day.
+
+| # | Feature | What it is |
+|---|---|---|
+| 1 | Elapsed days | Days since this card's previous review (the interval length) |
+| 2 | Elapsed days, cumulative | Running sum of the card's intervals (card "calendar age") |
+| 3 | Elapsed seconds | Seconds since this card's previous review (**end-to-start** since 2026-08-30) |
+| 4 | Elapsed-seconds sub-day phase | Where the interval falls within a 24 h day |
+| 5 | Elapsed seconds, cumulative | Running sum of the card's elapsed seconds |
+| 6 | Cumulative-seconds sub-day phase | 24 h phase of the cumulative clock |
+| 7 | Review duration | Answer time of this review (zeroed for the most recent review at deploy) |
+| 8 | Grade | Again / Hard / Good / Easy |
+| 9 | Missing-ID flags | Note / deck / preset ID was missing |
+| 10 | Days since any review | Days since the user's previous review of any card |
+| 11 | Pseudo-day-of-week | Position in a 7-day cycle counted from the user's first day (see #19) |
+| 12 | New cards since card's last review | New cards the user reviewed for the first time since this card's previous review |
+| 13 | Reviews since card's last review | Other reviews the user did since this card's previous review |
+| 14 | New cards today | New cards done so far today |
+| 15 | Reviews today | Reviews done so far today |
+| 16 | Query flag | Marks the synthetic "predict cold" rows used by ahead mode |
+| 17 | Time of day | Where in the 24 h day the card was shown (UTC clock) |
+| 18 | Time-of-day deviation | How far this review sits from the user's usual study hour (running circular mean of their earlier reviews; the unknown timezone cancels) |
+| 19 | Day of week | True calendar weekday (UTC) — the real version of #11 |
+| 20 | Day of year | True calendar day of year (UTC) — the real version of the 365-day cycle, #44 |
+| 21 | Weekend flag | Saturday or Sunday |
+| 22 | Seconds since any review | Seconds from the end of the user's previous review of any card to this card being shown — the sub-day version of #10 |
+| 23 | User tenure | Time since the user's first-ever review |
+| 24 | Creation → first review | How long the card existed before it was first reviewed |
+| 25 | Deck age at review | How old the deck was when this review happened |
+| 26 | Card-predates-deck flag | Card was created before the deck it now sits in (the normal case — cards move between decks) |
+| 27 | Default-deck flag | Card is in Anki's default deck, where no deck age is defined |
+| 28 | Deck depth | How deeply the deck is nested in the deck tree |
+| 29 | Creation batch, 1 min | How many of the user's cards were created within a minute of this one (an import drops hundreds at once; a hand-made card is alone) |
+| 30 | Creation batch, 1 h | Same for a one-hour window |
+| 31 | Creation batch, 1 d | Same for a one-day window |
+| 32 | Creation-batch position | How many cards were created in the hour *before* this one — its place within its batch |
+| 33 | Default-preset flag | Deck uses Anki's default options preset (the user never configured it) |
+| 34 | Sibling gap | Seconds since the end of the most recent review of a *different* card of the same note (past siblings only — a sibling's future reviews are never visible) |
+| 35 | Card-predates-first-review flag | Card was created before the user ever reviewed anything (an imported or pre-existing collection) |
+| 36 | Card ID | ID of this exact card |
+| 37 | Sibling (note) ID | ID of the note — siblings share it |
+| 38 | Deck ID | ID of the deck |
+| 39 | Preset ID | ID of the deck-options preset |
+| 40 | 3-day cycle | Review day's position in a 3-day cycle |
+| 41 | Pseudo-week cycle (7 d) | Same as above for a 7-day period |
+| 42 | Pseudo-month cycle (30 d) | Same as above for a 30-day period |
+| 43 | Pseudo-quarter cycle (100 d) | Same as above for a 100-day period |
+| 44 | Pseudo-year cycle (365 d) | Same as above for a 365-day period |
+| 45 | Pseudo-decade cycle (3650 d) | Same as above for a 3650-day period |
+| 46 | Pseudo-century cycle (36500 d) | Same as above for a 36500-day period |
+
+What `featB` measured about these (2026-09-02, vs the 92-dim control `featA2`): **+0.000303 ahead /
++0.002371 imm**, ~+0.00053 / +0.00273 once the end-to-start penalty inside the bundle is added
+back. The gain was **not** concentrated in same-day users, which points at the always-defined rows
+(#23–#35) rather than the clock rows (#17–#22); an ablation on featB's own checkpoint is queued to
+settle which. Detail: `optimization/research_5k_verbose.md`, featB section.
+
 ## Future input features (for when the no-new-inputs invariant is lifted)
 
 Moved to **[`optimization/FUTURE_FEATURES.md`](optimization/FUTURE_FEATURES.md)** — the
