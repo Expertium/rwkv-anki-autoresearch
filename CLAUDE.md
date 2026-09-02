@@ -1344,7 +1344,16 @@ fire the waiters, then the python tree) -- VRAM fell to 4.5 GB = his job alone, 
 cause. `scratchpad/gen4_base/wait_gpu_then_gen4base_p2.cmd` (pid 7088) polls for zero
 `reptile_trainer_gru` PYTHON processes, then calls `run_gen4base_p2.cmd` unchanged; the ablation /
 gen-5 / realcyc waiters (32476 / 22168 / 33340) stayed armed on `gen4base.log`, which carries no
-marker. ⚠ The probe had to be restricted to `python.exe`: its own powershell line and any bash shell
+marker. **RESOLVED 21:49: the GRU job was a FINISHED Task Scheduler task re-firing on its LOGON trigger**
+(`gru_pretrain_run`, real run completed 2026-08-25; `gru_bench_run` re-fired the same minute). Andrew:
+*"Disable all of them, they all have finished a while ago"* -- `gru_pretrain_run`, `gru_bench_run`,
+`fsrs7_100ep_run`, `fsrs7_epoch_sweep`, `fsrs7_reopt_run` are now DISABLED (all were logon-triggered;
+`result_backup_run` is a recurring backup and was left alone; `ClaudeLoopController` untouched). The
+stray pythons survived `Stop-ScheduledTask` (the task's own process was the `wscript` launcher) and were
+killed by pid; the 08-25 checkpoints were NOT overwritten (saves every 25,000 outer steps; killed at
+16,300). The waiter fired at 21:49:18. ⚠ **After any reboot, check `Get-ScheduledTask` for logon-triggered
+jobs before trusting the GPU is free** -- a co-tenant that appears one minute after boot is a task, not
+a leftover. ⚠ The probe had to be restricted to `python.exe`: its own powershell line and any bash shell
 that typed the pattern match it too, so the count could never reach 0 -- found by EXECUTING the probe
 before arming (6, then 5, then 2). Andrew's job is his; stopping it fires the chain within 2 min.
 
