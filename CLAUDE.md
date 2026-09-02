@@ -680,6 +680,19 @@ The H=2/K=16 / 193,724-param champion on the 1500-user data-variety recipe, its 
    **=> THE "CORRECT" SIZE FOR FUTURE new-features + e2s RUNS IS WHATEVER GEN 4 PRODUCES.**
    Snapshot it with `size_baseline.py snapshot id_e2s` from the first gen-4 eval, and gate every
    later candidate against that.
+   **⚠⚠ AND THE CONSEQUENCE FOR THE CURRENT CHAMPION, WHICH SHOULD NOT BE LEFT IMPLIED: `e2sc`
+   HAS THE SAME GAP.** It trains and evaluates on end-to-start intervals but is scored on an
+   **end-to-end-selected** set, because `label_filter_db` is deliberately untouched. So the
+   champion's 0.297888 / 0.265676 includes ~0.19% of reviews srs-benchmark's own rule would
+   delete, and those reviews are 1.46x EASIER than average -- i.e. the published number is
+   slightly FLATTERING as a leaderboard-comparable figure.
+   It is not wrong as a GATE: every published-lineage run shares the same filter, so candidate
+   comparisons are unaffected, and that is why this is not being fixed reflexively. Fixing it
+   means rebuilding `label_filter_db` and re-basing the whole published lineage -- **Andrew's
+   call, and only worth making if published-lineage work continues.** If the features are adopted
+   (Andrew 2026-09-01: "we will almost certainly adopt timestamp features"), all future work is
+   `-id` and the question retires with the lineage. Flagged so the endgame's honest-number step
+   does not inherit it silently.
    **THE TRADE I ACCEPTED, stated rather than buried:** this forfeits the clean gen3-vs-gen4 Bug C
    measurement, because gen 4 now differs from gen 3 in two ways instead of one. It is unavoidable
    at acceptable cost -- `label_is_equalize` is **baked into the LMDB at build time**, so adopting
