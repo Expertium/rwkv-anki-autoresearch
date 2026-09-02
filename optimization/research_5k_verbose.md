@@ -3424,3 +3424,61 @@ interval number above is trustworthy and these two are not.
 
 **The rule this is the third instance of: two runs are comparable only if their DATABASES are, and
 a database is dated by when it was BUILT, not by what it is named.**
+
+
+## featB — the 23 real-timestamp features — THEY WIN, and imm carries it
+
+**ahead 0.297884 / imm 0.263217** (n=2500, VAL half, rectified, nan_users 0, 565,252 params).
+WS 3h05m, decay 3h00m, eval 3h50m. Against `featA2`: **+0.000303 ahead / +0.002371 imm**,
+p = 1.6e-17 / 6.6e-302.
+
+**The imm gain is ~8x the ahead gain and ~13x iter 53's +0.000184** — by a wide margin the
+largest single move of the 5k phase. For scale, the accept bar is 0.0001 and the entire
+A0→A18 width ladder cost +0.00053 imm.
+
+Adding back the end-to-start penalty featB pays *inside its own bundle* (+0.000225 / +0.000400,
+measured independently on the fixc/e2sc pair) puts the **features-only figure at roughly
++0.00057 ahead / +0.00273 imm**. Approximate — that penalty was measured KD-on at 558k on
+published dbs.
+
+### The pre-registration, and what it bought
+
+`featB/PREREG.md` was written while featB was mid-decay, before any number existed, and
+`featB_verdict.py` was not edited afterwards.
+
+| prediction | outcome |
+|---|---|
+| **P1** both modes improve, ahead gain in [0.0005, 0.004] | **direction right, magnitude missed** — ahead +0.000347 (size-matched) sits BELOW the band; imm is far above anything I banded |
+| **P2** the gain concentrates in same-day users | **REFUTED** — top/bottom quartile 1.36x (ahead) / 1.46x (imm) against a 2x bar; Spearman rho +0.012 / +0.172 |
+| **P3** 20–40% of users differ in `size` | **CONFIRMED** — 554 of 2500 (22.2%) |
+
+P3 is the one that protects the result. It defined the **size-matched subset** in advance, and
+that subset (n=1946) **agrees in sign**: +0.000347 / +0.002330. Under the pre-registered rule a
+disagreement would have made this INCONCLUSIVE, with the dataset swap doing the work. It does not.
+
+### ★ P2's REFUTATION IS THE MECHANISTIC FINDING
+
+I predicted the payoff would sit at short intervals, because that is where time-of-day,
+seconds-resolution recency and same-day batch position carry information a day-scale vector
+cannot express. Measured on the interval-adjusted per-user delta — adjusted precisely because
+the e2s penalty concentrates in the same users — the gain is **roughly FLAT in same-day share**.
+
+**=> the payoff is not coming from the fine-grained clock columns.** It is coming from the
+always-defined ones: card / note / deck age, tenure, creation batch. That is actionable in a way
+the headline is not — **look there before adding more clock features**, and treat "more
+time-of-day resolution" as unsupported by this result.
+
+⚠ It also means the sparse columns are not carrying the result either. The sibling gap is defined
+on ~10–16% of rows and was pre-registered at gen-2 build time as "unlikely to move the gate";
+nothing here contradicts that.
+
+### ⚠ NOT A CHAMPION CANDIDATE, and the number is not the production one
+
+Gate #1 fails by construction — featB scores against `label_filter_db_id` while featA2 uses
+`label_filter_db`, so `size` differs for 22.2% of users and no size gate can bridge them. Beyond
+that, **gen 3 still carries Bug C** (37.2% of note identity lost on cards with missing metadata,
+verified in the artifact at ratio 0.6239).
+
+Adoption therefore re-bases on **generation 4**, which fixes Bug C *and* scores on an
+end-to-start-selected equalize set. featB is directional evidence that the features are worth
+having — strongly so on imm — not the number that ships.
