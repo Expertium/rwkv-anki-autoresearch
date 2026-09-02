@@ -48,6 +48,20 @@ set RWKV_E2S_PUBLISHED=
 if not exist "%DIR%" mkdir "%DIR%"
 echo ===== FEATURES REBUILD GEN4 START %DATE% %TIME% ===== > "%LOG%"
 
+REM ---- PHASE 0: everything the chain ASSUMES, checked before spending ~7 hours ----
+REM Targets must not already exist (data_processing and find_equalize SKIP users already
+REM present, so a pre-existing store reports success in seconds having done nothing); gen 3 must
+REM still be there for phase 3 and because featB is scored against it; the -id dataset must be
+REM readable; and F: must have the space, measured by FREE SPACE because these stores are sparse
+REM and file length reports the map_size reservation instead of the allocation.
+.venv\Scripts\python.exe scratchpad/features_rebuild/preflight_gen4.py >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo REBUILD4 PREFLIGHT_FAILED %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_50 %DATE% %TIME% >> "%LOG%"
+  exit /b 50
+)
+echo REBUILD4 PREFLIGHT_OK %TIME% >> "%LOG%"
+
 REM ---- PHASE 0a: the flag really produces WIDTH columns ----
 .venv\Scripts\python.exe -c "import os,sys; sys.path.insert(0,os.getcwd()); import rwkv.id_features as f; w=f.card_feature_width(); print('card_feature_width', w, 'input_width', f.input_width()); sys.exit(0 if w==%WIDTH% else 44)" >> "%LOG%" 2>&1
 if not %ERRORLEVEL%==0 (
