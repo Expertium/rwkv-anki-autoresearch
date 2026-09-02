@@ -14,6 +14,7 @@ from rwkv.architecture import AnkiRWKVConfig
 
 import os
 from rwkv import id_features as _idf
+from rwkv import fsrs_stream as _fsrs
 
 
 def __nop(ob):
@@ -440,6 +441,38 @@ class SrsRWKV(ModuleType):
             "card-state column at the source, so the mask has nothing to do and its indices no "
             "longer refer to the same features. Unset it."
         )
+        # RWKV_ABLATE_FEATURES (2026-08-29): the NAME-based sibling of RWKV_ZERO_FEATURES, and
+        # the only one of the two that is usable under RWKV_ID_FEATURES=1 -- the index form is
+        # refused there because the rebuild drops `scaled_state` and re-indexes everything after
+        # it, so a literal "22" stops meaning what it meant. Names are resolved through the LIVE
+        # `CARD_FEATURE_COLUMNS`, i.e. through whichever layout this process actually has, so
+        # `RWKV_ABLATE_FEATURES=scaled_sibling_gap` denotes the same column before and after any
+        # future rebuild.
+        #
+        # ⚠ AN UNKNOWN NAME RAISES. It is the whole point: a typo that silently ablated nothing
+        # would produce a candidate identical to the champion and a clean null, which reads as
+        # "the feature does not matter" when it means "the experiment did not run". Same family
+        # as the rgate smoke whose control inherited the treatment from os.environ.
+        _ablate_names = [
+            t.strip() for t in os.environ.get("RWKV_ABLATE_FEATURES", "").split(",") if t.strip()
+        ]
+        _unknown = [n for n in _ablate_names if n not in CARD_FEATURE_COLUMNS]
+        assert not _unknown, (
+            f"RWKV_ABLATE_FEATURES names not in the active layout: {_unknown}. "
+            f"RWKV_ID_FEATURES={'1' if _idf.enabled() else '0'}, "
+            f"{len(CARD_FEATURE_COLUMNS)} card-feature columns."
+        )
+        _ablate_idx = [CARD_FEATURE_COLUMNS.index(n) for n in _ablate_names]
+        # The card features occupy dims [0, len(CARD_FEATURE_COLUMNS)) of the input vector and the
+        # ID encodings follow, which is why a column index IS an input dim (and why
+        # RWKV_ZERO_FEATURES=22 masked `scaled_state`). Asserted rather than assumed.
+        assert len(CARD_FEATURE_COLUMNS) + _idf.ID_ENCODING_DIMS == self.card_features_dim, (
+            "input layout changed: card features are no longer the leading block"
+        )
+        _zero_feats = sorted(set(_zero_feats) | set(_ablate_idx))
+        if _ablate_names:
+            print(f"[feat-mask] ablating input features by name {_ablate_names} "
+                  f"-> dims {sorted(_ablate_idx)} (train AND eval)")
         _w = self.card_features_dim
         assert all(0 <= i < _w for i in _zero_feats), f"RWKV_ZERO_FEATURES out of range: {_zero_feats}"
         self.input_feat_mask_on = len(_zero_feats) > 0
@@ -596,6 +629,35 @@ class SrsRWKV(ModuleType):
             # it feeds the global context but never reads it. See interleave_schedule().
             self.ilv_spread = os.environ.get("RWKV_ILV_SPREAD", "0") == "1"
             self.ilv_sched = interleave_schedule(self.stream_depths, self.ilv_spread)
+
+            # ---- V1 (RWKV_FSRS_CARD=<n_free>): FSRS-7's (S_long, S_short, D) recurrence
+            # replaces the CARD stream's WKV, with the trunk EMITTING the 34 parameters per
+            # review instead of them being global constants. Andrew 2026-08-24: "reuse FSRS-7's
+            # formulas inside RWKV, with modifications so that S depends on other input
+            # features". The context streams are untouched -- which is what makes this defensible,
+            # since card_delta_ablate.py measured only 5.8% of the delta rule's value inside the
+            # card stream.
+            #
+            # ⚠ An EMPTY ModuleList, not a dummy module. The GRU head's pattern (root Parameters
+            # + 1x1 dummies for the untaken branch) would add parameters when the flag is OFF and
+            # break inertness; a zero-entry ModuleList has zero parameters and TorchScript unrolls
+            # its iteration to nothing, so OFF is byte-identical with no branch to compile.
+            self.fsrs_cores = torch.nn.ModuleList()
+            self.fsrs_r1 = 0
+            if _fsrs.is_on():
+                assert self.stream_depths[0] == 0, (
+                    "RWKV_FSRS_CARD replaces the card stream, so its arch must declare card_id "
+                    "with n_layers=0 (use scratchpad/hybrid100k/arch_fsrs_v1.py). Got depth "
+                    + str(self.stream_depths[0]) + " -- otherwise the card WKV layers are still "
+                    "built and charged, and the core is added ON TOP of them."
+                )
+                self.fsrs_cores.append(
+                    _fsrs.FsrsCardCore(anki_rwkv_config.d_model, _fsrs.n_free_dims())
+                )
+                self.fsrs_r1 = CARD_FEATURE_COLUMNS.index("rating_1")
+                print("[fsrs] V1 card core ON: FSRS-7 (S_long, S_short, D) replaces the card "
+                      "WKV; n_free=" + str(_fsrs.n_free_dims())
+                      + ", rating one-hot at column " + str(self.fsrs_r1))
             if self.interleave_on:
                 assert not env_baseline_cell(), \
                     "RWKV_INTERLEAVE + RWKV_BASELINE_CELL unsupported (no forward_layer on RNNStream)"
@@ -976,10 +1038,20 @@ class SrsRWKV(ModuleType):
         # The same +/-0.02 log-space quantization rides on every row, i.e. ~2% in dt -- immaterial
         # to a smooth retrievability function, but it means an `== 0` sentinel test can never pass.
         log_dt_N = torch.zeros(1, device=x.device, dtype=x.dtype)
-        if self.rgate_on:
+        # RWKV_FSRS_CARD needs the same quantity (as DAYS), so the condition is not rgate-only.
+        if self.rgate_on or len(self.fsrs_cores) > 0:
             log_dt_N = (
                 batch_start[:, self.rgate_col].to(x.dtype) * self.rgate_std + self.rgate_mean
             )
+
+        # RWKV_FSRS_CARD: the FSRS step is keyed on the pressed button, so recover rating 1..4
+        # from the one-hot block. Computed HERE, next to log_dt_N, because `batch_start` is not
+        # in scope inside _interleaved_streams.
+        rating_N = torch.zeros(1, device=x.device, dtype=x.dtype)
+        if len(self.fsrs_cores) > 0:
+            rating_N = (
+                batch_start[:, self.fsrs_r1:self.fsrs_r1 + 4].to(torch.float32).argmax(dim=-1) + 1
+            ).to(x.dtype)
 
         assert len(batch_sub_gather) == len(self.rwkv_modules)
         if self.interleave_on:
@@ -991,6 +1063,7 @@ class SrsRWKV(ModuleType):
                 batch_skips,
                 batch_stream_active,
                 log_dt_N,
+                rating_N,
             )
             x = x.view(batch_num_data, -1, self.d_model)
             return self.head_and_out(x)
@@ -1062,6 +1135,9 @@ class SrsRWKV(ModuleType):
         batch_skips: list[list[torch.Tensor]],
         batch_stream_active: Optional[list[torch.Tensor]] = None,
         log_dt_N: torch.Tensor = torch.zeros(1),
+        # RWKV_FSRS_CARD: rating 1..4 in canonical row order. Computed by the caller for the same
+        # reason log_dt_N is -- `batch_start` is not in scope here.
+        rating_N: torch.Tensor = torch.zeros(1),
     ):
         # -- 1) compose canonical-anchored gathers + their scatter halves, once per batch --
         n_rows = x.size(0)
@@ -1108,6 +1184,40 @@ class SrsRWKV(ModuleType):
             for _s in range(len(batch_sub_gather[i])):
                 vi.append(torch.empty(0))
             v0s.append(vi)
+        # -- 2b) V1: the FSRS card core, in the card stream's own slot --
+        # Runs BEFORE the rounds, which is exactly where card layer 0 would have run (stream 0,
+        # round 0), so the hierarchy order card->... is unchanged. The card stream has depth 0
+        # under this flag, so it sits out every round and this is its only contribution.
+        for core in self.fsrs_cores:
+            sub_lens_c = batch_sub_gather_lens[0]
+            sks_c = batch_skips[0]
+            # FSRS wants elapsed DAYS; log_dt_N is natural-log elapsed SECONDS.
+            t_days_N = torch.exp(log_dt_N) / 86400.0
+            for s in range(len(gath[0])):
+                g = gath[0][s]
+                sub_len = sub_lens_c[s]
+                idx = torch.clamp(g, min=0)
+                x_in = torch.index_select(x, 0, idx).view(-1, sub_len, self.d_model)
+                t_in = torch.index_select(t_days_N, 0, idx).view(-1, sub_len)
+                r_in = torch.index_select(rating_N, 0, idx).view(-1, sub_len)
+                skip_in = sks_c[s].view(-1, sub_len)
+                state = torch.zeros(
+                    x_in.size(0), 3 + core.n_free, dtype=x_in.dtype, device=x_in.device
+                )
+                outs = []
+                for tt in range(sub_len):
+                    x_out_t, _r_t, new_state = core.review(
+                        x_in[:, tt], t_in[:, tt], r_in[:, tt], state
+                    )
+                    outs.append(x_out_t)
+                    # A skipped row (query/probe) still PRODUCES an output but must not advance
+                    # the state -- per element, because one bucket mixes probe and real rows.
+                    keep = skip_in[:, tt].to(torch.bool).unsqueeze(-1)
+                    state = torch.where(keep, state, new_state)
+                x_out = torch.stack(outs, dim=1)
+                flat = x_out.reshape(-1, self.d_model)
+                x = x.index_copy(0, stgt[0][s], torch.index_select(flat, 0, spos[0][s]))
+
         # -- 3) the rounds --
         max_depth = 0
         for d in self.stream_depths:
