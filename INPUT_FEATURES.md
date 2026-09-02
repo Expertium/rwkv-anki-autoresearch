@@ -126,13 +126,26 @@ the user's own running mean) and is the high-value form. **Every count is clippe
 | 37 | Sibling (note) ID | ID of the note — siblings share it |
 | 38 | Deck ID | ID of the deck |
 | 39 | Preset ID | ID of the deck-options preset |
-| 40 | 3-day cycle | Review day's position in a 3-day cycle |
+| 40 | 3-day cycle | Review day's position in a 3-day cycle, **plus the same for the day this card was first reviewed** (a card-cohort anchor). The phase is an arbitrary fixed offset from the user's first day, so these encode *relative* position, never the calendar — see the note below the table |
 | 41 | Pseudo-week cycle (7 d) | Same as above for a 7-day period |
 | 42 | Pseudo-month cycle (30 d) | Same as above for a 30-day period |
 | 43 | Pseudo-quarter cycle (100 d) | Same as above for a 100-day period |
 | 44 | Pseudo-year cycle (365 d) | Same as above for a 365-day period |
 | 45 | Pseudo-decade cycle (3650 d) | Same as above for a 3650-day period |
 | 46 | Pseudo-century cycle (36500 d) | Same as above for a 36500-day period |
+
+**Why rows 40–46 are still here when #19/#20 are real (Andrew 2026-09-02).** Partly scope: the
+`-id` rebuild changed only the card-feature block (`CARD_FEATURE_COLUMNS`); the encoding block —
+IDs plus these cycles, built in `prepare_batch.add_encodings` from `DAY_OFFSET_ENCODE_PERIODS`
+in `rwkv/config.py` — was never revisited. That was an oversight, not a decision. But they are
+also not duplicates of the real calendar: each period's phase is an arbitrary fixed offset from
+the user's first day (a seeded `randint`), so a "7-day cycle" cannot say *which* weekday — only
+*same phase as N days ago* — and each period also carries the card's **first-review day**, making
+the pair a multi-scale card-cohort/age encoding. Only the 7 d and 365 d periods have real
+counterparts at all; 3/30/100/3650/36500 do not, and the long ones overlap #23 (tenure) instead.
+Whether the model still leans on them with real dow/doy and tenure available is empirical, and an
+ablation arm (`abl_cycles`, checkpoint surgery on featB) is queued behind gen4base to answer it.
+If they are dead weight, the next rebuild drops 28 dims (114 → 86).
 
 What `featB` measured about these (2026-09-02, vs the 92-dim control `featA2`): **+0.000303 ahead /
 +0.002371 imm**, ~+0.00053 / +0.00273 once the end-to-start penalty inside the bundle is added

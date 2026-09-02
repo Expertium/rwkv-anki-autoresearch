@@ -27,7 +27,13 @@ import os
 CONTROL = "featB"
 ARMS = [("abl_all", "all 23 new columns"),
         ("abl_clock", "the 10 fine-grained TIMING columns"),
-        ("abl_struct", "the 13 always-defined STRUCTURE columns")]
+        ("abl_struct", "the 13 always-defined STRUCTURE columns"),
+        # Andrew 2026-09-02: "why are there still pseudo-calendar features if we have real ones?"
+        # The 7 day_offset cycles (28 dims, 86..113) survived the -id rebuild by SCOPE -- it changed
+        # only the card-feature block. They are not calendar duplicates: arbitrary fixed phase, so
+        # relative position only, plus a first-review-day anchor per period. Whether the model still
+        # needs them next to true dow/doy (#19/#20) and tenure (#23) is this arm's question.
+        ("abl_cycles", "the 7 pseudo day-offset cycles (28 dims, by checkpoint surgery)")]
 
 
 def load(tag, mode):
@@ -107,6 +113,22 @@ def main():
                    if st[mode] > ck[mode] else
                    "CLOCK dominates -- this CONTRADICTS the same-day reading")
         print("    %-6s clock %+.6f   struct %+.6f   -> %s" % (mode, ck[mode], st[mode], verdict))
+    print()
+    print("--- Q3: are the PSEUDO day-offset cycles still load-bearing next to the real calendar?")
+    cy = cost["abl_cycles"]
+    ref = cost["abl_all"]
+    for mode in ("ahead", "imm"):
+        print("    %-6s removing the 7 pseudo cycles costs %+.6f   (removing all 23 NEW columns: %+.6f)"
+              % (mode, cy[mode], ref[mode]))
+    if max(cy["ahead"], cy["imm"]) < 0.0002:
+        print("    -> DEAD WEIGHT on this checkpoint: the model barely uses them with true dow/doy and")
+        print("       tenure available. Dropping the 28 dims is a candidate for the next rebuild --")
+        print("       but a RETRAIN is the real test, since reliance is not value.")
+    else:
+        print("    -> STILL USED. They are not calendar duplicates (arbitrary phase => relative")
+        print("       position; plus a first-review-day anchor), and the model leans on that.")
+        print("       Do not drop them on the strength of the real dow/doy alone.")
+
     print()
     print("REMINDER: reliance, not value. A retrained model recovers part of any of these.")
     return 0

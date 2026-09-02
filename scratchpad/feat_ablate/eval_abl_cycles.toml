@@ -1,0 +1,19 @@
+# FEATURE-ABLATION arm abl_cycles. featB's checkpoint with the 28 pseudo-cycle input columns
+# (dims 86..113 of the 114 layout) ZEROED BY CHECKPOINT SURGERY -- zero_input_cols.py -- because
+# no env mask reaches the encoding block under RWKV_ID_FEATURES=1. RWKV_ABLATE_FEATURES must be
+# EMPTY for this arm; the runner clears it. featB's per-user results are the control.
+FILE_AHEAD = "RWKV-abl_cycles"
+FILE_IMM = "RWKV-P-abl_cycles"
+MODEL_PATH = "scratchpad/feat_ablate/featB_d_10935_nocycles.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id3"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = 5001
+USER_END = 5300
+NUM_FETCH_PROCESSES = 4
