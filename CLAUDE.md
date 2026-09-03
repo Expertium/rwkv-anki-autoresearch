@@ -1380,6 +1380,14 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**⟶ ABLATION VERDICT 07:51 (featB checkpoint, n=300, reliance not value):** all 23 columns +0.002267 ahead /
++0.005852 imm; **clock** +0.001366 / +0.005072; **struct** +0.000938 / +0.000855; the groups are ADDITIVE, so
+the whole imm-vs-ahead asymmetry lives in the clock columns (the target review's own clock, which only the
+query row carries). **Pseudo cycles: dead weight** (+0.000083 / -0.000005) -- realcyc is a bet on the REAL
+cycles carrying new information, not on removing harm. **Batch position: used** (+0.000217 ahead, p=2e-7);
+the LOO sweep ranks it. ⚠ Corrects featB's P2 inference: ahead relies on clock MORE than on struct.
+Detail: `research_5k_verbose.md` "Feature ablation on featB's checkpoint".
+
 **⟶ 2026-09-03 05:29 -- the gen-5 TEST-db build died of RAM exhaustion** (a worker's 4.7 MiB allocation
 failed) while the gen4base eval held ~47 GB on giant users: the gen-3 "rebuild beside a run exhausts 64 GB"
 warning, replayed. The train db was already verified (TRAIN_OK 04:36). `run_rebuild5_p2.cmd` re-runs phases 2+3

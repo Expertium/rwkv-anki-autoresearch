@@ -1138,12 +1138,12 @@ explains most of `abl_clock`, the lever's ceiling collapses; run that single-col
 | order | run | lever | provenance | control | state |
 |---|---|---|---|---|---|
 | 1 | gen4base (phase 2) | none -- the features lineage's baseline (gen 4, KD-off) | -- | -- | RUNNING (decay relaunched 21:49 after a WDDM deadlock with a stray GRU task) |
-| 2 | feat_ablate | inference-time ablation of featB's 23 columns in 4 groups | measurement | featB | armed on gen4base's marker |
+| 2 | feat_ablate | inference-time ablation of featB's 23 columns in 4 groups | measurement | featB | **DONE 07:51** -- clock carries the asymmetry (imm +0.0051 / ahead +0.0014), struct symmetric (+0.0009 each), pseudo cycles dead weight (+0.00008 / -0.00001). `research_5k_verbose.md` |
 | 3 | rebuild5 (CPU) | gen-5 dbs, `RWKV_REAL_CYCLES=1` | -- | -- | armed on gen4base DECAY_OK + 25 GB RAM |
 | 4 | realcyc | real-time cycles replace the 7 pseudo cycles + row 11 | Andrew | gen4base | armed on ablation marker + rebuild5 success |
 | 5 | **lorawd** | **`RWKV_MUON_LORA_WD=0.05`** -- decoupled wd on the LoRA Muon group | **adopted** (Moonlight, arXiv 2502.16982; dose from the 2026-08-18 screen = rank 8) | gen4base, or realcyc if it promotes (`mk_lorawd.py realcyc`) | armed on realcyc's marker; `scratchpad/lorawd/PREREG.md` |
-| 6 | (invented slot) | calendar-aware curve head, IF `abl_clock` shows the clock columns carry >= 0.0005 of imm | invented | the then-champion | not built; ceiling comes from order 2 |
-| 5b | **abl_batchpos** (spliced into order 2's runner, +25 min) | zero ONE column, `scaled_creation_batch_pos_1h`, at featB's input | Andrew 2026-09-03 ("seems useless") | featB | armed with order 2 |
+| 6 | (invented slot) | calendar-aware curve head. **Ablation reported 2026-09-03: clock reliance imm +0.00507 vs ahead +0.00137, gap 0.0037 -- abort line (0.0005) cleared; the gap is the loose ceiling.** Build after the LOO sweep separates `t_since_any_review` (not a function of t) from the calendar columns | invented | the then-champion | ceiling known; awaiting LOO |
+| 5b | **abl_batchpos** | zero ONE column, `scaled_creation_batch_pos_1h`, at featB's input | Andrew 2026-09-03 ("seems useless") | featB | **DONE** -- NOT unused at inference: +0.000217 ahead (p=2e-7) / +0.000089 imm; the LOO sweep ranks it against the rest |
 | 5c | **feat_loo** (~8 h) | leave-one-out: 19 arms, one per feature (sin/cos pairs together), 300 users each | Andrew 2026-09-03 ("ideally ablate everything") | featB | armed on lorawd's marker; `scratchpad/feat_loo/` |
 | 7 | teacher retrain | a d=128 teacher native to the final layout (Andrew 2026-09-02: "as part of the algorithmic improvements plan") | infrastructure | -- | after the layout is settled by order 4 |
 

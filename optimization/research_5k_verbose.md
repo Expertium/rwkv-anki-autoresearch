@@ -3527,3 +3527,44 @@ target review's clock features are not unknown at prediction time -- `tod(k+1)`,
 DETERMINISTIC functions of `review_time(k) + t`, and a live scheduler knows `now()`. So the curve
 head could be conditioned on the calendar phase of the evaluation time without any new input, in
 train, eval AND deploy identically. `abl_clock`'s imm cost is the ceiling on what this can buy ahead.
+
+## Feature ablation on featB's checkpoint (2026-09-03) -- reliance by column group, n=300
+
+Inference-time ablation: featB's own checkpoint and eval db, users 5001-5300, the named columns
+zeroed at the input (`RWKV_ABLATE_FEATURES`; the pseudo cycles by checkpoint surgery on dims 86..113,
+exact because the input projection is linear). featB's own per-user results are the control, size
+mismatches 0/300. **Reliance, not value**: a retrained model recovers part of any cost. ~25 min per arm.
+
+| arm | removed | ahead cost | imm cost |
+|---|---|---|---|
+| abl_all | all 23 new columns | **+0.002267** (p=1e-35) | **+0.005852** (p=8e-51) |
+| abl_clock | the 10 clock/recency columns | +0.001366 (p=3e-32) | +0.005072 (p=1e-50) |
+| abl_struct | the 13 always-defined columns | +0.000938 (p=1e-18) | +0.000855 (p=9e-33) |
+| abl_cycles | the 7 pseudo day-offset cycles (28 dims) | +0.000083 (p=6e-6, 61% worse) | -0.000005 (p=0.91) |
+| abl_batchpos | ONE column, `scaled_creation_batch_pos_1h` | +0.000217 (p=2e-7, 62% worse) | +0.000089 (p=7e-12, 66% worse) |
+
+**Q1 -- does ahead use the new features?** Yes: +0.002267 when all 23 go, ~7x featB's whole ahead gain.
+The 5:1 (gain) asymmetry is not about reach.
+
+**Q2 -- where does the asymmetry live? In the CLOCK columns, and the groups are ADDITIVE.**
+clock + struct reproduces the total in both modes (0.00230 vs 0.00227; 0.00593 vs 0.00585). The
+structure columns are relied on SYMMETRICALLY (+0.00094 / +0.00086); the clock columns give imm
++0.00507 and ahead +0.00137. That is the structural prediction made the day before: the query row
+carries review k+1's own clock, the ahead row can only see the history's. ⚠ It CORRECTS the featB
+write-up's P2 inference: "the payoff comes from the always-defined columns" was wrong -- ahead relies
+on the clock columns MORE than on the structure ones (the same-day analysis measured something else).
+
+**Q3 -- the pseudo cycles are dead weight on this checkpoint.** 28 dims with a learned Frobenius norm
+of 3.67 in the input projection, and removing them costs +0.000083 ahead / -0.000005 imm. The model
+learned weights for them and does not use them -- the "use is not evidence of need" pattern, fourth
+instance. => realcyc is a bet that the REAL, epoch-anchored cycles carry information the pseudo ones
+never did, not a bet on removing harm.
+
+**Andrew's batch-position column is NOT unused at inference** (+0.000217 ahead, above the accept bar,
+62% of users worse), but reliance overstates value; the 19-arm leave-one-out sweep (`feat_loo`) ranks it
+against every other column on the same footing, and a drop decision needs the retrain-without.
+
+**Calendar-aware curve (PROPOSALS): the clock RELIANCE gap imm-minus-ahead is 0.0037**, an upper bound on
+what conditioning the curve on the target's calendar phase could recover for ahead; the pre-registered
+abort line (0.0005) is cleared, but the bound is loose for the reliance-vs-value reason, and
+`t_since_any_review` (not a function of t) must be separated out first -- the LOO sweep does that.
