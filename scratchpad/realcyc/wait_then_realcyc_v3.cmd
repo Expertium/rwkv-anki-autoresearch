@@ -23,7 +23,7 @@ findstr /B /C:"DONE_EXIT_0" "%G1%" >nul 2>&1
 if errorlevel 1 (
   findstr /B /C:"DONE_EXIT_15" "%G1%" >nul 2>&1
   if not errorlevel 1 (
-    echo gate 1 FAILED (DONE_EXIT_15 present, DONE_EXIT_0 absent) -- refusing %DATE% %TIME% >> "%LOG%"
+    echo gate 1 FAILED: DONE_EXIT_15 present, DONE_EXIT_0 absent -- refusing %DATE% %TIME% >> "%LOG%"
     echo DONE_EXIT_62 %DATE% %TIME% >> "%LOG%"
     exit /b 62
   )

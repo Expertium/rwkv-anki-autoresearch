@@ -1380,6 +1380,18 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ gen4base IS THE FEATURES-LINEAGE BASELINE (2026-09-03 13:33): ahead 0.298089 / imm 0.263548, n=2,499,
+nan_users 0, params 565,252.** Size baseline snapshotted (`optimization/size_baseline_id_e2s.json`,
+126,657,015 scored reviews, self-check 0/2499) -- gate every gen-4/gen-5 candidate against it. Informational
+vs featB, NOT a gate (two-variable bundle, 2,156/2,499 differ in size): raw -0.000191 / -0.000306, the
+direction the harder e2s-selected set predicts, so Bug C's own value stays unmeasured. imm sits AT the old
+d=128 model's VAL-half number (-0.000013); **ahead is 0.0031 from the 0.2950 stop criterion = the binding
+mode.** Logged: `research_log.jsonl` (status baseline), `research_5k.md` row, `research_5k_verbose.md`.
+**realcyc LAUNCHED 13:39:09** (563,652 params = the flag reached the workers), ~12-13 h from F:.
+**⚠ ITS WAITER HAD DIED SILENTLY THE INSTANT `EVAL_OK` LANDED, and again on relaunch:** an unescaped `)`
+inside its SECOND if-block (`echo gate 1 FAILED (DONE_EXIT_15 present, ...)`) -- see the paren rule in
+LIVE RULES. It looped 5 h in the FIRST block looking alive; cmd parses a block only when it reaches it.
+
 **★★★ DECIDED 12:13 -- USER 6701 IS EXCLUDED FROM THE gen-4/gen-5 LINEAGE'S VAL SET (2,499 users), MY CALL.**
 Four eval attempts OOM'd at the IDENTICAL number (36.09 GiB allocated + 5.90 GiB reserved on a 12 GB card),
 including one with the machine's RAM free (11.7 GB used) and one under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments`
@@ -2667,6 +2679,13 @@ All hooks stay in-repo, env-gated, default off.
   AND by the runner's own first log line; a returned pid is not a running process.
 - ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
   relative script path exits instantly, silently, and still returns a pid.
+- ⚠ **AN UNESCAPED `)` INSIDE A PARENTHESISED BLOCK ENDS THE BLOCK AND ABORTS THE BATCH (2026-09-03, rc 255,
+  reproduced on a 6-line stub).** `if errorlevel 1 ( ... echo gate FAILED (a, b) ... )` dies at the inner `)`
+  with "text was unexpected at this time", caller included. cmd parses a block only when it REACHES the `if`,
+  so `wait_then_realcyc_v3.cmd` looped for 5 h in its first block looking alive, then died the instant gate 0
+  opened and the second block was parsed -- twice, silently, no log line. A `(` that is not at command position
+  is plain text; only the `)` is fatal; double-quoted or `^)` is safe. `preflight_runner.py` checks it (proven
+  to FAIL the old file, PASS the fixed one); all 30 chain `.cmd` files swept clean.
 - ⚠ **PERCENT-TILDE IN A `REM` LINE KILLS THE WHOLE BATCH AND ITS CALLER, SILENTLY (2026-09-03, measured).**
   cmd expands batch-parameter substitution before it honours `REM`: a comment reading "the %~N trap" is
   an invalid modifier and aborts with rc 255 -- `run_ablate.cmd` carried exactly that in its header and its

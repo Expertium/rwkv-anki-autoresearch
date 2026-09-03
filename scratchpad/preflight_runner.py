@@ -85,6 +85,28 @@ def preflight(path):
                 break
             pos = i + 2
 
+    # ---- parenthesised blocks: an unescaped ')' on a non-closer line ends the block early -------
+    # cmd.exe parses a whole `if ... (` block when it REACHES the `if`, and inside it any ')' that
+    # is not inside double quotes or escaped as ^) closes the block -- the rest of the line is then
+    # "unexpected" and the batch aborts with rc 255, caller included. wait_then_realcyc_v3.cmd
+    # carried `echo gate 1 FAILED (DONE_EXIT_15 present, ...)` inside its SECOND if-block, so it
+    # looped harmlessly for 5 h in the first block, then died silently the instant gate 0 opened
+    # (2026-09-03 13:33:52, then again on relaunch). Reproduced on a 6-line stub. A '(' that is
+    # not at command position is plain text and is NOT the problem; only the ')' is.
+    depth = 0
+    for n, ln in enumerate(lines):
+        s_ = ln.strip()
+        if not s_ or s_.upper().startswith("REM ") or s_.upper() == "REM" or s_.startswith("::"):
+            continue
+        q = re.sub(r'"[^"]*"', "", s_).replace("^)", "").replace("^(", "")
+        if depth > 0 and ")" in q and not q.startswith(")"):
+            problems.append(f"line {n+1}: unescaped ')' inside a parenthesised block on a line that is not "
+                            f"the block closer -- cmd ends the block there and aborts the batch (rc 255); "
+                            f"drop the parens or escape as ^)")
+        depth += q.count("(") - q.count(")")
+        if depth < 0:
+            depth = 0
+
     # ---- variables: declared before first use --------------------------------------------
     setpos, usepos = {}, {}
     # A `set` counts wherever cmd.exe executes one: at line start, after `do` in a `for ... do set`,

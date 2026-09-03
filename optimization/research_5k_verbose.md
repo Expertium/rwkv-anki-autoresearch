@@ -3568,3 +3568,57 @@ against every other column on the same footing, and a drop decision needs the re
 what conditioning the curve on the target's calendar phase could recover for ahead; the pre-registered
 abort line (0.0005) is cleared, but the bound is loose for the reliance-vs-value reason, and
 `t_since_any_review` (not a function of t) must be separated out first -- the LOO sweep does that.
+
+
+## gen4base -- the features-lineage BASELINE (2026-09-03 13:33, n=2,499)
+
+**ahead 0.298089 / imm 0.263548**, nan_users 0, params 565,252, size baseline 126,657,015 scored reviews
+over 2,499 users (`optimization/size_baseline_id_e2s.json`; the self-check passes 0/2499 and the tool was
+proven able to fail on 2026-09-02). featB's exact recipe -- KD off, seed 4321, MAX 65536, the 114-dim
+layout -- on the generation-4 `-id` dbs, which differ from featB's gen 3 in exactly two ways: **Bug C
+fixed** (`nan_id_fill`, verified in the artifact: 39,599 NaN-note cards map to distinct placeholders) and
+**the equalize set re-selected** with srs-benchmark's `delta_t > 0` evaluated on end-to-start gaps
+(`label_filter_db_id_e2s`, Andrew 2026-09-01). That second change re-selects rather than shrinks the
+scored set (the folds come from `TimeSeriesSplit` over the surviving rows), which is why this lineage
+needs its own baseline and why the trade of a clean gen3-vs-gen4 Bug C number was accepted.
+
+### What the informational comparison vs featB says, and what it cannot
+
+| basis | ahead | imm |
+|---|---|---|
+| raw means, n=2,499 (2,156 differ in size) | gen 4 -0.000191 | gen 4 -0.000306 |
+| size-identical subset, n=343 | +0.000130 | -0.000155 |
+| vs the old d=128 model, VAL half (0.294612 / 0.263561) | +0.003477 | **-0.000013** |
+
+The raw comparison runs the way the label filter predicts: the dropped rows are 1.46x EASIER than
+average (measured on 60 users at -9.8 sigma), so removing them raises mean LogLoss on its own. Nothing
+here measures Bug C's accuracy value, and the record should not be read as if it did. The one number
+worth carrying: **imm now sits at the old d=128 model's figure** with a 4.95x smaller trunk, no
+teacher, and a slightly harder scored set; **ahead is 0.0031 from the 0.2950 stop criterion** and is the
+binding mode for phase 4 -- consistent with the ablation finding that the new columns pay ~4x more on
+imm than on ahead because the target review's own clock is visible only to the query row.
+
+### User 6701 is out of the lineage, and the reason is a ceiling not a bug
+
+Four eval attempts failed at the identical `36.09 GiB allocated + 5.90 GiB reserved` on a 12 GB card:
+in a fresh process, with 11.7 GB of RAM in use, and under `expandable_segments`. A giant user's
+million-row eval chunk plus 4 probe rows per scored review needs ~42 GB of GPU-addressable memory, and
+under WDDM the excess above VRAM is the shared pool -- the third attempt ran beside the gen-5 rebuild
+at 58 of 64 GB and the fourth with the machine free, and both hit the same number, so the ceiling is
+deterministic. Every gate pairs on the intersection, so the exclusion biases nothing;
+`eval_sharded.py --exclude 6701` is on the realcyc and lorawd runners. UNEXPLAINED and recorded as
+such: featB scored 6701 on gen 3 with the same chunking and the same model size, and gen 4 has FEWER
+equalized rows for that user. Do not build on either story.
+
+### Cost, and the two ops failures that doubled it
+
+WS 0.689 steps/s from the F:-hosted dbs (1.35x slower than C:, ~4.4 h); decay ~3.2 h, run TWICE
+because the 2026-09-02 PC restart killed it at step 10,681 of 10,935 and a decay writes no mid-run
+checkpoint (`VALIDATE_EVERY = 100000`); eval five attempts across two days. Then the realcyc waiter
+**died silently the instant `gen4base EVAL_OK` landed** (13:33:52), and again 20 s after a relaunch:
+its second `if` block carried `echo gate 1 FAILED (DONE_EXIT_15 present, DONE_EXIT_0 absent)`, and an
+unescaped `)` inside a parenthesised block closes the block early and aborts the batch (rc 255,
+reproduced on a 6-line stub). It had looped harmlessly for 5 h in the FIRST block, which is why it
+looked alive; cmd parses a block only when it reaches it. Fixed, swept across all 30 chain `.cmd`
+files (clean), and `preflight_runner.py` now checks it -- proven to FAIL the old file and PASS the
+fixed one. realcyc launched 13:39:09 with 563,652 params, i.e. the flag reached the workers.
