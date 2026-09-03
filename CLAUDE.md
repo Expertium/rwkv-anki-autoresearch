@@ -1409,6 +1409,18 @@ WAITER first, because its `call` returning writes lorawd's trigger) generates `r
 which `make_resume.py` writes from the newest `rc_ws_N000.pth` at switch time). Cost of the switch:
 <=1000 steps (~1 h at the slow rate) + ~1 h copy; saving ~10 h on realcyc alone. Until Andrew answers,
 realcyc keeps running -- nothing is lost by waiting.
+**✓ ANDREW 17:29: "Ok, delete train_db_5k_h1_id3". DONE 17:30** (no open handles, 130.7 GB freed, the
+dangling F: junction removed with `[IO.Directory]::Delete`; C: 280 GB free). realcyc killed at step
+3,658 in the safe order (waiter cmd 6492 first -> no trigger line in `wait_realcyc3.log`, lorawd still
+parked). **THE SWITCH IS ARMED, three detached pieces:** `scratchpad/workload/move_id5.cmd` (pid 10488;
+`move_lmdb.py` then `finalize_lmdb.py`, gated on the `VERIFY OK` line; log `move_id5.log`, success line
+`MOVE_OK`) -> `scratchpad/realcyc/wait_move_then_resume.cmd` (pid 33352; fires on `MOVE_OK` ONLY,
+refuses on `DONE_EXIT_1x`, checks the junction resolves) -> `run_realcyc_resume_wrap.cmd` (WS resume
+from `rc_ws_3000` via `ws_resume.toml`, `RWKV_RESUME_SKIP_GROUPS=1`, STAMP=resume -> decay -> eval;
+the wrapper writes `DONE_EXIT_0` into `wait_realcyc3.log` = lorawd's trigger). ⚠ The resumed tail's
+dropout draws differ from an uninterrupted run (weights/optimizer exact) -- carry into the verdict.
+⚠ `printf` in bash ate `\r` and `\U` inside Windows paths (`C:\Users\...\rwkv-...` -> a literal CR),
+and preflight PASSED the corrupted file; write `.cmd` files with the Write tool, then `cat -A`.
 
 **★★★ DECIDED 12:13 -- USER 6701 IS EXCLUDED FROM THE gen-4/gen-5 LINEAGE'S VAL SET (2,499 users), MY CALL.**
 Four eval attempts OOM'd at the IDENTICAL number (36.09 GiB allocated + 5.90 GiB reserved on a 12 GB card),
