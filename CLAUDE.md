@@ -1380,6 +1380,16 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**⟶ 2026-09-03 05:29 -- the gen-5 TEST-db build died of RAM exhaustion** (a worker's 4.7 MiB allocation
+failed) while the gen4base eval held ~47 GB on giant users: the gen-3 "rebuild beside a run exhausts 64 GB"
+warning, replayed. The train db was already verified (TRAIN_OK 04:36). `run_rebuild5_p2.cmd` re-runs phases 2+3
+only, appending to `rebuild5.log` so `wait_then_realcyc_v2.cmd`'s `DONE_EXIT_0` check works unchanged; the
+builder skips users already present and phase 3's entry-count match against gen 4 proves the resumed db is
+complete. ⚠ A 25 GB RAM gate at launch is NOT enough when an EVAL of giant users can start later: budget the
+rebuild's window against the eval's schedule, or run them strictly in sequence.
+⚠ I also repeated the pipe-swallows-the-guard trap (`preflight | tail -1 && detach` launched a runner the failed
+slice had never written; harmless because the file did not exist). Bare guard, then `$?`, every time.
+
 **⟶ 2026-09-03 04:10, Andrew: creation-batch POSITION "seems useless" -> `abl_batchpos` (one column) spliced into
 the armed ablation runner as ARM 5 (insert-only, byte-exact backup `run_ablate.cmd.bak_before_arm5`; the
 waiter had not called it). "Ideally ablate everything" -> `scratchpad/feat_loo/` = a 19-arm LEAVE-ONE-OUT sweep
