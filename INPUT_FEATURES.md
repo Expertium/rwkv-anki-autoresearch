@@ -27,7 +27,7 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 | 16 | Card state | 1 | Anki card state (new/learning/review/relearning) | `state − 2` |
 | 17 | Query flag | 1 | 1 on the synthetic "predict cold" rows used by ahead mode (see masking note below) | 0/1 |
 | 18 | Card ID | 12 | Identity of this exact card | random code per entity, each dim uniform over {−1.5,−0.5,+0.5,+1.5}; **re-randomized every batch** (see note) |
-| 19 | Sibling (note) ID | 12 | Identity of the note — cards generated from the same note share it | 〃 |
+| 19 | Note ID | 12 | Identity of the note — cards generated from the same note share it | 〃 |
 | 20 | Deck ID | 8 | Identity of the deck | 〃 |
 | 21 | Preset ID | 8 | Identity of the deck-options preset | 〃 |
 | 22 | 3-day cycle | 4 | Position of the review day in a 3-day cycle, plus the same for the day this card was **first** reviewed (card-cohort anchor) | `sin`, `cos` × {review day, first-review day}; random per-batch phase baseline |
@@ -61,7 +61,7 @@ multi-dim encodings are counted as one feature (the `dims` column sums to **92**
 | 16 | Card state | Anki card state (new/learning/review/relearning) |
 | 17 | Query flag | Marks the synthetic "predict cold" rows used by ahead mode |
 | 18 | Card ID | ID of this exact card |
-| 19 | Sibling (note) ID | ID of the note — siblings share it |
+| 19 | Note ID | ID of the note — siblings share it |
 | 20 | Deck ID | ID of the deck |
 | 21 | Preset ID | ID of the deck-options preset |
 | 22 | 3-day cycle | Review day's position in a 3-day cycle |
@@ -101,7 +101,7 @@ the user's own running mean) and is the high-value form. **Every count is clippe
 | 12 | New cards since card's last review | New cards the user reviewed for the first time since this card's previous review |
 | 13 | Reviews since card's last review | Other reviews the user did since this card's previous review |
 | 14 | New cards today | New cards done so far today |
-| 15 | Reviews today | Reviews done so far today |
+| 15 | Reviews today | Reviews done so far today (what the Review Heatmap add-on shows) |
 | 16 | Query flag | Marks the synthetic "predict cold" rows used by ahead mode |
 | 17 | Time of day | Where in the 24 h day the card was shown (UTC clock) |
 | 18 | Time-of-day deviation | How far this review sits from the user's usual study hour (running circular mean of their earlier reviews; the unknown timezone cancels) |
@@ -110,11 +110,11 @@ the user's own running mean) and is the high-value form. **Every count is clippe
 | 21 | Weekend flag | Saturday or Sunday |
 | 22 | Seconds since any review | Seconds from the end of the user's previous review of any card to this card being shown — the sub-day version of #10 |
 | 23 | User tenure | Time since the user's first-ever review |
-| 24 | Creation → first review | How long the card existed before it was first reviewed |
+| 24 | Creation → first review interval | How long the card existed before it was first reviewed |
 | 25 | Deck age at review | How old the deck was when this review happened |
-| 26 | Card-predates-deck flag | Card was created before the deck it now sits in (the normal case — cards move between decks) |
+| 26 | Card-predates-deck flag | Card was created before the deck it now sits in |
 | 27 | Default-deck flag | Card is in Anki's default deck, where no deck age is defined |
-| 28 | Deck depth | How deeply the deck is nested in the deck tree |
+| 28 | Deck depth | How deeply the deck is nested in the deck tree; 0 = top level (for example, "Deck1" has depth 0 and "Deck1::Deck2" has depth 1) |
 | 29 | Creation batch, 1 min | How many of the user's cards were created within a minute of this one (an import drops hundreds at once; a hand-made card is alone) |
 | 30 | Creation batch, 1 h | Same for a one-hour window |
 | 31 | Creation batch, 1 d | Same for a one-day window |
@@ -123,7 +123,7 @@ the user's own running mean) and is the high-value form. **Every count is clippe
 | 34 | Sibling gap | Seconds since the end of the most recent review of a *different* card of the same note (past siblings only — a sibling's future reviews are never visible) |
 | 35 | Card-predates-first-review flag | Card was created before the user ever reviewed anything (an imported or pre-existing collection) |
 | 36 | Card ID | ID of this exact card |
-| 37 | Sibling (note) ID | ID of the note — siblings share it |
+| 37 | Note ID | ID of the note — siblings share it |
 | 38 | Deck ID | ID of the deck |
 | 39 | Preset ID | ID of the deck-options preset |
 | 40 | 3-day cycle | Review day's position in a 3-day cycle, **plus the same for the day this card was first reviewed** (a card-cohort anchor). The phase is an arbitrary fixed offset from the user's first day, so these encode *relative* position, never the calendar — see the note below the table |
