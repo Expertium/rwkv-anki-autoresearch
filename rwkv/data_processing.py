@@ -939,8 +939,19 @@ def main(config):
     env.close()
     print("Unprocessed users:", unprocessed_users)
 
+    # Config-driven worker count (default 7) to respect this machine's thread cap.
+    n_proc = getattr(config, "PROCESSES", 7)
     with multiprocessing.Manager() as manager:
-        writer_queue = manager.Queue()
+        # BOUNDED (2026-09-03). The queue was unbounded, and the single writer process is the slow
+        # side whenever the store is on the external drive: on the gen-5 TEST build the generators
+        # reported 4143/4164 users done while the LMDB held 1,632 of 5,000 -- ~2,500 pickled
+        # whole-user samples were sitting in the manager process (page-file peak 39 GB), until a
+        # worker's 95 MiB allocation failed and every queued sample was lost. The progress bar
+        # measures the PRODUCER; persistence is measured in the store. With maxsize the generators
+        # block instead, so memory is bounded by a few samples and nothing can be lost that the
+        # bar has counted. Worker count / queue depth never affect content (seeded per user).
+        writer_queue = manager.Queue(maxsize=max(2, 2 * n_proc))
+        print(f"[writer] bounded queue maxsize={max(2, 2 * n_proc)} (PROCESSES={n_proc})", flush=True)
         writer = multiprocessing.Process(
             target=save_job, args=(LMDB_PATH, LMDB_SIZE, writer_queue)
         )
@@ -952,8 +963,6 @@ def main(config):
         )
         progress_process.start()
 
-        # Config-driven worker count (default 7) to respect this machine's thread cap.
-        n_proc = getattr(config, "PROCESSES", 7)
         with multiprocessing.Pool(
             processes=n_proc, initializer=init_worker, initargs=(config,)
         ) as pool:

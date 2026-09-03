@@ -1387,6 +1387,14 @@ only, appending to `rebuild5.log` so `wait_then_realcyc_v2.cmd`'s `DONE_EXIT_0` 
 builder skips users already present and phase 3's entry-count match against gen 4 proves the resumed db is
 complete. ⚠ A 25 GB RAM gate at launch is NOT enough when an EVAL of giant users can start later: budget the
 rebuild's window against the eval's schedule, or run them strictly in sequence.
+**★★ 06:28, SECOND FAILURE, AND THE REAL MECHANISM: `data_processing`'s writer queue was UNBOUNDED.** The
+progress bar said 4143/4164 users generated; the LMDB held **1,632 of 5,000**. One writer process drains a
+`manager.Queue()` and the store is on F: (USB HDD), so ~2,500 pickled whole-user samples were queued INSIDE
+the manager process (page-file peak 39 GB) until a worker's 95 MiB allocation failed and every queued
+sample was lost. **A progress bar measures the PRODUCER; persistence is measured in the STORE** -- the
+first restart's "died 21 users short" reading was the same error. FIXED: `manager.Queue(maxsize=2*PROCESSES)`
+so generators block on a lagging writer (content unaffected: seeded per user); relaunched 06:31 on the
+resumable db. Why gen 4 and the gen-5 TRAIN db survived: they ran with the machine's memory to themselves.
 ⚠ I also repeated the pipe-swallows-the-guard trap (`preflight | tail -1 && detach` launched a runner the failed
 slice had never written; harmless because the file did not exist). Bare guard, then `$?`, every time.
 
