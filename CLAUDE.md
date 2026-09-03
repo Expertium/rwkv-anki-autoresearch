@@ -1369,6 +1369,17 @@ fires** (a called .cmd is not open until the call). PREREG: `scratchpad/lorawd/P
 improve; P3 norm growth +62% -> under +25%, else uninterpretable; P4 a regression = the growth is
 load-bearing and the endgame needs no brake). Queue table: `PROPOSALS.md` "QUEUE STATE 2026-09-02".
 
+**⟶ 2026-09-03 04:50 -- gen4base's EVAL OOM'd at 1700/2500 on giant user 6701 (2.4M rows, 3 chunks;
+"36 GiB allocated" on a 12 GB card = WDDM oversubscription after 1700 users of allocator churn; featB's eval
+completed the same user in its own run). The failure marker released the ablation waiter (GPU busy ~2.5 h), so
+the RESUME is queued behind it: `wait_then_evalresume.cmd` -> `run_gen4base_evalresume.cmd` (phase C only,
+result jsonls KEPT so `eval_sharded` skips the 1700 banked users, fresh process, markers in
+`gen4base_evalresume.log`). realcyc's waiter was REPLACED by `wait_then_realcyc_v2.cmd`, which waits on the
+resume's marker instead of the ablation's -- the old one would have launched realcyc beside the resume. OOM
+trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes shard logs).
+⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
+result-file copy, because `merge_jsonl` asserts no duplicates across phases.
+
 **⟶ 2026-09-03 04:10, Andrew: creation-batch POSITION "seems useless" -> `abl_batchpos` (one column) spliced into
 the armed ablation runner as ARM 5 (insert-only, byte-exact backup `run_ablate.cmd.bak_before_arm5`; the
 waiter had not called it). "Ideally ablate everything" -> `scratchpad/feat_loo/` = a 19-arm LEAVE-ONE-OUT sweep
