@@ -1392,6 +1392,24 @@ mode.** Logged: `research_log.jsonl` (status baseline), `research_5k.md` row, `r
 inside its SECOND if-block (`echo gate 1 FAILED (DONE_EXIT_15 present, ...)`) -- see the paren rule in
 LIVE RULES. It looped 5 h in the FIRST block looking alive; cmd parses a block only when it reaches it.
 
+**⚠⚠ 16:40 -- realcyc IS DISK-BOUND AT 0.23-0.29 steps/s (gen4base did 0.69 from the SAME drive), and the
+fix needs a DELETION = Andrew's call.** Measured, not inferred: F: sits at its random-read ceiling (225
+reads/s, ~11.5 MB/s, queue 3); gen-5 rows are **1.5x wider** (69 vs 46 card-feature columns, so ~1.5x
+bytes/step); the first 1,000 steps ran at 0.65 s fetch waits and then 3.4 s for the rest, because the
+rebuild's check scripts had left those first pages in the file cache. RULED OUT: fragmentation (47,557
+extents vs gen 4's 47,367), RAM (workers' PRIVATE memory 2.7 GB each -- the 21 GB working sets are the
+LMDB file cache), GPU co-tenants (none). At this rate realcyc reports ~14:00 on 09-04 instead of ~02:00,
+and lorawd / the endgame inherit the same penalty on every gen-5 run. **THE FIX: host
+`train_db_5k_h1_id5` (159.3 GB, ~170 after compaction) on C:, which has 149 GB free -- so it needs
+`C:\rwkv_lmdb\train_db_5k_h1_id3` (130.7 GB, featB's gen-3 train db, superseded by gen 4/5, rebuildable
+in ~3.5 h) deleted first.** F: itself has only 28 GB free. Everything for the switch is BUILT:
+`scratchpad/realcyc/mk_realcyc_resume.py` (docstring = the exact procedure and kill ORDER: the v3
+WAITER first, because its `call` returning writes lorawd's trigger) generates `run_realcyc_resume.cmd`
++ `run_realcyc_resume_wrap.cmd` (both preflighted; the runner's only open item is `ws_resume.toml`,
+which `make_resume.py` writes from the newest `rc_ws_N000.pth` at switch time). Cost of the switch:
+<=1000 steps (~1 h at the slow rate) + ~1 h copy; saving ~10 h on realcyc alone. Until Andrew answers,
+realcyc keeps running -- nothing is lost by waiting.
+
 **★★★ DECIDED 12:13 -- USER 6701 IS EXCLUDED FROM THE gen-4/gen-5 LINEAGE'S VAL SET (2,499 users), MY CALL.**
 Four eval attempts OOM'd at the IDENTICAL number (36.09 GiB allocated + 5.90 GiB reserved on a 12 GB card),
 including one with the machine's RAM free (11.7 GB used) and one under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments`
