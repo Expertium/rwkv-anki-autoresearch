@@ -172,6 +172,27 @@ if %ERRORLEVEL%==0 (
 )
 echo ABLATE abl_cycles_OK %TIME% >> "%LOG%"
 
+REM ---- ARM 5: abl_batchpos, ONE column: scaled_creation_batch_pos_1h ----
+REM Andrew 2026-09-03: creation-batch POSITION (where in its 1 h batch this card sits) seems
+REM useless; ablate it. Added to the armed chain before the waiter called it (a called .cmd is
+REM not open until the call; byte-exact backup kept as run_ablate.cmd.bak_before_arm5).
+set RWKV_ABLATE_FEATURES=scaled_creation_batch_pos_1h
+if exist "result\RWKV-abl_batchpos.jsonl" del /q "result\RWKV-abl_batchpos.jsonl"
+if exist "result\RWKV-P-abl_batchpos.jsonl" del /q "result\RWKV-P-abl_batchpos.jsonl"
+%PY% -u -m rwkv.get_result --config scratchpad/feat_ablate/eval_abl_batchpos.toml > "%DIR%\abl_batchpos_%STAMP%.log" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo ABLATE abl_batchpos_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_16 %DATE% %TIME% >> "%LOG%"
+  exit /b 13
+)
+%PY% scratchpad/feat_ablate/check_mask_count.py "%DIR%\abl_batchpos_%STAMP%.log" 1 >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo ABLATE abl_batchpos_WRONG_DIM_COUNT %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_49 %DATE% %TIME% >> "%LOG%"
+  exit /b 46
+)
+echo ABLATE abl_batchpos_OK %TIME% >> "%LOG%"
+
 REM ---- the verdict ----
 %PY% scratchpad/feat_ablate/ablate_verdict.py >> "%LOG%" 2>&1
 

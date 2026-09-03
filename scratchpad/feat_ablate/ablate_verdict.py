@@ -33,7 +33,9 @@ ARMS = [("abl_all", "all 23 new columns"),
         # only the card-feature block. They are not calendar duplicates: arbitrary fixed phase, so
         # relative position only, plus a first-review-day anchor per period. Whether the model still
         # needs them next to true dow/doy (#19/#20) and tenure (#23) is this arm's question.
-        ("abl_cycles", "the 7 pseudo day-offset cycles (28 dims, by checkpoint surgery)")]
+        ("abl_cycles", "the 7 pseudo day-offset cycles (28 dims, by checkpoint surgery)"),
+        # Andrew 2026-09-03: "Creation-batch position seems useless and we should try ablating it."
+        ("abl_batchpos", "ONE column: scaled_creation_batch_pos_1h (position within the 1 h creation batch)")]
 
 
 def load(tag, mode):
