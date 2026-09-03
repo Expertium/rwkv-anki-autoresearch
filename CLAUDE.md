@@ -1380,6 +1380,19 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ DECIDED 12:13 -- USER 6701 IS EXCLUDED FROM THE gen-4/gen-5 LINEAGE'S VAL SET (2,499 users), MY CALL.**
+Four eval attempts OOM'd at the IDENTICAL number (36.09 GiB allocated + 5.90 GiB reserved on a 12 GB card),
+including one with the machine's RAM free (11.7 GB used) and one under `PYTORCH_CUDA_ALLOC_CONF=expandable_segments`
+(no change at all) -- so the free-RAM theory below is REFUTED and the ceiling is deterministic: 6701's million-row
+chunks with +4 probe rows per scored review exceed VRAM + WDDM's shared pool. ⚠ UNEXPLAINED: featB scored 6701
+(size 1,927,580) on gen 3 with the same chunking, the same model size and the same eval line; gen 4 even has
+FEWER equalized rows for it (3,850,080 vs 3,855,160). Not resolved; do not build on either story.
+**Mechanics:** `run_gen4base_eval_skip6701.cmd` evaluates the remaining users via `USERS_FILE` into the `-s0`
+shard files and merges to `RWKV-gen4base.jsonl` (2,499); `eval_sharded.py --exclude 6701` (new) is on the
+realcyc and lorawd runners (and in `mk_lorawd.py`). **Every gate pairs on the intersection, so nothing is
+biased; snapshot the `id_e2s` size baseline from the 2,499-user file, and the whole lineage stays at 2,499.**
+The published/e2s lineage is unaffected (its dbs chunk 6701 differently and iter 53 / e2sc scored all 2,500).
+
 **★★ 08:06 -- THE EVAL RESUME FAILED AGAIN ON 6701 WITH THE IDENTICAL NUMBER (36.09 GiB "allocated by PyTorch"
 on a 12 GB card), AND THAT IS THE MECHANISM: a giant user's million-row EVAL chunk needs ~42 GB of
 GPU-addressable memory, and under WDDM the excess above VRAM is SYSTEM RAM.** At both failures the gen-5 rebuild

@@ -1,0 +1,16 @@
+FILE_AHEAD = "RWKV-gen4base-s0"
+FILE_IMM = "RWKV-P-gen4base-s0"
+MODEL_PATH = "scratchpad/gen4_base/g4b_d_10935.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id4"
+DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 1_000_000_000
+USER_START = 5001
+USER_END = 7500
+NUM_FETCH_PROCESSES = 2
+USERS_FILE = "scratchpad/gen4_base/skip6701/users_rest.json"

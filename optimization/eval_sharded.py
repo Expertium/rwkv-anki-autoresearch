@@ -155,6 +155,9 @@ def main():
     ap.add_argument("--solo-fetch", type=int, default=4)
     ap.add_argument("--solo-threads", type=int, default=7)
     ap.add_argument("--dry-run", action="store_true", help="plan the split, launch nothing")
+    ap.add_argument("--exclude", default="", help="comma-separated user ids to leave out entirely "
+                    "(2026-09-03: user 6701 needs more than the WDDM ceiling on the gen-4/5 dbs; the lineage pairs "
+                    "on the intersection, so its VAL set is 2,499 users)")
     args = ap.parse_args()
 
     os.chdir(ROOT)
@@ -176,6 +179,11 @@ def main():
     print(f"sizing {len(users)} users from {db_path} ...")
     sizes = user_sizes(db_path, db_size, users)
     print(f"{len(sizes)} users present in db")
+    excluded = {int(x) for x in args.exclude.split(",") if x.strip()}
+    if excluded:
+        dropped = sorted(u for u in sizes if u in excluded)
+        sizes = {u: v for u, v in sizes.items() if u not in excluded}
+        print(f"excluded {dropped} by --exclude ({len(sizes)} users remain)")
 
     solo = {u: s for u, s in sizes.items() if args.solo_threshold and s >= args.solo_threshold}
     rest = {u: s for u, s in sizes.items() if u not in solo}
