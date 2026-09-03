@@ -1380,6 +1380,20 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★ 08:06 -- THE EVAL RESUME FAILED AGAIN ON 6701 WITH THE IDENTICAL NUMBER (36.09 GiB "allocated by PyTorch"
+on a 12 GB card), AND THAT IS THE MECHANISM: a giant user's million-row EVAL chunk needs ~42 GB of
+GPU-addressable memory, and under WDDM the excess above VRAM is SYSTEM RAM.** At both failures the gen-5 rebuild
+had RAM at 58 of 64 GB, so the shared pool was gone; featB's eval cleared the same user with the machine to
+itself. => **A giant-user eval needs ~40+ GB of FREE SYSTEM RAM, not just a free GPU** -- that is why giants run
+"pinned at 11.9 GB, 50 W" (paging through shared memory) and why the RAM-hungry rebuild and the eval cannot
+overlap. Rebuilt the chain on SUCCESS markers: `wait_then_evalresume2.cmd` (rebuild5 `DONE_EXIT_0` + >=45 GB
+free RAM) -> `run_gen4base_evalresume.cmd` -> `wait_then_realcyc_v3.cmd` (keys on `gen4base EVAL_OK`, not on
+a `DONE_EXIT_` that failed attempts leave behind) -> `wait_then_lorawd_v2.cmd` (polls `wait_realcyc3.log`; the
+old `wait_realcyc.log` carries v2's `DONE_EXIT_62` refusal, which had released lorawd's waiter -- killed 08:08,
+two minutes before it would have booked the GPU for 12 h). ⚠ Lesson for every waiter: **a failure marker in a
+shared log is a live trigger for everything downstream**; gate on the specific SUCCESS line, and never reuse a
+log that already carries a terminal marker.
+
 **⟶ ABLATION VERDICT 07:51 (featB checkpoint, n=300, reliance not value):** all 23 columns +0.002267 ahead /
 +0.005852 imm; **clock** +0.001366 / +0.005072; **struct** +0.000938 / +0.000855; the groups are ADDITIVE, so
 the whole imm-vs-ahead asymmetry lives in the clock columns (the target review's own clock, which only the
