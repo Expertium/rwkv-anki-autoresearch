@@ -1421,6 +1421,15 @@ the wrapper writes `DONE_EXIT_0` into `wait_realcyc3.log` = lorawd's trigger). �
 dropout draws differ from an uninterrupted run (weights/optimizer exact) -- carry into the verdict.
 ⚠ `printf` in bash ate `\r` and `\U` inside Windows paths (`C:\Users\...\rwkv-...` -> a literal CR),
 and preflight PASSED the corrupted file; write `.cmd` files with the Write tool, then `cat -A`.
+**✓ MOVED 20:23 (copied in 170.8 min = 15 MB/s, the same as every earlier move; 402 sampled keys, 0
+mismatches; 1,483,984 entries through the junction). `F:/rwkv_lmdb/train_db_5k_h1_id5` is now a
+JUNCTION to `C:\rwkv_lmdb\train_db_5k_h1_id5`; C: 129.6 GB free, F: 200.7 GB free.** The resume fired
+at 20:24:13 by itself: `rc_ws_3000` loaded, `[resume-skip] ... skipping the first 3000 groups`,
+563,652 params, **fetch wait 3.4 s -> 0.022 s per step**, GPU 66-84%. ⚠ `test_db_5k_id5` (161 GB)
+stays on F:, so the EVAL phase still pays the HDD; C: cannot take it without deleting the e2s pair
+(206 GB, the published-lineage champion's dbs -- Andrew's call, and only once the published lineage
+is retired). Expected realcyc verdict ~06:30 on 09-04. **lorawd trains from gen 4, which is still on
+F:** (0.69 steps/s, tolerable); if realcyc promotes, `mk_lorawd.py realcyc` puts it on the SSD db.
 
 **★★★ DECIDED 12:13 -- USER 6701 IS EXCLUDED FROM THE gen-4/gen-5 LINEAGE'S VAL SET (2,499 users), MY CALL.**
 Four eval attempts OOM'd at the IDENTICAL number (36.09 GiB allocated + 5.90 GiB reserved on a 12 GB card),
