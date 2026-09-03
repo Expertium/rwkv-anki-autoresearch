@@ -61,6 +61,30 @@ def preflight(path):
                 f"byte-offset hazard for cmd.exe"], []
     lines = text.split("\r\n") if "\r\n" in text else text.split("\n")
 
+    # ---- REM lines: percent-tilde is FATAL, and nothing else is (measured 2026-09-03) ---------
+    # cmd.exe performs batch-parameter substitution BEFORE it honours REM, so a comment containing
+    # percent-tilde-N (the modifier syntax with no digit) aborts the WHOLE batch with rc 255 --
+    # including the CALLER, silently. run_ablate.cmd carried exactly that in its header and killed
+    # its waiter on 2026-09-03; found by executing a stubbed copy. Probed in cmd.exe, top level and
+    # inside an if-block: ampersand, pipe, caret, angle brackets, arrows, square brackets, parens,
+    # percent-VAR-percent, a bare percent and a valid percent-tilde-1 are ALL harmless in a REM line;
+    # only percent-tilde followed by a non-modifier, or with no trailing digit, is not.
+    PT = chr(37) + chr(126)
+    VALID_PT = re.compile(re.escape(PT) + r"[fdpnxsatzFDPNXSATZ$:]*[0-9]")
+    for n, ln in enumerate(lines):
+        if not ln.strip().upper().startswith("REM"):
+            continue
+        pos = 0
+        while True:
+            i = ln.find(PT, pos)
+            if i < 0:
+                break
+            if not VALID_PT.match(ln, i):
+                problems.append(f"line {n+1}: REM carries percent-tilde without a valid modifier+digit -- "
+                                f"cmd substitutes it BEFORE honouring REM and aborts the whole batch (rc 255), caller included")
+                break
+            pos = i + 2
+
     # ---- variables: declared before first use --------------------------------------------
     setpos, usepos = {}, {}
     # A `set` counts wherever cmd.exe executes one: at line start, after `do` in a `for ... do set`,

@@ -2606,6 +2606,15 @@ All hooks stay in-repo, env-gated, default off.
   fix the tool -> preflight PASS -> arm, never "arm because I know why the guard is wrong".
 - ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
   relative script path exits instantly, silently, and still returns a pid.
+- ⚠ **PERCENT-TILDE IN A `REM` LINE KILLS THE WHOLE BATCH AND ITS CALLER, SILENTLY (2026-09-03, measured).**
+  cmd expands batch-parameter substitution before it honours `REM`: a comment reading "the %~N trap" is
+  an invalid modifier and aborts with rc 255 -- `run_ablate.cmd` carried exactly that in its header and its
+  waiter simply vanished after "gen4base reported" (no log, no marker, no process). Found by EXECUTING a
+  stubbed copy (`%PY%` replaced by `cmd /c exit 0`, log redirected), which is now the way to validate any
+  runner cmd.exe has never run. `preflight_runner.py` checks it. **Probed the rest of the folklore in
+  cmd.exe, top level AND inside an if-block: `& | ^ < >`, arrows, `[label]`, parens, `%VAR%`, `100%`, `%%R`
+  and a valid `%~1` are ALL harmless in a REM line.** The 08-14 incident below did not reproduce in either
+  position, so its real trigger was something else; the bracket/arrow avoidance stays as a convention only.
 - ⚠ **NO `< > & | ^` IN `REM` COMMENTS** — cmd.exe processes REDIRECTION *before* it honours `REM`,
   so a comment containing an arrow (`->`) or a usage line with placeholder brackets is parsed as a
   redirect. Symptom is baffling and points nowhere near the comment: `'M' is not recognized as an

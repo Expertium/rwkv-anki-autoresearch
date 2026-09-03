@@ -27,11 +27,13 @@ REM at all", not as "this is what they are worth".
 REM
 REM THREE INLINE ARMS, NOT A SUBROUTINE. A first draft used `call :arm`; preflight_runner flagged
 REM every DONE_EXIT_ inside it as out of scope. That is a false positive for the call pattern --
-REM but the guard has caught real bugs, cmd subroutines are where the %~N / exit /b traps live,
+REM but the guard has caught real bugs, cmd subroutines are where the tilde-N / exit /b traps live,
 REM and no other runner here uses one. Inlining costs three near-identical blocks and buys a
 REM verifiable file. The three blocks were diffed against each other before arming.
 REM
-REM No angle brackets or arrows in REM lines: cmd parses redirection before it honours REM.
+REM No angle brackets, arrows or percent-tilde in REM lines: cmd parses redirection AND batch-parameter
+REM substitution before it honours REM -- a percent-tilde in a comment killed this runner and its caller
+REM silently on 2026-09-03 (found by executing a stubbed copy, not by reading).
 REM =========================================================================================
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
