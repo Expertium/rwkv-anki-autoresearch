@@ -1822,6 +1822,10 @@ shape check -- saturation is not an error, it is a silent value change.**
   ⚠ The screen bounds the TEACHER's degradation, not the KD gain -- but at this size the bound is
   decisive on its own. Verdict + both arms' jsonls: `scratchpad/teacher_114/t114.log`,
   `result/RWKV{,-P}-t114{a,b}.jsonl`.
+* **✓ GEN 5 IS BUILT AND VERIFIED (2026-09-03 11:48):** train db 01:08-04:36 (idfill + cycles in the artifact), test db
+  after two restarts (RAM exhaustion beside the eval; then the unbounded writer queue, fixed) -- `TEST_OK` 11:47,
+  **`EQUALIZE_MATCHES_GEN4`** (identical scored sets, as required by the shared `label_filter_db_id_e2s`). Both at
+  `F:/rwkv_lmdb/{train_db_5k_h1_id5,test_db_5k_id5}`; realcyc trains from F: (1.35x per-step cost, like gen4base).
 * **★★ GEN 5 (`*_id5`) = REAL-TIME CYCLES, `RWKV_REAL_CYCLES=1` -- Andrew 2026-09-02: "use real
   features for 3 days/week/month/year/decade/century, so that every pseudo feature is replaced with
   its real counterpart. If it requires an LMDB rebuild, ok." + "11 is also a pseudo-calendar
