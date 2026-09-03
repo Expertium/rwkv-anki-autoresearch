@@ -1369,6 +1369,13 @@ fires** (a called .cmd is not open until the call). PREREG: `scratchpad/lorawd/P
 improve; P3 norm growth +62% -> under +25%, else uninterpretable; P4 a regression = the growth is
 load-bearing and the endgame needs no brake). Queue table: `PROPOSALS.md` "QUEUE STATE 2026-09-02".
 
+**⟶ 2026-09-03 04:10, Andrew: creation-batch POSITION "seems useless" -> `abl_batchpos` (one column) spliced into
+the armed ablation runner as ARM 5 (insert-only, byte-exact backup `run_ablate.cmd.bak_before_arm5`; the
+waiter had not called it). "Ideally ablate everything" -> `scratchpad/feat_loo/` = a 19-arm LEAVE-ONE-OUT sweep
+on featB (300 users/arm, ~8 h), parked behind lorawd; `loo_verdict.py` lists DROP candidates (|cost| < 0.0001
+both modes). ⚠ Every ablation arm scores users 5001-5300 (n=300), so read single-column results as a COARSE
+ranking (the 200-user lesson); a drop decision still needs the retrain-without on the full VAL half.
+
 **>>> THE GPU IS BOOKED ~31 h DEEP: ITER 53 IS DONE AND ACCEPTED, FOUR JOBS REMAIN CHAINED**
 (re-armed 2026-08-17 21:47; iter 54 launched 2026-08-18 08:04). Each waiter is detached via WMI so
 Esc cannot kill it, and each polls the previous job's log with an ANCHORED

@@ -1143,5 +1143,7 @@ explains most of `abl_clock`, the lever's ceiling collapses; run that single-col
 | 4 | realcyc | real-time cycles replace the 7 pseudo cycles + row 11 | Andrew | gen4base | armed on ablation marker + rebuild5 success |
 | 5 | **lorawd** | **`RWKV_MUON_LORA_WD=0.05`** -- decoupled wd on the LoRA Muon group | **adopted** (Moonlight, arXiv 2502.16982; dose from the 2026-08-18 screen = rank 8) | gen4base, or realcyc if it promotes (`mk_lorawd.py realcyc`) | armed on realcyc's marker; `scratchpad/lorawd/PREREG.md` |
 | 6 | (invented slot) | calendar-aware curve head, IF `abl_clock` shows the clock columns carry >= 0.0005 of imm | invented | the then-champion | not built; ceiling comes from order 2 |
+| 5b | **abl_batchpos** (spliced into order 2's runner, +25 min) | zero ONE column, `scaled_creation_batch_pos_1h`, at featB's input | Andrew 2026-09-03 ("seems useless") | featB | armed with order 2 |
+| 5c | **feat_loo** (~8 h) | leave-one-out: 19 arms, one per feature (sin/cos pairs together), 300 users each | Andrew 2026-09-03 ("ideally ablate everything") | featB | armed on lorawd's marker; `scratchpad/feat_loo/` |
 | 7 | teacher retrain | a d=128 teacher native to the final layout (Andrew 2026-09-02: "as part of the algorithmic improvements plan") | infrastructure | -- | after the layout is settled by order 4 |
 
