@@ -2644,6 +2644,10 @@ All hooks stay in-repo, env-gated, default off.
   reports `%FREEMB% never set` on the RAM-check pattern that `wait_then_rebuild4.cmd` ran
   successfully with that morning ("RAM OK: 51250 MB free"). Fixed in the tool; but the order is
   fix the tool -> preflight PASS -> arm, never "arm because I know why the guard is wrong".
+- ⚠ **`detach.ps1`: pass the path as a LITERAL single-quoted Windows path from bash** (2026-09-03). Three waiters
+  launched with the path assembled in a bash `for` loop variable died instantly (the third detach already saw no
+  parent), while the identical files launched with a single-quoted C-drive literal ran. Verify every detach by pid
+  AND by the runner's own first log line; a returned pid is not a running process.
 - ⚠ **`detach.ps1` needs an ABSOLUTE path.** `Win32_Process.Create` starts in System32, so a
   relative script path exits instantly, silently, and still returns a pid.
 - ⚠ **PERCENT-TILDE IN A `REM` LINE KILLS THE WHOLE BATCH AND ITS CALLER, SILENTLY (2026-09-03, measured).**
