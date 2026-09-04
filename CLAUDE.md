@@ -1401,9 +1401,15 @@ chunks (median +0.023 at rho 0.05, min +0.0097); aux next-interval head KILLED (
 uncorrelated with ahead error, +0.018); KD SKIPPED (Andrew 20:35).** `rwkv/sam.py` + two hook lines
 in `train_rwkv.py` (`_sam_rng` save before the forward; second pass after the grad transfer), default
 off = the SAM path is never entered; unit test on CPU with the real model/chunk/loss in
-`scratchpad/sam/unit_second_pass.py`. ⚠ CPU TRAINING OF THIS ARCH DOES NOT RUN (bf16 batch vs fp32
-child, no autocast) -- the three-arm CPU validation harness could not be used; the hook's wiring on GPU
-is guarded by the runner (both `[sam]` banners must appear in the decay log). PREREGs in each dir.
+`scratchpad/sam/unit_second_pass.py`. **✓ AND VALIDATED IN THE REAL TRAINING LOOP (2026-09-05 00:03,
+`scratchpad/sam/validate_cpu.py`): three arms on CPU with a bf16 child / fp32 master (users 101-105 of
+the e2s db, 8 steps): the flag-off working tree is BYTE-IDENTICAL to the committed HEAD (a git
+worktree), the ON arm diverges only after step 1 with its printed loss unperturbed, both `[sam]`
+banners appear, all losses finite.** ⚠ Correction of a claim made two hours earlier: CPU training of
+this arch DOES run -- with `DTYPE = "bfloat16"` (the LMDB batch is bf16; an fp32 child is what fails).
+It is slow (~5 min/step at MAX 16384) but it is a real end-to-end harness for loop-level changes; run
+it at BelowNormal priority beside a GPU run (durdrop dropped 0.95 -> 0.72 steps/s at normal priority,
+0.90 demoted). PREREGs in each dir.
 
 **★★★ 2026-09-04 19:30 -- THE QUEUE IS REFILLED AND THE INVENTED SLOT IS ARMED.** The 3-agent
 protocol ran (literature / domain / reject-log steelman; full texts `scratchpad/proposals_2026-09-04/`,
