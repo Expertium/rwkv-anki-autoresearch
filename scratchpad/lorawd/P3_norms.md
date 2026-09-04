@@ -28,5 +28,9 @@ Total Frobenius norm over the 104 LoRA matrices (sqrt of the sum of squares), sa
    not an inert flag; a stronger dose (0.2) is the only in-family follow-up worth one run, and only if the
    null is a tie rather than a regression (P4 stands: a regression closes the family on mechanism).
 
-Measured by the inline script in the session (torch.load, keys containing `lora`, 2-D tensors only);
-the decay-phase final will be added to the verdict.
+Measured by the inline script in the session (torch.load, keys containing `lora`, 2-D tensors only).
+
+**Decay-phase final (added 11:56, eval running, still no accuracy number):** control 80.09, lorawd
+64.93, **ratio 0.811** -- the gap keeps widening through the decay (0.868 at WS end -> 0.811 deployed),
+so the brake acts on the run's whole timescale, as the 2026-08-18 time-constant screen predicted for
+0.05. P3 (re-specified) HOLDS.
