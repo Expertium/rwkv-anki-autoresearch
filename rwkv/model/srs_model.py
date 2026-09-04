@@ -195,6 +195,7 @@ class SrsRWKVIterStatistics(NamedTuple):
     pava_loss_avg: torch.Tensor
     pava_pool_frac: torch.Tensor
     ord_loss_avg: torch.Tensor
+    hord_loss_avg: torch.Tensor
 
 
 @dataclass
@@ -824,6 +825,22 @@ class SrsRWKV(ModuleType):
                 self.ord_cut_c = torch.nn.Parameter(torch.zeros(1))
                 print(f"[ord] ordinal one-cut supervision on the curve logit ON: lambda={self.ord_lambda} "
                       f"min_t={self.ord_min_t:.0f}s (Again < Hard < Good/Easy; train-only params a, c)")
+            # RWKV_PAVA_HORIZON_LAMBDA (2026-09-04, INVENTED slot after sam): order the 4 counterfactual
+            # button curves at horizons OTHER than the label's t. PAVA rectifies the probes at ONE t
+            # (the target's); the scheduler chooses t from the pressed button, so each counterfactual
+            # curve is supervised only in its own button's t-range and nothing orders them elsewhere.
+            # Screen 2026-09-04 (button_probe.py, realcyc): raw adjacent-button order violations on
+            # 30% of rows at the label t and 33-49% at 1 d..180 d. Hinge relu(R_b(t_h) - R_{b+1}(t_h))
+            # over the 3 junctions at t_h = t * factor, no label at t_h -> a pure ordering regulariser
+            # on the probe rows only (curve head only, curve-side gate). Default 0 = byte-identical.
+            self.pava_horizon_lambda = float(os.environ.get("RWKV_PAVA_HORIZON_LAMBDA", "0") or 0)
+            self.pava_horizon_on = self.pava_horizon_lambda > 0.0
+            self.pava_horizon_factors = [float(x) for x in
+                                         os.environ.get("RWKV_PAVA_HORIZON_FACTORS", "0.125,8").split(",")]
+            if self.pava_horizon_on:
+                assert self.pava_lambda != 0.0, "RWKV_PAVA_HORIZON_LAMBDA needs the probes (RWKV_PAVA_LAMBDA > 0)"
+                print(f"[pava-horizon] button-order hinge at t x {self.pava_horizon_factors} ON: "
+                      f"lambda={self.pava_horizon_lambda}")
             self.rcouple_on = os.environ.get("RWKV_RCOUPLE", "") == "1"
             self.rcouple_detach = os.environ.get("RWKV_RCOUPLE_DETACH", "") == "1"
             # clamp before use: curve_logits = logit(p) can saturate, and an inf here would poison
@@ -992,6 +1009,27 @@ class SrsRWKV(ModuleType):
         pressed = src.gather(1, probe_pressed.unsqueeze(1)).squeeze(1)
         flat[probe_target] = pressed.to(flat.dtype)
         return out
+
+    @torch.jit.ignore
+    def _horizon_order_loss(
+        self, out_w: torch.Tensor, out_s_raw: torch.Tensor, out_d_raw: torch.Tensor,
+        label_elapsed_seconds: torch.Tensor, probe_rows: torch.Tensor, probe_target: torch.Tensor,
+    ) -> torch.Tensor:
+        """RWKV_PAVA_HORIZON_LAMBDA: mean hinge on adjacent-button order of the 4 probe curves at
+        t_h = t_label * factor (clamped to [10 min, 1 y]). Uses the GRU curve params of the 4 probe
+        rows directly (no rectifier, no label): a pure ordering regulariser. jit.ignore because it
+        indexes with the probe tensors and reads a conditional attribute list."""
+        n = out_w.shape[-1]
+        w = out_w.reshape(-1, n)[probe_rows]          # (M,4,N)
+        s = out_s_raw.reshape(-1, n)[probe_rows]
+        d = out_d_raw.reshape(-1, n)[probe_rows]
+        t0 = label_elapsed_seconds.reshape(-1)[probe_target].float().clamp(min=1.0)   # (M,)
+        total = w.new_zeros(())
+        for f in self.pava_horizon_factors:
+            t_h = (t0 * f).clamp(min=600.0, max=365.0 * 86400.0).unsqueeze(1).expand(-1, 4).unsqueeze(-1)
+            r = self.gru_forgetting_curve(w.float(), s.float(), d.float(), t_h)     # (M,4)
+            total = total + torch.relu(r[:, :-1] - r[:, 1:]).sum(dim=1).mean()
+        return total / len(self.pava_horizon_factors)
 
     @torch.jit.ignore
     def _pava_probe_loss(
@@ -1631,6 +1669,7 @@ class SrsRWKV(ModuleType):
         # iter 23: learnable power-mean PAVA on the 4 counterfactual probe curves
         pava_loss_avg = ahead_avg.detach() * 0.0
         pava_pool_frac = ahead_avg.detach() * 0.0
+        hord_loss_avg = ahead_avg.detach() * 0.0
         if probes is not None and self.pava_lambda != 0.0:
             probe_rows, probe_target, probe_pressed, probe_query = probes
             pava_loss, pava_frac = self._pava_probe_loss(
@@ -1640,6 +1679,11 @@ class SrsRWKV(ModuleType):
             loss_avg = loss_avg + self.pava_lambda * pava_loss
             pava_loss_avg = pava_loss.detach()
             pava_pool_frac = pava_frac.detach()
+            if self.pava_horizon_on:
+                _hord = self._horizon_order_loss(
+                    out_w, out_s_raw, out_d_raw, label_elapsed_seconds, probe_rows, probe_target)
+                loss_avg = loss_avg + self.pava_horizon_lambda * _hord
+                hord_loss_avg = _hord.detach()
         # RWKV_QAT_RANK1_REG (2026-08-14): rank-1-friendly regularizer. The rank-truncated streams
         # accumulate a per-layer proxy penalty during their forward; drain it here and add it once.
         # Returns None when the lever is off, so the default path adds no term at all.
@@ -1734,6 +1778,7 @@ class SrsRWKV(ModuleType):
             pava_loss_avg=pava_loss_avg,
             pava_pool_frac=pava_pool_frac,
             ord_loss_avg=ord_loss_avg,
+            hord_loss_avg=hord_loss_avg,
         )
 
     def get_loss(self, batch: PreparedBatch,

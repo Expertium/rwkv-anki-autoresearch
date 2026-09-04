@@ -1226,6 +1226,7 @@ the endgame's own 10x run. The next ADOPTED slot after ordcut is therefore rank 
   35.6% at 30 d, 48.8% at 180 d**; the button ORDER differs from its order at label-t on 10.8 / 11.4 /
   16.5 / 34.1% of rows; median |R_Good - R_Hard| at 30 d = 0.070. Far above the 3% kill line: the
   constraint is NOT satisfied off the label horizon. => the INVENTED slot after sam.
+**Rank 5 BUILT 22:00** as `RWKV_PAVA_HORIZON_LAMBDA` (+ `RWKV_PAVA_HORIZON_FACTORS`, default 0.125,8): hinge on adjacent-button order of the 4 probe curves at t x factor, probe rows only, curve head only; `scratchpad/hord/smoke_hord.py` 8/8 (positive on real probes, exactly lambda*hinge added, same-t PAVA untouched, zero on coinciding curves, gradient reaches the GRU head, scripts). Runner/PREREG/waiter follow sam's verdict, which decides whether the base recipe carries SAM in its decay.
 **CHAIN EXTENDED 21:26: -> sam** (decay-only, `RWKV_SAM_RHO=0.05`; `rwkv/sam.py` unit-tested on CPU with the real model/chunk/loss, 8/8 incl. an independent gradient at w+e matching to 0.00e+00 and a snapshot-based bit-exact restore -- the add/sub restore was NOT bit-exact and the test caught it; `sam/auto_control.py` picks the base; PREREG written).
 **CHAIN ARMED 19:20 (all waiters WMI-detached, each gating on the previous log's anchored marker):**
 LOO phase 2 (`feat_loo/loo_p2.log`, running) -> **durdrop** (`scratchpad/durdrop/`, PREREG written,
