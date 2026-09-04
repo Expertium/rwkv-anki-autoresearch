@@ -3670,3 +3670,43 @@ ceiling; the first 1,000 steps were fast only because the rebuild's checks had w
 After Andrew authorized deleting gen 3's train db, the gen-5 train db moved to C: (170.8 min, 402
 sampled keys / 0 mismatches, junction in place) and the WS resumed from step 3,000 at 0.97 steps/s;
 decay 3.1 h; eval 3.9 h (the test db is still on F:).
+
+
+## iter 62 -- `lorawd`: decoupled weight decay on the LoRA Muon group (2026-09-04 15:53): REJECTED, a tie leaning negative
+
+**ahead 0.298122 / imm 0.263616 vs realcyc 0.298083 / 0.263592 (n=2,499): -0.000040 (p_worse 0.79) /
+-0.000024 (p_worse 0.0042)**; both inside the +/-7.5e-5 floor, imm rank-significant (the iter-44
+shape). Size gate 0/2499; 563,652 params; nan_users 0. ADOPTED slot: Moonlight (arXiv 2502.16982).
+
+### The pre-registration, and the one correction made before the number
+
+`scratchpad/lorawd/PREREG.md` predicted both modes improve (P1) at +0.0001..+0.0005 (P2), and made
+the verdict conditional on engagement (P3). P3 as written compared the wrong quantity -- "+62%" was
+iter 53's deployed LoRA norm relative to iter 45's, not start-to-end growth, which is +1063% here.
+`P3_norms.md` (committed 08:55, decay running, no accuracy number) re-specified it as "ratio to the
+control below 0.95 and decreasing across checkpoints":
+
+| step | control (wd=0) | wd=0.05 | ratio |
+|---|---|---|---|
+| 50 | 6.19 | 6.19 | 1.000 |
+| 1000 | 20.93 | 20.68 | 0.988 |
+| 5000 | 50.57 | 47.42 | 0.938 |
+| 10935 (WS end) | 71.96 | 62.47 | 0.868 |
+| 10935 (deployed, after decay) | 80.09 | 64.93 | **0.811** |
+
+P3 holds. P1 and P2 are refuted. So the null is a null at a dose that moved the weights by 19%.
+
+### The mechanism, and what it settles for the endgame
+
+Decoupled decay at lr x wd = 1.25e-4 per step would shrink a gradient-free weight by ~75% over
+10,935 steps; the norm fell 13% (19% after the decay). The growth is gradient-driven and strongly
+restoring: Muon's fixed-norm updates keep pushing the rank-4 projections outward and wd only trims
+the equilibrium. Trimming it buys nothing and costs a hair on imm. **=> the +62% growth iter 53
+flagged is not a defect to fix; it is where the optimizer puts these matrices.** For the 10x
+endgame: no brake on the LoRA group by default; measure the norm trajectory on that run's checkpoints
+and act only if it fails to plateau. Not retrying at 0.2 -- P4's logic applies in spirit: the sign
+is already negative in both modes, so a stronger dose regresses further.
+
+**Optimizer family 2/4.** With iter 53 the split was COVERAGE pays (Muon, Muon on the LoRA matrices)
+vs DESCENT QUALITY does not (PolarExpress); NORM CONTROL now joins the second group. Cost 10.2 h
+(WS 3.2 h at 0.98 steps/s from the SSD, decay 3.1 h, eval 4.0 h). Next slot: invented.

@@ -1380,6 +1380,20 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ ITER 62 `lorawd` REPORTED 2026-09-04 15:53 -- REJECTED, a tie leaning negative** (vs realcyc:
+ahead -0.000040 p_worse 0.79 / imm -0.000024 p_worse 0.004 -- rank-significant inside the floor, the
+iter-44 shape; size 0/2499). **P3 (engagement) HELD on a criterion re-specified BEFORE the number**
+(`scratchpad/lorawd/P3_norms.md`: PREREG's "+62% -> under +25%" compared the wrong quantity): LoRA
+norm ratio to the control 0.868 at WS end, **0.811 deployed**, monotone across checkpoints. **=> the
+LoRA norm growth is gradient-driven and restoring (a decay that would shrink a free weight 75% trimmed
+it 19%), and damping it buys nothing. The +62% iter 53 flagged is NOT a defect; the 10x ENDGAME KEEPS
+wd=0 ON THE LoRA GROUP by default and re-measures the trajectory on its own checkpoints.** No 0.2 retry
+(sign already negative both modes). Optimizer family 2/4: coverage pays; descent quality and norm
+control do not. **Next slot: INVENTED.** The LOO sweep fired at 15:54 on lorawd's marker (~8 h, 19
+arms on featB's checkpoint, gen-3 test db); its `loo_verdict.py` decides the drop candidates and
+separates `t_since_any_review` for the calendar-aware-curve design (PROPOSALS order 6).
+Detail: `research_5k_verbose.md` iter 62.
+
 **★★★ realcyc REPORTED 2026-09-04 05:38 -- EXACT TIE vs gen4base (ahead +0.000007 p=0.92 / imm -0.000045
 p=0.997, both inside the floor; size 0/2499; 563,652 params), the PRE-REGISTERED P3 outcome. REJECTED as an
 accuracy iteration; ADOPTED AS THE LINEAGE'S INPUT LAYOUT on Andrew's directive (every pseudo feature ->
@@ -2579,7 +2593,7 @@ which is why this family once read as absent) ·
 curve-shape constraints **2/3** (PAVA ACCEPTED iter 23; lambda=0.2 DIRECTED-ACCEPTED iter 36 on a
 5.9:1 ahead-for-imm trade; lambda=0.3 rejected as the worse point of the same lever) ·
 objective-alignment **0/1 mechanism-refuted** (iter 37 by-user weighting: worse in every size
-quartile incl. its intended beneficiaries — do not retry milder doses) · **optimizer 2/3 -- and iter 53 SPLITS the family in two**
+quartile incl. its intended beneficiaries — do not retry milder doses) · **optimizer 2/4 -- iter 53 SPLIT the family in two, and iter 62 (`lorawd`, decoupled wd on the LoRA Muon group, REJECTED as a tie at a demonstrably engaged dose: LoRA norm ratio 0.811) put NORM CONTROL on the non-paying side**
 (COVERAGE pays, DESCENT QUALITY does not) (Muon ACCEPTED iter 29, the phase's largest imm gain; cautious wd
 REJECTED iter 30 — a pure trade; iter 51 PolarExpress FAILED structurally, p(1)<1 is load-bearing.
 **Muon is a REGULARIZER here** — its train-loss edge decays to −0.00058/+0.00097 while eval holds at
