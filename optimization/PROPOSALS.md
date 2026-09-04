@@ -1166,6 +1166,35 @@ R'(now + t) for t, which is a CONTRACT change). Measure rect-vs-unrect on the ca
 gain lives in the wiggle, it is deploy-invisible under the current contract and the lever is worth
 nothing as shipped.
 
+## ★★ RANKED QUEUE 2026-09-04 18:20 -- the 3-agent refill (13 distinct levers from 15 proposals)
+
+Full texts: `scratchpad/proposals_2026-09-04/{literature,domain,steelman}.md` (written to disk by the
+agents themselves). Reference for every band = realcyc 0.298083 / 0.263592 (n=2,499); AHEAD is binding.
+Two agents converged INDEPENDENTLY on rank 1 (literature via CORAL, domain via FSRS's graded stability
+updates + a data screen it already ran: Hard-vs-Good lapse gap 1.4x at matched t, positive in 14/18
+users) and on rank 3 (born-again KD). The strict alternation says the next slot is INVENTED.
+
+| rank | lever | provenance | gate | expected ahead | GPU | CPU screen (kill rule) |
+|---|---|---|---|---|---|---|
+| 1 | **Ordinal next-rating supervision on the curve logit** (`label_rating` on real rows = the k+1 button, consumed by NOTHING today; CORAL cutpoints on `z = logit R(t)`, 2-4 train-only params) | **adopted** (Cao/Mirjalili/Raschka 2020 CORAL, arXiv 1901.07884; Frank & Hall 2001) | curve-side | +0.0001..+0.0004 | 1 run | RNN pass: among successes with t>=1 d, Hard share must FALL and Easy share RISE with decile of logit p (|rho|>=0.8 both); AUC(Easy vs Hard) > 0.75 => already separated, dead |
+| 2 | **Duration dropout on input dim 8** (per-row Bernoulli zeroing of `scaled_duration` on real rows, train only; iter 33's prescribed clean retry) | **invented** | BOTH modes | +0.00015..+0.0005 rectified | 1 run | RNN pass: ahead cost of zeroing the current row's duration on THIS checkpoint < +0.0004 => dead |
+| 3 | **Born-again KD from the frozen realcyc checkpoint** (existing dump path, alphas 0.9/0.5 unchanged, fresh student) | **adopted** (Furlanello et al. 2018, arXiv 1805.04770; Mobahi et al. 2020) | BOTH modes | +0.00015..+0.00045 | 2 h dump + 1 run | teacher train-minus-val gap > 0.010 => memorising, dead; calibration gap on train users |
+| 4 | imm-scale 0.5 (buy ahead with imm; pbin's trade run in the untested direction) | invented | **DIRECTED -- Andrew** | +0.00015..+0.00045 (imm -0.0002..-0.0005) | 1 run | gradient cosine ahead vs imm on the trunk: > +0.5 => inert |
+| 5 | Multi-horizon button ordering on the probes (hinge on adjacent-button order at t x {1/8, 8}) | invented | curve-side | 0..+0.0003 | 1 run | crossing rate at other horizons < 3% => dead |
+| 6 | SAM, decay-only first (LookSAM fallback) | adopted (Foret et al. 2021) | BOTH | 0..+0.0003 | 2x decay | sharpness gap at rho 0.05 < 0.002 => flat already |
+| 7 | Auxiliary next-interval regression head (train-only, 321 params) | adopted (Caruana 1997; Time-LSTM) | BOTH | +0.00005..+0.0002 | 1 run | ridge probe R^2 > 0.85 => trunk already carries it |
+| 8 | Odds-power monotone residual on the curve logit | invented | curve-side; **contract sign-off** | +0.0001..+0.0003 | 1 run + port | per-user oracle fit < +0.0002 => dead |
+| 9 | Probe density 0.08 -> 0.20 (zero code) | invented | curve-side | 0..+0.0002 | 1 run, +30% WS | none; overlaps rank 2 |
+| 10 | Curve-logit recalibration (shift+temperature), KD-off re-screen | invented | curve-side | 0..+0.00013 | 1 h CPU + eval | held-out by-user prize < +0.0001 => dead |
+| 11 | Muon coverage of the 26 `*scale*` matrices | adopted (Moonlight) | BOTH | 0..+0.0001 | filler only | update anisotropy < 0.5 => dead |
+| 12 | Probe the first review (train + rectified eval) | invented | **contract -- Andrew** | -0.0001..+0.0002 vs re-scored base | re-score + 1 run | share of scored rows < 5% => note only |
+| 13 | Chunk-continuous training (state carry across a user's chunks) | invented | BOTH | 0..+0.0003 | multi-day | reset-cost curve flat past 16k rows => dead |
+
+**ORDER UNDER STRICT ALTERNATION (next = invented): 2 -> 1 -> (4 if Andrew approves, else 5) -> 3 -> ...**
+Ranks 1 and 2 share ONE CPU instrument (the deploy-RNN pass on realcyc over ~10 train + ~10 VAL users
+recording, per scored row, the curve logit with and without the current duration, y, t, this row's
+rating) -- run it once before building either.
+
 ## ★ QUEUE STATE 2026-09-02 22:20 -- the features chain, then the ADOPTED slot
 
 | order | run | lever | provenance | control | state |
