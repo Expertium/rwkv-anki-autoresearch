@@ -1387,7 +1387,9 @@ creation_to_first_review +0.000348 / +0.000202; the three creation-batch columns
 +0.000115 / +0.000023; **the other twelve sit at a near-uniform +0.00007..+0.00014 ahead with imm at
 the floor -- the cost of zeroing ANY column, not twelve features each worth that.** No drop run queued
 (removing unused inputs buys no accuracy; one ~10 h retrain-without if Andrew wants the simpler
-layout). Detail: `research_5k_verbose.md` "Leave-one-out". The chain moved on to durdrop.
+layout). Detail: `research_5k_verbose.md` "Leave-one-out". **durdrop LAUNCHED 22:24 by its waiter**
+(`[dur-drop] ... p=0.25` banner in the WS log, 563,652 params, stepping) -- verdict ~09:00 on 09-05,
+then ordcut (auto control), then sam (auto base). Chain monitor armed.
 
 **★★★ 2026-09-04 21:30 -- THE CHAIN IS FOUR DEEP AND EVERY HAND-OFF IS AUTOMATIC:** LOO phase 2 (running,
 3 arms left) -> **durdrop** (invented; both-modes gate vs realcyc) -> **ordcut** (adopted; curve-side gate;
