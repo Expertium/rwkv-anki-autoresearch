@@ -194,6 +194,7 @@ class SrsRWKVIterStatistics(NamedTuple):
     has_label: torch.Tensor
     pava_loss_avg: torch.Tensor
     pava_pool_frac: torch.Tensor
+    ord_loss_avg: torch.Tensor
 
 
 @dataclass
@@ -805,6 +806,24 @@ class SrsRWKV(ModuleType):
             # at all, so a null result cannot be blamed on a bad initialisation.
             # module-level global -> instance attribute, so the scripted forward can see it
             self.rank1_reg_lambda = _RANK1_REG_LAMBDA
+            # RWKV_ORD_LAMBDA (2026-09-04, ADOPTED slot: CORAL / Frank & Hall ordinal cutpoints, ONE
+            # cut): on real rows `label_rating` is the NEXT review's button and nothing consumes it
+            # (p_loss is masked to query rows). Add, on SUCCESSFUL ahead rows with t >= 1 d, a BCE
+            # term on the curve's own logit shifted by a learnable cut:
+            #     P(rating >= Good | success, t) = sigmoid(z - (a + c * log1p(t / 1 d)))
+            # target = (label_rating >= Good). ONE cut only: the 2026-09-04 screen showed the Hard
+            # share is perfectly monotone in the model's own R (Spearman -1.000) while the Easy share
+            # is U-shaped, so a second (Easy) cut would distort calibration. Train-only params
+            # (a, c); the deployed quantity is still sigmoid(z). Conditional Parameters like
+            # rcouple_w, so existing checkpoints keep loading strictly. Default 0 = byte-identical.
+            self.ord_lambda = float(os.environ.get("RWKV_ORD_LAMBDA", "0") or 0)
+            self.ord_on = self.ord_lambda > 0.0
+            self.ord_min_t = float(os.environ.get("RWKV_ORD_MIN_T", "86400"))
+            if self.ord_on:
+                self.ord_cut_a = torch.nn.Parameter(torch.zeros(1))
+                self.ord_cut_c = torch.nn.Parameter(torch.zeros(1))
+                print(f"[ord] ordinal one-cut supervision on the curve logit ON: lambda={self.ord_lambda} "
+                      f"min_t={self.ord_min_t:.0f}s (Again < Hard < Good/Easy; train-only params a, c)")
             self.rcouple_on = os.environ.get("RWKV_RCOUPLE", "") == "1"
             self.rcouple_detach = os.environ.get("RWKV_RCOUPLE_DETACH", "") == "1"
             # clamp before use: curve_logits = logit(p) can saturate, and an inf here would poison
@@ -901,6 +920,22 @@ class SrsRWKV(ModuleType):
         s = torch.nn.functional.linear(x_w, self.gru_s_weight, self.gru_s_bias)
         d = torch.nn.functional.linear(x_w, self.gru_d_weight, self.gru_d_bias)
         return w, s, d
+
+    @torch.jit.ignore
+    def _ord_loss(
+        self, curve_logits: torch.Tensor, label_rating: torch.Tensor,
+        label_elapsed_seconds: torch.Tensor,
+    ) -> torch.Tensor:
+        """Per-row ordinal one-cut BCE on the curve logit (RWKV_ORD_LAMBDA); the caller masks it to
+        successful ahead rows with t >= ord_min_t. Behind @torch.jit.ignore because ord_cut_a/c are
+        CONDITIONAL root Parameters (same rule as rcouple_w). fp32 throughout: root Parameters are
+        invisible to selective_cast, so cast the logits up rather than the cut down."""
+        t = torch.clamp(label_elapsed_seconds.float(), min=1.0)
+        cut = self.ord_cut_a + self.ord_cut_c * torch.log1p(t / 86400.0)
+        target = (label_rating >= 2).float()          # 0=Again 1=Hard 2=Good 3=Easy after the clamp
+        return torch.nn.functional.binary_cross_entropy_with_logits(
+            curve_logits.float() - cut, target, reduction="none"
+        )
 
     @torch.jit.ignore
     def _apply_rcouple(
@@ -1420,6 +1455,9 @@ class SrsRWKV(ModuleType):
         is_query = is_query.int()
 
         label_rating = torch.clamp(label_rating - 1, min=0)
+        # the HARD success label, captured before any KD / self-KD target mix rewrites label_y:
+        # the ordinal term (RWKV_ORD_LAMBDA) conditions on a real success, never on a soft target
+        _hard_y = label_y
         # Warmup-KD target mix (iter 10): kd_mix = (teacher_curve_probs, teacher_p_probs, alpha)
         # from the stored d=128 teacher dump. BCE/CE are linear in the target, so mixing TARGETS
         # (alpha*teacher + (1-alpha)*hard) is exactly the annealed soft-target design. alpha
@@ -1609,6 +1647,15 @@ class SrsRWKV(ModuleType):
         # Python global in a scripted forward, and referencing one here made the WHOLE SrsRWKV
         # fail to script -- invisible to every QAT run (QAT forces RWKV_NO_JIT=1) and fatal on the
         # next plain JIT-on run. Found 2026-08-15; see the twin fix in rwkv_model.py.
+        # RWKV_ORD_LAMBDA: ordinal one-cut term on successful ahead rows with t >= ord_min_t
+        ord_loss_avg = ahead_avg.detach() * 0.0
+        if self.ord_on:
+            _ord_mask = ahead_wmask.float() * _hard_y.float() * (
+                label_elapsed_seconds.float() >= self.ord_min_t).float()
+            _ord_loss = self._ord_loss(curve_logits, label_rating, label_elapsed_seconds)
+            _ord_avg = (_ord_loss * _ord_mask).sum() / (1e-8 + _ord_mask.sum())
+            loss_avg = loss_avg + self.ord_lambda * _ord_avg
+            ord_loss_avg = _ord_avg.detach()
         _r1 = take_rank1_penalty()
         if _r1 is not None:
             loss_avg = loss_avg + self.rank1_reg_lambda * _r1
@@ -1686,6 +1733,7 @@ class SrsRWKV(ModuleType):
             has_label=has_label.detach(),
             pava_loss_avg=pava_loss_avg,
             pava_pool_frac=pava_pool_frac,
+            ord_loss_avg=ord_loss_avg,
         )
 
     def get_loss(self, batch: PreparedBatch,
