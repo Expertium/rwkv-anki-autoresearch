@@ -36,5 +36,7 @@ measured against NO teacher directly); (b) skip KD on this lineage and put the 4
 10x run itself, on the argument that KD's value is variance reduction at a LOW budget and may shrink at
 12.5 epochs. Not a decision I can make: it sets the phase-4 budget.
 
+**DECIDED (Andrew 2026-09-04 20:35): "Let's skip KD."** No teacher retrain, no born-again KD; KD stays off on the features lineage and the endgame gets the budget.
+
 Re-measure the 32768 rate on a quiet GPU before quoting it in a plan (30 min: `run_t128_timing.cmd`
 with the 65536 phase removed).

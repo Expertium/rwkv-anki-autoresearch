@@ -1190,7 +1190,11 @@ users) and on rank 3 (born-again KD). The strict alternation says the next slot 
 | 12 | Probe the first review (train + rectified eval) | invented | **contract -- Andrew** | -0.0001..+0.0002 vs re-scored base | re-score + 1 run | share of scored rows < 5% => note only |
 | 13 | Chunk-continuous training (state carry across a user's chunks) | invented | BOTH | 0..+0.0003 | multi-day | reset-cost curve flat past 16k rows => dead |
 
-**ORDER UNDER STRICT ALTERNATION (next = invented): 2 -> 1 -> (4 if Andrew approves, else 5) -> 3 -> ...**
+**ORDER UNDER STRICT ALTERNATION (next = invented): 2 -> 1 -> (4 if Andrew approves, else 5) -> 6 or 7 -> ...**
+**★ ANDREW 2026-09-04 20:35: "Let's skip KD."** => rank 3 (born-again KD) is REMOVED, the teacher retrain
+(old queue order 7) is CANCELLED, and the features lineage stays KD-OFF through phase 4; the GPU days go to
+the endgame's own 10x run. The next ADOPTED slot after ordcut is therefore rank 6 (SAM, decay-only) or rank 7
+(auxiliary next-interval head), screened first.
 
 **★ SCREENS RUN 2026-09-04 19:07 (`scratchpad/proposals_2026-09-04/screen_pass.py`, realcyc checkpoint,
 10 train-range users, 218,841 predicted rows):**
@@ -1227,5 +1231,5 @@ rating) -- run it once before building either.
 | 6 | (invented slot) | calendar-aware curve head. **Ablation reported 2026-09-03: clock reliance imm +0.00507 vs ahead +0.00137, gap 0.0037 -- abort line (0.0005) cleared; the gap is the loose ceiling.** Build after the LOO sweep separates `t_since_any_review` (not a function of t) from the calendar columns | invented | the then-champion | ceiling known; awaiting LOO |
 | 5b | **abl_batchpos** | zero ONE column, `scaled_creation_batch_pos_1h`, at featB's input | Andrew 2026-09-03 ("seems useless") | featB | **DONE** -- NOT unused at inference: +0.000217 ahead (p=2e-7) / +0.000089 imm; the LOO sweep ranks it against the rest |
 | 5c | **feat_loo** (~8 h) | leave-one-out: 19 arms, one per feature (sin/cos pairs together), 300 users each | Andrew 2026-09-03 ("ideally ablate everything") | featB | **RUNNING since 09-04 15:54** (fired on lorawd's marker); `scratchpad/feat_loo/` |
-| 7 | teacher retrain | a d=128 teacher native to the final layout (Andrew 2026-09-02: "as part of the algorithmic improvements plan") | infrastructure | -- | after the layout is settled by order 4 |
+| 7 | teacher retrain | a d=128 teacher native to the final layout | infrastructure | -- | **CANCELLED 09-04 (Andrew: "Let's skip KD")** -- costed at ~4 GPU days for a useful teacher (`scratchpad/teacher_gen5/TIMING.md`) |
 
