@@ -1220,6 +1220,12 @@ the endgame's own 10x run. The next ADOPTED slot after ordcut is therefore rank 
   and above the L0-relative 0.5% line: the minimum is SHARP at SAM's scale. The lever is ALIVE and is
   the adopted slot after ordcut (decay-only first, LookSAM fallback). Caveat carried: the per-chunk
   gradient includes batch noise, which is also what SAM's own ascent uses.
+* **Rank 5 (multi-horizon button ordering) GO 21:47** (`button_probe.py`, realcyc, 4 train users, every
+  20th labelled row = 1,478 probes, RAW counterfactual curves): adjacent-button order violations on
+  **29.9% of rows at the label's own t** (the same-t rectifier pools these), **32.5% at 1 d, 32.1% at 7 d,
+  35.6% at 30 d, 48.8% at 180 d**; the button ORDER differs from its order at label-t on 10.8 / 11.4 /
+  16.5 / 34.1% of rows; median |R_Good - R_Hard| at 30 d = 0.070. Far above the 3% kill line: the
+  constraint is NOT satisfied off the label horizon. => the INVENTED slot after sam.
 **CHAIN EXTENDED 21:26: -> sam** (decay-only, `RWKV_SAM_RHO=0.05`; `rwkv/sam.py` unit-tested on CPU with the real model/chunk/loss, 8/8 incl. an independent gradient at w+e matching to 0.00e+00 and a snapshot-based bit-exact restore -- the add/sub restore was NOT bit-exact and the test caught it; `sam/auto_control.py` picks the base; PREREG written).
 **CHAIN ARMED 19:20 (all waiters WMI-detached, each gating on the previous log's anchored marker):**
 LOO phase 2 (`feat_loo/loo_p2.log`, running) -> **durdrop** (`scratchpad/durdrop/`, PREREG written,
