@@ -1390,10 +1390,16 @@ on the top lever. **Screens run on realcyc's checkpoint (`screen_pass.py`, 10 tr
   70% half of the ahead-only rectification penalty. **Screen: zeroing the current duration costs
   +0.001388 ahead on realcyc (kill line +0.0004).** Smoke PASS (inert off, ~p engaged on, scripted).
   Both-modes gate vs realcyc. ~10.5 h.
-* **Next ADOPTED slot = ordinal next-rating supervision on the curve logit (CORAL / Frank & Hall),
-  REDUCED TO ONE CUT** -- `label_rating` on real rows is the k+1 button and nothing consumes it. Screen:
-  the Hard share falls perfectly with the model's own logit R (Spearman -1.000) but Easy is U-SHAPED,
-  so only the Again < Hard < {Good,Easy} cut is sound; AUC(Good vs Hard) 0.737. Not yet built.
+* **`ordcut` = the ADOPTED slot after it, BUILT AND ARMED behind durdrop** (`scratchpad/ordcut/`, waiter
+  pid 37612 on `durdrop.log`, PREREG written): ordinal next-rating supervision on the curve logit
+  (CORAL / Frank & Hall), REDUCED TO ONE CUT -- `label_rating` on real rows is the k+1 button and
+  nothing consumes it. `RWKV_ORD_LAMBDA=0.25`: BCE(z - (a + c*log1p(t/1d)), next rating >= Good) on
+  successful ahead rows with t >= 1 d; 2 conditional train-only params (563,654), realcyc still loads
+  strictly. Screen: the Hard share falls perfectly with the model's own logit R (Spearman -1.000) but
+  Easy is U-SHAPED, so only the Again < Hard < {Good,Easy} cut is sound; AUC(Good vs Hard) 0.737.
+  Curve-side gate. **Its waiter runs `auto_control.py` first: the mechanical gate on durdrop's result;
+  ACCEPT => ordcut regenerated on durdrop's recipe, else realcyc** -- so the 2-minute hand-off is no
+  longer a human race (the realcyc -> lorawd lesson). Smokes for both flags PASS.
 * Calendar-aware curve KILLED (LOO: `t_since_any_review` alone = the whole clock gain). Rank 10
   recalibration alive (train-user gap -0.0084). Born-again KD from realcyc = the adopted slot after.
 **Teacher retrain COSTED (`scratchpad/teacher_gen5/TIMING.md`): d=128 on gen 5 = 2.58M params,

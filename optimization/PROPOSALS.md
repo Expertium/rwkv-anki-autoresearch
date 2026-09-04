@@ -1203,6 +1203,14 @@ users) and on rank 3 (born-again KD). The strict alternation says the next slot 
   explains Hard-vs-Good but not Easy. AUC(Good vs Hard) 0.737 -- separated, not solved (kill line 0.75).
   => implement ONE cutpoint (Again < Hard < {Good, Easy}), not two; the Easy cut would distort calibration.
 * **Rank 10 alive:** by-user calibration gap on train users -0.00836 (overconfident; kill line 0.001).
+
+**CHAIN ARMED 19:20 (all waiters WMI-detached, each gating on the previous log's anchored marker):**
+LOO phase 2 (`feat_loo/loo_p2.log`, running) -> **durdrop** (`scratchpad/durdrop/`, PREREG written,
+both-modes gate vs realcyc) -> **ordcut** (`scratchpad/ordcut/`, PREREG written, curve-side gate;
+`auto_control.py` applies the mechanical gate to durdrop's result and regenerates the runner on
+durdrop's recipe if it ACCEPTS, else keeps realcyc -- so the 2-minute hand-off window is no longer a
+human race). Both levers implemented behind default-off flags (`RWKV_DUR_DROP`, `RWKV_ORD_LAMBDA`),
+smokes PASS, realcyc's checkpoint still loads strictly.
 Ranks 1 and 2 share ONE CPU instrument (the deploy-RNN pass on realcyc over ~10 train + ~10 VAL users
 recording, per scored row, the curve logit with and without the current duration, y, t, this row's
 rating) -- run it once before building either.
