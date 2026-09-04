@@ -1208,6 +1208,12 @@ the endgame's own 10x run. The next ADOPTED slot after ordcut is therefore rank 
   => implement ONE cutpoint (Again < Hard < {Good, Easy}), not two; the Easy cut would distort calibration.
 * **Rank 10 alive:** by-user calibration gap on train users -0.00836 (overconfident; kill line 0.001).
 
+* **Rank 7 (auxiliary next-interval head) KILLED 20:50 by its own second rule** (`aux_probe.py`, realcyc,
+  6 train users, leave-one-user-out ridge from the curve head's (w, S, d) to log(1+next interval)):
+  held-out R^2 0.648 (below the 0.85 "already carried" line -- the head does NOT fully encode the
+  scheduler's interval), BUT corr(|residual|, per-row ahead BCE) = **+0.018**, i.e. the interval
+  information the trunk lacks is UNRELATED to where ahead errs. An aux task teaches what it is not
+  missing. => next adopted slot after ordcut = rank 6 (SAM, decay-only), sharpness screen first.
 **CHAIN ARMED 19:20 (all waiters WMI-detached, each gating on the previous log's anchored marker):**
 LOO phase 2 (`feat_loo/loo_p2.log`, running) -> **durdrop** (`scratchpad/durdrop/`, PREREG written,
 both-modes gate vs realcyc) -> **ordcut** (`scratchpad/ordcut/`, PREREG written, curve-side gate;
