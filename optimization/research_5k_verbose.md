@@ -3622,3 +3622,51 @@ reproduced on a 6-line stub). It had looped harmlessly for 5 h in the FIRST bloc
 looked alive; cmd parses a block only when it reaches it. Fixed, swept across all 30 chain `.cmd`
 files (clean), and `preflight_runner.py` now checks it -- proven to FAIL the old file and PASS the
 fixed one. realcyc launched 13:39:09 with 563,652 params, i.e. the flag reached the workers.
+
+
+## realcyc -- real-time cycles replace the pseudo ones (2026-09-04 05:38): EXACT TIE, layout adopted by directive
+
+**ahead 0.298083 / imm 0.263592 vs gen4base 0.298089 / 0.263548 (n=2,499): +0.000007 (p=0.92) /
+-0.000045 (p=0.997)**, both inside the +/-7.5e-5 floor; size gate 0/2499; nan_users 0; 563,652 params.
+Pre-registered (`scratchpad/realcyc/PREREG.md`, 01:47, eval running, no number seen; tested by
+`realcyc_verdict.py`, unedited).
+
+### What the predictions said, and what happened
+
+| prediction | outcome |
+|---|---|
+| P1: both improve, ahead +0.0001..+0.0006, imm 0..+0.0004 | REFUTED -- both at the floor |
+| P2: gain concentrates in long-history users (rho > +0.10, top/bottom span quartile > 1.5x) | REFUTED -- rho -0.015; quartiles +0.000081 / -0.000030 |
+| P3: both inside the floor => calendar phase adds nothing beyond the clock columns; the drop is a free simplification | **THIS** |
+| abort line (a mode worse by > 0.0002) | not crossed |
+
+### The reading
+
+The ablation had already shown the pseudo cycles were dead weight (+0.000083 / -0.000005 reliance), so
+removing them was free; the bet was that a SHARED, UTC-anchored phase would let the model pool weekly
+and annual patterns across users. It does not. The query row already carries the target review's
+time-of-day, day-of-week and day-of-year, and the ahead head has no target-row clock at all and
+cannot gain one from a phase column of the CURRENT row. The decade/century pairs are near-constant
+over the dataset's span and did no harm either (abort line not crossed).
+
+**One caveat carried explicitly:** the imm harm test is rank-significant, `p_worse = 0.0028`, at a
+magnitude (-0.000045) well inside the floor -- the iter-44 shape, most users moving a hair in the same
+direction. It is not a reason to keep 28 pseudo dims the model demonstrably does not use.
+
+### The decision, and why it is a directive rather than a gate
+
+Andrew 2026-09-02: replace every pseudo-calendar feature with its real counterpart, rebuild if needed.
+The gate answers "does it improve accuracy" (no); the directive answers "what are the inputs" (real).
+With the pre-registration's P3 rule written down in advance, **gen 5 is the features lineage's db from
+here**, realcyc's numbers are the reference for every later gen-5 candidate, and lorawd was regenerated
+on this recipe (`mk_lorawd.py realcyc`) two minutes before its waiter would have fired on gen 4. It is
+also the db that lives on the SSD (0.95 steps/s vs gen 4's 0.69 from F:). Reversible: gen 4 is intact.
+
+### Cost, and the disk lesson that came with it
+
+WS ran at 0.23 steps/s on F: to step 3,658 -- 2.4x slower than gen4base from the SAME drive, because
+gen-5 rows are 1.5x wider (69 vs 46 card-feature columns) and F: was already at its ~225 reads/s
+ceiling; the first 1,000 steps were fast only because the rebuild's checks had warmed the cache.
+After Andrew authorized deleting gen 3's train db, the gen-5 train db moved to C: (170.8 min, 402
+sampled keys / 0 mismatches, junction in place) and the WS resumed from step 3,000 at 0.97 steps/s;
+decay 3.1 h; eval 3.9 h (the test db is still on F:).

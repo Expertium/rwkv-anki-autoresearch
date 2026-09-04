@@ -1380,6 +1380,18 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ realcyc REPORTED 2026-09-04 05:38 -- EXACT TIE vs gen4base (ahead +0.000007 p=0.92 / imm -0.000045
+p=0.997, both inside the floor; size 0/2499; 563,652 params), the PRE-REGISTERED P3 outcome. REJECTED as an
+accuracy iteration; ADOPTED AS THE LINEAGE'S INPUT LAYOUT on Andrew's directive (every pseudo feature ->
+its real counterpart).** => **gen 5 is the features lineage's db from here; realcyc's 0.298083 / 0.263592
+(n=2,499) is the reference every later gen-5 candidate is gated against.** P2 refuted too (no
+concentration in long-history users). ⚠ Caveat in the record: imm's harm test is rank-significant
+(p_worse 0.0028) at a magnitude inside the floor -- the iter-44 shape. Reversible: gen 4 is intact on F:.
+**lorawd LAUNCHED 05:40 on realcyc's recipe** (`mk_lorawd.py realcyc`, run two minutes before its waiter
+would have fired on gen 4 -- the waiter was stopped first, then re-armed); WS banner confirms
+`LoRA in a wd=0.05 group`, 563,652 params, gen-5 SSD db. ~10 h; then the LOO sweep on its marker.
+Detail: `research_5k_verbose.md` "realcyc"; PREREG + verdict script in `scratchpad/realcyc/`.
+
 **★★★ gen4base IS THE FEATURES-LINEAGE BASELINE (2026-09-03 13:33): ahead 0.298089 / imm 0.263548, n=2,499,
 nan_users 0, params 565,252.** Size baseline snapshotted (`optimization/size_baseline_id_e2s.json`,
 126,657,015 scored reviews, self-check 0/2499) -- gate every gen-4/gen-5 candidate against it. Informational
