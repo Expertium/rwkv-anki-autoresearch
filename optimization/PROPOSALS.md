@@ -1133,6 +1133,26 @@ function of `t` and cannot be supplied to ahead. If the ablation of `t_since_any
 explains most of `abl_clock`, the lever's ceiling collapses; run that single-column ablation
 (~3 h, one eval) before building.
 
+**Implementation sketch (2026-09-04, written while the LOO sweep runs; NO code until it reports).**
+The GRU head is per-ROW, not per-point: `_gru_heads(x_w)` emits (w, S, d) for N=3 curves once per row
+and `gru_forgetting_curve` evaluates the closed form at the label's `t` (`srs_model.py:872-874`,
+`:1014`). So "condition the head on the target phase" is best done as a t-dependent MODULATION of the
+curve's logit, not a change to the head's input:
+`logit R'(t) = logit R(t) + sum_k c_k(x_w) * phi_k(t)`, with `phi` = the target-time clock pairs
+obtained by ROTATING the row's own `tod_sin/cos` (P = 86400 s) and `dow_sin/cos` (P = 7 d) by
+2*pi*t/P -- `sin(a+b) = sin a cos b + cos a sin b` -- so no new input column, exact at train, eval
+and RNN deploy alike (the Rust engine has the same feature vector). `c_k = Linear(w_head_dim -> 4)`,
+zero-init => byte-identical at start, ~1.3k params. Flag `RWKV_CAL_CURVE=1`, default off = inert;
+`doy` left out (the dataset spans few years per user and the ablation put the annual half in the
+dead-weight group). Parity: add a case to `parity_train_vs_rnn.py` AND a 4-point rotation identity
+check (rotating by exactly P must reproduce the pair). Gate: curve-side exception.
+**⚠ The deploy question that this makes concrete, for Andrew when the LOO reports:** PAVA at eval/deploy
+flattens the intra-day wiggle, and the Rust interval solver inverts the RECTIFIED curve -- so at
+deploy the lever keeps only its monotone envelope unless the solver is made calendar-aware (solve
+R'(now + t) for t, which is a CONTRACT change). Measure rect-vs-unrect on the candidate first; if the
+gain lives in the wiggle, it is deploy-invisible under the current contract and the lever is worth
+nothing as shipped.
+
 ## ★ QUEUE STATE 2026-09-02 22:20 -- the features chain, then the ADOPTED slot
 
 | order | run | lever | provenance | control | state |
