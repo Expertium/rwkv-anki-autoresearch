@@ -3710,3 +3710,36 @@ is already negative in both modes, so a stronger dose regresses further.
 **Optimizer family 2/4.** With iter 53 the split was COVERAGE pays (Muon, Muon on the LoRA matrices)
 vs DESCENT QUALITY does not (PolarExpress); NORM CONTROL now joins the second group. Cost 10.2 h
 (WS 3.2 h at 0.98 steps/s from the SSD, decay 3.1 h, eval 4.0 h). Next slot: invented.
+
+
+## Leave-one-out feature ablation on featB's checkpoint (2026-09-04 22:22) -- 19 arms, n=300, reliance not value
+
+Cost of zeroing each feature at featB's input (gen-3 dbs, users 5001-5300; + = the feature helps):
+
+| feature | ahead cost | p | imm cost | p |
+|---|---|---|---|---|
+| t_since_any_review | **+0.001325** | 5.5e-31 | **+0.005076** | 1.3e-50 |
+| sibling_gap | +0.000205 | 1.8e-07 | +0.000487 | 1.7e-10 |
+| creation_to_first_review | +0.000348 | 1.0e-11 | +0.000202 | 1.1e-16 |
+| creation_batch_1min | +0.000298 | 9.6e-06 | +0.000101 | 1.7e-14 |
+| creation_batch_pos_1h | +0.000217 | 2.2e-07 | +0.000089 | 7.4e-12 |
+| creation_batch_1h | +0.000220 | 4.7e-07 | +0.000060 | 7.2e-13 |
+| tod_dev | +0.000115 | 1.4e-08 | +0.000023 | 1.2e-06 |
+| the other 12 (tod, dow, doy, is_weekend, user_tenure, deck_age, card_predates_deck, is_default_deck, deck_depth, is_default_preset, creation_batch_1d, card_predates_first_review) | +0.00007 .. +0.00014 | 1e-5 .. 4e-3 | -0.000002 .. +0.000019 | ns |
+
+**Three readings.** (1) The clock group's whole value is SESSION RECENCY: `t_since_any_review` alone
+reproduces the grouped ablation (+0.001366 / +0.005072), and every calendar column is at the floor.
+This killed the calendar-aware curve before a line of code (its own pre-registered counter-hypothesis).
+(2) Among the structural columns, the sibling gap (defined on ~10-16% of rows) is the second-largest
+imm reliance and creation-to-first-review the largest ahead one; the three creation-batch columns are
+each real, including `creation_batch_pos_1h`, the one Andrew suspected was useless (+0.000217 ahead,
+p=2e-7). (3) **An artifact to name rather than act on:** ten unrelated columns cost the same
++0.00007..+0.00009 on ahead with nothing on imm. That uniformity is what zeroing ANY input column costs
+(a value the model never saw there), not ten features each worth exactly that. Their ahead reliance is
+indistinguishable from the perturbation floor; their imm reliance is zero.
+
+**Not queued as a run.** `loo_verdict.py` lists those ten as drop candidates under its |cost| < 0.0001
+rule, but removing inputs the model does not use buys no accuracy, the standing directive is to stop
+simplifying, and phase 4 is measured against the stop criterion. The retrain-without is one ~10 h run
+if Andrew wants the simpler input layout for its own sake. Cost of the sweep: ~5.5 h GPU across two
+days; arm 8 died once on a transient CUDA illegal-memory-access inside group_norm and passed on retry.

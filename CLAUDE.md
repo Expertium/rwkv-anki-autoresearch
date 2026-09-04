@@ -1380,6 +1380,15 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**✓ LOO SWEEP DONE 2026-09-04 22:22 (19 arms, n=300, featB's checkpoint; reliance not value):**
+`t_since_any_review` +0.001325 / +0.005076 = the WHOLE clock gain; sibling_gap +0.000205 / +0.000487;
+creation_to_first_review +0.000348 / +0.000202; the three creation-batch columns +0.0002..+0.0003 ahead
+(incl. `creation_batch_pos_1h`, Andrew's "seems useless" one: +0.000217, p=2e-7 -- USED); tod_dev
++0.000115 / +0.000023; **the other twelve sit at a near-uniform +0.00007..+0.00014 ahead with imm at
+the floor -- the cost of zeroing ANY column, not twelve features each worth that.** No drop run queued
+(removing unused inputs buys no accuracy; one ~10 h retrain-without if Andrew wants the simpler
+layout). Detail: `research_5k_verbose.md` "Leave-one-out". The chain moved on to durdrop.
+
 **★★★ 2026-09-04 21:30 -- THE CHAIN IS FOUR DEEP AND EVERY HAND-OFF IS AUTOMATIC:** LOO phase 2 (running,
 3 arms left) -> **durdrop** (invented; both-modes gate vs realcyc) -> **ordcut** (adopted; curve-side gate;
 `ordcut/auto_control.py` picks its control) -> **sam** (adopted, DECAY-ONLY, `RWKV_SAM_RHO=0.05`;
