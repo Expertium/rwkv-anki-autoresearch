@@ -1093,6 +1093,19 @@ Unreachable through LambdaLR's counter, but wrong if it ever were.
 
 ## ★ INVENTED, 2026-09-02: CALENDAR-AWARE FORGETTING CURVE (from the featB ahead/imm split)
 
+> **✗ KILLED 2026-09-04 17:40 BY ITS OWN PRE-REGISTERED COUNTER-HYPOTHESIS, before any code.** The LOO
+> sweep's `t_since_any` arm (featB checkpoint, n=300) costs **+0.001325 ahead / +0.005076 imm** -- i.e.
+> the ENTIRE clock group (+0.001366 / +0.005072 from the grouped ablation). The calendar columns are
+> each worth ~+0.00008 ahead and ~0 imm (tod +0.000082/+0.000005, dow +0.000083/+0.000002, doy
+> +0.000074/-0.000001, is_weekend +0.000083/-0.000002; tod_dev +0.000115/+0.000023). So the clock
+> gain is SESSION RECENCY (seconds since the user's last review of any card), which is not a function
+> of `t` and cannot be supplied to a prediction for a future date. The lever's ceiling collapses to
+> ~0.0001 ahead, under its own 0.0005 abort line. Not building it; the deploy question it raised is
+> moot. ⚠ Note what this does NOT say: imm's reliance on `t_since_any_review` IS deployable -- Anki
+> knows the last review time of any card when it asks for R(now) -- so the featB imm gain is real
+> deploy value; only the AHEAD/scheduling path is structurally blind to it.
+
+
 **Provenance: invented** (ours, from the featB measurement; the queue's next `adopted` slot is
 unaffected -- this is filed for the invented slot after it).
 
