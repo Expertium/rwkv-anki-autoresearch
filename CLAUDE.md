@@ -1380,6 +1380,31 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ 2026-09-04 19:30 -- THE QUEUE IS REFILLED AND THE INVENTED SLOT IS ARMED.** The 3-agent
+protocol ran (literature / domain / reject-log steelman; full texts `scratchpad/proposals_2026-09-04/`,
+ranked 13-lever table in `PROPOSALS.md` "RANKED QUEUE 2026-09-04"). Two agents converged independently
+on the top lever. **Screens run on realcyc's checkpoint (`screen_pass.py`, 10 train users, 218,841 rows):**
+* **`durdrop` = the INVENTED slot, ARMED behind the LOO phase 2** (`scratchpad/durdrop/`, waiter pid
+  27992 on `loo_p2.log`; PREREG written before launch). `RWKV_DUR_DROP=0.25`: train-only Bernoulli
+  zeroing of the `scaled_duration` input (dim 8) -- iter 33's prescribed clean retry, aimed at the
+  70% half of the ahead-only rectification penalty. **Screen: zeroing the current duration costs
+  +0.001388 ahead on realcyc (kill line +0.0004).** Smoke PASS (inert off, ~p engaged on, scripted).
+  Both-modes gate vs realcyc. ~10.5 h.
+* **Next ADOPTED slot = ordinal next-rating supervision on the curve logit (CORAL / Frank & Hall),
+  REDUCED TO ONE CUT** -- `label_rating` on real rows is the k+1 button and nothing consumes it. Screen:
+  the Hard share falls perfectly with the model's own logit R (Spearman -1.000) but Easy is U-SHAPED,
+  so only the Again < Hard < {Good,Easy} cut is sound; AUC(Good vs Hard) 0.737. Not yet built.
+* Calendar-aware curve KILLED (LOO: `t_since_any_review` alone = the whole clock gain). Rank 10
+  recalibration alive (train-user gap -0.0084). Born-again KD from realcyc = the adopted slot after.
+**Teacher retrain COSTED (`scratchpad/teacher_gen5/TIMING.md`): d=128 on gen 5 = 2.58M params,
+0.83+ steps/s at MAX 32768 (65536 does NOT fit: WDDM paging). A USEFUL teacher (upstream-class,
+~+0.0035 ahead over the student) is a 10+2-epoch run = ~4 DAYS of GPU -- the same class as the
+endgame's plain 10x arm. ANDREW'S CALL: that run, or born-again KD (2 h dump + 1 run), or skip KD and
+spend the days on the endgame itself.** The 1.25-ep teacher (A0's recipe) is WORSE than the student.
+**LOO sweep: arm 8 died 18:06 on a transient CUDA illegal-memory-access in group_norm** (seven arms
+clean before it, and the retry passed); phase 2 (arms 8-19, `run_loo_p2.cmd`, `loo_p2.log`) running
+since 18:47, ~3.5 h; monitor armed. Verdict + drop candidates via `loo_verdict.py` when it lands.
+
 **★★★ ITER 62 `lorawd` REPORTED 2026-09-04 15:53 -- REJECTED, a tie leaning negative** (vs realcyc:
 ahead -0.000040 p_worse 0.79 / imm -0.000024 p_worse 0.004 -- rank-significant inside the floor, the
 iter-44 shape; size 0/2499). **P3 (engagement) HELD on a criterion re-specified BEFORE the number**
