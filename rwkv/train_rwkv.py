@@ -24,6 +24,7 @@ from rwkv.parse_toml import parse_toml
 from rwkv.prepare_batch import prepare_data_train_test
 from rwkv.model import rwkv_model as _rwkv_model_rc
 from rwkv.model.srs_model import SrsRWKV
+from rwkv import sam as _sam  # RWKV_SAM_RHO (2026-09-04); module-level flags, inert when unset
 from rwkv.architecture import *
 from rwkv.utils import (
     KeyValueAverage,
@@ -1362,6 +1363,8 @@ def main_loop(config, task_queue, batch_queue):
                     )
                     if step == 1 or step % 100 == 0 or step == _kd_mix_steps:
                         print(f"[kd-mix] step {step}: alpha={_km_alpha:.4f} (checksum OK)")
+                # RWKV_SAM_RHO: remember the RNG so the SAM second forward draws the SAME dropout masks
+                _sam_rng = _sam.save_rng() if _sam.sam_active(step) else None
                 stats = model.get_loss(prepared_batch, kd=kd_args, kd_mix=kd_mix_args)
                 if stats is None:
                     raise Exception("Stats is none.")
@@ -1377,6 +1380,19 @@ def main_loop(config, task_queue, batch_queue):
                     _rwkv_ops_mod.wkv_pq_grad_zero()
                 stats.average_loss.backward()
                 transfer_child_grad_to_master(master=master_model, child=model)
+                if _sam_rng is not None:
+                    # RWKV_SAM_RHO: replace master's grads with the gradient at w + rho*g/||g||
+                    # (same batch, same dropout masks; weights restored bit-exactly). `stats`, printed
+                    # above and traced below, stays the UNPERTURBED loss -- the honest training curve.
+                    def _sam_fb():
+                        _st2 = model.get_loss(prepared_batch, kd=kd_args, kd_mix=kd_mix_args)
+                        if _st2 is None or not torch.isfinite(_st2.average_loss):
+                            raise Exception("non-finite SAM loss")
+                        _st2.average_loss.backward()
+                    _sam.sam_second_pass(
+                        master_model, model, config.DTYPE, _sam_rng, _sam_fb,
+                        lambda: transfer_child_grad_to_master(master=master_model, child=model),
+                    )
                 if _wkv_cb_param is not None:
                     _rwkv_ops_mod.wkv_pq_grad_fetch()
                 if _gs is not None:  # raw grads (pre-clip); NaN steps masked internally

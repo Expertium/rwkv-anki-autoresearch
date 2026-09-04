@@ -1220,6 +1220,7 @@ the endgame's own 10x run. The next ADOPTED slot after ordcut is therefore rank 
   and above the L0-relative 0.5% line: the minimum is SHARP at SAM's scale. The lever is ALIVE and is
   the adopted slot after ordcut (decay-only first, LookSAM fallback). Caveat carried: the per-chunk
   gradient includes batch noise, which is also what SAM's own ascent uses.
+**CHAIN EXTENDED 21:26: -> sam** (decay-only, `RWKV_SAM_RHO=0.05`; `rwkv/sam.py` unit-tested on CPU with the real model/chunk/loss, 8/8 incl. an independent gradient at w+e matching to 0.00e+00 and a snapshot-based bit-exact restore -- the add/sub restore was NOT bit-exact and the test caught it; `sam/auto_control.py` picks the base; PREREG written).
 **CHAIN ARMED 19:20 (all waiters WMI-detached, each gating on the previous log's anchored marker):**
 LOO phase 2 (`feat_loo/loo_p2.log`, running) -> **durdrop** (`scratchpad/durdrop/`, PREREG written,
 both-modes gate vs realcyc) -> **ordcut** (`scratchpad/ordcut/`, PREREG written, curve-side gate;

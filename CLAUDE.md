@@ -1380,6 +1380,20 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ 2026-09-04 21:30 -- THE CHAIN IS FOUR DEEP AND EVERY HAND-OFF IS AUTOMATIC:** LOO phase 2 (running,
+3 arms left) -> **durdrop** (invented; both-modes gate vs realcyc) -> **ordcut** (adopted; curve-side gate;
+`ordcut/auto_control.py` picks its control) -> **sam** (adopted, DECAY-ONLY, `RWKV_SAM_RHO=0.05`;
+`sam/auto_control.py` picks its base = ordcut if it passed, else ordcut's control; `mk_sam.py <base>`
+slices the base runner's decay+eval and warm-starts from the base's WS-final; control = the base's own
+decay). Waiters (WMI-detached): 33804 / 27992 / 37612 / 31784. **SAM screen: SHARP on all 12 real
+chunks (median +0.023 at rho 0.05, min +0.0097); aux next-interval head KILLED (R^2 0.65 but residual
+uncorrelated with ahead error, +0.018); KD SKIPPED (Andrew 20:35).** `rwkv/sam.py` + two hook lines
+in `train_rwkv.py` (`_sam_rng` save before the forward; second pass after the grad transfer), default
+off = the SAM path is never entered; unit test on CPU with the real model/chunk/loss in
+`scratchpad/sam/unit_second_pass.py`. ⚠ CPU TRAINING OF THIS ARCH DOES NOT RUN (bf16 batch vs fp32
+child, no autocast) -- the three-arm CPU validation harness could not be used; the hook's wiring on GPU
+is guarded by the runner (both `[sam]` banners must appear in the decay log). PREREGs in each dir.
+
 **★★★ 2026-09-04 19:30 -- THE QUEUE IS REFILLED AND THE INVENTED SLOT IS ARMED.** The 3-agent
 protocol ran (literature / domain / reject-log steelman; full texts `scratchpad/proposals_2026-09-04/`,
 ranked 13-lever table in `PROPOSALS.md` "RANKED QUEUE 2026-09-04"). Two agents converged independently

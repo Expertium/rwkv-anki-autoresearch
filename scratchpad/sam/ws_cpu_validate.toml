@@ -1,0 +1,35 @@
+# CPU VALIDATION ONLY (2026-09-04): users 101-105 of the published e2s db (FETCH_AHEAD=10 needs >= 10 groups), 0.16 epoch = ~4 steps, DEVICE=cpu, bf16 child / fp32 master like the GPU recipe (the LMDB batch is bf16).
+# Used by validate_cpu.py to prove RWKV_SAM_RHO is byte-identical when unset (vs the committed
+# HEAD in a git worktree) and engaged when set. Not a research run; no checkpoint is kept.
+TRAIN_USERS_START = 101
+TRAIN_USERS_END = 105
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5001
+
+TRAIN_DATASET_LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_e2s"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_e2s"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "label_filter_db"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 1
+MAX_TRAIN_GLOBAL_LEN = 16384
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 2
+EPOCHS = 0.16
+VALIDATE_EVERY = 100000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/sam/cpu_validate_out"
+SAVE_MODEL_PREFIX = "samval"
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
