@@ -1214,6 +1214,12 @@ the endgame's own 10x run. The next ADOPTED slot after ordcut is therefore rank 
   scheduler's interval), BUT corr(|residual|, per-row ahead BCE) = **+0.018**, i.e. the interval
   information the trunk lacks is UNRELATED to where ahead errs. An aux task teaches what it is not
   missing. => next adopted slot after ordcut = rank 6 (SAM, decay-only), sharpness screen first.
+* **Rank 6 (SAM) GO 21:10** (`sam_probe.py`, realcyc, 12 real training chunks, CPU, fp32, dropout off):
+  the SAM ascent L(w + rho g/||g||) - L(w) at rho=0.05 is **median +0.0230, min +0.0097 (chunk 109, 1.4%
+  of its L0), max +0.0951**; at rho=0.01 median +0.0036. Every chunk is far above the 0.002 kill line
+  and above the L0-relative 0.5% line: the minimum is SHARP at SAM's scale. The lever is ALIVE and is
+  the adopted slot after ordcut (decay-only first, LookSAM fallback). Caveat carried: the per-chunk
+  gradient includes batch noise, which is also what SAM's own ascent uses.
 **CHAIN ARMED 19:20 (all waiters WMI-detached, each gating on the previous log's anchored marker):**
 LOO phase 2 (`feat_loo/loo_p2.log`, running) -> **durdrop** (`scratchpad/durdrop/`, PREREG written,
 both-modes gate vs realcyc) -> **ordcut** (`scratchpad/ordcut/`, PREREG written, curve-side gate;
