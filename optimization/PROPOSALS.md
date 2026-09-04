@@ -1191,6 +1191,18 @@ users) and on rank 3 (born-again KD). The strict alternation says the next slot 
 | 13 | Chunk-continuous training (state carry across a user's chunks) | invented | BOTH | 0..+0.0003 | multi-day | reset-cost curve flat past 16k rows => dead |
 
 **ORDER UNDER STRICT ALTERNATION (next = invented): 2 -> 1 -> (4 if Andrew approves, else 5) -> 3 -> ...**
+
+**★ SCREENS RUN 2026-09-04 19:07 (`scratchpad/proposals_2026-09-04/screen_pass.py`, realcyc checkpoint,
+10 train-range users, 218,841 predicted rows):**
+* **Rank 2 GO.** Zeroing the current review's duration costs **+0.001388 ahead** by-user mean (8 of 10
+  users positive, max +0.003581) vs the +0.0004 kill line -- the constraint is binding on this
+  checkpoint, matching iter 31's +0.001451 on the published set. Building it as the INVENTED slot.
+* **Rank 1 survives in a REDUCED form.** Among successes at t >= 1 d, the Hard share falls perfectly
+  monotonically with the model's own logit R (Spearman -1.000, 0.166 -> 0.016 across deciles), but the
+  Easy share is U-SHAPED (0.143 -> 0.053 -> 0.099; rho -0.73 vs the +0.8 wanted): a shared latent
+  explains Hard-vs-Good but not Easy. AUC(Good vs Hard) 0.737 -- separated, not solved (kill line 0.75).
+  => implement ONE cutpoint (Again < Hard < {Good, Easy}), not two; the Easy cut would distort calibration.
+* **Rank 10 alive:** by-user calibration gap on train users -0.00836 (overconfident; kill line 0.001).
 Ranks 1 and 2 share ONE CPU instrument (the deploy-RNN pass on realcyc over ~10 train + ~10 VAL users
 recording, per scored row, the curve logit with and without the current duration, y, t, this row's
 rating) -- run it once before building either.

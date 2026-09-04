@@ -526,6 +526,22 @@ class SrsRWKV(ModuleType):
         self.input_feat_mask = _mask
         if self.input_feat_mask_on:
             print(f"[feat-mask] zeroing input feature dims {_zero_feats} (train AND eval)")
+        # RWKV_DUR_DROP=p (2026-09-04, ranked-queue rank 2, iter 33's prescribed clean retry):
+        # TRAIN-ONLY per-row Bernoulli zeroing of the `scaled_duration` input column. The deploy
+        # contract zeroes the most recent review's duration, and the rectified metric scores that
+        # probe -- but 92% of real rows train the curve on a duration deploy never supplies
+        # (measured on realcyc, 10 train users: zeroing it costs +0.001388 ahead). Zeroing is
+        # applied to EVERY row: query and probe rows already carry 0.0 there, so they are
+        # unaffected and no row-type logic is needed. Eval/deploy untouched (self.training gate).
+        # Default 0 = byte-identical.
+        self.dur_drop_p = float(os.environ.get("RWKV_DUR_DROP", "0") or 0)
+        self.dur_drop_on = self.dur_drop_p > 0.0
+        self.dur_drop_col = CARD_FEATURE_COLUMNS.index("scaled_duration")
+        assert 0.0 <= self.dur_drop_p < 1.0, f"RWKV_DUR_DROP out of range: {self.dur_drop_p}"
+        assert self.dur_drop_col == 8, "scaled_duration moved from input dim 8 -- COL_DUR in Rust assumes 8"
+        if self.dur_drop_on:
+            print(f"[dur-drop] TRAIN-ONLY Bernoulli zeroing of input dim {self.dur_drop_col} "
+                  f"(scaled_duration) with p={self.dur_drop_p}")
         self.d_model = anki_rwkv_config.d_model
         self.features_fc_dim = anki_rwkv_config.features_fc_mult * self.d_model
         self.ahead_head_dim = anki_rwkv_config.head_fc_mult * self.d_model
@@ -848,6 +864,18 @@ class SrsRWKV(ModuleType):
         return batch_start * self.input_feat_mask.to(batch_start.device, batch_start.dtype)
 
     @torch.jit.ignore
+    def _apply_dur_drop(self, batch_start: torch.Tensor) -> torch.Tensor:
+        # RWKV_DUR_DROP: keep each row's scaled_duration with probability 1-p (train only; the
+        # caller gates on self.training). Out-of-place so the fetched batch tensor is not mutated.
+        # Rows that already carry 0.0 there (query and probe rows) are unaffected by construction.
+        keep = (torch.rand(batch_start.shape[:-1], device=batch_start.device) >= self.dur_drop_p)
+        col = torch.ones(batch_start.shape[-1], device=batch_start.device, dtype=batch_start.dtype)
+        col[self.dur_drop_col] = 0.0
+        # mask = 1 everywhere except (dropped rows, dur column) = 0
+        mask = col + (1.0 - col) * keep.unsqueeze(-1).to(batch_start.dtype)
+        return batch_start * mask
+
+    @torch.jit.ignore
     def _apply_grade_emb(self, x: torch.Tensor, batch_start: torch.Tensor) -> torch.Tensor:
         # TorchScript-safe indirection: grade_emb only exists when RWKV_GRADE_EMB=1, and the
         # scripted forward_batch must not reference a conditionally-created attribute (the
@@ -1060,6 +1088,8 @@ class SrsRWKV(ModuleType):
     ):
         if self.input_feat_mask_on:
             batch_start = self._apply_input_feat_mask(batch_start)
+        if self.dur_drop_on and self.training:
+            batch_start = self._apply_dur_drop(batch_start)
         x = self.features2card(batch_start)
         if self.grade_emb_on:
             x = self._apply_grade_emb(x, batch_start)
