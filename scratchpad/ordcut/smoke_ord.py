@@ -65,6 +65,16 @@ with env.begin(write=False) as txn:
 env.close()
 st = m2.get_loss(pb)
 out["real_total"] = float(st.average_loss); out["real_ord"] = float(st.ord_loss_avg)
+# THREE-WAY PARITY: the DEPLOY loader must accept a checkpoint saved by the ON model (its two
+# train-only keys are stripped by name, then loaded strictly). 2026-09-05: the first ordcut screen
+# died here -- the eval had scored a checkpoint the deploy path could not load.
+import tempfile
+from rwkv.run_as_rnn import RNNProcess
+tmp = os.path.join(tempfile.gettempdir(), "smoke_ord_ckpt.pth")
+torch.save(m.state_dict(), tmp)
+proc = RNNProcess(path=tmp, device=torch.device("cpu"), dtype=torch.float32)
+out["deploy_loads"] = True
+os.remove(tmp)
 sm = torch.jit.script(m)
 out["scripted"] = True
 print("ARM_JSON " + json.dumps(out))
@@ -111,5 +121,6 @@ check(on["t_clamp"], "ON: t is clamped at 1 s")
 check(off["scripted"] and on["scripted"], "torch.jit.script compiles with and without the flag")
 check(off["real_ord"] == 0.0 and on["real_ord"] > 0.0, f"REAL get_loss on a real chunk: OFF ord term 0, ON ord term {on['real_ord']:.5f} > 0 (the term runs inside _get_loss)")
 check(abs((on["real_total"] - off["real_total"]) - 0.25 * on["real_ord"]) < 1e-4, f"REAL get_loss: ON total = OFF total + lambda*ord ({on['real_total'] - off['real_total']:.6f} vs {0.25 * on['real_ord']:.6f})")
+check(on.get("deploy_loads") is True and off.get("deploy_loads") is True, "DEPLOY loader (RNNProcess) accepts a checkpoint from BOTH arms (train-only keys stripped by name, strict load)")
 print("SMOKE_ORD " + ("PASS" if ok else "FAIL"))
 raise SystemExit(0 if ok else 1)

@@ -5,6 +5,11 @@ This script demonstrates RWKV run as an RNN.
 import numpy as np
 import pandas as pd
 from rwkv import id_features as _idf
+
+# Parameters that exist ONLY in the training loss and are absent from the deployed model. The deploy
+# loader strips exactly these before its strict load; add a name here when a lever adds a
+# conditional train-only Parameter (and nowhere else -- an allowlist, not strict=False).
+TRAIN_ONLY_KEYS = ("ord_cut_a", "ord_cut_c")
 from rwkv.config import (
     DAY_OFFSET_ENCODE_PERIODS,
     ID_ENCODE_DIMS,
@@ -45,8 +50,15 @@ class RNNProcess:
         self.rnn = SrsRWKVRnn(config).to(device)
         if path is not None:
             state_dict = torch.load(path, map_location=device, weights_only=True)
+            # TRAIN-ONLY parameters live in the checkpoint but not in the deployed model (they exist
+            # only in the loss): strip exactly the known names, then load STRICTLY -- strict=False
+            # would silently swallow a real architecture mismatch. 2026-09-05: ordcut's ord_cut_a/c
+            # made the deploy loader refuse a checkpoint the eval had just scored.
+            dropped = [k for k in TRAIN_ONLY_KEYS if k in state_dict]
+            for k in dropped:
+                state_dict.pop(k)
             self.rnn.load_state_dict(state_dict)
-            print(f"Loaded: {path}")
+            print(f"Loaded: {path}" + (f" (dropped train-only keys {dropped})" if dropped else ""))
         else:
             print("Did not load weights.")
         self.rnn = self.rnn.selective_cast(dtype)
