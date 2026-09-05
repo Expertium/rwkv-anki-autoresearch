@@ -17,3 +17,23 @@ masked out by design). The verdict is interpretable either way: a null means the
 already carried this shape information, not that the term did nothing.
 
 (The deployed model is unchanged by these two params; they exist only in the loss.)
+
+## Second half (16:05, eval running): the candidate's OWN logit R separates the grades far better
+
+Same screen instrument on the DECAYED ordcut checkpoint (cut a = 0.93), same 10 train users,
+125,236 successes at t >= 1 d:
+
+| statistic | realcyc | ordcut |
+|---|---|---|
+| AUC(logit R; Good vs Hard) | 0.737 | **0.851** |
+| AUC(logit R; Easy vs Hard) | 0.643 | 0.774 |
+| Hard share, bottom decile of logit R | 0.166 | 0.270 |
+| Hard share, top decile | 0.016 | 0.001 |
+| Spearman(decile, Hard share) | -1.000 | -1.000 |
+
+PREREG P3 (second half) HOLDS with margin: the curve's logit now carries the Hard/Good distinction
+it was never asked for before (+0.114 AUC). The Easy share is still not monotone (the reason the
+second cut was dropped), so the one-cut design was the right reduction. What the accuracy verdict
+decides is whether this extra ORDERING of R translates into a better BINARY curve at the label's t
+-- the ordinal term can sharpen the ranking of successes without moving the pass/fail calibration.
+
