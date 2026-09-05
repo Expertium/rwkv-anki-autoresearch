@@ -1694,9 +1694,12 @@ class SrsRWKV(ModuleType):
         # RWKV_ORD_LAMBDA: ordinal one-cut term on successful ahead rows with t >= ord_min_t
         ord_loss_avg = ahead_avg.detach() * 0.0
         if self.ord_on:
-            _ord_mask = ahead_wmask.float() * _hard_y.float() * (
-                label_elapsed_seconds.float() >= self.ord_min_t).float()
-            _ord_loss = self._ord_loss(curve_logits, label_rating, label_elapsed_seconds)
+            # label_elapsed_seconds was unsqueezed to (B,T,1) above for the curve; everything here
+            # is (B,T) like label_rating (the first launch broadcast to 3-D and every step raised).
+            _les2 = label_elapsed_seconds.reshape(label_rating.shape).float()
+            _ord_mask = ahead_wmask.float().reshape(label_rating.shape) * _hard_y.float().reshape(
+                label_rating.shape) * (_les2 >= self.ord_min_t).float()
+            _ord_loss = self._ord_loss(curve_logits.reshape(label_rating.shape), label_rating, _les2)
             _ord_avg = (_ord_loss * _ord_mask).sum() / (1e-8 + _ord_mask.sum())
             loss_avg = loss_avg + self.ord_lambda * _ord_avg
             ord_loss_avg = _ord_avg.detach()

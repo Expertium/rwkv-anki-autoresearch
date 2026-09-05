@@ -48,6 +48,23 @@ else:
     l2.sum().backward()
     out["grad_a"] = float(m.ord_cut_a.grad.abs().sum()); out["grad_c"] = float(m.ord_cut_c.grad.abs().sum())
     out["t_clamp"] = bool(torch.allclose(m._ord_loss(z, rating, torch.zeros(3, 7)), m._ord_loss(z, rating, torch.ones(3, 7))))
+# THE CHECK THAT WAS MISSING (2026-09-05): the REAL get_loss on a REAL chunk with the flag as set --
+# the first launch died on a (B,T) vs (B,T,1) broadcast inside _get_loss that no isolated test of
+# _ord_loss could see. Both arms run it; the ON arm must add exactly lambda * ord to the OFF total.
+sys.path.insert(0, "scratchpad/proposals_2026-09-04")
+import lmdb
+from rwkv.prepare_batch import get_data, prepare
+from sam_probe import to_f32
+m2 = SrsRWKV(CFG)
+m2.load_state_dict(torch.load("scratchpad/realcyc/rc_d_10935.pth", map_location="cpu", weights_only=True), strict=False)
+m2 = m2.float(); m2.eval()
+env = lmdb.open("F:/rwkv_lmdb/train_db_5k_h1_id5", map_size=400_000_000_000, readonly=True, lock=False)
+with env.begin(write=False) as txn:
+    b = min(json.loads(txn.get(b"101_batches")), key=lambda x: x[2])
+    pb = to_f32(prepare([get_data(txn, (101, b[0], b[1], b[2]), device="cpu")], seed=1234, probe_density=0.08).to("cpu"))
+env.close()
+st = m2.get_loss(pb)
+out["real_total"] = float(st.average_loss); out["real_ord"] = float(st.ord_loss_avg)
 sm = torch.jit.script(m)
 out["scripted"] = True
 print("ARM_JSON " + json.dumps(out))
@@ -92,5 +109,7 @@ check(on["shift_applied"] and on["t_slope_applied"], "ON: the cut shifts the log
 check(on["grad_a"] > 0 and on["grad_c"] > 0, "ON: gradients reach both a and c")
 check(on["t_clamp"], "ON: t is clamped at 1 s")
 check(off["scripted"] and on["scripted"], "torch.jit.script compiles with and without the flag")
+check(off["real_ord"] == 0.0 and on["real_ord"] > 0.0, f"REAL get_loss on a real chunk: OFF ord term 0, ON ord term {on['real_ord']:.5f} > 0 (the term runs inside _get_loss)")
+check(abs((on["real_total"] - off["real_total"]) - 0.25 * on["real_ord"]) < 1e-4, f"REAL get_loss: ON total = OFF total + lambda*ord ({on['real_total'] - off['real_total']:.6f} vs {0.25 * on['real_ord']:.6f})")
 print("SMOKE_ORD " + ("PASS" if ok else "FAIL"))
 raise SystemExit(0 if ok else 1)
