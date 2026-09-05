@@ -1380,6 +1380,18 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ ITER 63 `durdrop` REPORTED 2026-09-05 08:38 -- REJECTED by the pre-registered REGRESSION rule** (vs
+realcyc: ahead -0.000130 p_worse 0.10 / **imm -0.000370 at p_worse 8e-120**, the -0.0001 harm line and
+the -0.0002 abort line both crossed; size 0/2499). **P3 measured BEFORE the number: engaged, the
+duration-zeroing reliance fell +0.001388 -> +0.000881 (-37%), short of the +0.0007 line.** Mechanism = the
+pre-registered P2 risk: the STATE loses the duration on a quarter of rows and the rating head pays (iter
+18 measured duration as real imm signal). **=> FAMILY CLOSED 0/3 (iter 18 removal, iter 33 probe-only,
+iter 63 dropout): the deploy rectification penalty is a fact of deploy, not a training target.** No
+p=0.5 retry (the retry was reserved for a null). Rank 9 (probe density 0.20) demoted with it.
+**ordcut LAUNCHED 08:39:24 BY ITS WAITER'S `auto_control.py`** (gate applied mechanically -> control =
+realcyc, preflight rc 0) -- the 2-minute hand-off is no longer a human race, proven live. Verdict
+~19:00; then sam (auto base). Detail: `research_5k_verbose.md` iter 63.
+
 **✓ LOO SWEEP DONE 2026-09-04 22:22 (19 arms, n=300, featB's checkpoint; reliance not value):**
 `t_since_any_review` +0.001325 / +0.005076 = the WHOLE clock gain; sibling_gap +0.000205 / +0.000487;
 creation_to_first_review +0.000348 / +0.000202; the three creation-batch columns +0.0002..+0.0003 ahead
@@ -2622,6 +2634,13 @@ NOT spend 6.1 h on it.** ★ The iteration also refutes a general claim: the "sa
 rearrangement is indistinguishable" result of iters 41/43/44 is NOT a law about this trunk -- it held
 for the curve head and FAILED for the rating head at p=3e-161.
 
+**deploy-contract alignment 0/3 -- CLOSED ON MECHANISM (iters 18, 33, 63).** Three instruments aimed at
+the current-duration half of the rectification penalty -- permanent removal (18: -0.0018/-0.0024),
+probe-only withholding (33: -0.0028/-0.0008, confounded), stochastic withholding (63: -0.00013/-0.00037
+at a measured -37% engagement) -- and all three lose on imm, because the duration input serves TWO
+consumers: the curve head the metric rectifies and the rating head it does not. The penalty is a
+property of the deploy contract (Andrew 2026-07-27: zeroed duration + PAVA), not a training target.
+Do not propose a fourth withholding scheme; the 30% PAVA-pooling half is the rectifier's own price.
 **capacity-at-5k 0/3** (iter 49 added the user/preset L0 channel mixers back, +4.7% params, for +0.000067 ahead at p=0.11 and +0.000087 imm -- both under the bar). Three placements now agree: this model is not capacity-limited at 5k. Do not propose a fourth width/depth add without a mechanism argument that distinguishes it from these three.
 **ahead-vs-imm-gap exploitation 0/2 -- CLOSED ON MECHANISM** (iters 46, 48). Both attempts to route
 the better-conditioned imm signal into the ahead/rating path returned exact nulls, by structurally

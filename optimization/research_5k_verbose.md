@@ -3743,3 +3743,40 @@ rule, but removing inputs the model does not use buys no accuracy, the standing 
 simplifying, and phase 4 is measured against the stop criterion. The retrain-without is one ~10 h run
 if Andrew wants the simpler input layout for its own sake. Cost of the sweep: ~5.5 h GPU across two
 days; arm 8 died once on a transient CUDA illegal-memory-access inside group_norm and passed on retry.
+
+
+## iter 63 -- `durdrop`: duration dropout on the current review's duration input (2026-09-05 08:38): REJECTED, an imm regression
+
+**ahead 0.298212 / imm 0.263962 vs realcyc 0.298083 / 0.263592 (n=2,499): -0.000130 (p_worse 0.10) /
+-0.000370 (p_worse 8e-120)**; size 0/2499; 563,652 params. INVENTED slot (the 2026-09-04 refill's rank
+2, iter 33's own prescribed clean retry). Pre-registered (`scratchpad/durdrop/PREREG.md`).
+
+### The predictions and what happened
+
+| prediction | outcome |
+|---|---|
+| P1: rectified ahead +0.00015..+0.0005 | REFUTED -- -0.000130 |
+| P2: imm -0.0001..+0.00005; harm line -0.0001 | CROSSED -- -0.000370, rank-significant |
+| P3: duration reliance falls +0.001388 -> < +0.0007 on the candidate (measured BEFORE the number, `P3_engagement.md`) | PARTIAL -- +0.000881 (-37%) |
+| P4: a regression closes the family (18, 33, this) | **THIS** |
+
+### The mechanism, and why it closes a family rather than a dose
+
+The lever did what it was built to do -- the model's dependence on the current duration fell by 37% --
+and paid for it where the pre-registration said it might: the STATE. On a quarter of the rows the
+card/note/deck/user recurrences never see how long the review took, and the rating head, which iter 18
+had already shown reads duration as real signal (-0.0024 imm when the feature was removed outright),
+loses 0.00037. The curve head gained nothing at this dose. The screen was right that the constraint is
+binding (+0.0014 ahead reliance); it could not see that the input serves two consumers and the one the
+metric does not rectify is the one that pays. Three instruments now agree -- permanent removal
+(iter 18), probe-only withholding (iter 33), stochastic withholding (iter 63): **the deploy
+rectification penalty is a property of the deploy contract, not a training target.** The remaining 30%
+(PAVA pooling) is the rectifier's own price and was never on this lever's table.
+
+No p=0.5 retry: the pre-registered rule reserves the retry for a NULL at a partial dose, and this is a
+regression. Rank 9 of the refill (probe density 0.20, the PAVA-path restriction of the same idea) is
+demoted with it. Cost 10.2 h; a CPU harness at normal priority cost the WS ~25% for 15 minutes before
+it was demoted (0.72 -> 0.90 steps/s), which is the one ops note.
+
+**The chain moved on by itself:** ordcut's waiter applied the gate, kept realcyc as the control, and
+launched.
