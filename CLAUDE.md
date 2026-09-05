@@ -1392,7 +1392,13 @@ REGISTERED BUT DEMOTED: if ever run it must decouple the SCALE too (`z_ord = s*z
 constraint), and only if nothing better is queued. Family `label-side curve supervision` 0/1.
 **sam LAUNCHED 18:51:27 by its waiter's `auto_control.py`** (curve-side gate applied -> base = realcyc;
 decay-only from `rc_ws_10935`, `RWKV_SAM_RHO=0.05`; control = realcyc's own decay). ~2x decay (6.5 h)
-+ eval -> verdict ~05:30 on 09-06. Detail: `research_5k_verbose.md` iter 64.
++ eval -> verdict ~05:30 on 09-06. **Verified live at 18:55: both `[sam]` banners in the decay log
+(ON + "first pass: weights restored bit-exactly"), 563,652 params, 0 exceptions, stepping at ~0.4
+steps/s in warm-up.** Detail: `research_5k_verbose.md` iter 64.
+**hord (the button-order hinge, INVENTED slot after sam) IS ARMED behind sam** (`scratchpad/hord/`,
+waiter pid 22596 on `sam.log`; PREREG written; `mk_hord.py realcyc [--sam]` + `auto_control.py`: if sam
+passes the both-modes gate, hord's decay carries SAM and its control is sam; else control = realcyc).
+Generator validated in both modes; `RWKV_PAVA_HORIZON_LAMBDA=0.05`, no new params, curve-side gate.
 
 **★★★ ITER 63 `durdrop` REPORTED 2026-09-05 08:38 -- REJECTED by the pre-registered REGRESSION rule** (vs
 realcyc: ahead -0.000130 p_worse 0.10 / **imm -0.000370 at p_worse 8e-120**, the -0.0001 harm line and
