@@ -145,6 +145,8 @@ def get_optimizer(config, model):
     # is the treatment; there is no version of it that holds the step size fixed.
     lora_matrix_params = []
     _muon_lora = os.environ.get("RWKV_MUON_INCLUDE_LORA", "0") == "1"
+    scale_matrix_params = []
+    _muon_scale = os.environ.get("RWKV_MUON_INCLUDE_SCALE", "0") == "1"
     head_targets = [
         "head",
         "p_linear",
@@ -187,6 +189,17 @@ def get_optimizer(config, model):
             and len(param.squeeze().shape) >= 2
         ):
             lora_matrix_params.append(param)
+        elif (
+            _muon_scale
+            and "weight" in name
+            and "scale" in name
+            and len(param.squeeze().shape) >= 2
+        ):
+            # RWKV_MUON_INCLUDE_SCALE (2026-09-05, ranked-queue rank 11): the 26 (H, C) k/v scale
+            # projections are the LAST 2-D weights still on AdamW after iter 53. Their training
+            # updates are as anisotropic as the LoRAs' (sigma_max/||dW||_F median 0.653 vs 0.649)
+            # but carry ~1% of the update energy. Own group at wd 0.0, exactly like the LoRAs.
+            scale_matrix_params.append(param)
         else:
             other_params.append(param)
 
@@ -224,6 +237,10 @@ def get_optimizer(config, model):
     if lora_matrix_params:
         groups.append({"params": lora_matrix_params, "weight_decay": _lora_wd, "lr": config.PEAK_LR})
         n_muon_groups = 5
+    if scale_matrix_params:
+        # RWKV_MUON_INCLUDE_SCALE: own Muon group at the wd 0.0 these params already had on AdamW
+        groups.append({"params": scale_matrix_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
+        n_muon_groups += 1
     groups.append({"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
     # Research iter 29 (2026-07-21): RWKV_MUON=1 -> hybrid Muon+AdamW (rwkv/muon.py).
     # The four MATRIX groups (decay/channel_mixer/head/encode -- exactly the current wd
@@ -247,6 +264,8 @@ def get_optimizer(config, model):
         n_adam = sum(p.numel() for p in groups[-1]["params"])
         _lora_note = (f", incl {sum(p.numel() for p in lora_matrix_params):,} LoRA in a wd={_lora_wd} group"
                       if lora_matrix_params else "")
+        if scale_matrix_params:
+            _lora_note += f", incl {sum(p.numel() for p in scale_matrix_params):,} scale-matrix params in a wd=0.0 group"
         print(f"[muon] hybrid Muon+AdamW ON: muon_lr={muon_lr} momentum={muon_momentum} "
               f"cautious_wd={cautious_wd} "
               f"({n_muon:,} matrix params on Muon{_lora_note}, {n_adam:,} on AdamW)")
