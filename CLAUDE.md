@@ -1395,6 +1395,16 @@ decay-only from `rc_ws_10935`, `RWKV_SAM_RHO=0.05`; control = realcyc's own deca
 + eval -> verdict ~05:30 on 09-06. **Verified live at 18:55: both `[sam]` banners in the decay log
 (ON + "first pass: weights restored bit-exactly"), 563,652 params, 0 exceptions, stepping at ~0.4
 steps/s in warm-up.** Detail: `research_5k_verbose.md` iter 64.
+**muonscale (Muon on the 26 k/v scale matrices, ADOPTED slot after hord) IS ARMED behind hord**
+(`scratchpad/muonscale/`, waiter pid 20076 on `hord.log`; `RWKV_MUON_INCLUDE_SCALE=1`, own wd=0 Muon
+group, smoke 11/11; PREREG predicts a NULL -- 1% of the update energy -- and runs to CLOSE the optimizer
+coverage axis; `auto_control.py` bases it on hord if hord passes, else realcyc, SAM in the decay iff the
+reference carries it). Screens today also DEMOTED rank 10 (recalibration: fold-unstable +0.00059 /
+-0.00015). **After muonscale the screened queue is EMPTY**: what remains needs Andrew (rank 4 imm-scale
+0.5 = a directed trade; rank 12 first-review probes = a contract change), is demoted on mechanism (the
+ordcut retry with a decoupled scale), or is multi-day (rank 13 chunk-continuous training). **=> the
+next step after muonscale reports is a fresh 3-agent generation round, unless one of the running levers
+promotes and opens a follow-up.**
 **hord (the button-order hinge, INVENTED slot after sam) IS ARMED behind sam** (`scratchpad/hord/`,
 waiter pid 22596 on `sam.log`; PREREG written; `mk_hord.py realcyc [--sam]` + `auto_control.py`: if sam
 passes the both-modes gate, hord's decay carries SAM and its control is sam; else control = realcyc).
