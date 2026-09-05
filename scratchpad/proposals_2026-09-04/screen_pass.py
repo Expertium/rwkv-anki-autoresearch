@@ -37,6 +37,10 @@ _ENV = {
 }
 for _k, _v in _ENV.items():
     os.environ[_k] = _v
+# overrides for re-running the same screen on a CANDIDATE checkpoint (P3 engagement checks):
+#   SCREEN_CKPT=<path>  SCREEN_OUT=<npz path>
+if os.environ.get("SCREEN_CKPT"):
+    os.environ["RWKV_CHAMP_CKPT"] = os.environ["SCREEN_CKPT"]
 
 from pathlib import Path
 
@@ -50,7 +54,7 @@ from rwkv.run_as_rnn import scale_duration, scale_state
 
 DATA = Path(r"C:\Users\Andrew\anki-revlogs-10k-id")
 DAY = 86400.0
-OUT = Path("scratchpad/proposals_2026-09-04/screen_records.npz")
+OUT = Path(os.environ.get("SCREEN_OUT", "scratchpad/proposals_2026-09-04/screen_records.npz"))
 
 args = [a for a in sys.argv[1:] if not a.startswith("--")]
 LIMIT = 0
