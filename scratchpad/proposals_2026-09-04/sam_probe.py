@@ -42,7 +42,7 @@ from rwkv.model.srs_model import SrsRWKV
 from rwkv.prepare_batch import get_data, prepare
 
 DB = "F:/rwkv_lmdb/train_db_5k_h1_id5"
-CKPT = "scratchpad/realcyc/rc_d_10935.pth"
+CKPT = os.environ.get("SAM_PROBE_CKPT", "scratchpad/realcyc/rc_d_10935.pth")  # override for a candidate (P2 of sam/PREREG.md)
 N_USERS = int(sys.argv[1]) if len(sys.argv) > 1 else 12
 RHOS = [0.01, 0.02, 0.05]
 
