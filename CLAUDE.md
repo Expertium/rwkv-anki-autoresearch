@@ -1389,8 +1389,19 @@ pre-registered P2 risk: the STATE loses the duration on a quarter of rows and th
 iter 63 dropout): the deploy rectification penalty is a fact of deploy, not a training target.** No
 p=0.5 retry (the retry was reserved for a null). Rank 9 (probe density 0.20) demoted with it.
 **ordcut LAUNCHED 08:39:24 BY ITS WAITER'S `auto_control.py`** (gate applied mechanically -> control =
-realcyc, preflight rc 0) -- the 2-minute hand-off is no longer a human race, proven live. Verdict
-~19:00; then sam (auto base). Detail: `research_5k_verbose.md` iter 63.
+realcyc, preflight rc 0) -- the 2-minute hand-off is no longer a human race, proven live.
+**⚠ AND THAT FIRST LAUNCH WAS HOLLOW -- caught in 90 s, killed, fixed, relaunched 08:43:33.** Every
+step raised inside `_get_loss` (`ahead_wmask * _hard_y * (label_elapsed_seconds >= min_t)` broadcast
+(B,T) against the (B,T,1) that line 1528 unsqueezes `label_elapsed_seconds` into), and `train_rwkv`'s
+per-batch except swallowed it, so the run marched on at 0% GPU producing nothing. **THE GAP: the
+ordinal smoke tested `_ord_loss` in ISOLATION (8/8 green) and never ran the real `get_loss` with the
+flag on; the SAM and hinge smokes did, which is why those held.** Fixed (`98505ee`): the block
+reshapes to `label_rating.shape`, and `smoke_ord.py` now runs `get_loss` on a real chunk in both arms
+and asserts ON = OFF + lambda*ord. **RULE: a flag-gated LOSS term is smoked by running `get_loss` on a
+real chunk with the flag on, never by unit-testing the helper alone -- and read the WS log's first
+minutes for `Traceback` before trusting a launch** (the `[ord]` banner and the param count were both
+correct on the hollow run; a banner proves construction, not execution). Verdict ~19:05; then sam
+(auto base). Detail: `research_5k_verbose.md` iter 63.
 
 **✓ LOO SWEEP DONE 2026-09-04 22:22 (19 arms, n=300, featB's checkpoint; reliance not value):**
 `t_since_any_review` +0.001325 / +0.005076 = the WHOLE clock gain; sibling_gap +0.000205 / +0.000487;
