@@ -23,7 +23,7 @@ _ENV = {
     "RWKV_STATE_CLAMP_TAU": "300", "RWKV_STATE_CLAMP_WINDOW": "32768",
     "RWKV_STRIP_CMIX": "user_id:0,user_id:1,user_id:2,preset_id:0,preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1",
     "RWKV_ID_FEATURES": "1", "RWKV_REAL_CYCLES": "1", "RWKV_ZERO_FEATURES": "",
-    "RWKV_CHAMP_CKPT": "scratchpad/realcyc/rc_d_10935.pth",
+    "RWKV_CHAMP_CKPT": os.environ.get("BUTTON_PROBE_CKPT", "scratchpad/realcyc/rc_d_10935.pth"),  # override for a candidate (P3 of hord/PREREG.md)
 }
 for _k, _v in _ENV.items():
     os.environ[_k] = _v
