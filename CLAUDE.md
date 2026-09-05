@@ -1402,6 +1402,16 @@ real chunk with the flag on, never by unit-testing the helper alone -- and read 
 minutes for `Traceback` before trusting a launch** (the `[ord]` banner and the param count were both
 correct on the hollow run; a banner proves construction, not execution). Verdict ~19:05; then sam
 (auto base). Detail: `research_5k_verbose.md` iter 63.
+**⚠ SECOND ordcut GAP, caught at DECAY_OK 14:55 by its own P3 screen: the DEPLOY loader refused the
+checkpoint** (`SrsRWKVRnn.load_state_dict` is strict; `ord_cut_a/c` are train-only and absent from the
+deployed model). The eval had just scored a checkpoint the deploy path could not load -- a §9
+three-way-parity gap of the "train and eval agree, deploy differs" shape. **Fixed (`8db09df`):
+`run_as_rnn.TRAIN_ONLY_KEYS` is an ALLOWLIST stripped before the strict load (not `strict=False`,
+which would swallow real mismatches); `smoke_ord.py` now loads the ON checkpoint through
+`RNNProcess`.** RULE: any lever that adds a conditional train-only Parameter must (a) add its name to
+`TRAIN_ONLY_KEYS`, (b) prove the deploy loader still loads its checkpoint in the lever's smoke, and
+(c) drop it at export (`export_rnn_trace.py` / `weight_names.json`) if the lever promotes. ordcut's
+P3 screen relaunched 14:58 on the fixed loader (decayed cut a = 0.93 logits).
 
 **✓ LOO SWEEP DONE 2026-09-04 22:22 (19 arms, n=300, featB's checkpoint; reliance not value):**
 `t_since_any_review` +0.001325 / +0.005076 = the WHOLE clock gain; sibling_gap +0.000205 / +0.000487;
