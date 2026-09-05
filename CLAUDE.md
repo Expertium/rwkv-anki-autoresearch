@@ -1380,6 +1380,20 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ ITER 64 `ordcut` REPORTED 2026-09-05 18:49 -- REJECTED, a LARGE ahead REGRESSION** (vs realcyc:
+**ahead -0.003181 at p_worse 5e-163**, 16x the pre-registered abort line; imm -0.000116; size 0/2499).
+**Engaged with margin, both halves recorded BEFORE the number:** the cut learned to a = 0.93 logits and
+the candidate's own logit R separates Good from Hard at AUC 0.851 (realcyc 0.737). **=> the term did what
+it was asked and that is the cost: CORAL's SHARED-LOGIT premise makes one z serve the pass/fail boundary
+(the metric) and the Hard/Good boundary (the term); the two are NOT a shifted copy of each other in this
+model (the Easy share is U-shaped in R), and at lambda 0.25 (~4x the ahead BCE at init) the ordinal side
+won.** A MECHANISM result, not a dose result. The PREREG's one retry (lambda 0.1, min_t 3 d) is
+REGISTERED BUT DEMOTED: if ever run it must decouple the SCALE too (`z_ord = s*z - a`, a different
+constraint), and only if nothing better is queued. Family `label-side curve supervision` 0/1.
+**sam LAUNCHED 18:51:27 by its waiter's `auto_control.py`** (curve-side gate applied -> base = realcyc;
+decay-only from `rc_ws_10935`, `RWKV_SAM_RHO=0.05`; control = realcyc's own decay). ~2x decay (6.5 h)
++ eval -> verdict ~05:30 on 09-06. Detail: `research_5k_verbose.md` iter 64.
+
 **★★★ ITER 63 `durdrop` REPORTED 2026-09-05 08:38 -- REJECTED by the pre-registered REGRESSION rule** (vs
 realcyc: ahead -0.000130 p_worse 0.10 / **imm -0.000370 at p_worse 8e-120**, the -0.0001 harm line and
 the -0.0002 abort line both crossed; size 0/2499). **P3 measured BEFORE the number: engaged, the
@@ -2657,6 +2671,12 @@ NOT spend 6.1 h on it.** ★ The iteration also refutes a general claim: the "sa
 rearrangement is indistinguishable" result of iters 41/43/44 is NOT a law about this trunk -- it held
 for the curve head and FAILED for the rating head at p=3e-161.
 
+**label-side curve supervision 0/1 -- DEPRIORITIZED with a named mechanism (iter 64, ordinal one-cut).**
+The next review's rating is a real label the ahead path never sees, and the lever used it exactly as
+designed (AUC Good-vs-Hard on the curve's own R 0.737 -> 0.851) -- and lost 0.0032 ahead, because a
+SHARED logit cannot serve the pass/fail and the Hard/Good boundaries when they are not shifted copies
+(the Easy share is U-shaped in R). A second variant must give the ordinal branch its own SCALE
+(`z_ord = s*z - a`) or feed the grade to a separate head; not a smaller dose of the same term.
 **deploy-contract alignment 0/3 -- CLOSED ON MECHANISM (iters 18, 33, 63).** Three instruments aimed at
 the current-duration half of the rectification penalty -- permanent removal (18: -0.0018/-0.0024),
 probe-only withholding (33: -0.0028/-0.0008, confounded), stochastic withholding (63: -0.00013/-0.00037

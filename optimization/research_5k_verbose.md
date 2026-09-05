@@ -3780,3 +3780,62 @@ it was demoted (0.72 -> 0.90 steps/s), which is the one ops note.
 
 **The chain moved on by itself:** ordcut's waiter applied the gate, kept realcyc as the control, and
 launched.
+
+
+## iter 64 -- `ordcut`: ordinal one-cut supervision of the curve logit from the next rating (2026-09-05 18:49): REJECTED, a large ahead regression
+
+**ahead 0.301263 / imm 0.263709 vs realcyc 0.298083 / 0.263592 (n=2,499): -0.003181 (p_worse 5e-163) /
+-0.000116 (p_worse 2e-19)**; size 0/2499; 563,654 params (+2 train-only). ADOPTED slot (CORAL, Cao et
+al. 2020; Frank & Hall 2001), the 2026-09-04 refill's rank 1, proposed independently by the literature
+and domain agents. Pre-registered (`scratchpad/ordcut/PREREG.md`); both engagement halves recorded
+before the number (`P3_engagement.md`).
+
+### What the predictions said, and what happened
+
+| prediction | outcome |
+|---|---|
+| P1: rectified ahead +0.0001..+0.0004 | REFUTED -- -0.003181, 16x the abort line |
+| P2: imm inside the floor | missed -- -0.000116, rank-significant |
+| P3a: cut `a` moves >= 0.3 logits | HELD -- 0.29 -> 0.65 -> 0.84 (WS), 0.93 deployed; slope c ~ 0 |
+| P3b: AUC(Good vs Hard) on the candidate's own R rises above 0.737 | HELD with margin -- 0.851 |
+| abort line: ahead worse by > 0.0002 -> one retry (lambda 0.1, min_t 3 d) before closing | crossed 16x; retry registered, demoted (below) |
+
+### The mechanism
+
+The term did exactly what it was built to do -- the curve's logit now ranks successes by grade far
+better (Hard share in the bottom decile 0.166 -> 0.270, top decile 0.016 -> 0.001) -- and that is the
+whole cost. CORAL's design premise is a SHARED logit with per-class cutpoints: the same z serves
+P(success) = sigmoid(z) and P(Good-or-Easy | success) = sigmoid(z - a). That premise says the Hard/Good
+boundary is a shifted copy of the pass/fail boundary along z. In this model it is not: the pre-build
+screen had already shown the Easy share is U-shaped in R while the Hard share is steep, i.e. the grade
+structure is not a monotone re-labelling of R. Given two boundaries that a single latent cannot both
+carry, the loss chooses by weight, and at lambda 0.25 the ordinal term is ~4x the ahead BCE at init
+(1.14 vs 0.27 on the smoke chunk). z was re-shaped to serve the ordinal boundary and the binary
+calibration paid 0.0032 -- 16x what the accept bar asks for in the other direction.
+
+**Why this is a mechanism result rather than a dose result, and what the owed retry would have to be.**
+The PREREG committed to one retry at lambda 0.1 / min_t 3 d before closing. It is registered, but a
+2.5x smaller weight does not plausibly turn -0.0032 into +0.0001; if it runs at all it should also
+decouple the SCALE (z_ord = s*z - a, one more train-only param) so the ordinal branch can steepen
+without touching the curve -- that is a different constraint, not a smaller dose of the same one, which
+is what the cross-family pattern (iters 48/50/57/62) says a retry must be. It takes a slot only if
+nothing better is queued. Family "label-side curve supervision" 0/1. The grade label is not worthless
+-- the screen's data half (Hard/Good lapse gap 1.4x at matched t) still stands -- it just cannot be
+poured into the curve's own logit.
+
+### Two guards fired on this run, and both fixes are permanent
+
+1. **The first launch was hollow** (08:39): a (B,T) mask broadcast against the (B,T,1) that line 1528
+   unsqueezes `label_elapsed_seconds` into raised on every step, and the trainer's per-batch except
+   swallowed it -- banner correct, param count correct, GPU idle. Caught in 90 s by reading the WS log,
+   killed, fixed, relaunched at 08:43. The isolated unit test of `_ord_loss` (8/8 green) could not see
+   it; `smoke_ord.py` now runs the REAL `get_loss` on a real chunk in both arms. A hollow-run monitor
+   now watches every live training log.
+2. **The deploy loader refused the checkpoint** (14:55, caught by the P3 screen): `SrsRWKVRnn`'s strict
+   load has no slot for `ord_cut_a/c`. Fixed with an ALLOWLIST (`run_as_rnn.TRAIN_ONLY_KEYS`) stripped
+   before the strict load, in the deploy loader and in `export_rnn_trace.py`; the smoke now loads the
+   ON checkpoint through `RNNProcess`.
+
+Cost 10.2 h GPU. The chain moved on by itself: `sam/auto_control.py` applied the curve-side gate,
+chose realcyc as the base, regenerated and preflighted the decay-only runner, and launched sam at
+18:51:27 -- 118 s after the marker.
