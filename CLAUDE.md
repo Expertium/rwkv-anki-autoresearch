@@ -1395,6 +1395,18 @@ decay-only from `rc_ws_10935`, `RWKV_SAM_RHO=0.05`; control = realcyc's own deca
 + eval -> verdict ~05:30 on 09-06. **Verified live at 18:55: both `[sam]` banners in the decay log
 (ON + "first pass: weights restored bit-exactly"), 563,652 params, 0 exceptions, stepping at ~0.4
 steps/s in warm-up.** Detail: `research_5k_verbose.md` iter 64.
+**⟶ 2026-09-05 21:52 -- THE THREE VERDICTS ARE AUTOMATIC TOO.** WMI-detached verdict waiters
+(`scratchpad/{sam,hord,muonscale}/run_*_verdict.cmd`, pids 37272 / 11504 / 27476) fire on each
+runner's terminal marker, refuse without `EVAL_OK`, read `control=` from the run's `CONTROL.txt`,
+run the pre-registered gate (sam: `realcyc_verdict.py sam realcyc`; hord: size + `paired_pvalue
+--curve-side` + means; muonscale: `realcyc_verdict.py muonscale <ctrl>`) and then the PREREG
+engagement probe on the candidate checkpoint at BelowNormal priority (sam: `sam_probe.py`, gap@0.05
+must fall below +0.023; hord: `button_probe.py`, crossing rates must fall >= 50%; muonscale:
+`scale_probe.py ms_ws_50 ms_d_10935`, median ratio < 0.55). Output: `<run>/verdict.log`. The
+probes take `SAM_PROBE_CKPT` / `BUTTON_PROBE_CKPT` env overrides. All three validated by executing
+stubbed copies end to end. ⚠ A stub substitute must be a RETURNING command (`cmd /c stub.cmd`): a
+bare `.cmd` invoked from a batch transfers control and never returns, which first read as a
+runner failure.
 **muonscale (Muon on the 26 k/v scale matrices, ADOPTED slot after hord) IS ARMED behind hord**
 (`scratchpad/muonscale/`, waiter pid 20076 on `hord.log`; `RWKV_MUON_INCLUDE_SCALE=1`, own wd=0 Muon
 group, smoke 11/11; PREREG predicts a NULL -- 1% of the update energy -- and runs to CLOSE the optimizer
