@@ -203,6 +203,16 @@ def export_user(user_id):
 def export_weights():
     model = SrsRWKVRnn(DEFAULT_ANKI_RWKV_CONFIG)
     sd = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
+    # TRAIN-ONLY parameters (they exist only in the loss; the deployed model has no slot for them)
+    # are stripped by the same allowlist the deploy loader uses, so the strict load below still
+    # catches a real architecture mismatch. The exported safetensors comes from the RNN model's own
+    # state_dict, so those keys never reach the artifact (2026-09-05, ordcut's ord_cut_a/c).
+    from rwkv.run_as_rnn import TRAIN_ONLY_KEYS
+    _dropped = [k for k in TRAIN_ONLY_KEYS if k in sd]
+    for _k in _dropped:
+        sd.pop(_k)
+    if _dropped:
+        print(f"weights: dropped train-only keys {_dropped} before the strict load")
     model.load_state_dict(sd)
     flat = {k: v.detach().cpu().contiguous().float() for k, v in model.state_dict().items()}
 
