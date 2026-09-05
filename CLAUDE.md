@@ -1410,8 +1410,10 @@ three-way-parity gap of the "train and eval agree, deploy differs" shape. **Fixe
 which would swallow real mismatches); `smoke_ord.py` now loads the ON checkpoint through
 `RNNProcess`.** RULE: any lever that adds a conditional train-only Parameter must (a) add its name to
 `TRAIN_ONLY_KEYS`, (b) prove the deploy loader still loads its checkpoint in the lever's smoke, and
-(c) drop it at export (`export_rnn_trace.py` / `weight_names.json`) if the lever promotes. ordcut's
-P3 screen relaunched 14:58 on the fixed loader (decayed cut a = 0.93 logits).
+(c) the export drops the same allowlist before its strict load -- DONE for all levers at once
+(`b5ad529`, `export_rnn_trace.py` imports `TRAIN_ONLY_KEYS`; the safetensors comes from the RNN
+model's own state_dict, so such keys never reach the artifact). ordcut's P3 screen relaunched 14:58
+on the fixed loader (decayed cut a = 0.93 logits).
 
 **✓ LOO SWEEP DONE 2026-09-04 22:22 (19 arms, n=300, featB's checkpoint; reliance not value):**
 `t_since_any_review` +0.001325 / +0.005076 = the WHOLE clock gain; sibling_gap +0.000205 / +0.000487;
