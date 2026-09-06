@@ -136,6 +136,22 @@ value on the metric could be ~0.001+ ahead on multi-chunk users -- but only if E
 too, which changes how the metric is computed relative to srs-benchmark's chunked RWKV numbers; that
 is a methodology decision, not a model lever; (2) A1 is the cheap half and needs no such decision.
 
+### A1 build scoping (read before building; ~1-2 days, not the "~1 day" in the table)
+
+- The CUDA stateful kernel (`rwkv7_wkv_forward_stateful_*`, `rwkv_ops.py:117`) TAKES `state0_BHKK` but
+  its backward returns **no gradient for state0** (truncated BPTT by design). A LEARNED init needs
+  dL/dstate0 = the backward's carried state-gradient at t=0, which the sequential backward already
+  propagates internally -- exposing it is a kernel change (one extra output) + a parity test against
+  `reference_rwkv7_stateful` (which is differentiable and can produce the reference gradient).
+- The stateful path is used today only for `T > state_clamp_window` streams under the clamp
+  (`rwkv_model.py:1095`); every other stream runs `RWKV7_WKV.apply` (the time-parallel path, which
+  cannot take an initial state). A learned init therefore moves ALL streams onto the sequential
+  kernel: re-measure steps/s first (the 2026-07 profile says the recurrence dominates either way).
+- Time-shift states (att + ffn shift, (C,) each) get a learned vector per (stream, layer): trivial.
+- Deploy: `rwkv_rnn_model.init_state()` (line 51) starts from the learned tensors; Rust reads two
+  extra tensors per layer; a fresh parity trace. Per-card/per-note STATE SIZE unchanged (shared init).
+- Params: 13 layer-steps x (5·16·16 + 2·80) ≈ 18.7k (+3.3%).
+
 ## The arithmetic Andrew should see (a direction question, not a request)
 
 realcyc ahead 0.2981. The 10x budget is projected at −0.0042 (the 2026-08-11 calibration) → 0.2939,
