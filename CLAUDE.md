@@ -1380,6 +1380,25 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**⟶ 2026-09-06 05:10 -- THE ROUND IS DONE IN-CONVERSATION AND ITS RANK 1 IS ARMED BEHIND muonscale.**
+`scratchpad/proposals_2026-09-06/round.md` + `PROPOSALS.md` "RANKED QUEUE 2026-09-06". **eqw** =
+`RWKV_EQUALIZE_LOSS_W=0.25` ("train on what is scored": the benchmark never scores the first sixth of a
+history -- TimeSeriesSplit(5) -- and those rows are EASIER, by-user ahead BCE 0.189 vs 0.279 on realcyc's
+train users; unscored rows get weight 0.25 in both objectives; train-only, no params; the PAVA probes
+already use this restriction). Smoke 9/9 on a MIXED chunk (⚠ user 101's smallest chunk is 100% scored
+and made the flag vacuous -- the non-vacuity check caught it), PREREG, generator validated on all three
+bases, `eqw/auto_control.py` bases it on muonscale iff muonscale passes, waiter armed on
+`muonscale.log`. Both-modes gate. **Next ADOPTED slot = learned initial state per stream** (RWKV
+"state tuning"): the chunk-reset screen (deploy RNN, rows 16k-32k of users 102/106, continuous vs
+fresh) measured **+0.024..+0.028 ahead on a chunk's first 256 rows, ~+0.01 over the first 1-2k** --
+the part an init recovers -- plus on user 106 a PERSISTENT +0.0064 over rows 8k-16k that only state
+CARRY recovers (chunk-continuous = Andrew's multi-day call, and it would also change how the METRIC
+is computed if eval carried state too). Screens this round killed PCGrad, LAWA, the cold-grade aux
+head, t-bucket recalibration and learning-step down-weighting before any GPU.
+**★ THE DIRECTION ARITHMETIC FOR ANDREW:** realcyc 0.2981 − 0.0042 (10x budget) + 0.0023 (QAT tax) =
+0.2962 > 0.2950: the endgame meets the stop criterion only if the QAT tax shrinks ~0.0012 or phase 4
+finds ~6 more accepted-size gains (last five slots 0/5). Fork: keep spending phase-4 slots, or move to
+phase 5 early and attack the tax. eqw runs either way.
 **★★★ ITER 65 `sam` REPORTED 2026-09-06 04:17 -- REJECTED, a REGRESSION in BOTH modes** (vs realcyc:
 ahead **−0.000277 at p_worse 5e-86**, imm −0.000155 at p_worse 7e-157; past the 0.0002 abort line; size
 0/2499). **Engaged as designed** (P2: median sharpness gap@0.05 0.0230 → 0.0133, −42%) **and the TRAIN

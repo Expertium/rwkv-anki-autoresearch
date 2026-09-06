@@ -1176,8 +1176,8 @@ TRAIN loss rising too; LAWA's WS-average is worse than the WS-final; dropout/wd/
 
 | rank | lever | provenance | gate | expected ahead | cost | state |
 |---|---|---|---|---|---|---|
-| 1 | **Train on what is scored: weight the ahead+imm losses by `label_is_equalize` (unscored rows x 0.25)** -- the never-scored first sixth of each history is EASIER (by-user BCE 0.189 vs 0.279, fail 7% vs 13-15%) and takes ~17% of the fit | invented | both | +0.0000..+0.0003 | 1 run | **= the INVENTED slot after muonscale; building** |
-| 2 | Learned initial state per stream (RWKV "state tuning") | adopted | both | +0.0000..+0.0003 iff the reset cost is binding | 1 run + trace | reset-cost screen running |
+| 1 | **Train on what is scored: weight the ahead+imm losses by `label_is_equalize` (unscored rows x 0.25)** -- the never-scored first sixth of each history is EASIER (by-user BCE 0.189 vs 0.279, fail 7% vs 13-15%) and takes ~17% of the fit | invented | both | +0.0000..+0.0003 | 1 run | **= the INVENTED slot after muonscale; BUILT + ARMED 09-06 05:05** (`scratchpad/eqw/`: `RWKV_EQUALIZE_LOSS_W`, smoke 9/9 on a mixed chunk, PREREG, `mk_eqw.py <realcyc\|hord\|muonscale>`, `auto_control.py` picks the base on muonscale's verdict, waiter on `muonscale.log`) |
+| 2 | Learned initial state per stream (RWKV "state tuning") | adopted | both | +0.0000..+0.0003 | 1 run + trace | **reset-cost screen DONE, alive**: a chunk's first 256 rows pay +0.024..+0.028 ahead, the first 1-2k ~+0.01 (recoverable by an init); user 106 also carries a PERSISTENT +0.0064 over rows 8k-16k that only state CARRY fixes. **= the ADOPTED slot after eqw** (~1 day of build: stateful kernel path + deploy init) |
 | 3 | imm-for-ahead trade (imm-scale 0.5 / Kendall 2018 uncertainty weighting); imm has exactly 0.0004 of headroom vs its stop line | invented / adopted | **DIRECTED** | +0.00015..+0.00045 | 1 run | **Andrew** |
 | 4 | Chunk-continuous training (state carry, RWKV-infctx style) | adopted | both | 0..+0.0003 | multi-day | **Andrew**; same screen |
 | 5 | Probe the first review | invented | **contract** | −0.0001..+0.0002 | re-score + 1 run | **Andrew** |

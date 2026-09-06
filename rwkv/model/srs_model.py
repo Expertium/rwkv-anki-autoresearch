@@ -359,6 +359,21 @@ class SrsRWKV(ModuleType):
         self.pbin_scale = float(os.environ.get("RWKV_PBIN_SCALE", "0"))
         if self.pbin_scale != 0.0:
             print(f"[pbin] direct binary-recall loss term ON, scale={self.pbin_scale}")
+        # RWKV_EQUALIZE_LOSS_W=<alpha> (2026-09-06 round, rank 1: "train on what is scored"). The
+        # benchmark scores only the rows flagged label_is_equalize (TimeSeriesSplit(5) test folds
+        # after the delta_t > 0 rule) -- never the first sixth of a user's history -- and those
+        # unscored rows are a different, EASIER distribution (realcyc train users: by-user ahead
+        # BCE 0.189 vs 0.279, fail 7% vs 13-15%) taking ~17% of the fit. This weights the ahead
+        # AND imm objective rows by alpha where label_is_equalize == 0 and by 1 where it is 1 --
+        # the same restriction the PAVA probes already use (prepare_batch probe_equalize_only).
+        # Weighted means (the *_wmask sums), so the loss magnitude and the tuned LRs still hold.
+        # Objective only: the *_equalize_avg metrics stay unweighted. Default 1.0 = byte-identical.
+        self.equalize_loss_w = float(os.environ.get("RWKV_EQUALIZE_LOSS_W", "1") or 1)
+        self.equalize_loss_on = self.equalize_loss_w != 1.0
+        if self.equalize_loss_on:
+            assert 0.0 <= self.equalize_loss_w < 1.0, f"RWKV_EQUALIZE_LOSS_W out of range: {self.equalize_loss_w}"
+            print(f"[eqw] scored-set loss weighting ON: unscored (label_is_equalize=0) rows weighted "
+                  f"{self.equalize_loss_w} in the ahead and imm objectives")
         # Research iter 23 (2026-07-17, MONOTONICITY_PLAN.md stage 2, Andrew's design):
         # learnable power-mean PAVA rectifier over the 4 counterfactual button curves,
         # trained on in-sequence probe rows (skip rows inserted at prepare-batch time; see
@@ -1598,6 +1613,13 @@ class SrsRWKV(ModuleType):
         else:
             ahead_wmask = ahead_mask
             immediate_wmask = immediate_mask
+        # RWKV_EQUALIZE_LOSS_W: unscored rows x alpha in BOTH objectives (see __init__). Applied
+        # after the user weighting so the two compose; the equalize metrics below are untouched.
+        if self.equalize_loss_on:
+            _eqf = label_is_equalize.float()
+            _ew = _eqf + (1.0 - _eqf) * self.equalize_loss_w
+            ahead_wmask = ahead_wmask.float() * _ew
+            immediate_wmask = immediate_wmask.float() * _ew
         curve_loss = torch.nn.functional.binary_cross_entropy_with_logits(
             curve_logits, label_y, reduction="none"
         )

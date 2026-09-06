@@ -38,7 +38,7 @@ capacity are all closed on measurement.
 | ahead loss by history position (TimeSeriesSplit(5) never scores the first sixth) | first sixth: by-user BCE **0.189**, fail 7.0%; rest: **0.279**, fail 13-15% | **OPENS B1** -- 17% of the labelled rows train on a distribution the metric never scores |
 | curve-parameter dump (w,S,d on real rows) | one dominant power law (w 0.87, S ~133 d, d ~0.26) + a 12% slow tail + a 0.2% fast component | the family is not the long-t limit; no lever |
 | curve head's own Dropout(0.1) | train-mode cost +0.0013 ahead (user 107) | measured; not a lever |
-| chunk-reset cost (continuous vs fresh state at row 16,384; users 102/106) | RUNNING -- see the addendum below | decides A1/A2 |
+| chunk-reset cost (continuous vs fresh state at row 16,384; users 102/106) | chunk-mean ahead cost **+0.00014 (102) / +0.00486 (106)**; first 256 rows +0.028/+0.024, recovered by ~1-2k rows on 102; on 106 a PERSISTENT +0.0064 in rows 8k-16k (cards whose earlier reviews sit in the previous chunk restart cold) | **A1 alive** (the recoverable early part), **A2 = the persistent part, Andrew's call** |
 
 ## A. Literature prior (adopted)
 
@@ -117,11 +117,24 @@ fit-per-step levers left.
 | rank | lever | provenance | gate | expected ahead | cost | state |
 |---|---|---|---|---|---|---|
 | 1 | **B1 scored-set loss weighting, alpha 0.25** | invented | both | +0.0000..+0.0003 | 1 run | screen DONE (distribution gap measured); **BUILD NOW = the invented slot after muonscale** |
-| 2 | A1 learned initial state | adopted (RWKV state tuning) | both | +0.0000..+0.0003 iff binding | 1 run + trace | screen RUNNING (reset cost) |
+| 2 | A1 learned initial state | adopted (RWKV state tuning) | both | +0.0000..+0.0003 | 1 run + trace | **screen DONE, alive**: the cold start costs +0.024..+0.028 ahead on a chunk's first 256 rows and ~+0.01 over the first 1-2k; the ADOPTED slot after eqw (needs the stateful kernel path + a deploy init: ~1 day of build) |
 | 3 | C1 / A3 imm-for-ahead trade | invented / adopted | DIRECTED | +0.00015..+0.00045 | 1 run | **Andrew** |
 | 4 | A2 chunk-continuous | adopted (infctx) | both | 0..+0.0003 | multi-day | **Andrew**; screen RUNNING |
 | 5 | B2 first-review probes | invented | contract | −0.0001..+0.0002 | re-score + 1 run | **Andrew** |
 | -- | A4, A5, C2, C3 | | | | | phase 5/6 notes, not slots |
+
+## Addendum: the chunk-reset screen, and what it says about the METRIC
+
+Training AND eval reset every stream at each 16,384-row chunk boundary; deploy never does. Measured on
+realcyc with the deploy RNN (rows 16,384-32,768 of two train users, continuous state vs a fresh
+process): the reset costs **+0.00014 (user 102) / +0.00486 (user 106)** ahead over the chunk. The
+first 256 rows pay +0.024..+0.028 and the first 1-2k rows ~+0.01 (the part a LEARNED INITIAL STATE
+can buy -- A1, now alive), but user 106 also carries a PERSISTENT +0.0064 across rows 8k-16k: cards
+whose earlier reviews sit in the previous chunk restart as if new, and only state CARRY (A2) fixes
+that. Two consequences for Andrew: (1) A2 (chunk-continuous training) has real evidence now, and its
+value on the metric could be ~0.001+ ahead on multi-chunk users -- but only if EVAL carries state
+too, which changes how the metric is computed relative to srs-benchmark's chunked RWKV numbers; that
+is a methodology decision, not a model lever; (2) A1 is the cheap half and needs no such decision.
 
 ## The arithmetic Andrew should see (a direction question, not a request)
 
