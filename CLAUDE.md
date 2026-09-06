@@ -1380,6 +1380,12 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**⚠ 2026-09-06 05:17 -- THE hord VERDICT WAITER (pid 11504, armed 21:51) HAD VANISHED with no log
+line, no marker and no reboot in the system log; cause unknown (findstr on a missing log returns
+errorlevel 1, so that is not it). Re-armed as pid 10948 with a missing-log guard, and a LIVENESS
+MONITOR now checks all six chain/verdict waiters every 10 min and reports a vanished one without a
+terminal marker. Rule: after arming a detached waiter, check it is still alive an hour later; a
+returned pid proves the launch, not the life.**
 **⟶ 2026-09-06 05:10 -- THE ROUND IS DONE IN-CONVERSATION AND ITS RANK 1 IS ARMED BEHIND muonscale.**
 `scratchpad/proposals_2026-09-06/round.md` + `PROPOSALS.md` "RANKED QUEUE 2026-09-06". **eqw** =
 `RWKV_EQUALIZE_LOSS_W=0.25` ("train on what is scored": the benchmark never scores the first sixth of a
