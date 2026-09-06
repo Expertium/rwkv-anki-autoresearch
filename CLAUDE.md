@@ -2942,6 +2942,15 @@ All hooks stay in-repo, env-gated, default off.
   reports `%FREEMB% never set` on the RAM-check pattern that `wait_then_rebuild4.cmd` ran
   successfully with that morning ("RAM OK: 51250 MB free"). Fixed in the tool; but the order is
   fix the tool -> preflight PASS -> arm, never "arm because I know why the guard is wrong".
+- ⚠ **`goto` CAN MISS A LABEL IN AN LF-ONLY `.cmd` (2026-09-06, killed the hord verdict waiter TWICE, silently).**
+  "The system cannot find the batch label specified - waithord": cmd.exe scans for labels in
+  512-byte blocks and an LF-only file can hide a label from that scan depending on where it falls;
+  the SAME file works or fails by byte alignment, which is why sibling waiters written the same way
+  looped for hours. A stubbed execution does not catch it when the stub's fake log already carries
+  the marker (no `goto` runs). **Write `.cmd` files with CRLF line endings** (the Write tool emits
+  LF: convert with python `newline=""` before arming) and run the real waiter in the FOREGROUND for
+  longer than one poll interval, so its first `goto` executes, before detaching it. Never convert
+  a RUNNING waiter's file (byte offsets).
 - ⚠ **`detach.ps1`: pass the path as a LITERAL single-quoted Windows path from bash** (2026-09-03). Three waiters
   launched with the path assembled in a bash `for` loop variable died instantly (the third detach already saw no
   parent), while the identical files launched with a single-quoted C-drive literal ran. Verify every detach by pid
