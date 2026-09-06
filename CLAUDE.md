@@ -1380,6 +1380,52 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ ITER 67 `muonscale` REPORTED 2026-09-07 00:45 -- REJECTED by the both-modes rule, and it is the
+cleanest HALF-EFFECT in the log: imm +0.000109 at p=4.9e-12 (ABOVE the bar) with ahead a CERTIFIED
+NULL (-0.000005, 15x inside the floor).** size 0/2499, params identical.
+**★ THE FINDING OUTRANKS THE VERDICT: THE GAIN IS NOT PROPORTIONAL TO UPDATE MASS.** The PREREG
+predicted +0.00000..+0.00005 per mode by scaling iter 53 by update-energy share; imm came in at 59%
+of iter 53's gain from **1.2% of the energy and 1.85% of the params** (~36x the energy-proportional
+expectation). => the productive optimizer axis is coverage of **GATING** parameters -- k/v scale set
+the delta rule's authority -- and those gates moved the RATING head only. Note iter 53 (LoRAs) moved
+BOTH modes, so this is not "the optimizer never moves ahead"; it is "the gates are imm-specific".
+**★★ AND THE P2 ENGAGEMENT CRITERION WAS UN-DIAGNOSTIC -- THE PROBE'S OWN OUTPUT PROVES IT.** The
+criterion was "scale-tensor cumulative-update anisotropy must fall below 0.55"; measured 0.653 ->
+0.641. But the **LoRA group, which is on Muon in BOTH arms and cannot have changed optimizer, moved
+0.649 -> 0.638 -- the same 0.011**. The probe integrates displacement over 10,935 steps while Muon
+orthogonalises each STEP's momentum, so no Muon-managed tensor could ever pass that line. Engagement
+rests instead on the optimizer banner (guarded in the runner) and on the p=5e-12 effect itself.
+**RULE: an engagement criterion must be validated against a control that CANNOT have changed** -- the
+LoRA row was printed beside the scale row in the pre-run screen and would have shown the criterion
+dead before the GPU was spent.
+**OPENS a precise follow-up:** `rkvdag_lerp` (13 x (8,1,1,80)) + `bonus` (13 x (1,1,5,16)) = **26
+tensors / 9,360 params / 3.1% of update energy** -- token-shift and WKV-bonus GATES, squeeze-2-D, on
+AdamW only because `get_optimizer` keys on `"weight" in name`. Same kind of parameter as k/v scale
+at 2.6x the energy. **GRAFT with hord PRICED AND DECLINED:** ahead +0.000069 + (-0.000005) =
++0.000064 at perfect additivity, under the bar (the iter-56 precedent); re-price when eqw reports.
+**★ FOR ANDREW, a gate-interpretation question:** this is the first iteration where one mode clears
+the bar at p=5e-12 while the other is a certified null rather than a decline -- a strict Pareto
+improvement, training-only, zero params, zero deploy debt. The gate as written rejects it; whether a
+"Pareto half-accept" is admissible is his rule to change. Until then muonscale is a free INGREDIENT.
+**eqw launched by itself 78 s after the marker** (base realcyc; `[eqw]` banner consumed, 563,652
+params, 0 tracebacks). Detail: `research_5k_verbose.md` iter 67.
+**⟶ 2026-09-07 07:00 -- A CORRECTION I OWE THE RECORD, AND IT REVIVES A SHELVED PLAN:
+`scratchpad/proposals_2026-09-06/CHUNKING_CORRECTION.md`. THE EVAL DOES NOT CHUNK.** Measured from
+both dbs' chunk lists: `test_db_5k_id5` = median **1** chunk/user, 0.2% multi-chunk, **0.00%** of
+rows near an interior boundary; `train_db_5k_h1_id5` = median **4** chunks/user (max 313), 88.3%
+multi-chunk, **12.50%** of rows within 2,048 of a boundary. Median rows/user is ~51k in BOTH, so it
+is the builders that differ, not the users. **=> the learned-initial-state lever's metric route is
+DEAD (+0.000000) and my round document's rank 2/4 rationale was wrong.** What the cold-start
+measurement actually shows is a **TRAIN-ONLY structural mismatch: 12.5% of training rows are computed
+from a cold state the eval and deploy never impose, at +0.004..+0.012 ahead BCE each** -- plus the
+length mismatch (training contexts <= 16,384 rows, eval sequences 51k median / 7.7 M max, which is
+also why the state clamp exists). **`STATEFUL_BPTT_PLAN.md`'s CUDA kernel is DONE and
+parity-verified** (state0=0 exact, split-equivalence exact, truncated grads 3.8e-6); it was shelved
+on SPEED and its accuracy case was never quantified. Steps 1-3 (model carry, per-entity store,
+synchronized batching) remain and are multi-day -- **Andrew's call**. A ~5-line proxy exists (
+down-weight the post-boundary recovery rows with the eqw instrument), to sequence AFTER eqw since it
+is the same mechanism. **LESSON: before sizing a lever, check which rows the metric actually scores
+-- one level up from eqw's own insight, i.e. how the scored sequences are CUT.**
 **★★★ ITER 66 `hord` REPORTED 2026-09-06 14:38 -- REJECTED, a tie leaning POSITIVE in both modes**
 (vs realcyc ahead **+0.000069** p=1.7e-3 / imm **+0.000060** p=1.6e-4; both inside the floor, under
 the bar; size 0/2499). **P3 held with margin, recorded before the number:** off-label crossing rates
