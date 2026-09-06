@@ -1166,6 +1166,37 @@ R'(now + t) for t, which is a CONTRACT change). Measure rect-vs-unrect on the ca
 gain lives in the wiggle, it is deploy-invisible under the current contract and the lever is worth
 nothing as shipped.
 
+## ★★ RANKED QUEUE 2026-09-06 -- the in-conversation round (Andrew: no subagents; the 09-05 agents hit the usage limit 3x)
+
+Full text: `scratchpad/proposals_2026-09-06/round.md` (three priors, screens, the ranking, and the
+direction arithmetic). Reference realcyc 0.298083 / 0.263592. **The reframing finding: the model is
+FIT-LIMITED at this budget** (iter 65: SAM found a 42% flatter minimum and lost in both modes with the
+TRAIN loss rising too; LAWA's WS-average is worse than the WS-final; dropout/wd/lorawd all null-or-worse)
+-- so only fit-per-step, where-the-fit-is-spent, and metric-structure levers can still pay in phase 4.
+
+| rank | lever | provenance | gate | expected ahead | cost | state |
+|---|---|---|---|---|---|---|
+| 1 | **Train on what is scored: weight the ahead+imm losses by `label_is_equalize` (unscored rows x 0.25)** -- the never-scored first sixth of each history is EASIER (by-user BCE 0.189 vs 0.279, fail 7% vs 13-15%) and takes ~17% of the fit | invented | both | +0.0000..+0.0003 | 1 run | **= the INVENTED slot after muonscale; building** |
+| 2 | Learned initial state per stream (RWKV "state tuning") | adopted | both | +0.0000..+0.0003 iff the reset cost is binding | 1 run + trace | reset-cost screen running |
+| 3 | imm-for-ahead trade (imm-scale 0.5 / Kendall 2018 uncertainty weighting); imm has exactly 0.0004 of headroom vs its stop line | invented / adopted | **DIRECTED** | +0.00015..+0.00045 | 1 run | **Andrew** |
+| 4 | Chunk-continuous training (state carry, RWKV-infctx style) | adopted | both | 0..+0.0003 | multi-day | **Andrew**; same screen |
+| 5 | Probe the first review | invented | **contract** | −0.0001..+0.0002 | re-score + 1 run | **Andrew** |
+| -- | Nesterov momentum warm-up; MAX 65536→32768 at fixed epochs (~+0.0003, 1.7x wall-clock); data echoing; SAM on the endgame checkpoints | | | | | phase 5/6 notes |
+
+**Killed by CPU screens this round (zero GPU):** PCGrad (no ahead/imm gradient conflict: trunk cos
++0.05..+0.34, 0/6 chunks), LAWA checkpoint averaging (worse than the WS-final on every window), the
+cold-grade aux head (the trunk carries no grade beyond R), t-bucket logit recalibration (held-out
+−0.0006, fold-unstable), learning-step down-weighting (the metric scores those rows and the model is
+calibrated on them). The curve-parameter dump shows one dominant power law (S ~133 d, d ~0.26) -- the
+family is not the long-horizon limit.
+
+**★ THE DIRECTION ARITHMETIC (for Andrew):** realcyc 0.2981 − 0.0042 (10x budget, projected) + 0.0023
+(QAT tax) = **0.2962 > 0.2950**. The stop criterion is met by the endgame only if the QAT tax shrinks by
+~0.0012 or phase 4 finds ~6 more accepted-size gains (the last five slots went 0/5). The QAT tax is the
+largest controllable term left (5x an accepted iteration) and phase 5 is the first phase that trains
+with QAT on. Fork: keep spending phase-4 slots, or move to phase 5 early and attack the tax. Rank 1
+runs either way (one slot, a measured un-run mechanism).
+
 ## ★★ RANKED QUEUE 2026-09-04 18:20 -- the 3-agent refill (13 distinct levers from 15 proposals)
 
 Full texts: `scratchpad/proposals_2026-09-04/{literature,domain,steelman}.md` (written to disk by the
