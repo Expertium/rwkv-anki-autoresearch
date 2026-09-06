@@ -3928,3 +3928,67 @@ Cost 9.4 h GPU (decay 5.3 h, eval 4.1 h). The chain moved on by itself: `hord/au
 applied the both-modes gate, rejected sam, kept realcyc as hord's base, and launched hord at
 04:17:46 -- 85 s after the marker; the numbers above were produced by the automatic verdict waiter
 (`sam/run_sam_verdict.cmd`) without a human in the loop.
+
+
+## iter 66 -- `hord`: multi-horizon button-order hinge on the probe curves (2026-09-06 14:38): REJECTED, a tie leaning positive in both modes
+
+**Lever.** `RWKV_PAVA_HORIZON_LAMBDA=0.05`, `RWKV_PAVA_HORIZON_FACTORS=0.125,8`: on the probe rows
+(the 4 counterfactual button rows inserted at density 0.08), a hinge on the adjacent-button order of
+the raw (w, S, d) curves evaluated at t/8 and 8t, added beside the same-t PAVA term. Curve head only;
+probe rows only; no new parameters. INVENTED slot. Control realcyc (sam had failed its gate, so
+`hord/auto_control.py` chose the plain base). Curve-side gate.
+
+**Numbers (VAL half, n=2,499, size 0/2,499, nan_users 0, params 563,652).**
+
+| | ahead | imm |
+|---|---|---|
+| hord | 0.298013 | 0.263533 |
+| realcyc (control) | 0.298083 | 0.263592 |
+| delta (positive = better) | **+0.000069**, p=1.7e-3 | **+0.000060**, p=1.6e-4 |
+
+Both positive, both inside the +/-7.5e-5 floor, both under the 0.0001 bar. Rejected by the gate.
+
+### What the predictions said, and what happened
+
+- **P1 (ahead +0.0000..+0.0003):** +0.000069, at the floor edge of the band; not an accept.
+- **P2 (imm inside the floor, not significantly worse): HELD** -- and imm moved UP by the same
+  amount as ahead. A probe-only curve term cannot touch the rating head directly, so this is a
+  shared-trunk effect; the rank test is consistent (p=1.6e-4) but the magnitude is inside the floor.
+- **P3 (engagement, recorded before the number): HELD WITH MARGIN.** `button_probe.py` on
+  `hd_d_10935`, the same 4 train users / 1,478 probed rows as realcyc's screen:
+
+| horizon | realcyc crossing rate | hord | change |
+|---|---|---|---|
+| label t | 29.9% | 5.8% | -81% |
+| 1 d | 32.5% | 9.5% | -71% |
+| 7 d | 32.1% | 6.6% | -79% |
+| 30 d | 35.6% | 5.4% | -85% |
+| 180 d | 48.8% | 7.6% | -84% |
+
+  Median |R_Good - R_Hard| at 30 d rose 0.070 -> 0.097. The hinge ordered the whole counterfactual
+  family across four orders of magnitude of horizon, far past the -50% line.
+- **P4 (the falsifier): FIRES.** Ahead inside the floor WITH P3 holding = ordering the
+  counterfactual buttons off the label horizon carries no information about the pressed curve AT
+  the label horizon. The regulariser reading (coherence of the family regularises the shared
+  readout, the shape of PAVA lambda 0.1->0.2's +0.00048) is refuted at this dose, and P3 says dose
+  is not the reason. No retry (the lambda 0.2 retry was reserved for a P3 failure).
+
+### Where this leaves the curve-shape family
+
+2/5: PAVA accepted (iter 23), lambda 0.2 directed-accept (iter 36), lambda 0.3 rejected, the
+spacing-effect constraint killed at the screen, hord a positive tie. **No third ordering
+constraint** -- the same-t rectifier already carries the ordering information that matters at the
+scored horizon, and the off-label family is now coherent for free (the deploy scheduler's 4-button
+intervals will be better ordered at every horizon, which is a product nicety, not a metric gain).
+
+**Graft-policy note.** hord is a sub-bar positive in BOTH modes with rank consistency at p ~ 1e-3
+-- real-looking but not the 1e-16 certainty of iter 49's imm half-effect. It is an INGREDIENT if
+muonscale or eqw returns another sub-bar positive in the same mode; it is not a graft trigger alone.
+
+**Milestone, for the record:** hord's imm 0.263533 is the first gen-5-lineage number BELOW the old
+d=128 model's VAL-half imm (0.263561). imm has cleared its stop criterion since gen4base; ahead is
+the binding mode and is still 0.0030 short.
+
+Cost 10.3 h GPU (WS 3.2 h, decay 3.0 h, eval 4.1 h). Automatic end to end: launched 85 s after
+sam's marker, verdict by `run_hord_verdict.cmd` (after its CRLF fix), muonscale launched 72 s after
+hord's marker with base realcyc chosen mechanically.

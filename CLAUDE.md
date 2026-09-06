@@ -1380,6 +1380,17 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ ITER 66 `hord` REPORTED 2026-09-06 14:38 -- REJECTED, a tie leaning POSITIVE in both modes**
+(vs realcyc ahead **+0.000069** p=1.7e-3 / imm **+0.000060** p=1.6e-4; both inside the floor, under
+the bar; size 0/2499). **P3 held with margin, recorded before the number:** off-label crossing rates
+fell 32.5/32.1/35.6/48.8% → 9.5/6.6/5.4/7.6% and label-t 29.9% → 5.8% -- the hinge ordered the whole
+counterfactual family and the pressed curve at the label horizon gained ~nothing => **the
+pre-registered falsifier P4 fires; no third ordering constraint; curve-shape family 2/5.** No dose
+retry (reserved for a P3 failure). Graft INGREDIENT (both modes sub-bar positive) if muonscale or eqw
+adds another in the same mode. Milestone: imm 0.263533 is the first gen-5 number below the old d=128
+model's VAL-half imm. **muonscale launched by itself 72 s after the marker** (base realcyc; the
+`[muon]` banner names the 10,400 scale-matrix params in a wd=0.0 group; 0 tracebacks). Verdict
+~2026-09-07 01:00; then eqw (auto). Detail: `research_5k_verbose.md` iter 66.
 **⚠ 2026-09-06 05:17 -- THE hord VERDICT WAITER (pid 11504, armed 21:51) HAD VANISHED with no log
 line, no marker and no reboot in the system log; cause unknown (findstr on a missing log returns
 errorlevel 1, so that is not it). Re-armed as pid 10948 with a missing-log guard, and a LIVENESS
