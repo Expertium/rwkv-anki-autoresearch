@@ -61,6 +61,18 @@ def preflight(path):
                 f"byte-offset hazard for cmd.exe"], []
     lines = text.split("\r\n") if "\r\n" in text else text.split("\n")
 
+    # ---- goto + LF-only endings: the label scan can MISS the label (2026-09-06) ------------------
+    # cmd.exe scans for a `goto` target in 512-byte blocks; in an LF-only file the label can be
+    # invisible to that scan depending on where it falls, and the batch dies with "The system
+    # cannot find the batch label specified" -- silently, in a detached waiter, with no log line.
+    # It killed the hord verdict waiter twice while sibling waiters written the same way looped
+    # for hours (byte alignment). A stubbed run cannot catch it when the stub's fake log already
+    # carries the marker (no goto runs). Waiters and any other goto-bearing .cmd must be CRLF.
+    if n_lone_lf and not n_crlf and re.search(r"(?im)^\s*goto\s+\w+", text):
+        problems.append("goto present in an LF-only file -- cmd.exe can miss the label (silent death); "
+                        "convert to CRLF (python: open(p, newline='').read().replace('\\n', '\\r\\n')) and "
+                        "run the waiter in the foreground past its first poll before detaching")
+
     # ---- REM lines: percent-tilde is FATAL, and nothing else is (measured 2026-09-03) ---------
     # cmd.exe performs batch-parameter substitution BEFORE it honours REM, so a comment containing
     # percent-tilde-N (the modifier syntax with no digit) aborts the WHOLE batch with rc 255 --
