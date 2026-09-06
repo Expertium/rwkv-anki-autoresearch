@@ -147,6 +147,17 @@ def get_optimizer(config, model):
     _muon_lora = os.environ.get("RWKV_MUON_INCLUDE_LORA", "0") == "1"
     scale_matrix_params = []
     _muon_scale = os.environ.get("RWKV_MUON_INCLUDE_SCALE", "0") == "1"
+    # RWKV_MUON_INCLUDE_GATES (2026-09-07, after iter 67): the last squeeze-2-D tensors on AdamW are
+    # the GATES that carry no "weight" in their name -- `rkvdag_lerp` (13 x (8,1,1,80), the
+    # token-shift mixing vectors) and `bonus` (13 x (1,1,5,16), the WKV u term). iter 67 measured
+    # that the optimizer gain tracks WHICH parameters, not update mass (the k/v scale gates: 1.2% of
+    # the energy, 59% of iter 53's imm gain), so gates are the productive population.
+    # ⚠ MuonAdamW reshapes as p.grad.reshape(p.size(0), -1) (muon.py:184/210). rkvdag_lerp becomes a
+    # real (8, 80) matrix; `bonus` becomes a (1, 80) ROW VECTOR, where Newton-Schulz degenerates to a
+    # normalisation. The size guard below therefore admits rkvdag_lerp and excludes `bonus` -- as a
+    # property of the reshape, not as a name list, so any future tensor is judged the same way.
+    gate_matrix_params = []
+    _muon_gates = os.environ.get("RWKV_MUON_INCLUDE_GATES", "0") == "1"
     head_targets = [
         "head",
         "p_linear",
@@ -200,6 +211,16 @@ def get_optimizer(config, model):
             # updates are as anisotropic as the LoRAs' (sigma_max/||dW||_F median 0.653 vs 0.649)
             # but carry ~1% of the update energy. Own group at wd 0.0, exactly like the LoRAs.
             scale_matrix_params.append(param)
+        elif (
+            _muon_gates
+            and "weight" not in name
+            and len(param.squeeze().shape) >= 2
+            and param.shape[0] >= 2
+            and param.numel() // param.shape[0] >= 2
+        ):
+            # see the RWKV_MUON_INCLUDE_GATES note above: the last two conditions are the
+            # non-degenerate-reshape guard, which is what excludes `bonus` (1, 1, 5, 16) -> (1, 80).
+            gate_matrix_params.append(param)
         else:
             other_params.append(param)
 
@@ -241,6 +262,10 @@ def get_optimizer(config, model):
         # RWKV_MUON_INCLUDE_SCALE: own Muon group at the wd 0.0 these params already had on AdamW
         groups.append({"params": scale_matrix_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
         n_muon_groups += 1
+    if gate_matrix_params:
+        # RWKV_MUON_INCLUDE_GATES: own Muon group at the wd 0.0 these params already had on AdamW
+        groups.append({"params": gate_matrix_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
+        n_muon_groups += 1
     groups.append({"params": other_params, "weight_decay": 0.0, "lr": config.PEAK_LR})
     # Research iter 29 (2026-07-21): RWKV_MUON=1 -> hybrid Muon+AdamW (rwkv/muon.py).
     # The four MATRIX groups (decay/channel_mixer/head/encode -- exactly the current wd
@@ -266,6 +291,8 @@ def get_optimizer(config, model):
                       if lora_matrix_params else "")
         if scale_matrix_params:
             _lora_note += f", incl {sum(p.numel() for p in scale_matrix_params):,} scale-matrix params in a wd=0.0 group"
+        if gate_matrix_params:
+            _lora_note += f", incl {sum(p.numel() for p in gate_matrix_params):,} gate-matrix params in a wd=0.0 group"
         print(f"[muon] hybrid Muon+AdamW ON: muon_lr={muon_lr} momentum={muon_momentum} "
               f"cautious_wd={cautious_wd} "
               f"({n_muon:,} matrix params on Muon{_lora_note}, {n_adam:,} on AdamW)")
