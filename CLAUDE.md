@@ -1380,6 +1380,19 @@ trace kept at `scratchpad/gen4_base/shard_s0_oom_0450.log` (the resume deletes s
 ⚠ If 6701 OOMs again in a fresh process, the next step is the solo phase for the REMAINING users only, on a
 result-file copy, because `merge_jsonl` asserts no duplicates across phases.
 
+**★★★ ITER 65 `sam` REPORTED 2026-09-06 04:17 -- REJECTED, a REGRESSION in BOTH modes** (vs realcyc:
+ahead **−0.000277 at p_worse 5e-86**, imm −0.000155 at p_worse 7e-157; past the 0.0002 abort line; size
+0/2499). **Engaged as designed** (P2: median sharpness gap@0.05 0.0230 → 0.0133, −42%) **and the TRAIN
+loss rose with the held-out loss** (last 300 decay steps ahead 0.31807 vs 0.31773) => the flatter
+minimum is a worse fit, not a better-generalising one: **at 1.25 epochs the model is FIT-LIMITED**, so
+explicit regularisers (dropout, wd, norm control, flatness) are deprioritised as a family until the
+endgame's checkpoints show a gap. Halved-rho retry registered but demoted. Three CPU screens from the
+same night closed neighbours before GPU (PCGrad, LAWA checkpoint averaging, the cold-grade probe -- all
+DEAD). **The verdict was produced by the automatic waiter and hord launched 85 s after the marker**
+(base realcyc, `[pava-horizon]` banners present, 563,652 params, 0 tracebacks at step 700). Detail:
+`research_5k_verbose.md` iter 65. **Next: muonscale (adopted) auto-launches on hord's marker; the
+generation round after it is done IN THIS CONVERSATION -- Andrew 2026-09-06: "don't use subagents (or
+use Opuses/Sonnets)", three Fable agents hit the usage limit three times without writing anything.**
 **★★★ ITER 64 `ordcut` REPORTED 2026-09-05 18:49 -- REJECTED, a LARGE ahead REGRESSION** (vs realcyc:
 **ahead -0.003181 at p_worse 5e-163**, 16x the pre-registered abort line; imm -0.000116; size 0/2499).
 **Engaged with margin, both halves recorded BEFORE the number:** the cut learned to a = 0.93 logits and
@@ -2699,6 +2712,17 @@ NOT spend 6.1 h on it.** ★ The iteration also refutes a general claim: the "sa
 rearrangement is indistinguishable" result of iters 41/43/44 is NOT a law about this trunk -- it held
 for the curve head and FAILED for the rating head at p=3e-161.
 
+**explicit regularisation at the 1-epoch budget -- SAM 0/1 (iter 65), DEPRIORITIZED AS A FAMILY with a
+mechanism.** SAM (decay-only, rho 0.05) found a demonstrably flatter minimum (sharpness −42%) and
+REGRESSED in both modes (ahead −0.000277, imm −0.000155) -- with the TRAIN loss rising alongside the
+held-out loss. Train and held-out moving together means the flatter point is a worse fit, not a
+better-generalising one: at 1.25 epochs the model is FIT-LIMITED and there is no generalisation gap
+for a regulariser to close. Four independent readings now agree (the tuner cut dropout x0.5, wd 0.2
+lost, lorawd tied engaged, SAM regressed engaged), and Muon's edge is therefore spectral COVERAGE
+(fit per step), not flatness. Do not propose dropout/noise/flatness/norm regularisers for this phase;
+re-screen them on the 10x endgame's checkpoints, where a gap can exist (its wd/dropout item).
+Neighbours closed on CPU the same night: PCGrad (no gradient conflict), LAWA checkpoint averaging
+(the WS-average is worse than the WS-final), the cold-grade probe (no grade beyond R in the trunk).
 **label-side curve supervision 0/1 -- DEPRIORITIZED with a named mechanism (iter 64, ordinal one-cut).**
 The next review's rating is a real label the ahead path never sees, and the lever used it exactly as
 designed (AUC Good-vs-Hard on the curve's own R 0.737 -> 0.851) -- and lost 0.0032 ahead, because a

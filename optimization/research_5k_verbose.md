@@ -3839,3 +3839,92 @@ poured into the curve's own logit.
 Cost 10.2 h GPU. The chain moved on by itself: `sam/auto_control.py` applied the curve-side gate,
 chose realcyc as the base, regenerated and preflighted the decay-only runner, and launched sam at
 18:51:27 -- 118 s after the marker.
+
+
+## iter 65 -- `sam`: Sharpness-Aware Minimization in the decay phase (2026-09-06 04:17): REJECTED, a regression in both modes
+
+**Lever.** `RWKV_SAM_RHO=0.05`, `RWKV_SAM_EVERY=1` (Foret et al. 2021, arXiv 2010.01412), decay
+phase only, warm-started from realcyc's WS-final. Each step: gradient at `w`, ascent
+`e = rho * g / ||g||` (global 2-norm over all parameters), a second forward+backward at `w + e` on the
+same batch with the same dropout masks (the RNG state is saved before the first forward and restored),
+weights restored from a snapshot (bit-exact, asserted on first use), then the ordinary Muon/AdamW step
+on the perturbed gradient. `rwkv/sam.py` + two hook lines in `train_rwkv.py`. Control = realcyc's own
+decay from the same checkpoint, so the flag is the only difference. The base was chosen mechanically
+by `sam/auto_control.py` (ordcut had failed its gate, so realcyc). ADOPTED slot.
+
+**Numbers (VAL half, n=2,499, size 0/2,499, nan_users 0, params 563,652 unchanged).**
+
+| | ahead | imm |
+|---|---|---|
+| sam | 0.298359 | 0.263748 |
+| realcyc (control) | 0.298083 | 0.263592 |
+| delta (positive = better) | **−0.000277**, p_worse 5.5e-86 | **−0.000155**, p_worse 6.6e-157 |
+
+Both modes worse, and ahead past the pre-registered 0.0002 abort line.
+
+### What the predictions said, and what happened
+
+- **P1 (both improve, +0.0000..+0.0003 each): REFUTED.** Both declined, ahead by 2.8x the accept bar.
+- **P2 (engagement -- the sharpness probe's median gap at rho 0.05 must fall below realcyc's +0.023):
+  HELD.** On `sam_d_10935`, the same 12 training chunks give median +0.0133 (−42%), min +0.0048
+  (was +0.0097), max +0.0604 (was +0.0951); at rho 0.01 the median fell 0.0036 → 0.0022. SAM found
+  a flatter point, as designed. The verdict is therefore interpretable: the dose was not too small.
+- **P3 (cost ~2x decay): 1.7x** -- 5.3 h vs realcyc's 3.1 h; the second forward reuses the fetched
+  batch and the fetch is hidden, so the extra cost is compute only.
+- **Abort line (either mode worse by > 0.0002): CROSSED on ahead.**
+
+### The mechanism, and it is in the train loss
+
+Over the last 300 decay steps sam's training ahead loss is **0.31807 vs realcyc's 0.31773** (+0.00034)
+and its total loss 0.91904 vs 0.91814; the 10-user validation set moved the same way (ahead 0.3215
+vs 0.3212, imm 0.2978 vs 0.2976). **Train and held-out moved together.** A regulariser pays when it
+lowers held-out loss while raising train loss -- that is what "closing a generalisation gap" looks
+like. Here the flatter minimum is simply a worse fit, and it generalises exactly as much worse as it
+fits. At 1.25 epochs the model is fit-limited: there is no gap for flatness to close, so the fit it
+gives up is pure cost.
+
+This is the same reading the record already carried from three directions and now has a fourth:
+the tuner cut dropout x0.5 (iter 34), wd 0.2 lost (iter 3), lorawd tied at a demonstrably engaged
+dose (iter 62), and now SAM regresses at a demonstrably engaged dose. **Muon's edge (iters 29/53)
+is therefore not "flatness" -- it is spectral coverage (every 2-D weight moves in every direction),
+which improves the FIT per step.** Explicit regularisers at this budget are deprioritised; the 10x
+endgame, where the model can overfit, is where one could first pay -- that is the first
+reconsideration item on the endgame list (wd/dropout were tuned where overfitting was impossible).
+
+### The pre-registered retry, and why it is demoted
+
+The PREREG's abort-line action is "halve rho once with ASAM-style scaling, then close". It is
+REGISTERED but DEMOTED: a half dose interpolates between a regression and the control, and the
+train-loss signature says there is no generalisation gain to uncover at any dose. If a future
+measurement shows a train-vs-held-out gap (e.g. on the endgame's checkpoints), SAM is the first
+lever to re-screen; not before.
+
+### Three neighbouring levers closed on CPU the same night, before any GPU
+
+The 2026-09-05 proposal agents were killed by the usage limit before writing their lists, but three
+of their screens had finished (kept in the session scratchpad; numbers recorded here):
+
+- **PCGrad / gradient surgery (Yu et al. 2020) -- DEAD.** Trunk `cos(g_ahead, g_imm)` per chunk on
+  realcyc: +0.046 / +0.097 / +0.116 / +0.123 / +0.165 / +0.340 (6 train chunks, 1,500 rows each);
+  0 of 6 with conflict; per-tensor fraction with cos < 0 = 0.26. PCGrad acts only on conflicting
+  gradients, so it would be literally inert here. (This also re-confirms the routing-family
+  closure from the objective side: ahead and imm do not fight in the trunk.)
+- **LAWA-style WS-checkpoint averaging as the decay warm start -- DEAD.** Forward-only on 4 train
+  chunks: the uniform average of the last 2 / 3 / 4 / 6 WS checkpoints (1000-step spacing) is
+  WORSE than the WS-final on the median chunk by +0.0011 / +0.0021 / +0.0009 / +0.0028 total
+  (ahead +0.0007..+0.0023 worse, imm −0.0006..−0.0017 better), against a pre-registered kill line
+  of "not better by ≥ 0.002". The consecutive 1000-step displacements are near-orthogonal
+  (cos(Δ9→10, Δ10→11) = −0.08, |Δ| ≈ 26 against ||W|| = 202), i.e. the constant-LR iterate is not
+  oscillating around a valley floor that an average could find. Consistent with the three EMA
+  nulls at the decay tail.
+- **Cold-grade probe -- DEAD.** Leave-one-user-out multinomial probes of the k+1 grade from the
+  trunk's real-row output: CE(grade | R) 0.776 vs CE(grade | R, x) 0.913 -- the trunk carries no
+  linear grade information beyond the curve's own logit R. This is the representational side of
+  iter 64's mechanism (a separate grade head would have to CREATE that information, not read it).
+- Also measured: the curve head's own hardcoded Dropout(0.1) costs +0.0013 ahead in train mode on
+  user 107 (the train/eval dropout gap; median +0.00135 over 6 chunks). Not a lever by itself.
+
+Cost 9.4 h GPU (decay 5.3 h, eval 4.1 h). The chain moved on by itself: `hord/auto_control.py`
+applied the both-modes gate, rejected sam, kept realcyc as hord's base, and launched hord at
+04:17:46 -- 85 s after the marker; the numbers above were produced by the automatic verdict waiter
+(`sam/run_sam_verdict.cmd`) without a human in the loop.
