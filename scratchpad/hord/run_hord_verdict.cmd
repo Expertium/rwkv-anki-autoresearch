@@ -17,6 +17,10 @@ set BUTTON_PROBE_CKPT=scratchpad/hord/hd_d_10935.pth
 set CTRL=realcyc
 echo ===== hord verdict waiter armed %DATE% %TIME% ===== >> "%LOG%"
 :waithord
+if not exist "%HORDLOG%" (
+  ping -n 121 127.0.0.1 >nul
+  goto waithord
+)
 findstr /B /C:"DONE_EXIT_" "%HORDLOG%" >nul 2>&1
 if errorlevel 1 (
   ping -n 121 127.0.0.1 >nul
