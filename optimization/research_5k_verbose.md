@@ -3992,3 +3992,97 @@ the binding mode and is still 0.0030 short.
 Cost 10.3 h GPU (WS 3.2 h, decay 3.0 h, eval 4.1 h). Automatic end to end: launched 85 s after
 sam's marker, verdict by `run_hord_verdict.cmd` (after its CRLF fix), muonscale launched 72 s after
 hord's marker with base realcyc chosen mechanically.
+
+
+## iter 67 -- `muonscale`: Muon coverage of the 26 k/v scale matrices (2026-09-07 00:45): REJECTED, an imm-only half-effect -- and the mechanism finding outranks the verdict
+
+**Lever.** `RWKV_MUON_INCLUDE_SCALE=1`: the 26 `k_scale_linear.weight` / `v_scale_linear.weight`
+projections, each (H=5, C=80) -- 10,400 params, 1.85% of the model, and the last 2-D weights still on
+AdamW after iter 53 moved the LoRAs -- get their own Muon group at the weight decay 0.0 they already
+had. Training-only; the forward pass and the parameter count are untouched. ADOPTED slot (Muon's own
+rule is "every 2-D weight except embeddings and the output head"). Control realcyc, chosen
+mechanically by `auto_control.py` after hord failed its gate. Both-modes gate.
+
+**Numbers (VAL half, n=2,499, size 0/2,499, nan_users 0, params 563,652 unchanged).**
+
+| | ahead | imm |
+|---|---|---|
+| muonscale | 0.298088 | **0.263483** |
+| realcyc (control) | 0.298083 | 0.263592 |
+| delta (positive = better) | **−0.000005**, p=0.017 | **+0.000109**, p=4.9e-12 |
+
+imm clears the 0.0001 bar with rank certainty in the same class as any accepted iteration. ahead is a
+certified null: the mean is 15x inside the +/-7.5e-5 floor and the rank test (p=0.017 for BETTER)
+resolves nothing either way -- the iter-44 shape, with no decline to explain.
+
+### The finding: the gain is NOT proportional to update mass
+
+The pre-registration predicted **+0.00000..+0.00005 per mode**, by scaling iter 53's +0.000184 imm
+gain by the share of update energy (scale matrices 1.2%, LoRAs 43.5%). imm came in at **+0.000109 --
+59% of iter 53's gain from 1.2% of the energy and 1.85% of the params**, i.e. roughly 36x the
+energy-proportional expectation and 2x above the top of the band.
+
+So "coverage" is the right axis but the wrong unit. What paid is not mass but WHICH parameters:
+`k_scale`/`v_scale` set the **delta rule's authority** -- `k_scale` scales the normalised key, so
+`||kappa||^2` decides how much of the WKV state each write overwrites (the 2026-08-17 eigenvalue
+measurement). Treating those gates spectrally moved the RATING head (+0.000109) and left the curve
+head untouched. **The productive optimizer axis is coverage of GATING parameters.**
+
+### P2 was un-diagnostic, and the probe's own output proves it
+
+The PREREG said: the scale tensors' update anisotropy `sigma_max/||dW||_F` on `W_final - W_init` must
+fall below 0.55, "if it does not, the group was not on Muon and the verdict is uninterpretable".
+
+| group | realcyc | muonscale | on Muon in muonscale? | on Muon in realcyc? |
+|---|---|---|---|---|
+| scale (26 tensors) | 0.653 | 0.641 | yes (the lever) | no |
+| LoRA (94 tensors) | 0.649 | 0.638 | yes | **yes** |
+
+The LoRA group **cannot** have changed optimizer -- it is on Muon in both arms -- and it moved by the
+same 0.011. The entire movement is run-to-run. **No Muon-managed tensor would ever pass that line at
+this measurement**, because the probe integrates the displacement over 10,935 steps while Muon
+orthogonalises each STEP's momentum; a sum of orthogonalised steps is not itself isotropic.
+
+Engagement is established instead by two things that do discriminate: the optimizer's own banner
+("10,400 scale-matrix params in a wd=0.0 group", asserted by the runner's WS-log guard), and the
+behavioural effect itself at p=5e-12, which a no-op does not produce.
+
+**The reusable lesson: an engagement criterion must be validated against a control that CANNOT have
+changed.** The LoRA row was printed beside the scale row in the pre-run screen the whole time; reading
+it would have shown the criterion dead before the GPU was spent. This is the same family as the
+"a banner proves a value was computed, never that it was used" rule, seen from the other side: here
+the *number* was live and the *criterion* was inert.
+
+### What it closes, and the specific thing it opens
+
+**Closed in its original form:** every 2-D weight in the trunk now has a Muon verdict (iter 53 LoRAs,
+iter 67 scale matrices). What remains on AdamW is 1-D (norms, biases, time-mix vectors) and the heads,
+which Muon's own rule excludes.
+
+**Opened, and it follows directly from the finding:** `rkvdag_lerp` -- 13 tensors of shape
+**(8, 1, 1, 80) = 8,320 params** -- is the token-shift MIXING GATE. It is the same *kind* of parameter
+as k/v scale (a gate), the same order of size, and it sits on AdamW only because `get_optimizer`'s
+Muon rule tests `p.dim() == 2` while this tensor carries two singleton dims. Muon's own rule would
+include it after a squeeze. That is the natural next optimizer lever, it is adopted-flavoured, and it
+is ~2 lines.
+
+### Graft policy: priced, and the two-way is declined
+
+hord and muonscale are both imm-positive and rank-significant (+0.000060 at p=1.6e-4 and +0.000109 at
+p=4.9e-12; sum +0.000169, comfortably above bar). On **ahead**, perfect additivity gives
++0.000069 + (−0.000005) = **+0.000064**, which fails the 0.0001 bar in the best possible case. By the
+iter-56 precedent -- price the graft before spending 10 h on it -- the two-way is **not queued**.
+Re-price when eqw reports: an eqw ahead of >= +0.00004 would make a three-way clear ahead under
+perfect additivity.
+
+### One question for Andrew (flagged, not decided)
+
+This is the first iteration where one mode clears the bar with p=5e-12 while the other is a
+**certified null rather than a decline** -- a strict Pareto improvement, training-only, zero params,
+zero deploy debt. The gate as written is both-modes, so the record says REJECTED. Whether a "Pareto
+half-accept" (one mode over bar, the other provably unmoved) should be admissible is Andrew's rule to
+change; until then muonscale stands as a free INGREDIENT for any later recipe rather than a champion.
+
+Cost 10.2 h GPU (WS 3.1 h, decay 3.1 h, eval 4.0 h). Automatic end to end: launched 72 s after hord's
+marker, verdict and probe by `run_muonscale_verdict.cmd`, eqw launched 78 s after muonscale's marker
+with base realcyc chosen mechanically.
