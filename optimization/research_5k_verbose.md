@@ -4086,3 +4086,67 @@ change; until then muonscale stands as a free INGREDIENT for any later recipe ra
 Cost 10.2 h GPU (WS 3.1 h, decay 3.1 h, eval 4.0 h). Automatic end to end: launched 72 s after hord's
 marker, verdict and probe by `run_muonscale_verdict.cmd`, eqw launched 78 s after muonscale's marker
 with base realcyc chosen mechanically.
+
+
+## iter 68 -- `eqw`: train on what is scored (2026-09-07 11:05): REJECTED, a regression in both modes -- and the prefix rows are load-bearing
+
+**Lever.** `RWKV_EQUALIZE_LOSS_W=0.25`: rows the benchmark never scores (`label_is_equalize == 0`)
+are weighted 0.25 in BOTH the ahead and imm objectives; scored rows keep weight 1. Weighted means, so
+the loss magnitude and the tuned LRs carry over; the `*_equalize_avg` metrics stay unweighted.
+Train-only, no parameters, zero deploy debt, default 1.0 byte-identical. INVENTED slot, control
+realcyc, both-modes gate.
+
+**The measurement that motivated it** (realcyc, 218,841 train-user rows): the benchmark scores each
+user's TimeSeriesSplit(5) test folds, so the first sixth of every history is never scored -- and those
+rows are a different, EASIER distribution (by-user ahead BCE **0.189 vs 0.279**, failure 7% vs
+13-15%) taking ~17% of the fit, in a model iter 65 had just shown to be fit-limited.
+
+**Numbers (VAL half, n=2,499, size 0/2,499, nan_users 0, params 563,652).**
+
+| | ahead | imm |
+|---|---|---|
+| eqw | 0.298255 | 0.263776 |
+| realcyc (control) | 0.298083 | 0.263592 |
+| delta (positive = better) | **−0.000173**, p_worse 4.6e-07 | **−0.000184**, p_worse 2.6e-37 |
+
+Inside the 0.0002 abort line, past the −0.0001 harm threshold in both modes, rank-certain.
+
+### The engagement half is what makes this conclusive
+
+Re-running the deploy pass on `eq_d_10935` over the same 10 train users:
+
+| population | realcyc | eqw | change |
+|---|---|---|---|
+| never-scored first sixth | 0.18918 | 0.20692 | **+0.01774** |
+| the scored rest | 0.27942 | 0.28834 | **+0.00892** |
+
+The fit moved away from the down-weighted rows **twice as far** as from the rest, so the weighting
+reached the optimizer and hit exactly the population it was aimed at. **And the scored rows still got
+worse in absolute terms.** That is not a dose problem and not a targeting problem; it is the
+mechanism.
+
+### The lesson, and it generalises beyond this lever
+
+**In a recurrent model an unscored prefix row is not merely a training example -- it is the
+computation path to every scored row that follows.** Down-weighting it weakens the gradient that
+shapes how the state is built from a history's opening, and every scored row is predicted FROM that
+state. So reweighting rows here is not the i.i.d. operation it resembles, and "easier and never
+scored" does not imply "wasted fit".
+
+The premise measurement stands and is worth keeping: the first sixth really is easier and really does
+take ~17% of the fit. The inference drawn from it was wrong.
+
+**Closes the row-reweighting family 0/2**, with iter 37 (by-USER weighting to match the by-user mean,
+refuted in every size quartile). Both reweight rows to match the metric's population; both lose.
+
+**And it kills the cheap proxy for the 2026-09-07 chunking finding.** Down-weighting the
+post-boundary recovery rows is the same operation and would fail the same way, so the train/eval
+chunk mismatch (12.5% of training rows cold-started; the eval never chunks) can only be tested by the
+real fix -- state carry, multi-day, Andrew's call. That raised its price from ~zero to a real
+decision.
+
+No retry: a milder alpha only interpolates toward the control, and alpha 0 (a hard mask) is dominated
+on both outcomes.
+
+Cost 10.3 h GPU (WS 3.1 h, decay 3.1 h, eval 4.1 h). Automatic end to end; muongates launched 107 s
+after the marker with base realcyc chosen mechanically.
