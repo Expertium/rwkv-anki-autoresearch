@@ -4150,3 +4150,78 @@ on both outcomes.
 
 Cost 10.3 h GPU (WS 3.1 h, decay 3.1 h, eval 4.1 h). Automatic end to end; muongates launched 107 s
 after the marker with base realcyc chosen mechanically.
+
+
+## iter 69 -- `muongates`: Muon coverage of the token-shift gates (2026-09-07 21:45): REJECTED, a clean null -- and it corrects iter 67's mechanism story
+
+**Lever.** `RWKV_MUON_INCLUDE_GATES=1`: the 13 `rkvdag_lerp` (8,1,1,80) token-shift mixing gates --
+8,320 params, the last non-degenerate squeeze-2-D tensors still on AdamW -- get their own Muon group
+at the weight decay 0.0 they already had. `bonus` (13 x (1,1,5,16)) is excluded on a mechanism:
+`MuonAdamW` reshapes as `p.grad.reshape(p.size(0), -1)`, so `bonus` becomes a **(1, 80) row vector**
+where Newton-Schulz is a normalisation rather than an orthogonalisation. The code guard tests the
+reshape (`shape[0] >= 2 and numel()//shape[0] >= 2`), not a name list, and the smoke proves both
+directions (14/14). Training-only, params identical. ADOPTED slot, control realcyc, both-modes gate.
+
+**Numbers (VAL half, n=2,499, size 0/2,499, nan_users 0, params 563,652).**
+
+| | ahead | imm |
+|---|---|---|
+| muongates | 0.298061 | 0.263561 |
+| realcyc (control) | 0.298083 | 0.263592 |
+| delta (positive = better) | +0.000022, p=0.032 | +0.000032, p=0.078 |
+
+Both roughly 3x inside the +/-7.5e-5 floor and neither rank-significant. A clean null.
+
+### The engagement probe worked this time, and that is the point of rebuilding it
+
+iter 67's criterion was un-diagnostic (the LoRA group, on Muon in *both* arms, moved as much as the
+treated group). The replacement compares the treated group against groups whose optimizer **cannot**
+have changed, in the same checkpoint pair:
+
+| group | on Muon in candidate? | in control? | displacement ratio (median) |
+|---|---|---|---|
+| **rkvdag_lerp (TREATED)** | yes | no | **1.0529** |
+| lora (control A) | yes | yes | 1.0192 |
+| other 2-D (control C) | yes | yes | 1.0089 |
+| scale (control B) | no | no | 0.9902 |
+
+The treated ratio sits outside the controls' span [0.9902, 1.0192], so the flag really did move those
+13 tensors' trajectory. The probe was validated in both directions *before* use: a self-comparison
+and a hord-vs-realcyc pair (two runs differing in a loss term, not an optimizer) both correctly
+report NOT DISTINGUISHABLE, so ordinary run-to-run variation does not fire it.
+
+### The optimizer coverage axis is closed
+
+Every non-degenerate matrix in the trunk now carries a Muon verdict:
+
+| iter | population | params | update energy | result |
+|---|---|---|---|---|
+| 53 | LoRA projections | 27,520 | 43.5% | **accepted**, +0.000174 / +0.000184 |
+| 67 | k/v scale gates | 10,400 | 0.9% | imm only, +0.000109 at p=5e-12; ahead a certified null |
+| 69 | token-shift gates | 8,320 | 2.0% | nothing |
+
+What remains on AdamW is 1-D (norms, biases), the degenerate-reshape `bonus`, and the heads -- all
+excluded by Muon's own rule.
+
+### ⚠ This corrects my own iter-67 generalisation, and that is the reusable part
+
+iter 67 concluded that "the productive optimizer axis is coverage of GATING parameters" -- from one
+observation. `rkvdag_lerp` **is** a gate, carries **2.2x the update energy** of the scale group, and
+has a comparable margin over its white-noise floor (0.543 vs 0.449, against the scale group's 0.653
+vs 0.521). Every stated predictor said it should pay at least as much as iter 67 did. It paid
+nothing.
+
+So "gates" is the wrong category. What is special about `k_scale`/`v_scale` is specifically that they
+set the **delta rule's authority** -- `k_scale` scales the normalised key, so `||kappa||^2` governs
+how much of the state each write overwrites -- not that they are gates in general. **A one-observation
+mechanism story was generalised to a category, which is precisely the error iter 67 documented in its
+own probe and then committed in its prose.**
+
+### It also fits the wider picture
+
+Within-family levers keep returning ~0 on **ahead** while imm occasionally moves. That is what the
+2026-07-03 entropy-floor collapse predicts: cross-model residual covariance 0.0950 against each
+model's own Brier 0.0955, i.e. two disjoint-trained models erring on the same reviews, with the
+estimator unable to separate true noise from a blind spot shared by the family.
+
+Cost 10.6 h GPU (WS 3.3 h, decay 3.1 h, eval 4.2 h), fully automatic end to end.
