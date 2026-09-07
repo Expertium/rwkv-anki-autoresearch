@@ -50,6 +50,14 @@ reference_a18/trace_user_*.json
 reference_a18/rust_pred_*.json
 reference_a18/weight_names.json
 
+# reference_realcyc/ = the GEN-5 lineage's certified parity trace (2026-09-07, PARITY: PASS on the
+# 109-dim layout -- the first exercise of the engine's dynamic FEATURE_DIM on a real non-92 model).
+# Same rule as reference/ and reference_a18/: only ref_metrics.json is tracked, the bulk is not.
+reference_realcyc/trace_user_*.json
+reference_realcyc/rust_pred_*.json
+reference_realcyc/weight_names.json
+preds_gen5/
+
 # Model checkpoints (regenerable binaries; never track) + papers + any stray safetensors
 *.pth
 *.safetensors

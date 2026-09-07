@@ -31,8 +31,15 @@ from rwkv.get_result import get_benchmark_info, get_stats
 from rwkv.model.srs_model_rnn import SrsRWKVRnn
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 
-DATA = Path("../anki-revlogs-10k")
-LABEL_DB = "label_filter_db"
+# ⚠ RWKV_EXPORT_DATA / RWKV_EXPORT_LABEL_DB (2026-09-07): both were hardcoded to the PUBLISHED
+# dataset, so a trace could not be exported for an `-id` model AT ALL -- `CARD_FEATURE_COLUMNS`
+# under RWKV_ID_FEATURES=1 asks for the real-timestamp columns (tod_sin, ...) and the published
+# frame has none of them, so the export died on `KeyError: 'tod_sin'`. That meant the whole gen-5
+# lineage had no way to produce a parity trace, i.e. the deploy contract (§9 three-way parity) has
+# been unverifiable since realcyc, silently. Defaults are unchanged so every existing runner and
+# every pre-gen-5 trace stays byte-reproducible; an `-id` export sets the two vars.
+DATA = Path(os.environ.get("RWKV_EXPORT_DATA", "../anki-revlogs-10k"))
+LABEL_DB = os.environ.get("RWKV_EXPORT_LABEL_DB", "label_filter_db")
 LABEL_DB_SIZE = 2_000_000_000
 # Parity target = the current champion. Override with RWKV_CHAMP_CKPT / RWKV_CHAMP_SFT.
 # architecture.py must match this checkpoint (it is the single arch source).
@@ -61,7 +68,23 @@ class CapturingRNN(rnn_mod.RNNProcess):
 
 
 def load_user_df(user_id):
-    """Replicates the dataframe construction in rwkv.run_as_rnn.run()."""
+    """Replicates the dataframe construction in rwkv.run_as_rnn.run().
+
+    ⚠ 2026-09-07: that replica -- and `run_as_rnn.run()` itself -- merges the parquet by hand and
+    never calls `data_processing.get_rwkv_data`, so it cannot produce the real-timestamp columns
+    that `CARD_FEATURE_COLUMNS` asks for under RWKV_ID_FEATURES=1 (`add_id_features` is a
+    whole-frame operation, data_processing.py:301). A gen-5 export therefore died on
+    `KeyError: 'tod_sin'`, i.e. the entire `-id` lineage had NO way to produce a parity trace and
+    its deploy contract was unverifiable. Under the flag we take the SHARED path instead -- the
+    same one `scratchpad/proposals_2026-09-04/screen_pass.py` drives through `RNNProcess.run()`,
+    which is the proof it is compatible. The legacy replica is kept for the published lineage so
+    every pre-gen-5 trace stays byte-reproducible; the two should converge once the published
+    lineage retires.
+    """
+    if os.environ.get("RWKV_ID_FEATURES") == "1":
+        from rwkv.data_processing import get_rwkv_data
+        return get_rwkv_data(DATA, user_id).sort_values(
+            "review_th", kind="stable").reset_index(drop=True)
     df = pd.read_parquet(DATA / "revlogs" / f"{user_id=}")
     df["review_th"] = range(1, df.shape[0] + 1)
     df_cards = pd.read_parquet(DATA / "cards", filters=[("user_id", "=", user_id)])
