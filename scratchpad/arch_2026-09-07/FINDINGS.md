@@ -81,3 +81,53 @@ The head is excluded, so a remaining lever must change what the TRUNK computes:
    untouched, so the state gate is safe); the delta rule is measured as massively load-bearing.
 4. **a richer feature encoder** -- 109 -> 80 is a single linear, the only place the inputs mix
    before the recurrence.
+
+
+## Screen 3 -- do two STRUCTURALLY DIFFERENT models err on the same reviews? YES, at r = 0.996.
+
+The 2026-07-03 entropy-floor estimate (task #18) put the AHEAD floor at 0.2994 with the two d=128
+models at 0.2992/0.2993 -- no gap -- because the estimator COLLAPSED: cross-model residual covariance
+0.0950 vs each model's own Brier 0.0955. Its own caveat is the important part: that cannot separate
+TRUE NOISE from a blind spot SHARED by the family. Two models of one family erring identically is
+exactly what a shared blind spot looks like. So: add the most different model available and see
+whether the errors decorrelate.
+
+**Pair** (`decorrelate.py`, 4 VAL users where BOTH are out-of-sample, 409,599 reviews intersected on
+`review_th`, label agreement 0.9998 so the alignment is sound):
+
+| | params | features | Brier |
+|---|---|---|---|
+| A = realcyc | 563,652 | gen-5 real-timestamp, 109 dims | 0.10226 |
+| B = pretrained d=128 | 2,762,884 | published, 92 dims | 0.10199 |
+
+| statistic | value |
+|---|---|
+| cross-model residual covariance E[(y−pA)(y−pB)] | **0.10168** |
+| ratio to A's Brier / B's Brier | **0.9943 / 0.9969** |
+| **residual correlation** | **0.9957** |
+| prediction correlation | 0.9686 |
+| 50/50 oracle ensemble gain over the better model | **+0.00025** |
+
+**=> The 2026-07-03 "family saturated" result EXTENDS across a 5x parameter change AND a complete
+feature-layout change.** A model with 5x the parameters, trained on different inputs in a different
+era, gets the same reviews wrong. Notably the feature change is included in that: the gen-5 real
+clocks did not alter WHICH reviews are hard, which is consistent with realcyc scoring an exact tie
+against gen4base.
+
+**What it means for the architecture question.** Within this family and these inputs, ahead has no
+headroom for width, topology, optimizer or objective work -- which is precisely the observed pattern
+(capacity 0/3, topology rearrangement 1/4 with the win being interleaving's EXISTENCE, optimizer
+coverage now closed 1/3, row reweighting 0/2, curve head excluded by screen 2). The measured
+disagreement between our model and a 5x bigger one is worth **+0.00025** in the metric's own units,
+and that is the ceiling on "capture what the other model knows".
+
+**What it does NOT settle.** Both arms are RWKV-7 with the same 5-stream structure and the same task
+framing, so a genuinely OUT-OF-FAMILY contrast is still untested. The decisive one is FSRS-6 -- a
+hand-designed 3-parameter memory model, maximally different inductive bias -- whose per-review
+predictions live in `srs-benchmark` (Andrew's repo; this one does not touch it). If FSRS decorrelates
+materially, there IS structure our family systematically misses and the disagreement pattern points
+at what to build. If it does not, the ahead residual is noise and the only remaining lever of size is
+the training budget (the 2026-08-11 calibration measures 10x at ~+0.0042, i.e. 17x this ensemble gain).
+⚠ Related and worth re-reading in this light: the FSRS-core hybrids (iters 60/61) were rejected at
+-0.0027 ahead, but BOTH ran under the <=100k parameter cap that Andrew has since lifted ("stop making
+the model smaller"). A full-size hybrid has never been tried.
