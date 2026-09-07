@@ -55,12 +55,17 @@ symptom of that; the other is that no training gradient has ever seen a state ol
   per-entity state store, synchronized stateful batching), described there as intricate and
   multi-day. **The plan was shelved on SPEED** ("smaller chunks don't speed training") -- the
   accuracy case was listed as a benefit and never quantified. It now is.
-* **A CHEAP TEST OF THE WHOLE HYPOTHESIS EXISTS and needs no kernel work:** down-weight the rows in
+* ~~**A CHEAP TEST OF THE WHOLE HYPOTHESIS EXISTS and needs no kernel work:** down-weight the rows in
   the post-boundary recovery window in the loss, exactly the instrument `RWKV_EQUALIZE_LOSS_W` uses
-  for unscored rows. If those 12.5% of rows are computed on degraded states, their gradients are
-  partly about a condition that never occurs at scoring time. ~5 lines, train-only, zero deploy debt.
-  ⚠ Sequence it AFTER eqw: it is the same mechanism (row reweighting) and eqw's verdict is evidence
-  about whether this family pays at all.
+  for unscored rows.~~ **KILLED 2026-09-07 by eqw's own verdict (iter 68), exactly as this bullet's
+  own caveat said to check.** eqw down-weighted the never-scored rows x0.25 and **regressed in BOTH
+  modes** (-0.000173 / -0.000184, p_worse 5e-07 / 3e-37). Its pre-registered P3 fires: in a
+  RECURRENT model an unscored prefix row is not merely a training example, it is the computation
+  path to every scored row that follows -- down-weighting it weakens the gradient that shapes how
+  the state is built. **So the recovery-window down-weight is the same operation and would fail the
+  same way. The chunk-mismatch hypothesis can only be tested by the REAL fix (state carry), not by a
+  5-line proxy.** That raises the price of testing it from ~0 to multi-day, which is precisely the
+  decision this document hands Andrew.
 
 ## The methodological lesson
 

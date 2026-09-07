@@ -1409,6 +1409,25 @@ improvement, training-only, zero params, zero deploy debt. The gate as written r
 "Pareto half-accept" is admissible is his rule to change. Until then muonscale is a free INGREDIENT.
 **eqw launched by itself 78 s after the marker** (base realcyc; `[eqw]` banner consumed, 563,652
 params, 0 tracebacks). Detail: `research_5k_verbose.md` iter 67.
+**★★★ 2026-09-07 13:55 -- FOURTH RUST-PARITY PASS, AND IT CLOSES A SILENT DEPLOY-CONTRACT GAP:
+`reference_realcyc/` (gen-5, 109-dim, exported from `rc_d_10935.pth`). Self-contained at exactly
+0.000e+00; `verify_rust.py` gives PARITY: PASS at imm 0.000000 / ahead 0.000000, max per-review
+3.41e-06.** The engine derived the whole arch from the weights unaided (gru3 head,
+ahead_residual=false, the learned PAVA thetas, clamp 300, interleaved, the cmix/vlora strips) and ran
+at ~1,430 rev/s. **This is the first exercise of the dynamic `FEATURE_DIM` (2026-09-02) on a real
+non-92-dim checkpoint** -- until today that path was untested because no such checkpoint existed, and
+the width guard added with it fired correctly on the first mismatched attempt.
+**⚠ THE GAP IT CLOSES WAS SILENT AND TOTAL: the whole `-id` lineage could not produce a parity trace
+at all.** `export_rnn_trace.py` built its frame with a hand-rolled replica of `run_as_rnn.run()` that
+never calls `get_rwkv_data`, so the real-timestamp columns were simply absent and the export died on
+`KeyError: 'tod_sin'`. Under `RWKV_ID_FEATURES=1` it now takes the SHARED path (the one
+`screen_pass.py` already drives through `RNNProcess`, which is the proof it is compatible); the
+published lineage keeps the legacy replica so every pre-gen-5 trace stays byte-reproducible. The
+dataset and label-filter paths are now `RWKV_EXPORT_DATA` / `RWKV_EXPORT_LABEL_DB` (both were
+hardcoded to the published set). Runner: `scratchpad/parity_gen5/run_export_realcyc.cmd`.
+**=> §9's three-way parity is satisfied for gen 5, and the artifacts the endgame's QAT arm needs
+(a gen-5 safetensors for the WKV corpus dump) now exist.** ⚠ `run_as_rnn.run()` still carries the
+same legacy replica -- it is a demo entry point, not on the parity path, but the two should converge.
 **⟶ 2026-09-07 07:00 -- A CORRECTION I OWE THE RECORD, AND IT REVIVES A SHELVED PLAN:
 `scratchpad/proposals_2026-09-06/CHUNKING_CORRECTION.md`. THE EVAL DOES NOT CHUNK.** Measured from
 both dbs' chunk lists: `test_db_5k_id5` = median **1** chunk/user, 0.2% multi-chunk, **0.00%** of
