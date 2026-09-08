@@ -35,7 +35,9 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from pq_train import load_states, rank2_dirs  # noqa: E402
 
-OLD_CB = "reference/pq_cb_wkv_q72u.txt"
+# The catalog under test. Defaults to the q72u one this tool was written for; set WKV_CB to
+# check whichever catalog a run actually deploys (2026-09-08: reference/pq_cb_wkv_c80_b10.txt).
+OLD_CB = os.environ.get("WKV_CB", "reference/pq_cb_wkv_q72u.txt")
 
 
 def load_joint_cb(path):
@@ -149,6 +151,15 @@ def main():
     # with several points per centroid -- below that it memorizes and reports a fake floor. Skip
     # it rather than crash (k-means raises when n_clusters > n_samples) or mislead.
     e_oracle = None if len(hold) < 4 * ncent else encode_err(hold, fit(hold, ncent))
+    # RANDOM control. A catalog aimed at the wrong subspace fails SILENTLY -- every shape
+    # assert passes -- so the only thing that exposes it is losing to random directions at the
+    # same budget. This is the check that caught the q72u catalog encoding WORSE than random
+    # (1.0107 vs 0.9576) when the trunk moved from d=32 to d=80. 1.0 = encode all to zero.
+    rng = np.random.default_rng(0)
+    rnd = rng.standard_normal((ncent, X.shape[1])).astype(np.float32)
+    rnd /= np.linalg.norm(rnd, axis=1, keepdims=True)
+    rnd *= float(np.linalg.norm(train, axis=1).mean())
+    e_rand = encode_err(hold, rnd)
 
     print(f"\n  OLD    (d=32-fitted, used today) {e_old:.4f}")
     print(f"  REFIT  (fitted on d=80 train)    {e_refit:.4f}   -> refit buys {e_old - e_refit:+.4f} "
@@ -159,6 +170,8 @@ def main():
     else:
         print(f"  ORACLE (fitted on the holdout)   {e_oracle:.4f}   -> floor-ish at {ncent} centroids "
               f"({len(hold) // ncent} holdout pts/centroid -- optimistic below ~10)")
+    print(f"  RANDOM ({ncent} random directions)    {e_rand:.4f}   -> the catalog "
+          f"must BEAT this; 1.0 = encode everything to zero")
     print(f"\n  for scale, the C=80 shift refits scored 0.1902 (m2b12) / 0.1734 (m5b12) held-out")
     return 0
 

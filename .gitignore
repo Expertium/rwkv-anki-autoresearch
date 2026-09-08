@@ -150,3 +150,5 @@ scratchpad/workload/*.log
 scratchpad/hybrid100k/*.npz
 scratchpad/fsrs7/out_*/
 scratchpad/fsrs7/*.npz
+scratchpad/qat_gen5/*.txt
+scratchpad/qat_gen5/*.log

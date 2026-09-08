@@ -846,6 +846,26 @@ RWKV_QAT_PQ=reference/pq_cb_wkv_c80_b10.txt RWKV_QAT_SHIFT_PQ=reference/pq_cb_sh
 RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3 RWKV_QAT_NORM_BITS=1 RWKV_QAT_FUSED=1 RWKV_NO_JIT=1
 **RWKV_QAT_PQ_LEARN=1 RWKV_QAT_SHIFT_PQ_LEARN=1**` (JIT on the grafted paths unverified -- A/B once at
 champion-run launch).
+**★★ BOTH DEPLOY CATALOGS ARE STALE ON THE GEN-5 TRUNK -- REFITTED 2026-09-08, BEFORE THE QAT ARM
+SPENT A GPU-HOUR ON THEM (`scratchpad/qat_gen5/FINDING.md`).** Second instance of the q72u failure,
+and silent for the same reason: d_model/H/K are unchanged since the 2026-08-12 fit, so every shape
+assert passes and only a RANDOM control at the same budget can expose it (1.0 = encode to zero).
+Measured on 15,854 WKV states / 23,787 shift vectors dumped from the certified `reference_realcyc`
+model, held out BY USER: **WKV `pq_cb_wkv_c80_b10` = 0.9416 against a random control of 0.9582**
+(1.7% better than random; a refit gives 0.5185), and **shift `pq_cb_shift_c80_m2b12` = 1.0352 (TS) /
+1.0811 (CS), i.e. WORSE THAN ENCODING TO ZERO** (a refit gives 0.3933 / 0.3814 on a held-out user).
+**=> GEN-5 AND LATER RUNS USE `reference/pq_cb_wkv_gen5_b10.txt` +
+`reference/pq_cb_shift_gen5_m2b12.txt`** -- headers byte-identical to the live pair, so deploy state
+size is UNCHANGED, and both smoke-load in the Rust engine. The old pair is kept and is still correct
+for the published-features trunk, which is what every recorded QAT number was measured on.
+⚠ This is a REPAIR, not a ranking: reconstruction error cannot rank two WORKING catalogs (the
+learned catalog that cut the tax 45% reconstructs worse than its frozen start), but a catalog past
+the encode-to-zero bound is the q72u signature, and that swap was worth +0.003235/+0.004183.
+⚠ OWED before arm 2 launches: re-run the ~10 min procedure on **ws10's** WS-final (the model arm 2
+actually branches from), and widen the corpus -- 4,096 centroids per chunk from ~10k vectors is thin
+(the 2026-08-12 shift refit reached 0.1902 vs this one's 0.3933). `export_rnn_trace.py` now takes
+`RWKV_REF_USERS` for exactly that, default unchanged.
+
 **★ THE TWO LEARN FLAGS ARE ADOPTED AS DEFAULT (2026-08-13) -- put them in EVERY quant-aware run
 including the endgame's arm 2.** They cut the measured QAT tax **45.4% / 43.9%** (+0.004185/+0.006219
 -> **+0.002286/+0.003486**, n=2500) for **zero deploy bytes and zero wall-clock** (0.3333 steps/s,

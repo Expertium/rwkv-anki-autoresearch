@@ -45,7 +45,11 @@ LABEL_DB_SIZE = 2_000_000_000
 # architecture.py must match this checkpoint (it is the single arch source).
 MODEL_PATH = os.environ.get("RWKV_CHAMP_CKPT", "pretrain/rwkv/ref_100/rwkv_ref_558.pth")
 WEIGHTS_SFT = os.environ.get("RWKV_CHAMP_SFT", "rwkv_ref_558.safetensors")
-REF_USERS = [107, 136, 156]
+# Users the trace covers. Overridable (comma-separated) so a CODEBOOK corpus can be widened
+# without touching the certified 3-user parity traces: a PQ catalog fitted on ~10k vectors
+# per chunk is thin at 4096 centroids (scratchpad/qat_gen5/FINDING.md). Default unchanged,
+# so every existing trace stays byte-reproducible.
+REF_USERS = [int(u) for u in os.environ.get("RWKV_REF_USERS", "107,136,156").split(",")]
 # Output dir. Overridable so a NEW parity trace can be exported without clobbering an existing
 # one -- the June-2026 `reference/` trace belongs to the d=128 rwkv_ref_558 model and current
 # Python can no longer reproduce its frozen py_pred (the model code has moved on), so fresh
