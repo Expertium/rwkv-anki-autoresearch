@@ -862,9 +862,14 @@ for the published-features trunk, which is what every recorded QAT number was me
 learned catalog that cut the tax 45% reconstructs worse than its frozen start), but a catalog past
 the encode-to-zero bound is the q72u signature, and that swap was worth +0.003235/+0.004183.
 ⚠ OWED before arm 2 launches: re-run the ~10 min procedure on **ws10's** WS-final (the model arm 2
-actually branches from), and widen the corpus -- 4,096 centroids per chunk from ~10k vectors is thin
-(the 2026-08-12 shift refit reached 0.1902 vs this one's 0.3933). `export_rnn_trace.py` now takes
-`RWKV_REF_USERS` for exactly that, default unchanged.
+actually branches from) and write `reference/pq_cb_{wkv,shift}_ws10_*.txt` -- arm 2's phase 0
+REFUSES without them.
+⚠ **WIDENING the corpus was tried and DROPPED the same day.** The dump is fast (Rust) but needs a
+parity TRACE, and the trace export is the Python deploy RNN at ~25 rows/s -- user 112 alone is
+790,369 rows = ~8.8 h. More importantly the benefit is unmeasurable by this instrument: reconstruction
+cannot rank two WORKING catalogs, and both refits are now far below the random control, so wanting
+0.3933 -> 0.1902 is the exact inference 2026-08-15 says not to make. `export_rnn_trace.py` takes
+`RWKV_REF_USERS` (default unchanged) if a real reason ever appears.
 
 **★ THE TWO LEARN FLAGS ARE ADOPTED AS DEFAULT (2026-08-13) -- put them in EVERY quant-aware run
 including the endgame's arm 2.** They cut the measured QAT tax **45.4% / 43.9%** (+0.004185/+0.006219
@@ -1369,6 +1374,18 @@ day"). The answer to both is ONE expensive WS run that every later experiment br
 * **CHAINED: `w10plain`** (`scratchpad/w10plain/`, waiter gates on ws10's `DONE_EXIT_0` line AND the
   `w10_ws_109350.pth` artifact) = **ENDGAME ARM 1**, a 2-epoch decay off the shared checkpoint plus
   the rectified VAL eval, ~10.6 h. It is the REFERENCE every later decay-only branch is gated against.
+* **ARM 2 IS BUILT AND ITS DESIGN QUESTION IS ANSWERED BY THE SHARED-WS SHAPE** (`scratchpad/w10qat/`,
+  generator + runner, preflight PASS, phase-0 refusal verified BY EXECUTION at rc 51). The old plan
+  asked whether arm 2 should be (A) a warm-started QAT fine-tune on arm 1's FINAL or (B) a second
+  full 10x with QAT throughout, and recommended A. Branching gives a third and better option: **the
+  SAME 2-epoch decay from the SAME WS checkpoint with the QAT env added and nothing else changed.**
+  It is how QAT is actually deployed here (decay-only, warm-started -- iter 40 says it MUST
+  warm-start), and it is a genuinely SINGLE-VARIABLE A/B, which neither A nor B can be: A adds ~2
+  epochs on top of arm 1, B changes the whole trajectory. **So arm 2 - arm 1 IS the QAT tax at the
+  10-epoch budget, with nothing to subtract.** Budget ~6.2 h decay + ~10 h QUANT-AWARE eval (not the
+  ~2.9 h a plain eval takes). Phase 0 REFUSES without `reference/pq_cb_{wkv,shift}_ws10_*.txt` --
+  see the catalog-staleness entry in the QAT section; fitting them from ws10's WS-final is ~10 min
+  of CPU and is a launch prerequisite, not a nicety.
 * **=> A DECAY-ONLY BRANCH COSTS ~10.4 h**, today's price, in the 10+2 regime. Queue after arm 1:
   QAT (arm 2 = the tax at real budget), SAM re-screened (iter 65 failed at 1.25 ep because there is
   no generalisation gap THERE), decay shape.

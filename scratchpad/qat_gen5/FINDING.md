@@ -56,6 +56,18 @@ loss being uncertain, not for leaving a broken starting point in place.
    realcyc and ws10 share architecture, features and recipe and differ only in budget, so today's
    refit is the right interim -- but the final catalog should come from the final trunk. The whole
    procedure is ~10 min of CPU: dump corpus, `wkv_cb_staleness.py`, `shift_cb_staleness.py`, refit.
-2. **Enlarge the corpus.** 4,096 centroids per (role, pos) chunk from ~10k training vectors is thin
-   (the 2026-08-12 shift refit reached 0.1902 held-out against this one's 0.3933). More users needs
-   more parity traces; `export_rnn_trace.py` hardcodes `REF_USERS = [107, 136, 156]`.
+2. ~~Enlarge the corpus.~~ **TRIED AND DROPPED, 2026-09-08 -- and the reason is our own lesson,
+   not the cost.** 4,096 centroids per (role, pos) chunk from ~10k training vectors is thin (the
+   2026-08-12 shift refit reached 0.1902 held-out against this one's 0.3933), so five more users
+   were queued. Two things stopped it:
+   * **Cost**: the corpus dump is fast (Rust, seconds), but it needs a parity TRACE, and the trace
+     export is the PYTHON deploy RNN at ~25 rows/s. User 112 alone is 790,369 rows = ~8.8 h, and
+     five users is days of CPU beside a training run that already lost ~10% of its step rate to a
+     normal-priority job. A features-only export path would fix that and is not written.
+   * **The benefit is unmeasurable by this instrument.** Reconstruction error cannot rank two
+     WORKING catalogs for logloss (2026-08-15), and both refits are now far below the random
+     control. So "0.3933 -> 0.1902 would be better" is exactly the inference the record says not
+     to make. The repair -- worse-than-zero to working -- has a measured precedent; the polish
+     does not.
+   `export_rnn_trace.py` now takes `RWKV_REF_USERS` (default unchanged), so widening is a
+   half-hour of work if a reason to want it ever appears.
