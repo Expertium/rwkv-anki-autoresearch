@@ -148,3 +148,5 @@ scratchpad/workload/*.log
 # Per-user delta dumps from the workload/hybrid analyses -- derived, ~10 MB each,
 # regenerable from the result jsonls. Never useful to version.
 scratchpad/hybrid100k/*.npz
+scratchpad/fsrs7/out_*/
+scratchpad/fsrs7/*.npz

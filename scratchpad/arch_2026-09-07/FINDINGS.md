@@ -131,3 +131,54 @@ the training budget (the 2026-08-11 calibration measures 10x at ~+0.0042, i.e. 1
 ⚠ Related and worth re-reading in this light: the FSRS-core hybrids (iters 60/61) were rejected at
 -0.0027 ahead, but BOTH ran under the <=100k parameter cap that Andrew has since lifted ("stop making
 the model smaller"). A full-size hybrid has never been tried.
+
+## Screen 4 -- the OUT-OF-FAMILY contrast (2026-09-08). FSRS-7 adds nothing.
+
+Screen 3 left one thing open: both its arms were RWKV-7, so it could not tell TRUE NOISE from a
+blind spot shared by the family. Andrew pointed at `srs-benchmark` for the current FSRS-7
+(`models/fsrs_v7.py`, the 34-parameter dual-stability model with hand-designed update rules and
+per-parameter clamps) -- the most different inductive bias available without new training.
+
+Three FSRS arms dumped per-review on the same four VAL users (`scratchpad/fsrs7/`, CPU only,
+~29 min): FSRS-7 fitted per user (the leaderboard configuration), FSRS-6 fitted per user (the
+within-family version-bump calibration), and FSRS-7 with `--default` parameters (the
+personalization control). srs-benchmark's own `script.process` runs unmodified; the driver
+chdir's into its own output dir first, so nothing is written into that repo.
+
+**340,601 rows, label agreement 0.999859 across every pair.**
+
+| arm | by-user BCE | resid corr vs realcyc | **best blend weight** | **gain over realcyc** |
+|---|---|---|---|---|
+| realcyc (563k, gen-5) | 0.28706 | -- | -- | -- |
+| d128 pretrained (2.76M) | 0.28685 | 0.9955 | **0.53** | **+0.00086** |
+| FSRS-7, per user | 0.30340 | 0.9760 | **0.02** | **+0.00001** |
+| FSRS-6, per user | 0.33668 | 0.9468 | 0.02 | +0.00002 |
+| FSRS-7, default params | 0.32041 | 0.9702 | 0.00 | +0.00000 |
+
+Leave-one-user-out logistic stacking on the two logits is NEGATIVE for every FSRS arm
+(-0.00021..-0.00028) and positive for d128 (+0.00073). Per user, FSRS-7's optimal weight is
+**0.00 on three of the four users** and 0.14 on user 5003 (+0.00081); d128 takes 0.33-0.76 and
+pays on all three real users.
+
+**=> THE AHEAD RESIDUAL IS NOT A FAMILY BLIND SPOT.** The strongest out-of-family contrast
+available -- a hand-designed memory model with a completely different inductive bias, fitted per
+user -- contains essentially no information our model lacks. What DOES buy something is another
+RWKV with 5x the parameters and ~10x the training budget (+0.00086), i.e. capacity and budget,
+not architecture. That is the lever ws10 is already spending.
+
+**★ THE METHODOLOGICAL LESSON, and it would have inverted the verdict: RESIDUAL CORRELATION
+OVERSTATES DECORRELATION WHENEVER THE TWO MODELS DIFFER IN QUALITY.** FSRS-7's residual
+correlation (0.9760) is visibly below the in-family 0.9955, which reads as "there is structure
+here". There is not: the extra residual variance is FSRS's own error, not information, and the
+fitted blend weight (0.02) says so. Screen 3's 50/50 oracle is equally misleading in the other
+direction -- it makes every FSRS pair look actively harmful (-0.004..-0.011) purely because FSRS
+is worse. **Price a disagreement with a FITTED blend weight; use residual correlation only
+between models of comparable quality.**
+
+⚠ **The alignment guard earned its place.** Our dumps key each row on `review_th` -- the review
+the prediction is made FROM -- while FSRS keys on the review being PREDICTED; the label belongs
+to `label_review_th`. Joining directly gave a label agreement of **0.7726 against a chance rate
+of ~0.745**, i.e. no alignment at all, and the whole table would have been noise that looked
+like a finding. The fix (`scratchpad/fsrs7/label_map.py`) rebuilds the map from the DATA alone,
+so it cost minutes rather than re-running 2.7 h of RNN forward passes. The RWKV-vs-RWKV result
+of screen 3 is unaffected: both arms used the same convention.
