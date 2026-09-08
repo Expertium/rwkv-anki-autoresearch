@@ -1398,7 +1398,20 @@ day"). The answer to both is ONE expensive WS run that every later experiment br
      ⚠ It varies decay length at a FIXED 10-epoch WS, so total budget moves with it. That is the
      endgame's operational question, NOT the fixed-total-budget WS:decay de-confound, which stays
      Andrew's call. Do not report one as the other.
-  4. decay SHAPE (iter 56 `linear`: sub-bar at 1.25 ep but real on imm at p=6e-12; a 2-epoch decay
+  4. **BUDGET CURVE, `mk_w10budget.py <ws_step>`** (BUILT for WS 22,000 and 55,000 = 2.01 and 5.03
+     epochs, both preflight PASS) -- arm 1 tests the endgame's ENDPOINT, this tests its SHAPE.
+     "+0.0042 at 10x" is a log-linear extrapolation from ONE measured 3x step, and under WSD the
+     stable phase is at constant LR, so decaying from an intermediate checkpoint IS a
+     shorter-budget run: one expensive WS buys several budget points for the price of their
+     decays. Needs `RWKV_DECAY_FROM_STEP` (added to `write_decay_setup.py`, default unset = the
+     latest checkpoint, so every existing runner is byte-identical) and the runner GUARDS that the
+     pin was honoured -- an ignored pin silently reproduces arm 1 under a curve point's tag.
+     **Eval is 300 users (~20 min), coarse BY DESIGN**: the question is linear-or-saturating at a
+     scale of 0.002-0.004, well above a 300-user resolution, and the 200-user lesson forbids
+     settling sub-0.001 effects there. Arm 1's own 2,499-user jsonl already contains those 300
+     users, so its curve point is FREE. ⚠ A curve point is NOT a gate candidate; never log one as
+     an iteration.
+  5. decay SHAPE (iter 56 `linear`: sub-bar at 1.25 ep but real on imm at p=6e-12; a 2-epoch decay
      gives the shape more room than a 0.25-epoch one did).
   **SAM and the other regularisers are NOT in this queue** -- the gap screen below says iter 65's
   re-screen condition is not met.

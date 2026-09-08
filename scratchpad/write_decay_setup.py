@@ -36,7 +36,24 @@ for p in glob.glob(f"{folder}/{ws_prefix}_*.pth"):
 if not cands:
     print(f"ERROR: no {ws_prefix}_<step>.pth in {folder}")
     sys.exit(1)
-step, _ = max(cands)
+# ⚠ RWKV_DECAY_FROM_STEP (2026-09-09): pin the WS checkpoint to branch from, instead of taking
+# the latest. Default unset = the latest, so every existing runner is byte-identical. It exists
+# for the BUDGET CURVE: under WSD the stable phase runs at constant LR, so decaying from an
+# intermediate step IS a shorter-budget run, and one expensive WS gives several budget points
+# for the price of their decays. The +0.0042 projection extrapolates a single 3x step, and this
+# is how that extrapolation gets tested rather than trusted.
+_pin = os.environ.get("RWKV_DECAY_FROM_STEP", "").strip()
+if _pin:
+    want = int(_pin)
+    match = [p for s, p in cands if s == want]
+    if not match:
+        print(f"ERROR: RWKV_DECAY_FROM_STEP={want} but no {ws_prefix}_{want}.pth in {folder};"
+              f" have {sorted(s for s, _ in cands)[-5:]}")
+        sys.exit(1)
+    step = want
+    print(f"[decay-from] pinned to {ws_prefix}_{step}.pth (latest is {max(s for s, _ in cands)})")
+else:
+    step, _ = max(cands)
 src_optim = f"{folder}/{ws_prefix}_optim_{step}.pth"
 dst_optim = f"{folder}/{ws_prefix}_{step}_optim.pth"
 if os.path.exists(src_optim):
