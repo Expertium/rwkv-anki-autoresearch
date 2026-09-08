@@ -1,0 +1,50 @@
+# ws10 -- the ENDGAME's shared 10-epoch WS phase (Andrew 2026-09-08: "keep current model size and
+# do as you suggested: train WS, then experiment with the decay stage").
+#
+# SINGLE VARIABLE vs realcyc's WS: EPOCHS 1 -> 10. Everything else is byte-identical -- same gen-5
+# dbs, same label filter, same MAX=65536, same PEAK_LR, same WARMUP_STEPS=400, KD off, augmentation
+# off. That is deliberate: the 2026-08-11 budget calibration predicts +0.0042 ahead for a 10x budget
+# at THIS recipe, so changing anything else would make the outcome uninterpretable against it.
+#
+# KNOWN SUBOPTIMALITY, kept on purpose: WARMUP_STEPS=400 is 3.7% of a 1-epoch run and 0.37% of this
+# one (upstream used 20,000 for ~12 epochs). CLAUDE.md's endgame list flags warmup as one of three
+# things tuned for 1 epoch that "must be RECONSIDERED at 12.5". It is NOT changed here because a
+# second variable would confound the one number this run exists to produce. It is a live candidate
+# for a later run if the +0.0042 prediction misses low.
+# The other two on that list -- wd and dropout -- act during WS, so this shared checkpoint bakes
+# them in and the decay-only branches CANNOT test them. Named so it is not discovered later.
+#
+# VALIDATE_EVERY=1000 is what makes train_rwkv save a checkpoint, so this also yields 109 resume
+# points; over ~34 h a crash or reboot is the one real failure mode (CLAUDE.md).
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 5000
+VALIDATE_USERS_START = 5001
+VALIDATE_USERS_END = 5010
+
+TRAIN_DATASET_LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_id5"
+TRAIN_DATASET_LMDB_SIZE = 400_000_000_000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_id5"
+VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+
+NUM_FETCH_PROCESSES = 2
+MAX_TRAIN_GLOBAL_LEN = 65536
+
+TRAIN_MODE = "WS"
+STEP_OFFSET = 1
+WARMUP_STEPS = 400
+EPOCHS = 10
+VALIDATE_EVERY = 1000
+PEAK_LR = 1e-3
+
+LOAD_MODEL = false
+SAVE_MODEL_FOLDER = "scratchpad/ws10"
+SAVE_MODEL_PREFIX = "w10_ws"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+WANDB_RESUME_ID = ""
