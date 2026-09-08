@@ -1335,6 +1335,53 @@ so its lever was live); `preflight_runner.py` now asserts the `endlocal` orderin
 runners pass.
 
 #### LIVE
+**★★★ 2026-09-08 -- THE PHASE TURNED. ANDREW: "keep current model size and do as you suggested:
+train WS, then experiment with the decay stage."** He pushed back on a phase-5 recommendation built on
+seven consecutive training-side rejects and no architecture at all ("I'd be shocked if there is no
+low-hanging fruit"), and on the cost of 10+2 experiments ("it already takes hours, and 10+2 takes >a
+day"). The answer to both is ONE expensive WS run that every later experiment branches from.
+* **RUNNING: `ws10`** (`scratchpad/ws10/`, detached, log `ws10.log`) = the endgame's SHARED 10-epoch
+  WS phase. Single variable vs realcyc: `EPOCHS` 1 -> 10, i.e. 109,350 steps. Measured **0.79-0.88
+  steps/s** including one validation + checkpoint per 1,000 steps -> **~38-40 h**, finishing ~18:00 on
+  2026-09-09. `VALIDATE_EVERY=1000` gives 109 resume points and the runner AUTO-RESUMES (make_resume
+  + `RWKV_RESUME_SKIP_GROUPS=1`, capped at 40 attempts), because the decay-checkpoint rule below
+  makes an unattended 40 h run the one real failure mode.
+* **CHAINED: `w10plain`** (`scratchpad/w10plain/`, waiter gates on ws10's `DONE_EXIT_0` line AND the
+  `w10_ws_109350.pth` artifact) = **ENDGAME ARM 1**, a 2-epoch decay off the shared checkpoint plus
+  the rectified VAL eval, ~10.6 h. It is the REFERENCE every later decay-only branch is gated against.
+* **=> A DECAY-ONLY BRANCH COSTS ~10.4 h**, today's price, in the 10+2 regime. Queue after arm 1:
+  QAT (arm 2 = the tax at real budget), SAM re-screened (iter 65 failed at 1.25 ep because there is
+  no generalisation gap THERE), decay shape.
+* ⚠ **Two things the shared checkpoint BAKES IN, named now because they are not discoverable later:**
+  wd and dropout act during WS, and `WARMUP_STEPS` stays 400 (0.37% of this run vs upstream's ~9%) so
+  that budget is the single variable. A branch cannot re-open either.
+
+**★★ THE ARCHITECTURE QUESTION IS ANSWERED, AND IT REDIRECTS THE PHASE
+(`scratchpad/arch_2026-09-07/FINDINGS.md`; ~2 h of CPU, zero GPU).** Four screens:
+1. the curve head's hidden is effectively **2.4-dimensional** and is a SUFFICIENT STATISTIC of its
+   own input -- adding the whole 80-d trunk output helps on **0 of 6 users**. A richer ahead head is
+   dead, and so is replacing the curve family.
+2. realcyc vs the pretrained d=128 model: **residual correlation 0.9957** across a 5x parameter change
+   AND a complete feature-layout change. The 2026-07-03 "family saturated" result extends.
+3. **THE OUT-OF-FAMILY CONTRAST (2026-09-08): FSRS-7 ADDS NOTHING.** Per-review predictions from
+   `srs-benchmark`'s own `script.process` (34-param dual-stability FSRS-7, fitted per user; plus
+   FSRS-6 and FSRS-7-`--default` as the version-bump and personalization controls), 340,601 rows on
+   4 VAL users. **Best blend weight with realcyc: 0.02, gain +0.00001** (0.00 on three of four
+   users); leave-one-user-out stacking is NEGATIVE. The d=128 partner takes **weight 0.53 for
+   +0.00086**. => the remaining ahead error is not a blind spot this family shares; what pays is
+   capacity and BUDGET, which is exactly what ws10 spends.
+   **★ METHOD, and it would have inverted the verdict: RESIDUAL CORRELATION OVERSTATES
+   DECORRELATION WHEN THE MODELS DIFFER IN QUALITY** -- FSRS-7's 0.9760 reads as structure and the
+   fitted weight says it is FSRS's own error. Price a disagreement with a FITTED blend weight.
+   ⚠ The join guard earned its keep: our dumps key on `review_th` (the row predicted FROM), FSRS on
+   the row PREDICTED, and a direct join gave label agreement **0.7726 against a chance rate of
+   0.745**. `scratchpad/fsrs7/label_map.py` rebuilds the map from the DATA, so the fix cost minutes
+   instead of 2.7 h of re-dumping.
+**=> DO NOT open a new architecture family on "there must be low-hanging fruit". Three independent
+screens now say the ahead residual is a FIT gap.** Levers that remain untested are trunk-side and
+cheap-to-fit rather than richer: cross-stream state fusion, extra rounds via layer reuse, multi-step
+delta on the coarse streams, a richer feature encoder.
+
 **⟶ 2026-09-02 21:39 -- gen4base PHASE 2 IS PARKED BEHIND ANDREW'S srs-benchmark GRU PRETRAIN.** The PC
 restart (~20:59) killed the chain at decay step 10681/10935 with nothing to resume (see the decay-
 checkpoint rule below). Phase 2 relaunched 21:05 and **DEADLOCKED in WDDM paging beside the GRU job
