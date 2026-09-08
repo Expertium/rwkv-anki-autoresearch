@@ -1386,9 +1386,22 @@ day"). The answer to both is ONE expensive WS run that every later experiment br
   ~2.9 h a plain eval takes). Phase 0 REFUSES without `reference/pq_cb_{wkv,shift}_ws10_*.txt` --
   see the catalog-staleness entry in the QAT section; fitting them from ws10's WS-final is ~10 min
   of CPU and is a launch prerequisite, not a nicety.
-* **=> A DECAY-ONLY BRANCH COSTS ~10.4 h**, today's price, in the 10+2 regime. Queue after arm 1:
-  QAT (arm 2 = the tax at real budget), SAM re-screened (iter 65 failed at 1.25 ep because there is
-  no generalisation gap THERE), decay shape.
+* **=> A DECAY-ONLY BRANCH COSTS ~10.4 h**, today's price, in the 10+2 regime.
+  **THE QUEUE, REVISED 2026-09-08 after the gap screen came back negative:**
+  1. **arm 1 `w10plain`** -- the plain 10+2 number and the control every branch is gated against.
+  2. **arm 2 `w10qat`** (BUILT) -- the QAT tax, now a single-variable A/B against arm 1.
+  3. **DECAY LENGTH, `mk_w10decay.py <epochs>`** (BUILT for 1.0 and 3.0, both preflight PASS) --
+     the queue's real lever. The 10+2 split was chosen on COST (6+6 = 89 h vs 10+2 = 53 h) and this
+     file already says the ~+0.0006 credited to a longer decay is "being SPENT, not disproven",
+     because iter 34's decay_ratio gain is confounded with a budget change. A shared WS checkpoint
+     turns that from a 43 h question into a 9 h one, with arm 1 as an exact control.
+     ⚠ It varies decay length at a FIXED 10-epoch WS, so total budget moves with it. That is the
+     endgame's operational question, NOT the fixed-total-budget WS:decay de-confound, which stays
+     Andrew's call. Do not report one as the other.
+  4. decay SHAPE (iter 56 `linear`: sub-bar at 1.25 ep but real on imm at p=6e-12; a 2-epoch decay
+     gives the shape more room than a 0.25-epoch one did).
+  **SAM and the other regularisers are NOT in this queue** -- the gap screen below says iter 65's
+  re-screen condition is not met.
 * **★ THE REGULARISATION SCREEN IS RUNNING FOR FREE, AND SO FAR IT SAYS NO** (`scratchpad/ws10/
   gap_trace.py`, reads ws10's own log; zero GPU). iter 65 deprioritised SAM/wd/dropout on the
   finding that the model is FIT-limited at 1.25 epochs, with an explicit condition attached --
