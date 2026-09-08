@@ -1389,6 +1389,25 @@ day"). The answer to both is ONE expensive WS run that every later experiment br
 * **=> A DECAY-ONLY BRANCH COSTS ~10.4 h**, today's price, in the 10+2 regime. Queue after arm 1:
   QAT (arm 2 = the tax at real budget), SAM re-screened (iter 65 failed at 1.25 ep because there is
   no generalisation gap THERE), decay shape.
+* **★ THE REGULARISATION SCREEN IS RUNNING FOR FREE, AND SO FAR IT SAYS NO** (`scratchpad/ws10/
+  gap_trace.py`, reads ws10's own log; zero GPU). iter 65 deprioritised SAM/wd/dropout on the
+  finding that the model is FIT-limited at 1.25 epochs, with an explicit condition attached --
+  re-screen "on the 10x endgame's checkpoints, where a gap CAN exist". ws10 validates every 1,000
+  steps on 594,215 held-out rows, so the screen needs no run of its own. **Through 4.0 epochs the
+  ahead train/val gap is FLAT: +0.0055 -> +0.0070 across the late two thirds, while validation
+  still improves (0.3239 -> 0.3230).** => regularisation stays unmotivated; re-run the screen at
+  WS end before queueing any of those branches.
+* **⚠ AND A CAUTION ABOUT THE +0.0042 PREMISE, stated now so it is not a surprise later: the
+  STABLE-phase validation is nearly exhausted by epoch 1.** ahead val goes 0.3342 (step 1k) ->
+  0.3237 (10k) -> **0.3230 (44k)**, i.e. -0.0007 over three further epochs. That is EXPECTED under
+  WSD -- at constant peak LR the loss sits at an LR noise floor and the gain is converted by the
+  DECAY, so this is not evidence against the budget premise. But it does mean the premise is
+  UNCONFIRMED until arm 1's decay lands, and arm 1 is therefore the number that decides whether
+  phase 6 was worth its ~4 days.
+* ⚠ **A units trap the screen had to be fixed for: training `imm_loss` is the 4-way CROSS-ENTROPY
+  of the rating head, while validation `imm` is the BINARY logloss of 1-P(Again).** Different
+  quantities, which is the entire ~-0.24 "imm gap" a naive read shows. Only AHEAD is comparable
+  between the two logs.
 * ⚠ **Two things the shared checkpoint BAKES IN, named now because they are not discoverable later:**
   wd and dropout act during WS, and `WARMUP_STEPS` stays 400 (0.37% of this run vs upstream's ~9%) so
   that budget is the single variable. A branch cannot re-open either.
