@@ -54,6 +54,14 @@ if _pin:
     print(f"[decay-from] pinned to {ws_prefix}_{step}.pth (latest is {max(s for s, _ in cands)})")
 else:
     step, _ = max(cands)
+# ⚠ RWKV_DECAY_VALIDATE_EVERY (2026-09-09): the decay phase saves a checkpoint only on a
+# validate step, and this file hardcoded 100000 -- so a 21,870-step decay checkpointed at step
+# 50 and at the END and nowhere else. A PC restart already killed one at 10,681/10,935. Default
+# 100000 keeps every existing runner byte-identical; the endgame branches set a real value.
+# Free: validation runs under model.eval() inside no_grad, so it draws no main-process RNG --
+# proven, with a non-vacuity control, by scratchpad/ws10/rng_neutrality.py.
+_valevery = int(os.environ.get("RWKV_DECAY_VALIDATE_EVERY", "100000"))
+
 src_optim = f"{folder}/{ws_prefix}_optim_{step}.pth"
 dst_optim = f"{folder}/{ws_prefix}_{step}_optim.pth"
 if os.path.exists(src_optim):
@@ -85,7 +93,7 @@ TRAIN_MODE = "D"
 STEP_OFFSET = 1
 WARMUP_STEPS = 0
 EPOCHS = {depochs}
-VALIDATE_EVERY = 100000
+VALIDATE_EVERY = {_valevery}
 PEAK_LR = {peak_lr}
 
 LOAD_MODEL = true

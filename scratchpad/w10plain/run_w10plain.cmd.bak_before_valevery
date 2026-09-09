@@ -17,25 +17,17 @@ REM differences from a normal iteration are the WS source and decay_epochs 1.0 -
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 
-set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10d3
-set LOG=%DIR%\w10d3.log
+set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10plain
+set LOG=%DIR%\w10plain.log
 set STAMP=%RANDOM%%RANDOM%
-set TAG=w10d3
-set STEPS=32805
+set TAG=w10plain
+set STEPS=21870
 set WSSTEPS=109350
 
 set RWKV_DETERMINISTIC=1
 set RWKV_AUGMENT_SEED=4321
 set RWKV_EMPTY_CACHE_EVERY=1
 set RWKV_EMPTY_CACHE_WINDOW=0
-REM The decay saves a checkpoint only on a validate step, and write_decay_setup hardcoded
-REM 100000 -- so a 21,870-step decay checkpointed at step 50 and at the END and nowhere else.
-REM A PC restart already killed one decay at 10,681/10,935. 2000 gives ~11 resume points for
-REM ~4 percent of the phase, and it is trajectory-FREE: validation runs under model.eval()
-REM inside no_grad and draws no main-process RNG (proven with a non-vacuity control by
-REM scratchpad/ws10/rng_neutrality.py). Every endgame branch sets the SAME value, so they
-REM stay mutually comparable.
-set RWKV_DECAY_VALIDATE_EVERY=2000
 set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py
 set RWKV_INTERLEAVE=1
 set RWKV_GRU_HEAD=3
@@ -76,13 +68,10 @@ set RWKV_KD_ALPHA=
 
 
 if not exist "%DIR%" mkdir "%DIR%"
-echo ===== w10d3 START %DATE% %TIME% ===== > "%LOG%"
+echo ===== w10plain START %DATE% %TIME% ===== > "%LOG%"
 
-REM Decay length is the ONLY difference from arm 1 (w10plain, 2.0 epochs): same WS
-REM checkpoint, same data, same seed, same env. See mk_w10decay.py for why this is the
-REM queue's next lever and what it does NOT answer.
-REM ---- PHASE B: the 3-EPOCH decay from the shared 10-epoch WS checkpoint ----
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10d3_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 3 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
+REM ---- PHASE B: the 2-EPOCH decay from the shared 10-epoch WS checkpoint ----
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10p_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 2.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% DSETUP_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_22 %DATE% %TIME% >> "%LOG%"
@@ -107,7 +96,7 @@ if %ERRORLEVEL%==0 (
   echo DONE_EXIT_43 %DATE% %TIME% >> "%LOG%"
   exit /b 43
 )
-if not exist "%DIR%\w10d3_d_%STEPS%.pth" (
+if not exist "%DIR%\w10p_d_%STEPS%.pth" (
   echo %TAG% DECAY_SHORT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_28 %DATE% %TIME% >> "%LOG%"
   exit /b 28
@@ -116,7 +105,7 @@ echo %TAG% DECAY_OK %TIME% >> "%LOG%"
 
 REM ---- PHASE C: rectified VAL-half eval, users 5001-7500 ----
 set RWKV_EVAL_PAVA=1
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10d3 w10d3_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10plain w10p_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% ETOML_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_24 %DATE% %TIME% >> "%LOG%"

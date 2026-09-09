@@ -3036,6 +3036,14 @@ All hooks stay in-repo, env-gated, default off.
   -> WDDM paging -> 4x slowdown otherwise). **MAX=32768 EVERYWHERE** incl. `write_decay_setup.py`
   arg 10 — pairing needs MAX identical across runs. Evals UNSHARDED (`--shards 1
   --solo-threshold 0`). d=32 evals use phased `eval_sharded.py`.
+- **✓ FIXED 2026-09-09 -- the decay phase now CAN checkpoint: `RWKV_DECAY_VALIDATE_EVERY`**
+  (`write_decay_setup.py`, default 100000 = unchanged, so every existing runner is byte-identical).
+  All seven endgame branches set **2000**, giving ~11 resume points in a 21,870-step decay for ~4%
+  of the phase. **It is trajectory-FREE, proven rather than assumed**: validation runs under
+  `model.eval()` inside `no_grad` and draws no main-process RNG --
+  `scratchpad/ws10/rng_neutrality.py` shows the state unchanged across an eval-mode pass AND
+  changed across a train-mode one, so the check cannot pass vacuously. Every branch uses the SAME
+  value, so they stay mutually comparable. The original entry follows.
 - **⚠ THE DECAY PHASE HAS NO MID-RUN CHECKPOINTS (cost 3.5 h, 2026-09-02 PC restart).** `train_rwkv` saves only on `validate_iter`, and `write_decay_setup.py` writes `VALIDATE_EVERY = 100000`, so a decay checkpoints at step 50 and at the end -- gen4base's decay died at step 10681 of 10935 with nothing to resume from. The "crash recovery loses <=1000 steps" line below is TRUE OF WS ONLY. Not changed mid-lineage (realcyc must stay single-variable vs gen4base); the 10x endgame's decay (~19 h) MUST set a real VALIDATE_EVERY.
 - **MID-EPOCH RESUME:** `RWKV_RESUME_SKIP_GROUPS=1` + `python scratchpad/make_resume.py
   <run_dir> <prefix> <ws_toml>`, then rerun the WS phase with the run's FULL env, WITHOUT

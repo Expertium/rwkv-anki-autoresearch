@@ -28,6 +28,14 @@ set RWKV_DETERMINISTIC=1
 set RWKV_AUGMENT_SEED=4321
 set RWKV_EMPTY_CACHE_EVERY=1
 set RWKV_EMPTY_CACHE_WINDOW=0
+REM The decay saves a checkpoint only on a validate step, and write_decay_setup hardcoded
+REM 100000 -- so a 21,870-step decay checkpointed at step 50 and at the END and nowhere else.
+REM A PC restart already killed one decay at 10,681/10,935. 2000 gives ~11 resume points for
+REM ~4 percent of the phase, and it is trajectory-FREE: validation runs under model.eval()
+REM inside no_grad and draws no main-process RNG (proven with a non-vacuity control by
+REM scratchpad/ws10/rng_neutrality.py). Every endgame branch sets the SAME value, so they
+REM stay mutually comparable.
+set RWKV_DECAY_VALIDATE_EVERY=2000
 set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py
 set RWKV_INTERLEAVE=1
 set RWKV_GRU_HEAD=3
