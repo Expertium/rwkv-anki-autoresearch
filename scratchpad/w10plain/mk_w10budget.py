@@ -19,6 +19,16 @@ re-scored on the SAME 300 users for the comparison; the curve's own points are a
 
 ⚠ So a point from this generator is NOT a gate candidate and must never be logged as one.
 
+THE SUBSET WAS CHECKED, NOT ASSUMED (2026-09-09, on realcyc's own result files):
+* **Paired SE on 300 users is 0.000311**, because pairing cancels user difficulty -- so a
+  budget difference of 0.002-0.004 is resolved at 6-13 sigma. That is what makes 300 enough.
+  (Unpaired SE is 0.0085, which is why a 300-user ABSOLUTE number settles nothing.)
+* **The subset reproduces a known effect faithfully**: paired realcyc-minus-d128 is +0.003407
+  on the 300 against +0.003460 on all 2,499.
+* ⚠ **But its LEVEL is offset by +0.0035** (realcyc ahead 0.301609 on the 300 vs 0.298083 on the
+  full VAL half) -- these 300 users are harder than average. Never quote a curve point as if it
+  were a full-set number, and never compare one to the 0.2950 stop criterion.
+
 Usage: python scratchpad/w10plain/mk_w10budget.py <ws_step> [decay_epochs]
        e.g. 21870 (2 ep of WS), 54675 (5 ep). decay_epochs defaults to 2.0, matching arm 1.
 """
