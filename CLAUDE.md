@@ -3151,6 +3151,19 @@ All hooks stay in-repo, env-gated, default off.
     **VACUOUSLY at 0.000e+00 while comparing two gated models**. **A test that reads its
     CONTROL's configuration from the ambient environment is not a control.** Fixed by stripping
     the smoke's own vars before applying each arm's.
+- **⚠⚠ AND THAT RULE HAD A LIVE BUG BEHIND IT, CAUGHT MID-RUN 2026-09-09 WITH 3.5 h TO SPARE.**
+  Every earlier decay had source == destination (each run decayed from its OWN WS), so every
+  runner passes its own directory to `write_eval_toml.py` and it always worked. **The endgame
+  branches are the first to decay from a SHARED WS**: arm 1 writes `w10p_d_*.pth` into
+  `scratchpad/ws10` while its runner asks `write_eval_toml` for `scratchpad/w10plain`. The eval
+  would have died with `DONE_EXIT_24` **after the 6.2 h decay**, and taken the chain with it --
+  the arm-2 waiter refuses on any non-zero marker. Found by checking where the checkpoints were
+  actually landing, not by reading the runner.
+  **FIXED in `write_eval_toml.py`, not in the running `.cmd`** (which must never be touched): an
+  empty glob now falls back to the run directory's own `decay.toml` and reads `SAVE_MODEL_FOLDER`
+  from it, which is where the checkpoints provably are. Inert for every existing runner, since
+  their first glob is non-empty. **Proven by EXECUTING arm 1's exact phase-C command**, which
+  found the 5 checkpoints and wrote a valid toml. It covers every endgame branch uniformly.
 - **⚠ OPS -- A DECAY-ONLY RUN WRITES ITS CHECKPOINTS INTO THE *SOURCE* RUN'S DIRECTORY.**
   `write_decay_setup.py` takes the dir holding the WS-final checkpoint, so iter 52's decay landed
   in **`scratchpad/iter45_kddecay/i52_d_10935.pth`**, not in `scratchpad/iter52_kdalpha/`. The eval

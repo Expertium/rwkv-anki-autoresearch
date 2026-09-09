@@ -28,6 +28,31 @@ for p in glob.glob(f"{folder}/{prefix}_*.pth"):
     m = re.match(rf"{re.escape(prefix)}_(\d+)\.pth$", b)
     if m:
         cands.append((int(m.group(1)), p.replace("\\", "/")))
+# ⚠ FALLBACK (2026-09-09): a DECAY-ONLY run writes its checkpoints into the SOURCE run's
+# directory, because write_decay_setup.py sets SAVE_MODEL_FOLDER to the folder holding the
+# WS-final. Every earlier run had source == destination (each decayed from its own WS), so the
+# runners have always passed their own directory here and it worked. The endgame branches are
+# the first to decay from a SHARED WS: arm 1 writes w10p_d_*.pth into scratchpad/ws10 while its
+# runner asks for scratchpad/w10plain, and the eval would have died AFTER a 6.2 h decay -- and
+# taken the chain with it, since the arm-2 waiter refuses on a non-zero marker.
+# The run directory's own decay.toml names where the checkpoints actually went, so use it.
+# Inert for every existing runner: their first glob is non-empty and this never runs.
+if not cands:
+    _dt = os.path.join(folder, "decay.toml")
+    if os.path.exists(_dt):
+        _m = re.search(r'SAVE_MODEL_FOLDER\s*=\s*"([^"]+)"', open(_dt).read())
+        if _m and os.path.normpath(_m.group(1)) != os.path.normpath(folder):
+            alt = _m.group(1)
+            for p2 in glob.glob(f"{alt}/{prefix}_*.pth"):
+                b2 = os.path.basename(p2)
+                if "optim" in b2:
+                    continue
+                m2 = re.match(rf"{re.escape(prefix)}_(\d+)\.pth$", b2)
+                if m2:
+                    cands.append((int(m2.group(1)), p2.replace("\\", "/")))
+            if cands:
+                print(f"[ckpt-fallback] none in {folder}; decay.toml points at {alt}, "
+                      f"found {len(cands)} there")
 if not cands:
     print(f"ERROR: no {prefix}_<step>.pth in {folder}")
     sys.exit(1)
