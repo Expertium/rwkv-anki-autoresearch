@@ -56,6 +56,15 @@ one note per card and the deck and preset streams collapse to a single synthetic
 of the five streams carry nothing the `user_id` stream does not already have. That is the correct
 handling of absent data, not a bug, but it caps what the deck and preset scopes can contribute.
 
+**6. TRAIN and TEST agree on the coding** (`train_vs_test.py`). The two databases are built by
+separate `data_processing` runs, so a flag or constant that reached one and not the other would be
+a silent train/eval mismatch no gate scores. Checked structurally rather than distributionally:
+both are width 69 and equal to `CARD_FEATURE_COLUMNS`, no column has disjoint support between the
+halves, and no column's zero-fraction or spread differs in a way a coding change would produce.
+Four columns differ in DISTRIBUTION (`card_predates_deck` 0.23 vs 0.55, `is_default_deck`, and the
+two century cosines) -- all four are dominated by per-user constants and the samples are 17 users
+each, so read those as sampling, not as a defect.
+
 ---
 
 ## Coding warts -- real, none an outright loss, all needing a rebuild to fix
