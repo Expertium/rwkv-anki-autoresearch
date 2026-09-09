@@ -1430,10 +1430,11 @@ day"). The answer to both is ONE expensive WS run that every later experiment br
   gap_trace.py`, reads ws10's own log; zero GPU). iter 65 deprioritised SAM/wd/dropout on the
   finding that the model is FIT-limited at 1.25 epochs, with an explicit condition attached --
   re-screen "on the 10x endgame's checkpoints, where a gap CAN exist". ws10 validates every 1,000
-  steps on 594,215 held-out rows, so the screen needs no run of its own. **Through 4.0 epochs the
-  ahead train/val gap is FLAT: +0.0055 -> +0.0070 across the late two thirds, while validation
-  still improves (0.3239 -> 0.3230).** => regularisation stays unmotivated; re-run the screen at
-  WS end before queueing any of those branches.
+  steps on 594,215 held-out rows, so the screen needs no run of its own. **Through 8.0 epochs the ahead train/val gap is FLAT** -- +0.0055 -> +0.0070 at 4 epochs and
+  +0.0065 -> +0.0076 at 8, both inside the noise of a 400-step train window, while validation
+  keeps creeping down (0.3237 at 10k -> 0.3230 at 44k -> 0.3224 at 88k). => regularisation stays
+  unmotivated at four fifths of the budget; re-run the screen at WS end, which is the
+  pre-registered checkpoint, before queueing any of those branches.
 * **⚠ AND A CAUTION ABOUT THE +0.0042 PREMISE, stated now so it is not a surprise later: the
   STABLE-phase validation is nearly exhausted by epoch 1.** ahead val goes 0.3342 (step 1k) ->
   0.3237 (10k) -> **0.3230 (44k)**, i.e. -0.0007 over three further epochs. That is EXPECTED under
