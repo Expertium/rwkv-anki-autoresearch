@@ -251,6 +251,54 @@ def preflight(path):
                 f"write_decay_setup (line {n + 1}) wants {srcprefix}_<step>.pth in {folder}: not on "
                 f"disk, and no earlier train_rwkv writes that folder+prefix")
 
+    # ---- decay-writes-here vs eval-looks-there -----------------------------------------------
+    # A DECAY-ONLY run writes its checkpoints into the SOURCE run's directory, because
+    # write_decay_setup sets SAVE_MODEL_FOLDER to the folder holding the WS-final. Every run
+    # before the endgame decayed from its OWN WS, so source == destination and every runner could
+    # pass its own directory to write_eval_toml and be right by accident. The endgame branches are
+    # the first to decay from a SHARED WS, and arm 1 would have died with DONE_EXIT_24 AFTER a
+    # 6.2 h decay -- taking the chain with it, since the next waiter refuses on a non-zero marker.
+    # write_eval_toml now falls back to the run directory's own decay.toml, so the shape is
+    # SUPPORTED; this check asserts the fallback's precondition actually holds in this runner.
+    _dec, _evl = [], []
+    for n, ln in enumerate(lines):
+        if ln.strip().upper().startswith("REM"):
+            continue
+        m = re.search(r"write_decay_setup\.py\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)", ln)
+        if m:
+            _dec.append((n, expand(m.group(1)).strip(chr(34)), m.group(3),
+                         expand(m.group(4)).strip(chr(34))))
+        m = re.search(r"write_eval_toml\.py\s+(\S+)\s+(\S+)", ln)
+        if m:
+            _evl.append((n, expand(m.group(1)).strip(chr(34)), m.group(2)))
+    for (dn, dsrc, dpfx, dtoml) in _dec:
+        for (en, efold, epfx) in _evl:
+            if dpfx != epfx:
+                problems.append(
+                    f"write_decay_setup (line {dn + 1}) writes checkpoints named {dpfx}_<step>.pth "
+                    f"but write_eval_toml (line {en + 1}) looks for {epfx}_<step>.pth")
+                continue
+            # Compare RESOLVED paths: %DIR% expands absolute while the tool argument is
+            # relative to the repo root, so a normpath-only comparison calls every correct
+            # runner broken. A guard that cries wolf is a guard that gets ignored.
+            _abs = lambda q: os.path.abspath(q).replace(chr(92), "/").lower()
+            same = (_abs(dsrc) == _abs(efold))
+            if same:
+                continue
+            # Different folders: the direct glob WILL be empty, so the run depends on the
+            # decay.toml fallback. That needs the decay toml to be named decay.toml AND to live
+            # in the folder write_eval_toml is pointed at.
+            ok = (os.path.basename(dtoml).lower() == "decay.toml"
+                  and _abs(os.path.dirname(dtoml)) == _abs(efold))
+            if ok:
+                notes.append(f"decay writes to {dsrc} while eval looks in {efold}; the "
+                             f"decay.toml fallback covers it")
+            else:
+                problems.append(
+                    f"write_decay_setup (line {dn + 1}) writes {dpfx}_<step>.pth into {dsrc}, but "
+                    f"write_eval_toml (line {en + 1}) globs {efold} -- and the decay.toml fallback "
+                    f"cannot rescue it because the decay toml is {dtoml}, not {efold}/decay.toml")
+
     # ---- KD dump --------------------------------------------------------------------------
     kd = env.get("RWKV_KD_MIX")
     if kd:

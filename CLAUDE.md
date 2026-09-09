@@ -3131,6 +3131,35 @@ All hooks stay in-repo, env-gated, default off.
   `finalize_lmdb.py` (rename -> junction -> verify through it -> delete original). They are two
   scripts because verifying and renaming in one process fails: the verifier's own handle blocks
   the rename.
+- **★★ THE CHEAP END-TO-END DRY RUN IS NOW A TOOL AND A RULE (Andrew 2026-09-09: *"Maybe we should
+  have a rule like 'do a test run on 20 users every 5 iterations' or something, lol"*).** He is
+  right, and his own 2026-08-18 bug-hunt directive already specified the shape (EPOCHS 0.05, 20 eval
+  users); the audit beside it says every failure of that week would have been caught by one such
+  run. It was used once and never made routine.
+  **TWO TIERS, and the cheap one needs NO GPU:**
+  1. **STATIC (seconds, zero GPU) -- `preflight_runner.py`** grew a **decay-writes-here-vs-
+     eval-looks-there** check, which catches today's bug class by construction: it pairs each
+     `write_decay_setup` (whose SOURCE folder is where the checkpoints land) against each
+     `write_eval_toml` (which globs somewhere else), fails on a prefix mismatch, and where the
+     folders differ requires the `decay.toml` fallback's precondition to hold. Proven non-vacuous
+     against two deliberately broken copies; all seven endgame branches PASS with a note.
+  2. **DYNAMIC (~10 min GPU) -- `scratchpad/mk_dryrun.py <runner>`** rewrites any branch runner to
+     0.05 epochs / 20 eval users with its own tag, dir, log, **checkpoint prefix** and result
+     jsonls, so it cannot touch a real branch's artifacts. It catches what static analysis cannot:
+     the HOLLOW run (ordcut raised on every step with a correct banner and param count), a guard
+     whose findstr disagrees with the value the runner SETS, `endlocal` before the marker, a phase
+     that exits 0 without its artifact.
+  **⚠ THE TRIGGER IS STRUCTURAL NOVELTY, NOT A COUNT.** Today's bug did not appear because five
+  iterations had passed -- it appeared because these are the FIRST branches to decay from a SHARED
+  WS. Fire a dry run on a new runner family, a new phase shape, or an edit to a shared tool
+  (`write_decay_setup`, `write_eval_toml`, `eval_sharded`). Keep the periodic version as a BACKSTOP
+  against slow drift.
+  **⚠ IT PROVES PLUMBING, NEVER CAPACITY.** The 6701 OOM, the WDDM co-tenant deadlock and the
+  giant-user freeze all need real users and real VRAM; 20 small users cannot see any of them.
+  ⚠ Two traps the tool itself hit, both already documented for other parsers and both re-hit here:
+  the checkpoint prefix does NOT follow the tag (arm 2 is `w10qat` but writes `w10q_d`), and a REM
+  line mentioning `write_decay_setup.py` in prose was matched first, capturing an English word as
+  the prefix -- silently, because the bogus word then passed the stale-prefix assert VACUOUSLY.
 - **⚠⚠ OPS -- CLONING A RUNNER MEANS UPDATING EVERY STRING THAT DEPENDS ON THE LEVER, NOT JUST
   THE LEVER. Three failures on 2026-08-18, same shape, one of them caught live.**
   * **iter 54 phase 2a: the ENV was wrong, the guard right.** The champion uses KD alpha **0.9
