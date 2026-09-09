@@ -24,6 +24,13 @@ set TAG=w10d3
 set STEPS=32805
 set WSSTEPS=109350
 
+REM OMP_NUM_THREADS was sliced away when this env was copied from realcyc (it sits above the
+REM RWKV_ block there). Without it each fetch worker runs torch on all 32 cores: ws10's two
+REM workers showed 42-43 OS threads each and about 88 percent of the machine, for a fetch wait
+REM that was already 3-7 ms and fully hidden. Pure oversubscription; found 2026-09-09.
+set PYTHONUNBUFFERED=1
+set PYTHONPATH=C:\Users\Andrew\rwkv-anki-autoresearch
+set OMP_NUM_THREADS=7
 set RWKV_DETERMINISTIC=1
 set RWKV_AUGMENT_SEED=4321
 set RWKV_EMPTY_CACHE_EVERY=1
