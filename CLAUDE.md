@@ -1365,7 +1365,18 @@ train WS, then experiment with the decay stage."** He pushed back on a phase-5 r
 seven consecutive training-side rejects and no architecture at all ("I'd be shocked if there is no
 low-hanging fruit"), and on the cost of 10+2 experiments ("it already takes hours, and 10+2 takes >a
 day"). The answer to both is ONE expensive WS run that every later experiment branches from.
-* **RUNNING: `ws10`** (`scratchpad/ws10/`, detached, log `ws10.log`) = the endgame's SHARED 10-epoch
+* **✓ ws10 IS DONE (2026-09-09 17:18): 109,350 steps, ONE attempt, no resume, zero tracebacks,
+  38 h wall clock at a steady 0.80 steps/s.** `w10_ws_109350.pth` is the shared branch point for
+  every decay experiment. **Arm 1 launched itself at 17:21** -- decay toml verified
+  (`LOAD_MODEL_NAME = w10_ws_109350`, `EPOCHS = 2.0`, **`VALIDATE_EVERY = 2000`**, gen-5 db) and
+  the param guard reads **563,652**, so the feature flags reached the fetch workers. Expect arm 1
+  ~02:30 on 09-10, then the catalog refit and arm 2, all automatic.
+* **★ THE REGULARISATION QUESTION IS SETTLED, at the pre-registered checkpoint: STILL FIT-LIMITED
+  AT THE FULL BUDGET.** The ahead train/val gap over the late two thirds runs +0.0055 -> +0.0070
+  (4 ep), +0.0065 -> +0.0076 (8 ep), **+0.0065 -> +0.0083 (10 ep)** while validation improves
+  throughout (0.3237 at 10k -> **0.3209** at the end). iter 65's re-screen condition is NOT met, so
+  SAM, wd and dropout stay OUT of the decay queue -- and that is now an answer rather than a trend.
+* (superseded) **RUNNING: `ws10`** (`scratchpad/ws10/`, detached, log `ws10.log`) = the endgame's SHARED 10-epoch
   WS phase. Single variable vs realcyc: `EPOCHS` 1 -> 10, i.e. 109,350 steps. Measured **0.79-0.88
   steps/s** including one validation + checkpoint per 1,000 steps -> **~38-40 h**, finishing ~18:00 on
   2026-09-09. `VALIDATE_EVERY=1000` gives 109 resume points and the runner AUTO-RESUMES (make_resume
