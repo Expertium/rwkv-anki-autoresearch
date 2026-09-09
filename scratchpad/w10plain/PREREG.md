@@ -18,7 +18,24 @@ Recorded 2026-09-09, with ws10 at step 59,638 of 109,350 and no number in existe
 Both reference rows are on the same 2,499 VAL users. `w10plain` will be on the gen-5 basis, so
 **only the realcyc row is a clean comparison.**
 
-## Q1 -- is the budget premise real? (CLEAN: same model, same basis, same recipe)
+## Q1 -- is the budget premise real? (CLEAN, and the cleanliness is VERIFIED, not asserted)
+
+Diffed rather than trusted, on 2026-09-09 -- "diff the runners, do not read the labels" is a
+lesson this repo has paid for three times:
+
+| axis | difference |
+|---|---|
+| arm 1's env vs realcyc's | **only `RWKV_DECAY_VALIDATE_EVERY=2000`**, proven trajectory-neutral |
+| ws10's WS toml vs realcyc's | **only `EPOCHS = 1 -> 10`** plus the checkpoint folder and prefix |
+| ws10's WS env vs realcyc's | **only `OMP_NUM_THREADS`** (7 vs unset -- fetch-worker thread count) |
+
+`RWKV_EVAL_PAVA` is absent from ws10 correctly (an eval-only flag, and ws10 has no eval phase),
+and `RWKV_RESUME_SKIP_GROUPS` is set only inside the auto-resume branch, which never fired --
+ws10 finished on attempt 1. Both WS phases validate every 1000 steps, so even that matches.
+
+⚠ The one residual is the OMP thread count. Batch content is seeded inside the fetch workers and
+is elementwise rather than reduction-heavy, so a thread-count-dependent difference is unlikely --
+stated rather than assumed.
 
 `w10plain` vs `realcyc` differs in exactly one thing: 1 + 1 epochs becomes 10 + 2. The 2026-08-11
 calibration measured a 3x-budget step at +0.002 and projected **+0.0042 at 10x**.
