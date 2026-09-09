@@ -17,11 +17,11 @@ REM differences from a normal iteration are the WS source and decay_epochs 1.0 -
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 
-set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10plain
-set LOG=%DIR%\w10plain.log
+set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10d1
+set LOG=%DIR%\w10d1.log
 set STAMP=%RANDOM%%RANDOM%
-set TAG=w10plain
-set STEPS=21870
+set TAG=w10d1
+set STEPS=10935
 set WSSTEPS=109350
 
 REM OMP_NUM_THREADS was sliced away when this env was copied from realcyc (it sits above the
@@ -83,10 +83,13 @@ set RWKV_KD_ALPHA=
 
 
 if not exist "%DIR%" mkdir "%DIR%"
-echo ===== w10plain START %DATE% %TIME% ===== > "%LOG%"
+echo ===== w10d1 START %DATE% %TIME% ===== > "%LOG%"
 
-REM ---- PHASE B: the 2-EPOCH decay from the shared 10-epoch WS checkpoint ----
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10p_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 2.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
+REM Decay length is the ONLY difference from arm 1 (w10plain, 2.0 epochs): same WS
+REM checkpoint, same data, same seed, same env. See mk_w10decay.py for why this is the
+REM queue's next lever and what it does NOT answer.
+REM ---- PHASE B: the 1-EPOCH decay from the shared 10-epoch WS checkpoint ----
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10d1_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 1 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% DSETUP_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_22 %DATE% %TIME% >> "%LOG%"
@@ -111,7 +114,7 @@ if %ERRORLEVEL%==0 (
   echo DONE_EXIT_43 %DATE% %TIME% >> "%LOG%"
   exit /b 43
 )
-if not exist "C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\ws10\w10p_d_%STEPS%.pth" (
+if not exist "%DIR%\w10d1_d_%STEPS%.pth" (
   echo %TAG% DECAY_SHORT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_28 %DATE% %TIME% >> "%LOG%"
   exit /b 28
@@ -120,7 +123,7 @@ echo %TAG% DECAY_OK %TIME% >> "%LOG%"
 
 REM ---- PHASE C: rectified VAL-half eval, users 5001-7500 ----
 set RWKV_EVAL_PAVA=1
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10plain w10p_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10d1 w10d1_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% ETOML_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_24 %DATE% %TIME% >> "%LOG%"

@@ -114,7 +114,7 @@ if %ERRORLEVEL%==0 (
   echo DONE_EXIT_43 %DATE% %TIME% >> "%LOG%"
   exit /b 43
 )
-if not exist "%DIR%\w10d3_d_%STEPS%.pth" (
+if not exist "C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\ws10\w10d3_d_%STEPS%.pth" (
   echo %TAG% DECAY_SHORT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_28 %DATE% %TIME% >> "%LOG%"
   exit /b 28

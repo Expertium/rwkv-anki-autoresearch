@@ -17,10 +17,10 @@ REM differences from a normal iteration are the WS source and decay_epochs 1.0 -
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 
-set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10plain
-set LOG=%DIR%\w10plain.log
+set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10qat
+set LOG=%DIR%\w10qat.log
 set STAMP=%RANDOM%%RANDOM%
-set TAG=w10plain
+set TAG=w10qat
 set STEPS=21870
 set WSSTEPS=109350
 
@@ -82,11 +82,45 @@ set RWKV_KD_MIX=
 set RWKV_KD_ALPHA=
 
 
+
+REM ---- QAT: the ONLY difference from arm 1. Decay-only and warm-started, which is how QAT is
+REM deployed here and what iter 40 (+0.0118 from scratch) says it must be.
+set RWKV_QAT_LOWRANK_SCOPE=card:1:int4,note:1:int4
+set RWKV_QAT_PQ=reference/pq_cb_wkv_ws10_b10.txt
+set RWKV_QAT_SHIFT_PQ=reference/pq_cb_shift_ws10_m2b12.txt
+set RWKV_QAT_SHIFT_SCOPE=card:int3,note:int3
+set RWKV_QAT_NORM_BITS=1
+set RWKV_QAT_FUSED=1
+set RWKV_QAT_PQ_LEARN=1
+set RWKV_QAT_SHIFT_PQ_LEARN=1
+
 if not exist "%DIR%" mkdir "%DIR%"
-echo ===== w10plain START %DATE% %TIME% ===== > "%LOG%"
+echo ===== w10qat START %DATE% %TIME% ===== > "%LOG%"
+
+
+REM ---- PHASE 0: the catalogs must EXIST and be the ws10-fitted ones, and the QAT env must reach
+REM the FINAL config. A banner proves a value was computed, never that it was used: on 2026-08-12
+REM the whole QAT env was parsed and then discarded by RWKV_ARCH_MODULE for an entire track-2
+REM phase, symptomless except for a quantization cost of zero.
+if not exist "reference\pq_cb_wkv_ws10_b10.txt" (
+  echo %TAG% MISSING ws10 WKV catalog -- fit it from the ws10 WS-final first %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_51 %DATE% %TIME% >> "%LOG%"
+  exit /b 51
+)
+if not exist "reference\pq_cb_shift_ws10_m2b12.txt" (
+  echo %TAG% MISSING ws10 shift catalog %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_52 %DATE% %TIME% >> "%LOG%"
+  exit /b 52
+)
+.venv\Scripts\python.exe scratchpad/qat_tax/assert_qat_live.py >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo %TAG% QAT env is INERT in the final config %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_53 %DATE% %TIME% >> "%LOG%"
+  exit /b 53
+)
 
 REM ---- PHASE B: the 2-EPOCH decay from the shared 10-epoch WS checkpoint ----
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10p_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 2.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10q_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 2.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% DSETUP_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_22 %DATE% %TIME% >> "%LOG%"
@@ -111,16 +145,18 @@ if %ERRORLEVEL%==0 (
   echo DONE_EXIT_43 %DATE% %TIME% >> "%LOG%"
   exit /b 43
 )
-if not exist "C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\ws10\w10p_d_%STEPS%.pth" (
+if not exist "%DIR%\w10q_d_%STEPS%.pth" (
   echo %TAG% DECAY_SHORT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_28 %DATE% %TIME% >> "%LOG%"
   exit /b 28
 )
 echo %TAG% DECAY_OK %TIME% >> "%LOG%"
 
+REM PHASE C is QUANT-AWARE here (the deploy number), so budget ~10 h, not the ~2.9 h a
+REM plain eval takes -- iter 47's control eval ran 10h18m.
 REM ---- PHASE C: rectified VAL-half eval, users 5001-7500 ----
 set RWKV_EVAL_PAVA=1
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10plain w10p_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10qat w10q_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% ETOML_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_24 %DATE% %TIME% >> "%LOG%"

@@ -17,12 +17,12 @@ REM differences from a normal iteration are the WS source and decay_epochs 1.0 -
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 
-set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10plain
-set LOG=%DIR%\w10plain.log
+set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10b2
+set LOG=%DIR%\w10b2.log
 set STAMP=%RANDOM%%RANDOM%
-set TAG=w10plain
+set TAG=w10b2
 set STEPS=21870
-set WSSTEPS=109350
+set WSSTEPS=22000
 
 REM OMP_NUM_THREADS was sliced away when this env was copied from realcyc (it sits above the
 REM RWKV_ block there). Without it each fetch worker runs torch on all 32 cores: ws10's two
@@ -82,11 +82,16 @@ set RWKV_KD_MIX=
 set RWKV_KD_ALPHA=
 
 
+
+REM ---- Branch from an INTERMEDIATE WS checkpoint. Under WSD the stable phase is at constant LR,
+REM so this IS a shorter-budget run. Default-unset elsewhere, so no other runner is affected.
+set RWKV_DECAY_FROM_STEP=%WSSTEPS%
+
 if not exist "%DIR%" mkdir "%DIR%"
-echo ===== w10plain START %DATE% %TIME% ===== > "%LOG%"
+echo ===== w10b2 START %DATE% %TIME% ===== > "%LOG%"
 
 REM ---- PHASE B: the 2-EPOCH decay from the shared 10-epoch WS checkpoint ----
-.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10p_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 2.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_decay_setup.py scratchpad/ws10 w10_ws w10b2_d %DIR%\decay.toml F:/rwkv_lmdb/train_db_5k_h1_id5 1 5000 2.0 1e-3 65536 > "%DIR%\dsetup_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% DSETUP_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_22 %DATE% %TIME% >> "%LOG%"
@@ -111,16 +116,27 @@ if %ERRORLEVEL%==0 (
   echo DONE_EXIT_43 %DATE% %TIME% >> "%LOG%"
   exit /b 43
 )
-if not exist "C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\ws10\w10p_d_%STEPS%.pth" (
+if not exist "%DIR%\w10b2_d_%STEPS%.pth" (
   echo %TAG% DECAY_SHORT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_28 %DATE% %TIME% >> "%LOG%"
   exit /b 28
 )
 echo %TAG% DECAY_OK %TIME% >> "%LOG%"
 
+
+REM The pin must have been HONOURED. write_decay_setup silently takes the latest checkpoint when
+REM the variable is unset or misspelt, which would produce arm 1 again under a different tag --
+REM a duplicate wearing a curve point's name, and nothing downstream would notice.
+findstr /C:"[decay-from] pinned to" "%DIR%\dsetup_%STAMP%.log" >nul
+if not %ERRORLEVEL%==0 (
+  echo %TAG% DECAY_FROM_STEP was not honoured %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_55 %DATE% %TIME% >> "%LOG%"
+  exit /b 55
+)
+
 REM ---- PHASE C: rectified VAL-half eval, users 5001-7500 ----
 set RWKV_EVAL_PAVA=1
-.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10plain w10p_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
+.venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10b2 w10b2_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 5300 > "%DIR%\etoml_%STAMP%.log" 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% ETOML_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_24 %DATE% %TIME% >> "%LOG%"

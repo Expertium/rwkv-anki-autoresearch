@@ -299,6 +299,29 @@ def preflight(path):
                     f"write_eval_toml (line {en + 1}) globs {efold} -- and the decay.toml fallback "
                     f"cannot rescue it because the decay toml is {dtoml}, not {efold}/decay.toml")
 
+    # ---- and the SAME wrong directory in the decay's own ARTIFACT GUARD ------------------------
+    # 2026-09-09, and this cost arm 1 a relaunch: the check above was added the same morning and
+    # fixed only write_eval_toml. run_w10plain.cmd ALSO tested `if not exist "%DIR%\w10p_d_21870.pth"`
+    # after the decay, so it ran the full 6.2 h decay to completion and then killed itself with
+    # DONE_EXIT_28 (DECAY_SHORT) because it looked in scratchpad\w10plain while the checkpoint was
+    # in scratchpad\ws10. A fix that repairs one consumer of a wrong path and not the other is not
+    # a fix. All six remaining branches carried it identically.
+    for (dn, dsrc, dpfx, dtoml) in _dec:
+        _abs = lambda q: os.path.abspath(q).replace(chr(92), "/").lower()
+        for n, ln in enumerate(lines):
+            if ln.strip().upper().startswith("REM"):
+                continue
+            m = re.search(r"if not exist " + chr(34) + r"([^" + chr(34) + r"]*" + re.escape(dpfx)
+                          + r"_[^" + chr(34) + r"]*\.pth)" + chr(34), ln)
+            if not m:
+                continue
+            got = os.path.dirname(expand(m.group(1)))
+            if _abs(got) != _abs(dsrc):
+                problems.append(
+                    f"line {n + 1} guards the decay artifact in {got}, but a decay-only run writes "
+                    f"{dpfx}_<step>.pth into the SOURCE folder {dsrc} -- the guard fires after the "
+                    f"whole decay has already succeeded (arm 1, DONE_EXIT_28, 2026-09-09)")
+
     # ---- KD dump --------------------------------------------------------------------------
     kd = env.get("RWKV_KD_MIX")
     if kd:
