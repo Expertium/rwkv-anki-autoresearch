@@ -1374,6 +1374,17 @@ day"). The answer to both is ONE expensive WS run that every later experiment br
 * **CHAINED: `w10plain`** (`scratchpad/w10plain/`, waiter gates on ws10's `DONE_EXIT_0` line AND the
   `w10_ws_109350.pth` artifact) = **ENDGAME ARM 1**, a 2-epoch decay off the shared checkpoint plus
   the rectified VAL eval, ~10.6 h. It is the REFERENCE every later decay-only branch is gated against.
+* **THE CHAIN IS TWO DEEP AND UNATTENDED: ws10 -> arm 1 -> catalog refit -> arm 2** (waiters
+  34032 and 34040, both WMI-detached, both exercised in the FOREGROUND past their first `goto`
+  before detaching -- the LF/goto rule). Each gates on the previous job's SUCCESS line, never on a
+  bare terminal marker. **`run_fit_catalogs.cmd` sits between arm 1 and arm 2**: it converts the
+  ws10 WS-final to safetensors (seconds -- `export_weights_only.py`, NOT the ~25 rows/s trace
+  export), dumps a corpus with the Rust engine using the EXISTING `reference_realcyc` traces
+  (which are model-independent inputs), refits both catalogs, and then scores the realcyc-fitted
+  pair on ws10's states -- a free answer to a question the record has never asked, namely whether
+  a PQ catalog survives a budget change. It runs BETWEEN the two arms rather than beside arm 1 so
+  its k-means never competes with a training run's fetch workers; ~15 min of idle GPU buys zero
+  contention.
 * **ARM 2 IS BUILT AND ITS DESIGN QUESTION IS ANSWERED BY THE SHARED-WS SHAPE** (`scratchpad/w10qat/`,
   generator + runner, preflight PASS, phase-0 refusal verified BY EXECUTION at rc 51). The old plan
   asked whether arm 2 should be (A) a warm-started QAT fine-tune on arm 1's FINAL or (B) a second
