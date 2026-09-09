@@ -139,3 +139,27 @@ studying ahead, because the only column that marks it is zeroed. It infers what 
 short elapsed time, which IS an input. That limitation is shared by training and deploy, which
 is what makes deployment *consistent*; whether cram deserves distinct treatment is a research
 question and would need the state column back.
+
+
+---
+
+## 4. ⚠ THE GEN-5 FEATURE VECTOR HAS NO DEPLOY-SIDE IMPLEMENTATION (2026-09-09)
+
+`review_features` takes the input vector as a SLICE, so the caller builds it -- and nothing in this
+repo builds it for deploy. `rust/rwkv-infer` computes no feature (grepped: zero hits for `tod_sin`,
+`sibling`, `creation_batch`, `tenure`, `deck_depth`, `cyc3_`, `dow_sin`), and
+`run_as_rnn.RNNProcess.get_tensor` reads `CARD_FEATURE_COLUMNS` off a row `get_rwkv_data` already
+produced. Both consume; neither derives.
+
+**The §9 half of that is GOOD NEWS: there is no second implementation, so nothing can diverge.**
+Under `RWKV_ID_FEATURES=1` the trace export takes the shared `get_rwkv_data` path, which is why the
+gen-5 parity trace came back self-contained at 0.000e+00.
+
+**The other half is unwritten phase-7 work.** Gen 5 adds **47 card-feature columns** a live Anki
+scheduler must produce from its own database, and none exists outside `rwkv/id_features.py`.
+**It does NOT touch the frozen 9 B/card / 27 B/note budget** -- the extra quantities are collection
+facts Anki already stores (card ids are creation timestamps; the revlog holds every review), so
+they are QUERIES, not serialised state. Only `tod_dev` wants running state, it is per-USER, and the
+global scope is the one this project always allowed to grow. Per-column breakdown, the two
+non-O(1) items, and the sentinel that a deploy implementation must reproduce exactly:
+`scratchpad/feataudit/DEPLOY_DEBT.md`.
