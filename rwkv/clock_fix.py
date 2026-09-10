@@ -39,10 +39,24 @@ exactly as training did. The Python deploy path (rwkv/run_as_rnn.py) calls shift
 ahead_t() below; the Rust engine consumes rows its caller built, so the Anki fork's feature builder
 must apply the same rule (optimization/DEPLOY_FUNCTIONS.md).
 
-NOT SHIFTED, knowingly -- each moves only when delta crosses a boundary, or cannot be recomputed
-from a stored row: the day-granular columns (elapsed_days and its cumulative, day_offset_diff,
-cum_*_today, dow/doy/is_weekend, the real cycles) and the creation-batch counts (clipped at the show
-time; a card created inside the excess window cannot be recounted from the LMDB).
+THE UTC-DAY CALENDAR COLUMNS move only when the shift crosses UTC midnight, and on those rows they
+DID leak (added 2026-09-10, before the leak-free WS): the moved row's time of day read 23:5x while
+dow / doy / is_weekend / the review-time real cycles still read the next day, and that pair says the
+excess was longer than the time since midnight. Users 5001-5040, T=1800: 259 such rows (0.013% of
+query rows), P(fail) 0.29 against 0.14 on the other moved rows (scratchpad/leak/residual_channels.py).
+All of them are functions of the UTC day index of the show time, and the time of day is UTC too, so
+the crossing is detected exactly (up to bf16) from the STORED time-of-day pair: cross iff
+delta > seconds since UTC midnight. A crossing row gets the previous day: each pair rotates back by
+2*pi/period and is_weekend is re-derived from the rotated weekday. ⚠ doy on 1 January rotates to
+angle 0 rather than to day 365/366 (the year length is not stored): 0.0043 rad off, below the bf16
+resolution of the cosine, on 1/365 of crossing rows.
+
+NOT SHIFTED, knowingly, because a stored row cannot recompute them -- and MEASURED, not assumed, on
+the same users (residual_channels.py): the ANKI-day columns (elapsed_days and its cumulative,
+day_offset_diff, cum_*_today; the rollover time is not stored) change on 0.0036% of query rows, and
+the creation-batch counts (clipped at the show time) on 0.021%. Neither carries a measurable outcome
+signal: P(fail) 0.10 (n=70) and 0.16 (n=399) against 0.14, i.e. 2.7e-7 and 3.3e-7 nats per query row,
+which is the plug-in estimator's own bias floor. Closing them needs an LMDB rebuild.
 
 Differences from phase L's counterfactual (scratchpad/leak/get_result_cf.py), which measured the
 leak on an unchanged model: that one left tenure and deck age alone and never touched a label. Both
@@ -114,12 +128,23 @@ if enabled():
         ("elapsed_seconds_cumulative_sin", "elapsed_seconds_cumulative_cos"),
         ("tod_sin", "tod_cos"),
         ("tod_dev_sin", "tod_dev_cos"))]
-    SHIFTED_COLUMNS = sorted({_I_ANY} | {i for i, _, _ in _SUB} | {i for p in _ROT for i in p})
+    # UTC-day calendar pairs, each with its period in days (see the docstring)
+    _I_TOD = (_C.index("tod_sin"), _C.index("tod_cos"))
+    _I_DOW = (_C.index("dow_sin"), _C.index("dow_cos"))
+    _I_WKND = _C.index("is_weekend")
+    _DAYROT = [(_I_DOW[0], _I_DOW[1], 7.0), (_C.index("doy_sin"), _C.index("doy_cos"), 365.25)]
+    if _idf.real_cycles_enabled():
+        for _p in _idf.CYCLE_PERIODS:
+            if _p not in _idf._CYCLES_WITH_REAL_REVIEW_HALF:
+                _t = _idf._cycle_tag(_p)
+                _DAYROT.append((_C.index(f"cyc{_t}_sin"), _C.index(f"cyc{_t}_cos"), float(_p)))
+    SHIFTED_COLUMNS = sorted({_I_ANY} | {i for i, _, _ in _SUB} | {i for p in _ROT for i in p}
+                             | {i for a, b, _ in _DAYROT for i in (a, b)} | {_I_WKND})
     print(f"[clock-fix pid {os.getpid()}] ON: T={T:g} s -- query + probe rows moved to the previous "
           f"answer, label t minus the target's gap ({len(SHIFTED_COLUMNS)} columns)", flush=True)
 
 _COUNT = {"calls": 0, "q_rows": 0, "q_shift": 0, "p_rows": 0, "p_shift": 0,
-          "labels": 0, "l_shift": 0, "l_missing": 0}
+          "labels": 0, "l_shift": 0, "l_missing": 0, "x_day": 0}
 
 
 def _inv(s, mean, std):
@@ -158,6 +183,20 @@ def shift_features(F: np.ndarray, delta: np.ndarray) -> np.ndarray:
         s0, c0 = F[sh, s_col], F[sh, c_col]
         out[sh, s_col] = s0 * cp + c0 * sp
         out[sh, c_col] = c0 * cp - s0 * sp
+    # A shift past UTC midnight lands on the previous day: seconds since midnight come from the
+    # STORED (unrotated) time-of-day pair.
+    tod = np.mod(np.arctan2(F[sh, _I_TOD[0]], F[sh, _I_TOD[1]]), 2.0 * np.pi) * (_DAY / (2.0 * np.pi))
+    cross = d > tod
+    if cross.any():
+        rows = np.nonzero(sh)[0][cross]
+        for s_col, c_col, period in _DAYROT:
+            ph = -2.0 * np.pi / period
+            s0, c0 = F[rows, s_col], F[rows, c_col]
+            out[rows, s_col] = s0 * np.cos(ph) + c0 * np.sin(ph)
+            out[rows, c_col] = c0 * np.cos(ph) - s0 * np.sin(ph)
+        k = np.mod(np.rint(np.arctan2(out[rows, _I_DOW[0]], out[rows, _I_DOW[1]]) * 7.0 / (2.0 * np.pi)), 7.0)
+        out[rows, _I_WKND] = (k >= 5.0).astype(np.float64)   # Monday = 0, as in id_features
+        _COUNT["x_day"] += int(cross.sum())
     return out
 
 
@@ -225,7 +264,8 @@ def apply_to_sample(data):
     if c["calls"] % 500 == 1:
         print(f"[clock-fix pid {os.getpid()}] T={T:g}s chunks {c['calls']} query rows {c['q_rows']} "
               f"shifted {c['q_shift']} | labels {c['labels']} shifted {c['l_shift']} target not in "
-              f"chunk {c['l_missing']} | probe rows {c['p_rows']} shifted {c['p_shift']}", flush=True)
+              f"chunk {c['l_missing']} | probe rows {c['p_rows']} shifted {c['p_shift']} | day crossings "
+              f"{c['x_day']}", flush=True)
     return dataclasses.replace(data, card_features=cf, global_labels=gl)
 
 

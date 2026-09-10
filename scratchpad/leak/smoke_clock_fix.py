@@ -14,6 +14,11 @@ Four parts, each in its own process because the flag is read at import:
   4. PARITY  the deploy path (run_as_rnn.imm_predict + clock_fix.ahead_t) against the LMDB path for
              the same user: the same rows shift, by the same delta, to the same values within bf16,
              and the fix does not degrade the agreement the two paths had with the flag off.
+  5. CALENDAR (added 2026-09-10) a shift past UTC midnight gives the previous day's dow / doy /
+             is_weekend / review-time cycles, equal to id_features' own formulas evaluated at the
+             moved time; a shift that stays inside the day leaves them alone; nothing outside
+             SHIFTED_COLUMNS moves. Synthetic show times on a real row, so the rare case is tested
+             on purpose instead of hoped for in a chunk.
 
 Usage: python scratchpad/leak/smoke_clock_fix.py        (exit 0 = PASS)
 """
@@ -101,7 +106,9 @@ ONLY_FIX = [C.index("scaled_user_tenure"), C.index("scaled_deck_age_at_review")]
 out = []
 for db, user, which in json.loads(sys.argv[1]):
     d0 = load(db, user, which)
+    xd0 = CF._COUNT["x_day"]
     d1 = CF.apply_to_sample(d0)
+    xday = CF._COUNT["x_day"] - xd0
     A, B = d0.card_features.double().numpy(), d1.card_features.double().numpy()
     lab0, lab1 = d0.global_labels.double().numpy(), d1.global_labels.double().numpy()
     sk = d0.skips.numpy().astype(bool)
@@ -116,7 +123,7 @@ for db, user, which in json.loads(sys.argv[1]):
          "query_in_session": int((isq & ins).sum()), "query_changed": int((changed & isq).sum()),
          "real_changed": int((changed & real).sum()), "changed_outside_query_insession": int((changed & ~(isq & ins)).sum()),
          "any_not_zeroed": int((B[big, IANY] != fwd0).sum()),
-         "cols_changed": sorted({C[j] for j in np.nonzero((A != B).any(axis=0))[0]})}
+         "cols_changed": sorted({C[j] for j in np.nonzero((A != B).any(axis=0))[0]}), "day_crossings": int(xday)}
     # the query transform against phase L's counterfactual, on the columns both shift
     cf2, _, _ = LCF.transform(d0.card_features, isq)
     L = cf2.double().numpy()
@@ -209,6 +216,53 @@ np.savez(path, keys=np.array(keys), dep=np.stack([q_dep[k] for k in keys]), lm=n
          lkeys=np.array(lk), tdep=np.array([t_dep[k] for k in lk]), tlm=np.array([t_lm[k] for k in lk]),
          shifted=np.array(CF.SHIFTED_COLUMNS if CF.enabled() else []), iany=C.index("scaled_t_since_any_review"))
 print("RESULT " + json.dumps({"on": CF.enabled(), "reviews": len(df), "query_pairs": len(keys), "label_pairs": len(lk)}))
+'''
+
+
+CHILD_CAL = COMMON + r'''
+import pandas as pd
+from rwkv.data_processing import CARD_FEATURE_COLUMNS as C
+from rwkv import id_features as IDF
+DAY_MS = 86_400_000
+
+def builder(rt_ms):
+    # the calendar columns id_features.add_id_features writes for show time rt_ms, restated line by line
+    v = {}
+    th = (rt_ms % DAY_MS) / DAY_MS * 2.0 * np.pi
+    v["tod_sin"], v["tod_cos"] = np.sin(th), np.cos(th)
+    ts = pd.to_datetime(rt_ms, unit="ms", utc=True)
+    dow, doy = float(ts.dayofweek), float(ts.dayofyear)
+    v["dow_sin"], v["dow_cos"] = np.sin(dow * 2.0 * np.pi / 7.0), np.cos(dow * 2.0 * np.pi / 7.0)
+    v["doy_sin"], v["doy_cos"] = np.sin(doy * 2.0 * np.pi / 365.25), np.cos(doy * 2.0 * np.pi / 365.25)
+    v["is_weekend"] = float(dow >= 5)
+    day = np.floor(rt_ms / DAY_MS)
+    for p in IDF.CYCLE_PERIODS:
+        if p not in IDF._CYCLES_WITH_REAL_REVIEW_HALF:
+            t = IDF._cycle_tag(p)
+            v[f"cyc{t}_sin"] = np.sin(2.0 * np.pi / p * np.mod(day, p))
+            v[f"cyc{t}_cos"] = np.cos(2.0 * np.pi / p * np.mod(day, p))
+    return v
+
+base = load(sys.argv[1], int(sys.argv[2]), 0).card_features[0].double().numpy()
+out = []
+for iso, delta, expect_cross in json.loads(sys.argv[3]):
+    rt = int(pd.Timestamp(iso, tz="UTC").value // 1_000_000)
+    F = base.copy()[None, :]
+    for k, x in builder(rt).items():
+        F[0, C.index(k)] = x
+    F[0, C.index("scaled_t_since_any_review")] = CF._fwd(float(delta), *CF._ANY)
+    dl = CF.delta_from_scaled(F[:, C.index("scaled_t_since_any_review")])
+    x0 = CF._COUNT["x_day"]
+    G = CF.shift_features(F, dl)
+    exp = builder(rt - int(round(float(dl[0]) * 1000.0)))
+    err = {k: float(abs(G[0, C.index(k)] - x)) for k, x in exp.items()}
+    out.append({"iso": iso, "delta": delta, "delta_rec": float(dl[0]), "crossed": CF._COUNT["x_day"] - x0,
+                "expect_cross": expect_cross, "err_doy": max(err["doy_sin"], err["doy_cos"]),
+                "err_other": max(v for k, v in err.items() if not k.startswith("doy")),
+                "weekend": [builder(rt)["is_weekend"], float(G[0, C.index("is_weekend")])],
+                "unlisted_changed": int(sum(1 for j in range(F.shape[1])
+                                            if j not in CF.SHIFTED_COLUMNS and F[0, j] != G[0, j]))})
+print("RESULT " + json.dumps(out))
 '''
 
 
@@ -333,6 +387,26 @@ def main():
           f"both paths shift the same {int(clear.sum())} clearly in-session query rows")
     rel = np.abs(g_dep[clear] - g_lm[clear]) / np.maximum(g_dep[clear], 1.0)
     check(rel.max() <= 0.02, f"delta agrees within bf16 (max relative difference {rel.max():.4f})")
+    print("== 5. CALENDAR: a shift past UTC midnight gives the previous day")
+    cal = [["2026-09-07 00:02:00", 300, 1],   # Monday -> Sunday: is_weekend 0 -> 1
+           ["2026-09-06 00:02:00", 300, 1],   # Sunday -> Saturday
+           ["2026-09-05 00:00:30", 60, 1],    # Saturday -> Friday: is_weekend 1 -> 0
+           ["2026-01-01 00:01:00", 120, 1],   # 1 January -> 31 December (doy approximated)
+           ["2026-09-07 00:04:59", 300, 1],   # lands 1 s before midnight
+           ["2026-09-07 00:05:01", 300, 0],   # lands 1 s after midnight
+           ["2026-09-07 00:10:00", 300, 0],
+           ["2026-09-07 12:00:00", 1000, 0],
+           ["2026-09-07 00:10:00", 2000, 0]]  # delta >= T: not an in-session gap, nothing moves
+    r, _ = child(CHILD_CAL, [TEST_DB, 5030, json.dumps(cal)], T_FIX)
+    for x in r:
+        print("  " + json.dumps(x))
+        tag = f"{x['iso']} delta {x['delta']}"
+        check(x["crossed"] == x["expect_cross"], f"{tag}: crossing detected = {x['crossed']}")
+        check(x["err_other"] <= 1e-9, f"{tag}: equals the builder at the moved time (max err {x['err_other']:.1e})")
+        check(x["err_doy"] <= (5e-3 if x["iso"].startswith("2026-01-01") else 1e-9),
+              f"{tag}: doy err {x['err_doy']:.1e}")
+        check(x["unlisted_changed"] == 0, f"{tag}: nothing outside SHIFTED_COLUMNS moves")
+    check(any(a != b for a, b in (x["weekend"] for x in r)), "is_weekend really flips on some case")
     print("SMOKE PASS" if ok else "SMOKE FAIL")
     sys.exit(0 if ok else 1)
 

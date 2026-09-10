@@ -68,3 +68,5 @@ gaps included, which move the gap column only) and 3-7% of labels shift.
 * **T is not re-tuned on w10clk's number.** If phase L's lkc3h costs >= +0.0005 imm more than
   lkc30m, the branch is regenerated at T = 10800 BEFORE launch (`mk_w10clk.py 10800`), on that
   pre-registered rule, and this file gets a dated note saying so.
+
+**2026-09-10 23:10 -- dated note.** Andrew directed a leak-free run REGARDLESS of phase L (`scratchpad/w10lf/`: WS from scratch with the fix). This branch's predictions stand unchanged; what changes is its role -- it is now a measurement (how much a decay-only fix recovers), not a candidate for the shipped model. It stays armed as-is until phase L reports; if phase L is MATERIAL, the queue is re-planned by hand and this branch may be dropped in favour of the leak-free run. The fix also gained the UTC-midnight calendar shift the same evening (`rwkv/clock_fix.py`), so if this branch runs it uses it.

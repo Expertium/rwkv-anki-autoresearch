@@ -177,7 +177,17 @@ rows only:
   deck age and sibling gap each minus `delta` (floored at 0, undefined sentinels untouched); the
   daily sin/cos pairs (interval, cumulative, time of day, time-of-day deviation) rotated back by
   `delta`;
+* **if `delta` is larger than the seconds since UTC midnight, the moved time is on the PREVIOUS UTC
+  day** (added 2026-09-10): dow, doy and the review-time real cycles rotate back by one day
+  (`2*pi/period`) and `is_weekend` is re-derived from the rotated weekday. The simplest correct
+  implementation computes EVERY clock column of these rows from `now - delta` instead of `now`;
 * the curve evaluated at `t - delta` wherever `t` is the time since the card's previous answer.
+
+Two groups stay unshifted, because a stored training row cannot recompute them: the Anki-day
+columns (elapsed_days and its cumulative, day_offset_diff, cum_*_today) and the creation-batch
+counts. So the deploy builder must compute them at `now`, as the database did. Measured on users
+5001-5040 (`scratchpad/leak/residual_channels.py`), they would change on 0.0036% and 0.021% of
+query rows, with no measurable outcome signal.
 
 REAL rows (a finished review) are NOT shifted: they are rebuilt from the revlog, excess included,
 exactly as in training. The rule is one function, `rwkv/clock_fix.py` (`shift_features`,
