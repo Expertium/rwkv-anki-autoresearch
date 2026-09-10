@@ -1,26 +1,27 @@
 @echo off
-REM Budget-curve chain, behind cmixgraft: dry w10b2, dry w10b5, then w10b2, then w10b5.
+REM Budget-curve chain, behind the QAT-KD arm: dry w10b2, dry w10b5, then w10b2, then w10b5.
+REM Re-pointed 2026-09-10 when Andrew approved QAT-KD: it was armed behind cmixgraft and was
+REM stopped while still looping in gate 0, so the KD arm could take the slot before it.
 REM
-REM GATE 0 polls the cmixgraft WAITER's own log, wait_cmixgraft.log -- NOT cmixgraft.log. If the
-REM cmixgraft dry run refuses, cmixgraft.log is never created, and a waiter on it would idle the
-REM GPU forever. Reading the waiter's code instead:
-REM   DONE_EXIT_90       arm 2's eval FAILED: refuse -- it must be resumed first, and the curve
-REM                      would book the GPU for ~13 h
-REM   DONE_EXIT_0, 92-95 cmixgraft ran, or its dry run refused: the GPU is free, proceed
+REM GATE 0 polls the QAT-KD WAITER's own log, wait_qatkd.log -- NOT w10qatkd.log, which a refused
+REM QAT-KD dry run never creates, so a waiter on it would idle the GPU forever. Its codes:
+REM   DONE_EXIT_110        arm 2's eval FAILED upstream: refuse -- it must be resumed first
+REM   DONE_EXIT_0, 111-113 the KD arm ran, or its dry run refused: the GPU is free, proceed
 REM GATE 1 runs BOTH dry runs before either real run (fail fast): each must end DONE_EXIT_0 with no
 REM swallowed exception in its decay log and both result files. RWKV_DECAY_FROM_STEP is a code
 REM path no finished run has exercised, which is exactly the dry-run trigger.
 REM Then w10b2 and w10b5, each ~6.5 h (2-epoch decay + a 300-user eval).
 REM
-REM A QAT-tax retry built before this fires can displace it: stop THIS waiter while it is still
-REM looping in gate 0 (a called .cmd is not open until the call).
+REM Anything built before this fires can displace it. STOP THE WAITER'S cmd FIRST, then its
+REM children: stopping its ping or console host first lets the dying cmd run one more step with
+REM broken exit codes (2026-09-10: it took a refusal branch; the launch branch was as likely).
 REM This log carries the waiter's own DONE_EXIT_ lines (the repo convention); nothing polls it.
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 set WLOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10b2\wait_budget.log
-set PREV=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\cmixgraft\wait_cmixgraft.log
+set PREV=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10qatkd\wait_qatkd.log
 set R=C:\Users\Andrew\rwkv-anki-autoresearch
-echo ===== budget-curve waiter armed on the cmixgraft waiter %DATE% %TIME% ===== >> "%WLOG%"
+echo ===== budget-curve waiter armed on the QAT-KD waiter %DATE% %TIME% ===== >> "%WLOG%"
 
 :waitprev
 if not exist "%PREV%" goto sleepprev
@@ -32,13 +33,13 @@ ping -n 61 127.0.0.1 >nul
 goto waitprev
 
 :gotprev
-findstr /B /C:"DONE_EXIT_90 " "%PREV%" >nul 2>&1
+findstr /B /C:"DONE_EXIT_110 " "%PREV%" >nul 2>&1
 if not errorlevel 1 (
-  echo arm 2 eval FAILED per the cmixgraft waiter -- not launching the budget curve %DATE% %TIME% >> "%WLOG%"
+  echo arm 2 eval FAILED per the QAT-KD waiter -- not launching the budget curve %DATE% %TIME% >> "%WLOG%"
   echo DONE_EXIT_100 %DATE% %TIME% >> "%WLOG%"
   exit /b 100
 )
-echo cmixgraft chain done -- 120 s for its workers, then the two dry runs %DATE% %TIME% >> "%WLOG%"
+echo QAT-KD chain done -- 120 s for its workers, then the two dry runs %DATE% %TIME% >> "%WLOG%"
 ping -n 121 127.0.0.1 >nul
 
 call %R%\scratchpad\w10b2dry\run_w10b2dry.cmd

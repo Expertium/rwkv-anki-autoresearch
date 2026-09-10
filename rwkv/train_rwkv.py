@@ -125,6 +125,58 @@ def maybe_compile_mixers(model, label=""):
     return model
 
 
+def build_qat_kd_teacher(ckpt_path, dtype, device):
+    """RWKV_QAT_KD's frozen teacher: `ckpt_path` UN-quantized, eval mode, no grads.
+
+    QAT gating lives in per-module fields copied from the arch config at build time, so resetting
+    those fields on this instance strips every fake-quant hook (WKV low-rank/PQ, shift PQ/rotation,
+    norm quant all nest inside these guards) while the student keeps them. A module-level function
+    (2026-09-10) so scratchpad/qatkd/smoke_qatkd.py can test the exact code the loop runs.
+    Returns (teacher, number_of_hooks_stripped)."""
+    teacher = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG)
+    teacher.load_state_dict(torch.load(ckpt_path, weights_only=True, map_location="cpu"))
+    teacher = teacher.selective_cast(dtype).to(device)
+    n_stripped = 0
+    for m in teacher.modules():
+        if getattr(m, "state_shift_qmax", float("inf")) != float("inf"):
+            m.state_shift_qmax = float("inf"); n_stripped += 1
+        if getattr(m, "state_qmax", float("inf")) != float("inf"):
+            m.state_qmax = float("inf"); n_stripped += 1
+        if getattr(m, "state_lowrank_rank", 0) > 0:
+            m.state_lowrank_rank = 0; n_stripped += 1
+    teacher.eval()
+    for p in teacher.parameters():
+        p.requires_grad_(False)
+    return teacher, n_stripped
+
+
+def qat_kd_targets(teacher, pb, lam):
+    """The `kd=` argument of get_loss for RWKV_QAT_KD: (teacher rating LOGITS, teacher curve PROBS, lam).
+
+    ⚠ FIXED 2026-09-10 -- the inline version this replaces built the curve target with the PLAIN
+    `forgetting_curve(w, t)` for every model. Under RWKV_GRU_HEAD the student's own curve is
+    `gru_forgetting_curve(w, s, d, t)` (_get_loss), so the teacher's target was a DIFFERENT
+    FUNCTION of the teacher's outputs -- a KD term pulling the student's curve toward a curve no
+    model computes. The code predates the GRU head (task22, d=32 era) and no run since used it.
+    Now it mirrors _get_loss branch for branch (GRU or not, the ahead residual, rcouple, stream
+    activity). Proven by scratchpad/qatkd/smoke_qatkd.py: with teacher == student the KD gradient
+    VANISHES, and the old formula's does not."""
+    with torch.no_grad():
+        t_ahead, t_w, _t_wlp, t_p, t_s, t_d = teacher.forward_batch(
+            pb.start, pb.sub_gather, pb.sub_gather_lens, pb.time_shift_selects, pb.skips,
+            pb.num_data, pb.stream_active)
+        les = pb.labels.float()[..., 0].unsqueeze(-1)
+        if teacher.gru_on:
+            tcr = teacher.gru_forgetting_curve(t_w, t_s, t_d, les)
+        else:
+            tcr = teacher.forgetting_curve(t_w, les)
+        tcr = tcr.clamp(1e-5, 1 - 1e-5)
+        tcl = torch.log(tcr / (1 - tcr)) + teacher.interp(t_ahead, les)
+        if teacher.rcouple_on:
+            t_p = teacher._apply_rcouple(t_p, tcl)
+        return (t_p.float(), torch.sigmoid(tcl).clamp(1e-5, 1 - 1e-5).float(), lam)
+
+
 def get_optimizer(config, model):
     encode_params = []
     decay_params = []
@@ -817,22 +869,13 @@ def main_loop(config, task_queue, batch_queue):
     _teacher = None
     if _kd_lam > 0:
         assert config.LOAD_MODEL, "KD needs a champion checkpoint to distill from"
-        _teacher = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG)
-        _teacher.load_state_dict(torch.load(model_path, weights_only=True))
-        _teacher = _teacher.selective_cast(config.DTYPE).to(config.DEVICE)
-        _n_stripped = 0
-        for _m in _teacher.modules():
-            if getattr(_m, "state_shift_qmax", float("inf")) != float("inf"):
-                _m.state_shift_qmax = float("inf"); _n_stripped += 1
-            if getattr(_m, "state_qmax", float("inf")) != float("inf"):
-                _m.state_qmax = float("inf"); _n_stripped += 1
-            if getattr(_m, "state_lowrank_rank", 0) > 0:
-                _m.state_lowrank_rank = 0; _n_stripped += 1
-        _teacher.eval()
-        for _p in _teacher.parameters():
-            _p.requires_grad_(False)
+        # RWKV_QAT_KD_TEACHER (2026-09-10): distil from a checkpoint OTHER than the run's start. A
+        # decay branch starts from a WS checkpoint, and the useful teacher is the plain twin's
+        # DECAYED final, not that noisier starting point. Unset == the run's own start, as before.
+        _kd_teacher_path = os.environ.get("RWKV_QAT_KD_TEACHER", "") or model_path
+        _teacher, _n_stripped = build_qat_kd_teacher(_kd_teacher_path, config.DTYPE, config.DEVICE)
         maybe_compile_mixers(_teacher, "(teacher)")
-        print(f"[KD] teacher = {model_path}, {_n_stripped} QAT hooks stripped, lambda = {_kd_lam}")
+        print(f"[KD] teacher = {_kd_teacher_path}, {_n_stripped} QAT hooks stripped, lambda = {_kd_lam}")
 
     # Learnable-codebook groups: created up front (pre-load, above); register here when the
     # loaded (or absent) optim state did not already carry them -- AFTER the champion-optim
@@ -1363,23 +1406,7 @@ def main_loop(config, task_queue, batch_queue):
 
                 kd_args = None
                 if _teacher is not None:
-                    with torch.no_grad():
-                        t_ahead, t_w, _t_wlp, t_p, _t_s, _t_d = _teacher.forward_batch(
-                            prepared_batch.start,
-                            prepared_batch.sub_gather,
-                            prepared_batch.sub_gather_lens,
-                            prepared_batch.time_shift_selects,
-                            prepared_batch.skips,
-                            prepared_batch.num_data,
-                        )
-                        _les = prepared_batch.labels.float()[..., 0].unsqueeze(-1)
-                        _tcr = _teacher.forgetting_curve(t_w, _les).clamp(1e-5, 1 - 1e-5)
-                        _tcl = torch.log(_tcr / (1 - _tcr)) + _teacher.interp(t_ahead, _les)
-                        kd_args = (
-                            t_p.float(),
-                            torch.sigmoid(_tcl).clamp(1e-5, 1 - 1e-5).float(),
-                            _kd_lam,
-                        )
+                    kd_args = qat_kd_targets(_teacher, prepared_batch, _kd_lam)
                 # KD STUDENT mode: load this step's stored teacher targets, verify batch-stream
                 # identity (shape + labels checksum), anneal alpha 1 -> 0 across the window.
                 # Guards use sys.exit (SystemExit passes the except below) -- a mismatch or a
