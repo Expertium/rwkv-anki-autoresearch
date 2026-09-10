@@ -238,6 +238,14 @@ if errorlevel 1 (
 )
 echo %TAG% EVAL_OK %TIME% >> "%LOG%"
 
+REM ---- PHASE D: split the tax into its parts on users 5001-5300 (scratchpad/qat_decomp/PREREG.md) ----
+REM Two more evals of THIS checkpoint, each the deploy env minus one quantizer, about 2.5 h. NEVER
+REM FATAL: run_decomp.cmd logs to its own decomp.log and always returns, and the marker below is
+REM written whatever it did. Added 2026-09-10 while the waiter was still polling, before any call.
+echo %TAG% DECOMP start %TIME% >> "%LOG%"
+call scratchpad\qat_decomp\run_decomp.cmd %TAG% %STEPS% w10q_d scratchpad/w10qat %DIR% %RWKV_QAT_PQ% %RWKV_QAT_SHIFT_PQ%
+echo %TAG% DECOMP returned %ERRORLEVEL% %TIME% >> "%LOG%"
+
 REM Terminal marker BEFORE endlocal: endlocal restores the pre-setlocal environment,
 REM so %LOG% would expand to empty and the marker would go to "".
 echo DONE_EXIT_0 %DATE% %TIME% >> "%LOG%"

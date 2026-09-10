@@ -124,6 +124,13 @@ zero-byte routes first. What this pre-registration adds, found while writing it:
   ⚠ It reintroduces KD, which Andrew closed on 2026-09-04 ("Let's skip KD") -- in the context of a
   4-day teacher retrain for the research lineage, not this. Ask him; do not build it on inference.
 
+## PHASE D -- the tax split into its parts (added 2026-09-10 19:00, before any number)
+
+Arm 2's eval runner now ends with a decomposition of THIS checkpoint on users 5001-5300: shift
+quantization off (S), WKV codebook + norm quant off (C), and the remainder R = T - S - C (rank-1 +
+drift; no arm can remove rank-1, cell 3). It decides the bit split mechanically. Design, predictions
+and decision rule: `scratchpad/qat_decomp/PREREG.md`. ~2.5 h, never fatal to this runner.
+
 ## PREVIEW (added 2026-09-10 16:05, decay step 8,042 of 21,870 -- NOT the verdict)
 
 In-training validation, arm 2 vs arm 1 at matching decay steps, the SAME 10 users (5001-5010,
