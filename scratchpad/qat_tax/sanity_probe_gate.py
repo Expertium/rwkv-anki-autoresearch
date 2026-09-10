@@ -10,7 +10,9 @@ measured tax is +0.004/+0.006; an improvement could be slightly negative); a bro
 ~0 (quantization silently off — the architecture.py bug) or huge (wrong/mismatched codebook, the
 0.40/0.55 cell-3 class). Both failure modes land far outside the band.
 
-Usage: python sanity_probe_gate.py <ahead_tag> <imm_tag>   (result/RWKV-<tag>.jsonl etc.)
+Usage: python sanity_probe_gate.py <tag> [--base <plain_tag>]   (result/RWKV-<tag>.jsonl etc.)
+--base defaults to iter45_kddecay (the published-lineage plain model this gate was written for).
+A QAT run must be compared with ITS OWN plain twin: arm 2 (w10qat) uses --base w10plain.
 Exit 0 = sane, 46 = out of band / missing.
 """
 import json
@@ -32,9 +34,13 @@ def load(p):
 
 def main():
     tag = sys.argv[1]
+    btag = "iter45_kddecay"
+    if "--base" in sys.argv:
+        btag = sys.argv[sys.argv.index("--base") + 1]
+    print(f"[probe-gate] {tag} vs base {btag}")
     ok = True
-    for mode, cand, base in (("ahead", f"result/RWKV-{tag}.jsonl", "result/RWKV-iter45_kddecay.jsonl"),
-                             ("imm", f"result/RWKV-P-{tag}.jsonl", "result/RWKV-P-iter45_kddecay.jsonl")):
+    for mode, cand, base in (("ahead", f"result/RWKV-{tag}.jsonl", f"result/RWKV-{btag}.jsonl"),
+                             ("imm", f"result/RWKV-P-{tag}.jsonl", f"result/RWKV-P-{btag}.jsonl")):
         try:
             c, b = load(cand), load(base)
         except OSError as e:

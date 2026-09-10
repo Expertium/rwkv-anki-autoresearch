@@ -43,6 +43,24 @@ flags are read at import):
 Artifact: `scratchpad/ws10/w10g_ws_109350.pth`, built by `expand_ckpt.py`, which refuses unless
 exactly six mixers change shape and all six `W_v` are exactly zero.
 
+## ⚠ The OPTIMIZER state had to be grafted too (found 2026-09-10 12:40, before any GPU)
+
+A decay branch loads the WS checkpoint's optimizer state as well as its weights, and
+`expand_ckpt.py` wrote only the weights -- so the decay would have died at load
+(`train_rwkv.py:709` loads `<ws>_<step>_optim.pth` with no existence check). ws10's optimizer file
+could not simply be copied either: `get_optimizer` groups by `len(param.squeeze().shape) >= 2`, a
+stripped mixer's `W_k`/`W_v` are `(1, 1)` dummies in the AdamW `other` group, and the restored
+`(80, 80)` matrices belong in the Muon `channel_mixer` group. The group sizes differ, so
+`load_state_dict` refuses, and a positional copy could have attached moments to the wrong tensors.
+`expand_optim.py` rebuilds both optimizers with the REAL `get_optimizer` (env parsed from each
+runner file; they differ ONLY in `RWKV_STRIP_CMIX`) and maps ws10's state BY NAME: **391 params
+keep their moments bit-for-bit, the 30 grown tensors start fresh, and exactly the 12 restored
+`W_k`/`W_v` move AdamW -> Muon** -- the treatment every surviving channel mixer already gets, so it
+is part of "having a mixer", not a second variable. Verified in a third process: the state loads,
+every carried entry equals ws10's by name, and one synthetic step gives the grown tensors
+correctly sized state. Output `scratchpad/ws10/w10g_ws_optim_109350.pth`, which
+`write_decay_setup.py` copies to the resume name.
+
 ## ⚠ The second variable, priced rather than hidden
 
 `Block.forward` wraps the mixer's output in `self.dropout` (`dropout_layer`), while the STRIPPED
