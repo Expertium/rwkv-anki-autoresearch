@@ -163,3 +163,27 @@ they are QUERIES, not serialised state. Only `tod_dev` wants running state, it i
 global scope is the one this project always allowed to grow. Per-column breakdown, the two
 non-O(1) items, and the sentinel that a deploy implementation must reproduce exactly:
 `scratchpad/feataudit/DEPLOY_DEBT.md`.
+
+## 5. ⚠ THE CLOCK RULE FOR ROWS THAT PREDICT AT SHOW TIME (2026-09-10, `RWKV_CLOCK_AT_PREV_ANSWER`)
+
+The imm query row and the four PAVA button probes predict BEFORE the answer. In the -id data their
+clock columns were measured to the reconstructed show time `id - taken_millis`, which Anki's 60 s
+duration cap and timer resets make late by the current review's excess -- a leak of the outcome
+(`scratchpad/leak/PREREG.md`). A model trained under `RWKV_CLOCK_AT_PREV_ANSWER=T` expects, on those
+rows only:
+
+* `delta = now - (last answer on ANY card)` if that is below `T`, else `0`;
+* `t_since_any_review` = 0 when `delta > 0`; the same-card interval, its cumulative, user tenure,
+  deck age and sibling gap each minus `delta` (floored at 0, undefined sentinels untouched); the
+  daily sin/cos pairs (interval, cumulative, time of day, time-of-day deviation) rotated back by
+  `delta`;
+* the curve evaluated at `t - delta` wherever `t` is the time since the card's previous answer.
+
+REAL rows (a finished review) are NOT shifted: they are rebuilt from the revlog, excess included,
+exactly as in training. The rule is one function, `rwkv/clock_fix.py` (`shift_features`,
+`ahead_t`), called by training and eval (`prepare_batch.prepare`) and by the Python deploy path
+(`run_as_rnn.imm_predict`, the trace exporter). The Rust engine consumes rows its caller built, so
+**the Anki fork's feature builder must apply the same rule** to the query row and to the row it hands
+`button_intervals`. At deploy the in-session gap is ~0 anyway, so the rule mostly confirms what the
+scheduler sees; it matters for a short real break, which it must zero exactly as training did.
+Default off: a model trained without the flag expects the raw values.
