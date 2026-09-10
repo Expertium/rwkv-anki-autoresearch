@@ -100,6 +100,18 @@ zero-byte routes first. What this pre-registration adds, found while writing it:
   `RWKV_STRIP_CMIX` removes card layer 1's channel mixer, so card carries 3 shift vectors and note
   2): **card 110 + 72 = 182 bits (22.75 B, the record's "~23 B"), note 55 + 48 = 103 bits.** The
   same trade on note is -16 shift bits for +10 WKV bits, 6 under budget.
+  **SCREENED 2026-09-10 12:55 on ws10's own corpus, held out BY USER (fit 107 + 136, score 156):**
+  WKV b10 -> b12 refit 0.5587 -> 0.5219 (-6.6%, a LOWER bound -- 12 training vectors per centroid);
+  shift m2b12 -> m2b8 refit TS 0.4818 -> 0.5339 and CS 0.3968 -> 0.4404 (+11% each), far from the
+  random control (1.07). **So the shift side does NOT collapse at 8 bits; the route is alive, not
+  free.** A crude linear map (the PTQ probe matrix put the WKV side at ~14x the shift side's cost)
+  says net +0.0001..+0.0003, which iter 47 warns may not survive contact with logloss -- a 43%/75%
+  cut in rank-1 error there bought nothing. Worth ONE ~30 h A/B only if arm 2's tax says the
+  codebook term is where the cost sits.
+  ⚠ A side observation that bears on any catalog design: the same b10 catalog scores **0.3629**
+  on user 156 when 156 was in its fit and **0.5587** when it was not. WKV states are strongly
+  USER-specific, so held-out error is dominated by user diversity -- which the LEARNABLE catalog
+  addresses by training on all 5,000 users' task loss, and a 3-user k-means start cannot.
 
 * **A route that needs ANDREW, not a build: distil from the full-precision twin DURING QAT.**
   The recorded 1.25-ep tax had KD ON in both of its arms (alpha 0.5 in the decay); arm 2 runs
