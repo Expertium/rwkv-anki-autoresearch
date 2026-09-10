@@ -3211,6 +3211,8 @@ All hooks stay in-repo, env-gated, default off.
   against slow drift.
   **⚠ IT PROVES PLUMBING, NEVER CAPACITY.** The 6701 OOM, the WDDM co-tenant deadlock and the
   giant-user freeze all need real users and real VRAM; 20 small users cannot see any of them.
+  **⚠⚠ AND THE TOOL'S OWN GUARD MUST USE THE TRAINER'S ARITHMETIC, NOT ITS OWN. Cost 2 h of idle GPU, 2026-09-10.** `mk_dryrun.py` computed the decay's final step as `int(round(0.05 * 10935))` = **547** while `train_rwkv.py:967` uses `total_steps = int(config.EPOCHS * len(groups))` = **546**. So every dry run did its job perfectly -- 546 steps, zero tracebacks, checkpoint and both catalogs written -- and then failed its own artifact guard at `DONE_EXIT_28 DECAY_SHORT` asking for a checkpoint that could not exist. The arm-2 waiter saw a failed dry run and **correctly refused to launch**, so the GPU sat idle from 04:56 to 06:55. Fixed to truncate; all six dry runners regenerated. ⚠ `10935` is `len(groups)` for THIS lineage's train db at MAX=65536 and is hardcoded in the tool -- a different db moves it.
+  **THE GENERAL LESSON, and it is about gated chains rather than about rounding: a gate converts a TOOLING false negative into idle GPU.** The existing rule says to check a detached waiter is still ALIVE an hour later; extend it -- **also check it has not REFUSED**. A waiter that exits 8x is doing its job and looks identical to a healthy one from the outside: gone, with a marker.
   ⚠ Two traps the tool itself hit, both already documented for other parsers and both re-hit here:
   the checkpoint prefix does NOT follow the tag (arm 2 is `w10qat` but writes `w10q_d`), and a REM
   line mentioning `write_decay_setup.py` in prose was matched first, capturing an English word as

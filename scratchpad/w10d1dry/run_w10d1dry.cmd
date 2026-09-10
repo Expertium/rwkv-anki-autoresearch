@@ -21,7 +21,7 @@ set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10d1dry
 set LOG=%DIR%\w10d1dry.log
 set STAMP=%RANDOM%%RANDOM%
 set TAG=w10d1dry
-set STEPS=547
+set STEPS=546
 set WSSTEPS=109350
 
 REM OMP_NUM_THREADS was sliced away when this env was copied from realcyc (it sits above the

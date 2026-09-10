@@ -70,7 +70,13 @@ if not mp:
     raise SystemExit("no write_decay_setup call in " + src_path)
 ckpt = mp.group(1)
 ckpt_dry = (ckpt[:-2] + "dry_d") if ckpt.endswith("_d") else (ckpt + "dry")
-steps = int(round(EPOCHS * 10935))
+# MUST match train_rwkv.py:967 EXACTLY -- `total_steps = int(config.EPOCHS * len(groups))`,
+# i.e. TRUNCATION, not rounding. int(round(0.05 * 10935)) = 547 while the trainer produces
+# 546, so the dry runner's own artifact guard asked for a checkpoint that could not exist and
+# every dry run died at DECAY_SHORT after doing its job perfectly. It cost 2 h of idle GPU on
+# 2026-09-10: the arm-2 waiter saw the dry run fail and correctly refused to launch.
+# 10935 is len(groups) for THIS lineage's train db at MAX=65536; a different db moves it.
+steps = int(EPOCHS * 10935)
 
 out = src
 out = out.replace("scratchpad" + B + tag, "scratchpad" + B + dry)
