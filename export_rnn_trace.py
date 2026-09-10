@@ -309,6 +309,11 @@ def main():
         "tolerance": 0.0005,
         "note": "Rust RNN port must match mean_*_logloss within +/-tolerance.",
     }
+    # A model trained under RWKV_CLOCK_AT_PREV_ANSWER expects shifted query rows and a shifted t;
+    # a trace exported WITHOUT the flag would still pass Rust parity (both engines read the same
+    # rows) while testing a contract the model was not trained for. Record it; key absent = off.
+    if _clock.enabled():
+        ref["clock_at_prev_answer_s"] = _clock.T
     with open(OUT_DIR / "ref_metrics.json", "w") as f:
         json.dump(ref, f, indent=2)
     if old is not None:
