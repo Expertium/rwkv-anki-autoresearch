@@ -123,3 +123,28 @@ zero-byte routes first. What this pre-registration adds, found while writing it:
   showed the teacher's IDENTITY does not move the tax, with KD on in both arms, never KD vs none.
   ⚠ It reintroduces KD, which Andrew closed on 2026-09-04 ("Let's skip KD") -- in the context of a
   4-day teacher retrain for the research lineage, not this. Ask him; do not build it on inference.
+
+## PREVIEW (added 2026-09-10 16:05, decay step 8,042 of 21,870 -- NOT the verdict)
+
+In-training validation, arm 2 vs arm 1 at matching decay steps, the SAME 10 users (5001-5010,
+594,215 rows, row-weighted, 4 dp). Training validation runs the student with its CURRENT learned
+catalogs, so this is a consistent read of the tax as it evolves. The same instrument predicted arm
+1's verdict within 0.0004 in both modes.
+
+| decay step | ahead tax | imm tax |
+|---|---|---|
+| 50 | +0.0097 | +0.0128 |
+| 2,000 | +0.0028 | +0.0048 |
+| 4,000 | +0.0029 | +0.0048 |
+| 6,000 | +0.0033 | +0.0048 |
+| 8,000 | +0.0031 | +0.0052 |
+
+* **The tax closes within ~2,000 steps (~0.18 epochs) and is FLAT after it.** Consistent with the
+  record's "closure saturates by ~0.37 epochs", and sharper: ~90% of the 2-epoch QAT phase buys no
+  further closure. Relevant to the COST of every future QAT A/B, not to this one's validity.
+* **If the preview transfers as it did for arm 1, arm 2 lands near +0.003 ahead / +0.005 imm** --
+  at the top of Q1's band on ahead and ABOVE the pre-registered imm band (+0.0024..+0.0045). That
+  would read as "the budget does not shrink the tax, and on imm it grows it", and deployed imm near
+  0.267 would MISS the 0.2640 criterion that full precision meets.
+* ⚠ Row-weighted 10-user validation is not the by-user 2,499-user gate; do not quote this as the
+  tax. It is recorded now so the verdict can be compared with a prediction made before it.
