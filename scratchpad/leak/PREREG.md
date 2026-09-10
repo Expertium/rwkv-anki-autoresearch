@@ -57,3 +57,13 @@ costs the best leak-free model, and a lower bound on nothing.
 * **+0.0003 .. +0.0010 SECONDARY.** Fix with the next rebuild; re-read the stop criterion with the
   number subtracted.
 * **< +0.0003 MINOR.** The data carries the leak but the model barely uses it on query rows.
+
+## Note added 2026-09-10 22:10, BEFORE phase L has run: the decision is now applied mechanically
+
+The production fix exists (`RWKV_CLOCK_AT_PREV_ANSWER`, `rwkv/clock_fix.py`, smoke
+`smoke_clock_fix.py` PASS) and the leak-free branch is built (`scratchpad/w10clk/`). The rule above
+is applied by `scratchpad/w10clk/clk_decide.py`, called by `wait_qateval_then_clk.cmd` once arm 2's
+eval runner (which holds this phase at its start) ends `DONE_EXIT_0`: MATERIAL => the branch runs
+next, at T = 1800 unless lkc3h costs >= +0.0005 imm more than lkc30m (then T = 10800); below
+MATERIAL, or a harness that does not reproduce arm 1 within 0.0003, => the branch is not inserted
+and the queue continues. The rule's thresholds are the ones written above; nothing was moved.
