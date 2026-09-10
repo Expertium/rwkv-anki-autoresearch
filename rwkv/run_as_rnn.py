@@ -5,6 +5,9 @@ This script demonstrates RWKV run as an RNN.
 import numpy as np
 import pandas as pd
 from rwkv import id_features as _idf
+# RWKV_CLOCK_AT_PREV_ANSWER: the query-row clock-leak fix, DEPLOY side (three-way parity with
+# prepare_batch.prepare). Unset => neither hook below changes anything.
+from rwkv import clock_fix as _clock
 
 # Parameters that exist ONLY in the training loss and are absent from the deployed model. The deploy
 # loader strips exactly these before its strict load; add a name here when a lever adds a
@@ -333,6 +336,10 @@ class RNNProcess:
         row["scaled_state"] = 0
         for i in range(1, 5):
             row[f"rating_{i}"] = 0
+        # The query row predicts at SHOW time: move it to the previous answer when the gap is an
+        # in-session one, exactly as prepare_batch does for training and eval.
+        if _clock.enabled():
+            _clock.shift_row_dict(row)
 
         _, imm_probs = self.run(row, skip=True)
         return imm_probs
@@ -431,7 +438,7 @@ def run(data_path, model_path, label_db_path, label_db_size, user_id, verbose):
         # If this card has been seen before, get the predicted retention from the stored function
         if card_id in pred_ahead_curve:
             pred_ahead[review_th] = srs_rnn.predict_func(
-                pred_ahead_curve[card_id], row["elapsed_seconds"]
+                pred_ahead_curve[card_id], _clock.ahead_t(row)
             )
 
         # For the immediate predictions we do not send the rating and duration fields

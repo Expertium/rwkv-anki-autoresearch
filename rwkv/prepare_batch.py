@@ -16,6 +16,9 @@ from rwkv.model.srs_model import PreparedBatch
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 from rwkv.utils import load_tensor
 from rwkv import deck_tree as _deck_tree
+# RWKV_CLOCK_AT_PREV_ANSWER (2026-09-10): the query-row clock-leak fix. Unset => clock_fix.enabled()
+# is False and prepare() never calls into it, so every existing run is byte-identical.
+from rwkv import clock_fix as _clock
 
 # The STREAM CHAIN prepare() builds gathers for. Equals RWKV_SUBMODULES unless
 # RWKV_DECK_TREE inserts the deck-ancestor levels after deck_id.
@@ -335,6 +338,12 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
     if seed is not None:
         torch.manual_seed(seed)
 
+    # Query rows moved to the previous answer and label times shifted BEFORE the probes: probes copy
+    # their target's labels (so they inherit the shifted t) and the probe selection reads neither
+    # the features nor the label time. No RNG is drawn, so the augmentation draws are unchanged.
+    if _clock.enabled():
+        data_list = [_clock.apply_to_sample(d) for d in data_list]
+
     probe_metas = None
     if probe_density > 0:
         base_seed = seed if seed is not None else int(torch.randint(0, 2**31, (1,)).item())
@@ -343,6 +352,8 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
         for data in data_list:
             data2, meta = insert_probes(data, probe_density, base_seed,
                                         equalize_only=probe_equalize_only)
+            if _clock.enabled():
+                data2 = _clock.apply_to_probes(data2, meta)
             new_list.append(data2)
             probe_metas.append(meta)
         data_list = new_list

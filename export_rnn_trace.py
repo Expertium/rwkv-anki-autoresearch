@@ -27,6 +27,7 @@ from safetensors.torch import save_file as save_pt
 torch.set_num_threads(7)
 
 import rwkv.run_as_rnn as rnn_mod
+from rwkv import clock_fix as _clock  # RWKV_CLOCK_AT_PREV_ANSWER; inert when unset
 from rwkv.get_result import get_benchmark_info, get_stats
 from rwkv.model.srs_model_rnn import SrsRWKVRnn
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
@@ -152,7 +153,7 @@ def export_user(user_id):
         has_ahead = card_id in pred_ahead_curve
         if has_ahead:
             pred_ahead_t[review_th] = srs.predict_func(
-                pred_ahead_curve[card_id], row["elapsed_seconds"]
+                pred_ahead_curve[card_id], _clock.ahead_t(row)
             )
 
         # Immediate prediction (no rating/duration sent), state read-only.
@@ -178,7 +179,9 @@ def export_user(user_id):
                 densify("preset", route_raw[3]),
             ]
         )
-        elapsed_list.append(float(row["elapsed_seconds"]))
+        # The Rust engine evaluates the stored curve at this t, so it must be the same t the
+        # Python reference used: shifted by the review's in-session gap under the clock fix.
+        elapsed_list.append(float(_clock.ahead_t(row)))
         review_th_list.append(review_th)
         rating_list.append(int(row["rating"]))
         has_ahead_list.append(1 if has_ahead else 0)
