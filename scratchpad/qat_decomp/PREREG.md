@@ -69,3 +69,14 @@ The same decomposition on `w10qatkd` would show WHICH part distillation moves. I
 KD runner yet: `mk_w10qatkd.py` asserts write_eval_toml's folder appears exactly twice in the eval part,
 and phase D adds a third. Decide after this report; wiring it means updating that assert, regenerating
 both KD runners, and a 300-user phase the KD dry run should not execute.
+
+## Cost note found after writing the rule (2026-09-10 19:20, still before any number)
+**The bit split cannot run on the current kernel.** `rwkv7_cuda.cu` holds the WKV catalog in a static
+`__device__ float g_pq_cb[32768]` (and `g_pq_cb_grad[32768]` for learning), sized for joint-uv
+ncent <= 1024 x 32 dims. A b12 catalog is 4096 x 32 = 131,072 floats, and the upload REFUSES it
+(`TORCH_CHECK(n <= 32768, "PQ codebook too large")`) -- loud, not silent. So a QUEUE verdict also
+buys: grow both arrays and the check, rebuild the `.pyd` in isolation (the live one is locked by every
+running QAT process), prove bit-exactness on the existing paths with
+`scratchpad/qat_speed/golden_gen.py check`, and swap it in while the GPU is idle. The joint search is
+also 4x longer per step (warm-start pruning should cut that; unmeasured). The Rust engine has no fixed
+limit. None of this changes the rule; it changes what a QUEUE costs.
