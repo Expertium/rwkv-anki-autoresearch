@@ -113,8 +113,8 @@ call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build
 where cl.exe >nul 2>&1
 if not %ERRORLEVEL%==0 (
   echo %TAG% NO_CL_ON_PATH %DATE% %TIME% >> "%LOG%"
-  echo DONE_EXIT_52 %DATE% %TIME% >> "%LOG%"
-  exit /b 52
+  echo DONE_EXIT_50 %DATE% %TIME% >> "%LOG%"
+  exit /b 50
 )
 echo %TAG% CL_OK %TIME% >> "%LOG%"
 
@@ -175,6 +175,20 @@ echo %TAG% DECAY_OK %TIME% >> "%LOG%"
 
 REM PHASE C is QUANT-AWARE here (the deploy number), so budget ~10 h, not the ~2.9 h a
 REM plain eval takes -- iter 47's control eval ran 10h18m.
+REM ---- ANDREW 2026-09-10: "Every run with QAT should be evaluated with quantization on." ----
+REM It IS, by construction -- the RWKV_QAT_* block sits inside this setlocal and is never cleared,
+REM so phase C inherits it. But "by construction" is exactly what the 2026-08-12 inert-env bug
+REM looked like: the banner was truthful and the config object it mutated was thrown away one
+REM line later, so every track-2 run silently evaluated UNQUANTIZED for a whole phase.
+REM So re-assert on the CONSUMED config, in a FRESH process carrying exactly the env phase C is
+REM about to hand to eval_sharded. Seconds, and it fails BEFORE the ~10 h quant-aware eval
+REM rather than after it.
+.venv\Scripts\python.exe scratchpad/qat_tax/assert_qat_live.py >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo %TAG% EVAL_WOULD_NOT_BE_QUANT_AWARE %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_54 %DATE% %TIME% >> "%LOG%"
+  exit /b 54
+)
 REM ---- PHASE C: rectified VAL-half eval, users 5001-7500 ----
 set RWKV_EVAL_PAVA=1
 .venv\Scripts\python.exe scratchpad/write_eval_toml.py scratchpad/w10qat w10q_d %DIR%\eval.toml RWKV-%TAG% RWKV-P-%TAG% 5001 7500 > "%DIR%\etoml_%STAMP%.log" 2>&1
@@ -199,6 +213,14 @@ if not %ERRORLEVEL%==0 (
   echo %TAG% EVAL_FAILED_%ERRORLEVEL% %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_25 %DATE% %TIME% >> "%LOG%"
   exit /b 25
+)
+REM Post-check on the SHARD logs (eval_sharded parent log never carries banners -- that mistake
+REM cost a spurious rc 41 on both qat_tax arms). DELIBERATELY NON-FATAL: the authoritative check
+REM is assert_qat_live.py before the eval, and a guard that can destroy a finished 10 h eval on a
+REM banner-string mismatch is worse than the failure it guards against.
+findstr /C:"[QAT-LOWRANK] set:" scratchpad\eval_shards\shard_*.log >nul 2>&1
+if not %ERRORLEVEL%==0 (
+  echo %TAG% NOTE no QAT banner in the shard logs -- verify before trusting the number %DATE% %TIME% >> "%LOG%"
 )
 echo %TAG% EVAL_OK %TIME% >> "%LOG%"
 
