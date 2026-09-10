@@ -100,3 +100,14 @@ zero-byte routes first. What this pre-registration adds, found while writing it:
   `RWKV_STRIP_CMIX` removes card layer 1's channel mixer, so card carries 3 shift vectors and note
   2): **card 110 + 72 = 182 bits (22.75 B, the record's "~23 B"), note 55 + 48 = 103 bits.** The
   same trade on note is -16 shift bits for +10 WKV bits, 6 under budget.
+
+* **A route that needs ANDREW, not a build: distil from the full-precision twin DURING QAT.**
+  The recorded 1.25-ep tax had KD ON in both of its arms (alpha 0.5 in the decay); arm 2 runs
+  KD-OFF, so if arm 2's tax comes in well above the prior, KD-off is one of the five differences
+  and the only one that is cheap to restore. Arm 1 IS the ideal teacher -- same WS, same decay
+  batches (seeded), full precision -- so this is the standard QAT-with-distillation recipe
+  (e.g. LLM-QAT, arXiv 2305.17888, distils the quantized student from its own fp model), costing a
+  ~2 h logit dump plus one QAT decay + eval (~30 h). iter 54 does NOT argue against it: it
+  showed the teacher's IDENTITY does not move the tax, with KD on in both arms, never KD vs none.
+  ⚠ It reintroduces KD, which Andrew closed on 2026-09-04 ("Let's skip KD") -- in the context of a
+  4-day teacher retrain for the research lineage, not this. Ask him; do not build it on inference.
