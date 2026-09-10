@@ -57,3 +57,12 @@ note in CLAUDE.md). Adopt KD into the deploy QAT recipe iff P1 holds.
 
 ~27 h decay (arm 2's ~0.24 steps/s plus one bf16 no-grad teacher forward per step) + ~10.5 h for
 the probe and the quant-aware eval. Queued after cmixgraft, before the budget curve.
+
+## ⚠ Memory, stated before it can surprise anyone
+
+Arm 2 alone peaks at **11.3 GB of 12.3 GB** (flight recorder, 2026-09-10; average 5.3 GB with
+`RWKV_EMPTY_CACHE_EVERY=1`), i.e. near this card's WDDM paging cliff. The teacher adds ~3 MB of
+weights and outputs; its forward runs under `no_grad` and finishes BEFORE the student's forward and
+backward, so its activations are freed and the two peaks should not add. The dry run shows the real
+figure before the ~27 h decay. If the step rate falls well below arm 2's ~0.24 steps/s with GPU
+power low, suspect paging first.
