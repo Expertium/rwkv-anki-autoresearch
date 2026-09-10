@@ -97,6 +97,27 @@ set RWKV_QAT_SHIFT_PQ_LEARN=1
 if not exist "%DIR%" mkdir "%DIR%"
 echo ===== w10qat START %DATE% %TIME% ===== > "%LOG%"
 
+REM ---- PHASE 0a: a C++ COMPILER MUST BE ON PATH, and this arm is the first run that needs one.
+REM The 04:00 launch was HOLLOW: 255 of 288 batches raised
+REM   torch._inductor.exc.InductorError: RuntimeError: Compiler: cl is not found.
+REM and train_rwkv's per-batch except swallowed each one ("Exception caught ... Skipping batch"),
+REM so it stepped at 3.7 steps/min on ~11% of the data while looking alive.
+REM WHY IT IS NEW: RWKV_QAT_COMPILE=1 has been in the standard env since 2026-07-30 and every
+REM plain run (ws10, arm 1) compiles to pure Triton, which needs no host compiler. The QAT graph
+REM graph-breaks differently and asks inductor for a C++ kernel. No earlier QAT run hit this
+REM because scratchpad/qat_tax/run_arm.cmd never set RWKV_QAT_COMPILE at all -- so QAT + compile
+REM is a combination that has never run here.
+REM The fix must NOT be RWKV_QAT_COMPILE=0: that would make arm 2 differ from arm 1 in two ways
+REM and this A/B exists to isolate exactly one.
+call "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat" >nul 2>&1
+where cl.exe >nul 2>&1
+if not %ERRORLEVEL%==0 (
+  echo %TAG% NO_CL_ON_PATH %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_52 %DATE% %TIME% >> "%LOG%"
+  exit /b 52
+)
+echo %TAG% CL_OK %TIME% >> "%LOG%"
+
 
 REM ---- PHASE 0: the catalogs must EXIST and be the ws10-fitted ones, and the QAT env must reach
 REM the FINAL config. A banner proves a value was computed, never that it was used: on 2026-08-12

@@ -4225,3 +4225,97 @@ model's own Brier 0.0955, i.e. two disjoint-trained models erring on the same re
 estimator unable to separate true noise from a blind spot shared by the family.
 
 Cost 10.6 h GPU (WS 3.3 h, decay 3.1 h, eval 4.2 h), fully automatic end to end.
+
+
+---
+
+## ENDGAME ARM 1 -- `w10plain`, the plain 10+2-epoch run (2026-09-10 03:53)
+
+**ahead 0.297577 / imm 0.262066**, n=2,499, nan_users 0, size 0/2,499 against
+`size_baseline_id_e2s.json`, params 563,652 (unchanged -- a budget change touches no weights).
+Cost 48.4 h: ws10's shared WS 38 h, the decay 6.2 h, the rectified VAL-half eval 4.2 h.
+
+Not a gated candidate. This is the endgame's plain arm, the control every decay-only branch is
+measured against, and the test of the premise the record has carried on credit since 2026-08-11.
+
+### The comparison is clean, and that was verified rather than asserted
+
+| axis | difference from realcyc |
+|---|---|
+| arm 1's env | only `RWKV_DECAY_VALIDATE_EVERY=2000`, proven trajectory-free by `rng_neutrality.py` |
+| ws10's WS toml | only `EPOCHS = 1 -> 10`, plus the checkpoint folder and prefix |
+| ws10's WS env | only `OMP_NUM_THREADS` (fetch-worker threads) |
+
+"Diff the runners, do not read the labels" is a lesson this repo has paid for three times, so the
+diff was run before the number existed and is recorded in `scratchpad/w10plain/PREREG.md`.
+
+### Q1 -- the budget premise is REFUTED on ahead, and confirmed on imm
+
+| | ahead | imm |
+|---|---|---|
+| realcyc, 1 + 1 epochs | 0.298083 | 0.263592 |
+| **arm 1, 10 + 2 epochs** | **0.297577** | **0.262066** |
+| measured gain | **+0.000506** | **+0.001526** |
+| projected gain (2026-08-11) | +0.0042 | +0.0042 |
+
+Ahead came in at **12% of projection**, under the pre-registered `< +0.0015` line. The projection
+was a log-linear extrapolation from ONE measured 3x step (+0.002), and the pre-registration named
+this as the ordinary way such extrapolations fail. It failed that way.
+
+**imm is the opposite result and should not be buried under the ahead headline: +0.001526 is the
+largest single move in the gen-5 lineage** -- roughly ten accepted iterations' worth at the 0.0001
+bar, from one lever. So "more budget does nothing" is false; more budget does a great deal for the
+rating head and almost nothing for the curve head.
+
+**The shape says where it went.** ws10's own validation curve is flat on ahead from about epoch 1
+(0.3240 at 1 ep, 0.3230 at 4, 0.3209 at the end) and **the decay moves it by +0.0001, i.e. not at
+all**, while imm improves throughout and the decay does move imm. The pre-registration explicitly
+warned against reading the flat stable phase as an early answer, on the WSD grounds that the gain
+is converted by the decay. That warning was right about the mechanism and wrong about this run:
+here the decay had nothing left to convert on ahead.
+
+### Q2 -- capacity binds at the real budget, for the first time with evidence
+
+Every capacity reject in the record was measured at ~1.25 epochs, a budget at which the model
+demonstrably could not use more capacity. At 12 epochs:
+
+* **ahead 0.297577 vs the old 2.76M d=128 model's 0.294623 -- we are 0.002954 BEHIND**, past the
+  pre-registered 0.2965 line.
+* **imm 0.262066 vs its 0.263586 -- we are 0.001520 AHEAD**, with a 4.95x smaller trunk and KD off.
+
+The comparison is NOT clean and cannot be made clean: the d=128 model takes 92-dim published
+features and structurally cannot forward the gen-5 109-dim layout (the `teacher_114` screen priced
+a re-layout at +0.020 ahead), so it can never be scored on this basis. The basis effect was
+estimated in advance at ~+0.0001 -- an order of magnitude, not a correction to subtract.
+
+So the honest reading is that **the 4.95x parameter reduction was free on imm and costs ~0.003 on
+ahead once the budget is large enough to expose it.** That is a decision for Andrew, because he
+fixed the size for this run, and because recovering it means growing the per-card state -- the
+deploy budget he has just said he would rather not move.
+
+### Q3 -- the stop criterion
+
+| mode | arm 1 | criterion | |
+|---|---|---|---|
+| ahead | 0.297577 | <= 0.2950 | **NOT met, 0.0026 short** |
+| imm | 0.262066 | <= 0.2640 | **MET, 0.0019 to spare** |
+
+And QAT still has to be paid: +0.002286 / +0.003486 at the 1.25-epoch budget, which arm 2 is
+re-pricing at this one. The criterion was set 2026-09-02, before gen 5 existed, and was never
+re-derived for this basis -- flagged here rather than quietly applied.
+
+### The free 10-user validation predicted the 2,499-user gate
+
+Written down before the eval finished (`scratchpad/ws10/plot_losses.py`, commit `2e1a2af`), from
+the two runs' validation logs on the same 10 users:
+
+| | predicted from val | measured on the gate |
+|---|---|---|
+| ahead | ~+0.0002 | +0.000506 |
+| imm | ~+0.0019 | +0.001526 |
+
+Both directions right, both magnitudes within 0.0004 of a by-user mean over 2,499 users -- and both
+far enough below +0.0042 to have refuted the premise hours early. **A decay branch's 10-user
+validation endpoint is therefore a usable early read**, at zero GPU cost, provided the reference
+run's endpoint on the SAME 10 users is read beside it. It is not a substitute for the gate: it is
+row-weighted, 4-decimal, and on 10 users.

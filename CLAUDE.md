@@ -1360,7 +1360,21 @@ so its lever was live); `preflight_runner.py` now asserts the `endlocal` orderin
 runners pass.
 
 #### LIVE
-**★★ 2026-09-10 -- THE VALIDATION CURVES SAY THE 10x BUDGET BOUGHT ALMOST NOTHING ON AHEAD, AND THIS IS WRITTEN BEFORE ARM 1's NUMBER LANDS.** Plot + tool: `scratchpad/ws10/plot_losses.py` -> `loss_curves.png` (parses ws10's WS log and arm 1's decay log; zero GPU). Both runs validate on the SAME 10 users (5001-5010, 594,215 rows, `VALIDATE_USERS_START/END` in every toml), so realcyc's decay endpoint is a directly comparable reference:
+**★★★★ 2026-09-10 03:53 -- ENDGAME ARM 1 IS IN: ahead 0.297577 / imm 0.262066 (n=2,499, size 0/2,499, nan_users 0, params 563,652). THE BUDGET PREMISE IS REFUTED ON AHEAD AND CONFIRMED ON IMM.** Logged as a `baseline` row (`research_log.jsonl`, `research_5k.md`, `research_5k_verbose.md` "ENDGAME ARM 1", `log.md` rebuilt). PREREG: `scratchpad/w10plain/PREREG.md`; verdict tool `verdict_w10plain.py`.
+
+| vs | ahead | imm |
+|---|---|---|
+| realcyc (1+1 ep) -- CLEAN, single variable, diffed | **+0.000506** | **+0.001526** |
+| the 2026-08-11 projection | +0.0042 | +0.0042 |
+| old 2.76M d=128 at ~12 ep (basis worth ~0.0001) | **-0.002954** | **+0.001520** |
+| stop criterion | 0.2950 -- **NOT met, 0.0026 short** | 0.2640 -- **MET, 0.0019 spare** |
+
+**Q1: 12% of the projected ahead gain, under the pre-registered `<+0.0015` line.** The projection was log-linear from ONE measured 3x step and the PREREG named this as the ordinary way such extrapolations fail. **But do not report this as "budget does nothing": imm's +0.001526 is the LARGEST single move in the gen-5 lineage**, ~10 accepted iterations' worth from one lever. Budget pays the rating head and not the curve head. Mechanism visible in the curves: ahead validation is flat from ~epoch 1 and **the decay moves it +0.0001, i.e. not at all**, while imm improves throughout.
+**★★ Q2 IS THE NEW RESULT AND IT IS ANDREW'S CALL: CAPACITY BINDS AT THE REAL BUDGET.** Every capacity reject in the record was measured at ~1.25 epochs, where the model could not use capacity. At 12 epochs the 4.95x reduction is **free on imm (we BEAT the big model by 0.0015) and costs ~0.003 on ahead**. Not clean (the d=128 model cannot forward 109 dims -- `teacher_114`), but the basis is worth ~0.0001 against a 0.003 gap. ⚠ **This collides with his 2026-09-10 preference: recovering it means growing the per-card state, the deploy budget he would rather not move.** So "stop making the model smaller" has a measured price for the first time.
+**=> THE FORK THE PREREG NAMED IS NOW LIVE.** Architecture is closed (three screens), out-of-family structure adds nothing (FSRS-7 at a fitted weight of 0.02), and budget is now measured at +0.0005. **The ahead stop criterion is not reachable by any lever now known** -- and QAT still has ~0.0023 to add. imm is already past its criterion with room.
+**IMMEDIATE CONSEQUENCE FOR THE QUEUE: the budget-curve branches are now the highest-value ones, not a nicety.** If 10x buys +0.0005, `w10b2` (2.01 ep) and `w10b5` (5.03 ep) say whether ahead saturated at 2 epochs -- i.e. whether the endgame's ~4 days bought anything a 9 h branch would not have. They are BUILT and preflight-PASS. ⚠ They use `RWKV_DECAY_FROM_STEP`, which no run has exercised -- fire `mk_dryrun.py` on them first.
+
+**★★ 2026-09-10 -- THE VALIDATION CURVES SAID SO FIRST, AND THAT IS NOW A REUSABLE INSTRUMENT.** Written before the eval finished and confirmed by it: val predicted ahead ~+0.0002 / imm ~+0.0019, the gate gave +0.000506 / +0.001526 -- both directions right, both within 0.0004. **So a decay branch's 10-user validation endpoint is a usable EARLY READ at zero GPU cost**, provided the reference run's endpoint on the SAME 10 users is read beside it. Not a substitute for the gate (row-weighted, 4 dp, 10 users). Tool: `scratchpad/ws10/plot_losses.py` -> `loss_curves.png`. The original entry follows. Plot + tool: `scratchpad/ws10/plot_losses.py` -> `loss_curves.png` (parses ws10's WS log and arm 1's decay log; zero GPU). Both runs validate on the SAME 10 users (5001-5010, 594,215 rows, `VALIDATE_USERS_START/END` in every toml), so realcyc's decay endpoint is a directly comparable reference:
 
 | | val ahead | val imm |
 |---|---|---|
