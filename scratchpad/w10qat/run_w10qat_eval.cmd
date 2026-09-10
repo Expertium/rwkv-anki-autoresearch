@@ -17,6 +17,10 @@ REM ANDREW 2026-09-10: "Every run with QAT should be evaluated with quantization
 REM not enough -- it must quantize with the catalog that SHIPS -- so the probe guards the loaded PATH.
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
+REM ---- PHASE L: the query-row clock-leak counterfactual on ARM 1 (scratchpad/leak/PREREG.md) ----
+REM First, before arm 2's env exists: three plain evals of w10p_d_21870 on 300 users, ~1 h. It
+REM sets and clears its own env under setlocal, logs to scratchpad/leak/leak_cf.log, always returns.
+call scratchpad\leak\run_leak_cf.cmd
 set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10qat
 set SRC=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\ws10
 set LOG=%DIR%\w10qat_eval.log

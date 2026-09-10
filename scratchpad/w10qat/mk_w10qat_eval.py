@@ -52,6 +52,10 @@ REM ANDREW 2026-09-10: "Every run with QAT should be evaluated with quantization
 REM not enough -- it must quantize with the catalog that SHIPS -- so the probe guards the loaded PATH.
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
+REM ---- PHASE L: the query-row clock-leak counterfactual on ARM 1 (scratchpad/leak/PREREG.md) ----
+REM First, before arm 2's env exists: three plain evals of w10p_d_21870 on 300 users, ~1 h. It
+REM sets and clears its own env under setlocal, logs to scratchpad/leak/leak_cf.log, always returns.
+call scratchpad\leak\run_leak_cf.cmd
 set DIR=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\w10qat
 set SRC=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\ws10
 set LOG=%DIR%\w10qat_eval.log
@@ -253,6 +257,9 @@ def main():
         sys.exit(f"REFUSING: duplicate exit codes {sorted(codes)}")
     # Phase D must sit AFTER the full eval and BEFORE the terminal marker: after, or it runs beside
     # the next chain link; before EVAL_OK, or a decomposition problem could look like an eval failure.
+    # Phase L must run BEFORE the QAT env block, so it can never inherit a QAT variable it forgot.
+    if not out.index("run_leak_cf.cmd") < out.index("set RWKV_QAT_LOWRANK_SCOPE="):
+        sys.exit("REFUSING: phase L is not ahead of the QAT env block")
     i_ok, i_dc, i_mk = out.index("EVAL_OK"), out.index("run_decomp.cmd"), out.index("echo DONE_EXIT_0 ")
     if not (i_ok < i_dc < i_mk):
         sys.exit("REFUSING: phase D is not between EVAL_OK and the terminal marker")
