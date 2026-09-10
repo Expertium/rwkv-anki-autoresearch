@@ -37,7 +37,8 @@ in-session gap.
 5001-5040, T=1800): the Anki-day columns change on 0.0036% of query rows and the creation-batch
 counts on 0.021%, at P(fail) 0.10 (n=70) and 0.16 (n=399) against 0.14 -- 2.7e-7 and 3.3e-7 nats
 per query row, the plug-in estimator's own bias floor. A stored row cannot recompute them; closing
-them needs an LMDB rebuild. Stated so the "leak-free" label carries its exact scope.
+them needs an LMDB rebuild, and **Andrew decided 2026-09-10: no rebuild -- the residual is
+accepted.** Stated so the "leak-free" label carries its exact scope.
 
 One env difference from ws10 in phase A: `OMP_NUM_THREADS=7` (ws10 lost it by accident; arm 1 and
 every later branch have it). CPU thread counts in the fetch workers only.
