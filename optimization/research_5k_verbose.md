@@ -4319,3 +4319,90 @@ far enough below +0.0042 to have refuted the premise hours early. **A decay bran
 validation endpoint is therefore a usable early read**, at zero GPU cost, provided the reference
 run's endpoint on the SAME 10 users is read beside it. It is not a substitute for the gate: it is
 row-weighted, 4-decimal, and on 10 users.
+
+### ⚠ ADDED 2026-09-10 20:35 -- the imm claims above are SUSPENDED
+
+"imm MET with 0.0019 to spare" and "imm BEATS the d=128 model by 0.001520" are suspended until
+phase L (next section) prices the query-row clock leak. Every `-id` model sees the leak on the imm
+prediction; the d=128 model has no timestamp features and cannot. The ahead numbers are affected
+far less (only the PAVA probe rows carry it). Re-decided on a leak-free model, not by phase L alone.
+
+## THE QUERY-ROW CLOCK LEAK in the `-id` lineage (found 2026-09-10; measurement pending)
+
+Not an iteration. A methodology defect in every model trained on the real-timestamp dataset --
+featB, gen4base, realcyc, iters 62-69 and the endgame arms -- with its fix, a leak-free rerun of the
+endgame, and a measurement that reports ~08:50 on 2026-09-11.
+
+### The defect
+
+Reported on Discord (relayed by Andrew 2026-09-10) and confirmed in our raw data before any model
+ran. Every clock column (`t_since_any_review`, the sibling gap, the same-card interval and its
+cumulative, tenure, deck age, the daily cycles) is measured to the reconstructed SHOW time
+`id - taken_millis`, and `add_queries` keeps all of them on the query row. The argument for that --
+"the scheduler knows when it is showing a card" -- fails because the reconstructed show time is not
+the real one: Anki CAPS `taken_millis` (60 s by default; 30 of 40 users), so a capped review's show
+time comes out late by its excess, and uncapped reviews show a second channel (a timer reset on edit
+or on leave-and-return is the likely one).
+
+`scratchpad/leak/mechanism.py`, users 5001-5040, 2.36 M reviews:
+
+| gap before the card | share | P(fail) | P(capped) | P(fail), uncapped |
+|---|---|---|---|---|
+| 0-1 s | 71.4% | 15.1% | 0.08% | 15.1% |
+| 2 s - 30 min | 11.2% | 21-30% | 12-36% | 20-28% |
+| 30 min - 3 h | 0.45% | 25.8% | 23.6% | 24.3% |
+| > 3 h | 0.92% | 21.4% | 10.9% | 20.5% |
+
+The gap bucket alone carries 0.009 nats about the outcome. A live scheduler predicts at show time,
+the moment the previous card is answered, and sees a gap of ~0 inside a session.
+
+**Which rows leak:** QUERY rows (the imm prediction) and PAVA PROBE rows (the button intervals shown
+before the answer, i.e. the rectified ahead metric). **REAL rows are legitimate**: they describe
+finished reviews, and deploy rebuilds them from the same revlog fields. The ahead LABEL time of a
+real row carries a smaller version (the target review's own excess).
+
+**It fits the record, which is what makes it serious.** The features' gain was imm -0.0024 against
+ahead -0.0003; the LOO put +0.005076 imm on `t_since_any_review` alone; the group ablation located
+the whole imm-vs-ahead asymmetry in the clock columns, "the target review's own clock, which only
+the query row carries". That sentence described the leak without recognising it.
+
+### The fix -- `RWKV_CLOCK_AT_PREV_ANSWER=<T s>` (`rwkv/clock_fix.py`, `8914d1a`, `6b5ec6b`)
+
+Query and probe rows move to "the card was shown at the previous answer" when the gap is in-session
+(0 < gap < T): `t_since_any_review` -> 0; elapsed / cumulative / tenure / deck age / sibling gap
+shift back by the gap (floored at 0, sentinels untouched); the four daily sin/cos pairs rotate back.
+**A shift past UTC midnight also takes the previous day's dow / doy / is_weekend and review-time
+cycles** -- added after `residual_channels.py` showed those rows fail at 0.29 against 0.14 on other
+moved rows, i.e. a real channel. A labelled real row's ahead t loses its target's in-session gap.
+Default off = byte-identical, PROVEN: `scratchpad/leak/smoke_clock_fix.py` (five parts) shows
+`prepare()` bit-identical to the pre-hook file on gen-5 chunks at probe densities 0 / 1.0 / 0.08 and
+on a published e2s chunk, the ON transform equal to phase L's counterfactual on its 12 columns, the
+label shifts equal to an independent recomputation, deploy-vs-LMDB parity, and the calendar rule
+against the builder's own formulas on nine synthetic show times (err <= 7e-16).
+**Three-way parity:** train and eval via `prepare_batch.prepare`; the Python deploy RNN via
+`run_as_rnn.imm_predict` + `clock_fix.ahead_t`; Rust through the trace exporter's t; the Anki-fork
+rule is `DEPLOY_FUNCTIONS.md` section 5 (compute every clock column of such a row from
+`now - delta`). ⚠ delta is recovered from the bf16-stored gap: ~1% of delta, a storage limit.
+**Residual, measured and ACCEPTED (Andrew 2026-09-10: "no LMDB rebuild"):** the Anki-day columns
+change on 0.0036% of query rows and the creation-batch counts on 0.021%, at ~3e-7 nats per query
+row -- the estimator's own bias floor. A stored row cannot recompute them.
+
+### What runs, and in what order
+
+* **Phase L** (at the start of arm 2's eval, ~1 h, never fatal): the counterfactual on arm 1's
+  `w10p_d_21870`, users 5001-5300, arms T = 0 / 1800 / 10800 s. Pre-registered
+  (`scratchpad/leak/PREREG.md`): imm at 30 min +0.002 .. +0.005, rectified ahead +0.0002 .. +0.0008;
+  **>= +0.0010 imm = MATERIAL.** It prices how much the eval overstates THIS model; a model trained
+  without the leak recovers part of it.
+* **`w10clk`** (conditional, inserted mechanically by `clk_decide.py` iff MATERIAL): arm 1's decay
+  with the flag, from ws10's leaked WS -- a measurement of what a decay-only fix recovers.
+* **`w10lf`** (Andrew: "Nothing that cheats should make it into the final version that will be
+  shipped" -- runs regardless): ws10's WS from scratch + arm 1's decay + eval, the flag in all three
+  phases, ~47 h. The base of the shipped model. Queued last by default; moved forward by hand if
+  phase L says MATERIAL. PREREG `scratchpad/w10lf/PREREG.md`.
+
+### The rule this adds to section 9's three-way parity
+
+A prediction made at SHOW time may use only what exists at show time -- and a show time
+RECONSTRUCTED from the log (`id - taken_millis`) carries the current review's own excess, so it is
+not a show time a scheduler could have known.
