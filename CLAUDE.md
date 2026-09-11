@@ -1774,6 +1774,9 @@ All hooks stay in-repo, env-gated, default off.
   spinning a full core for hours. **CHECK + KILL orphan pythons after every run** — but inspect
   command lines first: the spare `pythonw` are the bridge/controller, the ~80000s-CPU python is
   Andrew's FSRS benchmark, and he also runs a Reddit bot + liveplot. **Do not kill those.**
+  **From 2026-09-11 he also runs srs-benchmark FSRS-7 `--raw` on 2 CPU threads** (to compare with
+  RWKV later; CPU-only, `--processes 2`). Keep 2 threads free: my side-work (screens, refits,
+  k-means) stays at <= 4 threads and BelowNormal priority while it runs.
   **★ AND AN ORPHAN HOLDS ITS LMDB OPEN INDEFINITELY (2026-08-24).** A featA2 fetch worker from
   08-21 was still holding `F:/rwkv_lmdb/test_db_5k_fix` **three days later** (10 CPU-seconds
   total, parent long dead), which made the directory un-renameable with a bare `Access is
