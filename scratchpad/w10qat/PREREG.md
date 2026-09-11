@@ -155,3 +155,23 @@ catalogs, so this is a consistent read of the tax as it evolves. The same instru
   0.267 would MISS the 0.2640 criterion that full precision meets.
 * ⚠ Row-weighted 10-user validation is not the by-user 2,499-user gate; do not quote this as the
   tax. It is recorded now so the verdict can be compared with a prediction made before it.
+
+## VERDICT (2026-09-11 21:14, `verdict_w10qat.py`, n = 2,499, size 0/2,499)
+
+| mode | arm 1 | arm 2 (deployed) | tax | 1.25-ep prior | users worse |
+|---|---|---|---|---|---|
+| ahead | 0.297577 | 0.300107 | **+0.002529** | +0.002286 | 84.7% |
+| imm | 0.262066 | 0.266532 | **+0.004466** | +0.003486 | 97.9% |
+
+* **Q1 HELD:** ahead tax +0.002529 is inside +0.0015..+0.0030 -- about the same as at 1.25 epochs.
+  imm +0.004466 is inside its band (+0.0024..+0.0045) at the very top: the imm tax grew 28%.
+* **Q2 HELD:** imm pays more.
+* **Q3 HELD (both NOT met):** ahead 0.300107 misses 0.2950 by 0.0051; imm 0.266532 misses 0.2640 by
+  0.0025. The deployed 10-epoch model is WORSE than the plain 1.25-epoch realcyc in both modes.
+* **Q4 HELD:** the probe loaded `scratchpad/ws10/w10q_d_{wkv,shift}cb_21870.txt` with learning off,
+  and the eval shard logs named the learned WKV catalog (no post-check NOTE).
+* The preview above ("top of Q1's band on ahead, above the imm band") was close: ahead lower than it
+  read, imm at the band's edge rather than above it.
+* ⚠ Trained and scored WITH the query-row clock leak (phase L, 2026-09-11: +0.0032 imm on arm 1).
+  Quantizing the card/note state can strip the precision the leak needs, so part of the imm tax may
+  be leak loss. The leak-free QAT arm after w10lf separates the two.

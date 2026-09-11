@@ -4446,3 +4446,47 @@ is SMALLER than this cost -- so a large share of the features' imm gain was prob
    remove the precision the leak needs, which would inflate a leaked model's imm QAT tax; and part of
    the budget's +0.0015 imm gain may be the model learning the leak better.
 4. Arm 2's QAT tax on imm is read with that caveat; its ahead tax is unaffected to first order.
+
+## ENDGAME ARM 2 -- `w10qat`, the QAT tax at the 10-epoch budget (2026-09-11 21:14)
+
+**ahead 0.300107 / imm 0.266532**, n=2,499, nan_users 0, size 0/2,499, params 563,652. The DEPLOY
+number: quantized card/note state (rank-1 low-rank int4 WKV, joint-uv b10 WKV catalog, m2b12 shift
+catalog, 1-bit norms), evaluated with the LEARNED step-21870 catalogs and learning off.
+PREREG + verdict: `scratchpad/w10qat/PREREG.md`; tool `verdict_w10qat.py`.
+
+### The design made it a clean single-variable delta
+
+Arm 2 is arm 1's exact 2-epoch decay from the same ws10 WS checkpoint with the eight `RWKV_QAT_*`
+variables added (and `vcvars64`, which QAT + torch.compile needs for inductor's C++ kernels). So
+`arm 2 - arm 1` IS the QAT tax, with nothing to subtract -- the first such measurement here.
+Two defects were fixed BEFORE the number existed: the eval would have used the START catalogs (the
+learned ones are module globals exported beside the checkpoint, not in it), and the first launch was
+HOLLOW (inductor found no `cl.exe`; every batch raised and was swallowed).
+
+| mode | arm 1 | arm 2 | **tax** | 1.25-epoch tax | users worse | p(worse) |
+|---|---|---|---|---|---|---|
+| ahead | 0.297577 | 0.300107 | **+0.002529** | +0.002286 | 84.7% | 4e-250 |
+| imm | 0.262066 | 0.266532 | **+0.004466** | +0.003486 | 97.9% | 0 |
+
+### What it says
+
+* **The ahead tax does not depend on the budget** (+0.0023 -> +0.0025, inside Q1's band).
+* **The imm tax grew 28%.** A reading, not a proof: at 10 epochs the rating head is sharper (budget
+  bought it +0.0015), and a sharper function loses more to the same state quantization. The 10-user
+  validation preview had already shown the tax flat from step ~2,000, so the extra QAT steps do not
+  close it.
+* **The deployed 10-epoch model is WORSE than the plain 1.25-epoch model in both modes** (realcyc
+  0.298083 / 0.263592). The tax is ~5x what the budget bought on ahead and ~3x on imm. The stop
+  criterion is missed by 0.0051 ahead / 0.0025 imm.
+* **=> The QAT tax is the largest remaining cost in the project.** The levers on it, in order: the
+  bit split between the WKV and shift catalogs (phase D decides whether it is worth an A/B), QAT-KD
+  from the full-precision twin (now on the leak-free base), and -- last, per Andrew 2026-09-10 --
+  more card/note state bytes.
+
+### ⚠ The leak caveat
+
+Arm 2 trained and was scored WITH the query-row clock leak, which phase L priced at +0.0032 imm on
+arm 1. Quantizing the card/note state can remove the precision the leaked signal needs, so part of
+the +0.0045 imm tax may be leak loss rather than quantization loss. Its size is unknown until the
+leak-free QAT arm on w10lf's WS reports (behind w10lf and the decay-length pair). The ahead tax is
+not affected to first order (the leak on ahead is +0.0003).
