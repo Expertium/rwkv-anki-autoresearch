@@ -6,12 +6,17 @@ curve point to the 0.2950 stop criterion. Paired SE on 300 users is ~0.0003 (mk_
 realcyc (1+1 ep, its own WS) is printed as corroboration, NOT as a curve point: different warmup
 share, and a 1-epoch decay.
 
-Usage: python scratchpad/w10b2/verdict_budget.py
+Usage: python scratchpad/w10b2/verdict_budget.py          the leaked curve (ws10: w10b2, w10b5, arm 1)
+       python scratchpad/w10b2/verdict_budget.py lf       the LEAK-FREE curve (w10lf: lfb2, lfb5, w10lf),
+                                                          re-based 2026-09-11 after phase L said MATERIAL
 """
 import json
 import math
+import sys
 
 POINTS = [("w10b2", 2.01), ("w10b5", 5.03), ("w10plain", 10.0)]
+if len(sys.argv) > 1 and sys.argv[1] == "lf":
+    POINTS = [("lfb2", 2.01), ("lfb5", 5.03), ("w10lf", 10.0)]
 PRE = {"ahead": "RWKV-", "imm": "RWKV-P-"}
 
 
