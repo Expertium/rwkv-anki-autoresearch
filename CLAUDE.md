@@ -1782,8 +1782,11 @@ All hooks stay in-repo, env-gated, default off.
   my own verification handle, then F: permissions -- were both wrong.
 - **★★ SEVERAL `F:/rwkv_lmdb/*` PATHS ARE JUNCTIONS TO `C:\rwkv_lmdb\`. DO NOT DELETE
   `C:\rwkv_lmdb` — it is not scratch, it is those databases.**
-  **UPDATED 2026-08-30 (the 08-24 list is stale):** `test_db_5k_fix` was DELETED with the other
-  two superseded dbs, so its junction is gone too. The current junctions are
+  **CURRENT LIST (checked on disk 2026-09-11): `train_db_5k_h1_id5`, `train_db_5k_h1_e2s` and
+  `test_db_5k_e2s`.** `train_db_5k_h1_id3` was deleted 2026-09-03 (Andrew) and gen 5's train db took
+  its place on C:. Everything else on F: is a real directory, including `test_db_5k_id5`.
+  **(2026-08-30 list, superseded):** `test_db_5k_fix` was DELETED with the other
+  two superseded dbs, so its junction is gone too. The junctions then were
   **`train_db_5k_h1_id3`**, **`train_db_5k_h1_e2s`** and **`test_db_5k_e2s`** — the last two moved
   after Andrew made e2s the default, because reading a db from F: costs **2.2x per step**
   (the C:-hosted teacher dump ran 1.40 steps/s, the same dump on F: 0.63, GPU utilisation 8% =
