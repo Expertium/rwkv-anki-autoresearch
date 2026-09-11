@@ -1,0 +1,10 @@
+QUERY-ROW CLOCK LEAK -- counterfactual minus control, arm 1 checkpoint, users 5001-5300
+
+ahead harness: control vs arm 1's own full run, 300 users, max |d| 0.00e+00
+ahead lkc30m  +0.000256 +/- 0.000091  (n=300, worse on 198, p=6.8e-11)
+ahead lkc3h   +0.000268 +/- 0.000091  (n=300, worse on 198, p=9.2e-12)
+imm   harness: control vs arm 1's own full run, 300 users, max |d| 0.00e+00
+imm   lkc30m  +0.003152 +/- 0.000454  (n=300, worse on 273, p=2.2e-47)
+imm   lkc3h   +0.003281 +/- 0.000458  (n=300, worse on 278, p=4.0e-48)
+
+PREREG decision (imm at 30 min): >= +0.0010 material | +0.0003..+0.0010 secondary | < +0.0003 minor

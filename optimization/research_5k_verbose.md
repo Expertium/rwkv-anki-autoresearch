@@ -4320,14 +4320,14 @@ validation endpoint is therefore a usable early read**, at zero GPU cost, provid
 run's endpoint on the SAME 10 users is read beside it. It is not a substitute for the gate: it is
 row-weighted, 4-decimal, and on 10 users.
 
-### ⚠ ADDED 2026-09-10 20:35 -- the imm claims above are SUSPENDED
+### ⚠ ADDED 2026-09-10 20:35 -- the imm claims above are SUSPENDED (2026-09-11: WITHDRAWN -- phase L priced the leak at +0.0032 imm on this checkpoint, so arm 1 is ~0.265 at deploy-faithful inputs; see the next section)
 
 "imm MET with 0.0019 to spare" and "imm BEATS the d=128 model by 0.001520" are suspended until
 phase L (next section) prices the query-row clock leak. Every `-id` model sees the leak on the imm
 prediction; the d=128 model has no timestamp features and cannot. The ahead numbers are affected
 far less (only the PAVA probe rows carry it). Re-decided on a leak-free model, not by phase L alone.
 
-## THE QUERY-ROW CLOCK LEAK in the `-id` lineage (found 2026-09-10; measurement pending)
+## THE QUERY-ROW CLOCK LEAK in the `-id` lineage (found 2026-09-10; phase L 2026-09-11: MATERIAL, imm +0.0032)
 
 Not an iteration. A methodology defect in every model trained on the real-timestamp dataset --
 featB, gen4base, realcyc, iters 62-69 and the endgame arms -- with its fix, a leak-free rerun of the
@@ -4406,3 +4406,43 @@ row -- the estimator's own bias floor. A stored row cannot recompute them.
 A prediction made at SHOW time may use only what exists at show time -- and a show time
 RECONSTRUCTED from the log (`id - taken_millis`) carries the current review's own excess, so it is
 not a show time a scheduler could have known.
+
+### Phase L result (2026-09-11 08:47) -- MATERIAL
+
+Arm 1's checkpoint `w10p_d_21870`, users 5001-5300, rectified metric, three arms through the same
+wrapper (`scratchpad/leak/leak_report.txt`). Positive = the deploy-faithful eval is WORSE.
+
+| arm | ahead | imm | worse on (ahead / imm) | p (ahead / imm) |
+|---|---|---|---|---|
+| lkc0, T = 0 (control) | 0.300813 | 0.266581 | -- | -- |
+| **lkc30m, T = 1800 s** | **+0.000256 +/- 0.000091** | **+0.003152 +/- 0.000454** | 198 / 273 of 300 | 6.8e-11 / 2.2e-47 |
+| lkc3h, T = 10800 s | +0.000268 | +0.003281 | 198 / 278 of 300 | 9.2e-12 / 4.0e-48 |
+
+* **Harness exact:** the control reproduces arm 1's own eval on the same 300 users at max |d| 0 in
+  both modes, so the wrapper measures the transform and nothing else.
+* **Both modes inside the pre-registered bands** (imm +0.002 .. +0.005, ahead +0.0002 .. +0.0008),
+  and imm at 3 h >= imm at 30 min as predicted. The 3 h arm adds only +0.000129, under the +0.0005
+  switch, so the fix runs at **T = 1800 s** (`clk_decide.py` exit 0).
+* **The leak is almost entirely an imm effect**, as the mechanism says it must be: the query row IS
+  the imm prediction, while ahead sees the leak only through the PAVA probe rows.
+
+**What the number means.** It is how much the eval overstates a model TRAINED with the leak once
+the leak is removed at inference. A model trained without it will re-learn part of the signal from
+legitimate inputs, so this is an upper bound on what the fix costs the best leak-free model.
+`w10clk` (a leak-free decay from ws10's leaked WS) and `w10lf` (leak-free from scratch) measure the
+recovered part. For scale: the timestamp features' whole imm gain was -0.0024 (featB vs featA2), which
+is SMALLER than this cost -- so a large share of the features' imm gain was probably the leak.
+
+**Consequences, as pre-registered:**
+1. **Arm 1's imm claims are WITHDRAWN.** At deploy-faithful inputs arm 1 is roughly 0.262066 +
+   0.0032 = ~0.265 on imm (the 300-user delta applied to the 2,499-user mean; an approximation), which
+   misses the 0.2640 criterion and trails the d=128 model's 0.263586. Its ahead numbers move by ~0.0003
+   and stand. ⚠ The d=128 comparison was never leak-vs-clean anyway: the old model reads the PUBLISHED
+   end-to-END interval, which contains the current review's duration (section 9 case 4) -- a different
+   leak of the same family.
+2. `w10clk` is inserted after arm 2's eval by the waiter, at T = 1800.
+3. `w10lf` moves from the end of the queue to directly behind cmixgraft, and QAT-KD, the budget curve
+   and the decay-length pair are re-based on w10lf's WS. Reasons: quantizing the card/note state can
+   remove the precision the leak needs, which would inflate a leaked model's imm QAT tax; and part of
+   the budget's +0.0015 imm gain may be the model learning the leak better.
+4. Arm 2's QAT tax on imm is read with that caveat; its ahead tax is unaffected to first order.

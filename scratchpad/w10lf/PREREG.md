@@ -80,6 +80,17 @@ cmixgraft and re-base QAT-KD, the budget curve and the decay-length pair on this
 ws10 -- at a leak that large their imm conclusions on a leaked base are not safe (KD from a leaked
 teacher can pass the leak on). That move is done by hand.
 
+### Revisited 2026-09-11 08:55, after phase L -- MOVED (nothing in the predictions changed)
+
+Phase L said MATERIAL: imm +0.003152 / ahead +0.000256 at T=1800 on users 5001-5300, the 3 h arm
++0.000129 more, so **T = 1800** by the rule above. P2's reference value is therefore lkc30m's imm
+cost, +0.003152: w10lf's imm cost vs arm 1 should land in **+0.0006 .. +0.0022** (0.2 .. 0.7 of it).
+The run moved from the end of the queue to directly behind cmixgraft
+(`wait_cmixgraft_then_lf.cmd`, pid 16676; v1 pid 3724 stopped with no marker). QAT-KD, the budget
+curve and the decay-length pair no longer run on ws10; they are re-based on this run's WS (budget
+points from `w10lf_ws_22000` / `w10lf_ws_55000`), with a leak-free QAT arm as the deploy decay and as
+QAT-KD's control.
+
 ## Cost
 
 WS ~38 h + decay ~6.2 h + eval ~2.9 h = **~47 h**, plus a ~15 min dry run. Disk: ~1 GB of
