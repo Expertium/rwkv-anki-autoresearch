@@ -80,3 +80,24 @@ running QAT process), prove bit-exactness on the existing paths with
 `scratchpad/qat_speed/golden_gen.py check`, and swap it in while the GPU is idle. The joint search is
 also 4x longer per step (warm-start pruning should cut that; unmeasured). The Rust engine has no fixed
 limit. None of this changes the rule; it changes what a QUEUE costs.
+
+## VERDICT (2026-09-11 23:09, `decomp_report.txt`, users 5001-5300, n = 300)
+
+| part | ahead | imm |
+|---|---|---|
+| T whole tax (deploy - control) | +0.002957 +/- 0.000212 | +0.004681 +/- 0.000203 |
+| S shift | n/a -- the `noshift` arm FAILED its probe gate: arm - deploy = +0.035397 / +0.043022 on 10 users, OFF DISTRIBUTION, skipped | n/a |
+| C WKV codebook + norm | **-0.000135 +/- 0.000080** (p two-sided 0.089) | **-0.000246 +/- 0.000058** (p 1.1e-4) |
+
+* **P1 REFUTED -- the parts do not separate by removal.** Exactly the risk this file named: the
+  LEARNED quantizers co-adapted with the weights. Removing the shift quantizer throws the model off
+  distribution (+0.035 / +0.043); removing the WKV codebook makes it slightly WORSE (C negative,
+  significantly so on imm). So removal prices co-adaptation, not cost.
+* **P2 / P3 not computable; P4 NOT DECIDABLE** by its own formula.
+* **THE PRE-REGISTERED FALSIFIER FIRES: C < 30% of T in both modes** (C is below zero). As written:
+  no catalog change can recover much, the zero-byte catalog routes are exhausted, and the remaining
+  routes are distillation (QAT-KD, now re-based on the leak-free WS) and Andrew's byte grant (rank-2).
+  **=> the WKV/shift bit-split A/B is DEAD; the leak-free QAT arms keep b10 / m2b12.**
+* ⚠ Stated so it is not over-read: removal is a weak instrument on a co-adapted model, so this says
+  "not decidable by removal", not "the catalogs carry nothing". The rule is applied as registered.
+* Determinism check: the 10-user probe equals the same users in the full run at max |d| 0.

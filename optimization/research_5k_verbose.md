@@ -4490,3 +4490,19 @@ arm 1. Quantizing the card/note state can remove the precision the leaked signal
 the +0.0045 imm tax may be leak loss rather than quantization loss. Its size is unknown until the
 leak-free QAT arm on w10lf's WS reports (behind w10lf and the decay-length pair). The ahead tax is
 not affected to first order (the leak on ahead is +0.0003).
+
+### Phase D -- the tax does NOT decompose by removal (2026-09-11 23:09)
+
+Same checkpoint, users 5001-5300, the deploy env minus one value quantizer per arm
+(`scratchpad/qat_decomp/`, PREREG + verdict there). Whole tax on these users: +0.002957 ahead /
++0.004681 imm.
+* **S (shift):** not measurable. Without its shift quantizer the model goes OFF DISTRIBUTION on the
+  10-user probe (+0.035 / +0.043), so the arm was skipped by its own gate.
+* **C (WKV codebook + norm): NEGATIVE, -0.000135 ahead (p 0.09) / -0.000246 imm (p 1e-4).** Removing
+  the learned codebook makes the model slightly WORSE.
+* **=> the learned quantizers CO-ADAPTED with the weights** (the risk the PREREG named under P1), so
+  removal prices co-adaptation, not cost. The pre-registered falsifier fires (C < 30% of T in both
+  modes): the zero-byte catalog routes are exhausted, the WKV/shift bit-split A/B is DEAD, and the
+  remaining routes are QAT-KD (re-based on the leak-free WS) and Andrew's byte grant (rank-2 state).
+  ⚠ Removal is a weak instrument on a co-adapted model: "not decidable by removal", not "the
+  catalogs carry nothing".

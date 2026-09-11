@@ -1,0 +1,27 @@
+QAT-TAX DECOMPOSITION  tag=w10qat  control=w10plain  users 5001-5300
+positive = that part costs LogLoss; SE is the paired standard error
+
+part                                                ahead                    imm
+T  whole tax (deploy - control)    +0.002957 +/- 0.000212 +0.004681 +/- 0.000203
+S  shift quantization                                 n/a                    n/a
+C  WKV codebook + norm quant       -0.000135 +/- 0.000080 -0.000246 +/- 0.000058
+R  rank-1 + drift + interaction                       n/a                    n/a
+
+n = 300 paired users; the same tax on all 2499 users: ahead +0.002529  imm +0.004466
+
+SIGN CHECK (a significantly negative part = co-adaptation, not a cost)
+  ahead C: mean -0.000135  p(two-sided) 8.94e-02  p(arm better) 4.47e-02
+  imm   C: mean -0.000246  p(two-sided) 1.05e-04  p(arm better) 5.27e-05
+
+SHARES OF THE TAX (PREREG P2: C >= 50%, P3: S <= 20%)
+  ahead: not computable (T +0.002957, or a part is missing)
+  imm: not computable (T +0.004681, or a part is missing)
+
+BIT-SPLIT SCREEN (PREREG P4; crude linear map from reconstruction error)
+  ahead: n/a
+  imm: n/a
+  => NOT DECIDABLE from this decomposition
+
+DETERMINISM (10-user probe vs the same users in the full run; both use the deploy env)
+  ahead max |probe - full| over 10 users = 0.00e+00
+  imm   max |probe - full| over 10 users = 0.00e+00
