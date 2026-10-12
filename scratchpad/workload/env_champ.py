@@ -34,7 +34,7 @@ _ENV = {
     # scheduling probe. button_heads reads this.
     "RWKV_PROBE_DUR": "0.0",
     # inference is single-user and CPU-bound here; 1 thread is the measured optimum
-    # (CLAUDE.md: "1 thread beats 3 and 6 -> deploy single-threaded").
+    # (AGENTS.md: "1 thread beats 3 and 6 -> deploy single-threaded").
     "OMP_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1",
 }

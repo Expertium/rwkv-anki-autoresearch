@@ -7,6 +7,24 @@
 > implementing anything from it.** Same rule as the iteration log: if it is not on disk, it did not
 > happen.
 
+## 2026-09-14 -- THE RECTIFIER LEVERS (Andrew, after the ledger): two queued, curve-side gate
+
+The ledger's rectifier row (+0.0019 ahead) is two costs: **+0.0014 = the current review's duration is
+unknown at show time** (the probe row carries 0.0) and **+0.0006 = PAVA pooling** of the four button curves
+(iter 31's mode decomposition). Andrew 2026-09-14: *"monotone by design + use a weighted average of median
+of answer times of this card and of all cards wmean(median(answer_times[this_card]), median(answer_times))
+sounds good."* Both are curve-side levers (the curve-side gate: ahead raw >= 0.0001 at p < 0.0001, imm not
+significantly worse), both deployable from show-time information only.
+
+| # | proposal | family | plan | status |
+|---|---|---|---|---|
+| R1 | **Imputed probe duration.** Replace the probe rows' (and, to test, the query row's) duration 0.0 with a shrinkage estimate from PAST durations only: `w * median(this card's past answer times) + (1 - w) * median(the user's past answer times)`, `w = n_card / (n_card + k)` (k ~ 3; a card with no history takes the user median; a user with no history takes 0.0 as today). **LEAK RULE (Andrew 2026-09-14: "make sure the weighted mean of two medians doesn't leak information from the future"):** both medians are RUNNING medians over reviews strictly EARLIER in `review_th` than the review being predicted -- the current review's own duration is exactly the quantity the probe must not see, so it is excluded, and so is everything after it; the user-level median likewise stops at the previous review. No whole-history statistic (the 2026-08-16 prefix-invariance smoke, `scratchpad/id_features/smoke_id_features.py`, is the test: the value on row k must not change when rows after k are deleted). Computed in data_processing's frame order (show time), the same order every other history column uses; the deploy builder computes the same two running medians online. ⚠ Do NOT screen it on an existing checkpoint: every checkpoint was trained with 0.0 on probe rows, so the imputation is off-distribution until a decay trains with it. Test = a plain decay branch off w10lf's WS with the imputation in `prepare_batch.insert_probes` (and `add_queries` for the query-row variant), control w10lf. ~10 h decay + 4 h eval. Target: part of the +0.0014. | deploy-contract (adds information; NOT the withholding family 18/33/63) | decay branch at L*, BEFORE the QAT arms (Andrew 2026-09-15) | **BUILT + ARMED 2026-09-15**: `rwkv/probe_impute.py`, smoke PASS, the R1 link `scratchpad/r1/` between the card grafts and the QAT arms; PREREG `scratchpad/r1/PREREG.md`; verdict -> `R1.txt`, read by `mk_lfqat.py`. **LANDED 2026-09-17: R1 OFF** -- lfr1e1 vs lfd1 ahead +0.000076 (p 2.2e-05) / imm -0.000004 (p worse 3.8e-02); curve-side gate; the QAT arms run without it; idea closed |
+| R2 | **Monotone by design.** Today the four buttons are four probe rows through the RNN and PAVA pools the four curves afterwards. Instead: one head that reads the pre-press state once and emits the four curves with ordered non-negative increments between buttons (Again <= Hard <= Good <= Easy at every t by construction). No pooling, no probe rows, ONE forward pass per card at deploy instead of four (a large deploy-speed win as well). Risk: the head loses the RNN's view of "the pressed button as an input row"; mitigate by feeding the four one-hot grades into the head's input, not the trunk. Target: the +0.0006 pooling cost, plus whatever training under the exact constraint buys. Needs a design pass on CPU (parity harness case, deploy path), then a WS (the head changes the objective from step 0). | architecture, curve head | after R1 (Andrew 2026-09-15: "R2, monotone by construction -> after that"); design pass on CPU first, then a WS | **MEASURED 2026-09-15 (`scratchpad/r2/FINDINGS.md`): the pooling cost (+0.0010 on 40 users) is CONCENTRATED in large violations, 61% on Hard-pressed rows where Hard > Good was RIGHT -- information the monotone constraint forbids, so R2's accuracy ceiling is ~0; its motivation is deploy speed. Not before the QAT arms; **DECIDED (Andrew 2026-09-15 14:35: "let's do R1 only. R2 will be postponed until you think it's time"): R2 is POSTPONED indefinitely, at my discretion; the speed win is its only case** |
+
+Order (Andrew 2026-09-15): R1 before the leak-free QAT arms (armed as the R1 link), R2 after R1; R2 needs a WS. Measure first (CPU, minutes, the row dump in
+`scratchpad/ablate_cf/eval_rows.py`): which button pairs cross and how much loss the pooled rows carry --
+if the +0.0006 sits in a few large violations, R2 pays; if it is spread thin, R2's ceiling is small.
+
 ## The protocol (Andrew, 2026-08-10)
 
 1. Spin up **3 subagents**. Each writes **5 proposals** spanning **at least 2 families** — not five
@@ -21,7 +39,7 @@ Andrew also asked how idea generation itself could be improved; that discussion 
 ## Standing constraints every proposal must satisfy
 
 * Accept gate: **raw ≥0.0001 in BOTH modes** vs the current champion + paired Wilcoxon p<0.0001
-  both modes (CLAUDE.md "ACCEPTANCE GATE"). Same-capacity noise floor is ±7.5e-5, so an idea whose
+  both modes (AGENTS.md "ACCEPTANCE GATE"). Same-capacity noise floor is ±7.5e-5, so an idea whose
   honest expected effect is ~1e-5 is not worth a 6-hour run.
 * Hierarchy invariant `card→deck→note→preset→user` (the CODE's order) and the same 92-dim inputs.
 * **Prefer changes that add no deploy debt.** `rust/rwkv-infer` is already 2 gaps behind
@@ -131,7 +149,7 @@ qtaxc_m2b12 cell 2: **0.301882 / 0.271594** on the VAL half (tax +0.004185 / +0.
 
 1. **LEARNABLE CODEBOOKS (running first).** Andrew's own doctrine, and the d=32 quant endgame's
    winning lever ("huge learnable catalogs beat the product form"). Infrastructure is COMPLETE
-   contrary to CLAUDE.md's "queued" note: PQ_LEARN envs train both catalogs (kernel-side grads,
+   contrary to AGENTS.md's "queued" note: PQ_LEARN envs train both catalogs (kernel-side grads,
    wd=0 groups, resume-safe), and exports fire at every ckpt save. The only missing wiring was the
    eval pointing at the exported files — runner-level. Zero deploy-size change (values change, not
    structure). Single-variable vs qtaxc: only `RWKV_QAT_PQ_LEARN=1 RWKV_QAT_SHIFT_PQ_LEARN=1`.
@@ -367,6 +385,8 @@ control iter 47 failed to use). Two results, both before any eval number existed
   the SAME question, not an independent lever.
 
 ### ★★ THE GRAFT POLICY — harvesting the sub-bar positives the loop currently throws away (2026-08-17)
+
+> **Scope note 2026-09-16.** Andrew closed ARCHITECTURE grafts (capacity grown on a trained checkpoint: cmixgraft, lfcmf2, lflora16 -- two nulls at low engagement, see AGENTS.md LIVE). This section is about combining measured sub-bar LEVERS in one run, a different mechanism; it stays as written.
 
 **The structural observation.** The accept bar is raw ≥0.0001 in both modes; the same-capacity noise
 floor is ±7.5e-5. The bar is therefore only **1.33x the floor**, which leaves a band of effects that

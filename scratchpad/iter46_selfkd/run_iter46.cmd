@@ -32,7 +32,7 @@ REM is actually a good teacher, which is the intended curriculum. That ordering 
 REM softening the POST-KD target instead would drag alpha 0.9 -> 0.9*(1-b) and bundle two
 REM changes into one experiment, which is what iters 42/43/44 were spent un-bundling.
 REM
-REM THREE-WAY PARITY (CLAUDE.md sec.9 standing directive) -- train / eval / CPU inference:
+REM THREE-WAY PARITY (AGENTS.md sec.9 standing directive) -- train / eval / CPU inference:
 REM   train : ahead objective, target softened as above.
 REM   eval  : UNCHANGED. The loss is not scored; curve_probs (rectified) and p_imm are.
 REM   deploy: UNCHANGED. No forward-pass edit, no new parameter (558,212 exactly, asserted in the

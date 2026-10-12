@@ -121,7 +121,7 @@ assert the dump's per-step `labels_sum` matches on the first 50 steps of the stu
 augmentation/KD trap is fatal and silent if the seed differs.
 
 **Pre-registered band.** ahead **+0.0001 .. +0.0004**; imm **+0.0000 .. +0.0004**. Both-modes rule
-(KD rewrites both objectives; see the KD-is-not-curve-side note in CLAUDE.md). Abort: either mode
+(KD rewrites both objectives; see the KD-is-not-curve-side note in AGENTS.md). Abort: either mode
 worse by > 0.0002.
 
 **Redundancy -- why it is not iter 46 or the ensemble screen.** Iter 46's teacher was the SAME forward

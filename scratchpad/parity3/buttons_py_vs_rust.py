@@ -2,7 +2,7 @@
 
 The four button intervals are what Anki actually shows the user, and until 2026-07-26 they existed
 in neither engine: the PAVA rectifier lived only inside the training loss. Both halves now
-implement it, which is exactly the situation CLAUDE.md sec 9's three-way parity rule exists for --
+implement it, which is exactly the situation AGENTS.md sec 9's three-way parity rule exists for --
 two implementations of one operator, each self-consistent in isolation.
 
 Review 0 with EMPTY state, so the comparison isolates the forward pass + rectifier + solver from

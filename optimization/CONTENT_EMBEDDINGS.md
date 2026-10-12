@@ -100,3 +100,10 @@ truncated — but it is out on size.)
 the published cards before designing to exact numbers. The *shape* of the argument — that the vocab
 table dominates a multilingual model, and that the input dim is what costs our trunk — does not
 depend on those exact figures.
+
+## HOW MUCH CAN CARD CONTENT BUY? AnkiHub's 4B-review comparison (Andrew 2026-09-19)
+
+Source: https://community.ankihub.net/t/comparing-memory-models-on-a-4b-reviews-dataset/606464 (95.8 M post-cutoff validation reviews, success rate 80.3%). **The one clean pair: `memory_transformer_v1` (random identity vectors per card = content-free, full cross-card history) vs `v2` (the same model with frozen Qwen3 Q+A embeddings of the card version shown): log-loss 0.392 -> 0.335 (-0.057, -14.5%), AUC 0.804 -> 0.866, Brier 0.124 -> 0.106.** v4 (adds a trainable per-card-version delta table) 0.332 and v5 (2048-wide 6-layer delta-rule backbone, no delta table) 0.329: once the text is in, a learned per-card term adds ~0.003 and 10x+ the backbone adds ~0.006. FSRS-6 per user 0.458, so v1 sits at 86% of FSRS-6's loss -- the same ratio as our RWKV ahead vs FSRS-6 in srs-benchmark, i.e. v1 is a fair stand-in for "a strong content-free sequence model".
+
+**Extrapolation, with Andrew's caveat that their methodology differs a lot from srs-benchmark** (log-loss averaged over REVIEWS, not by user; a TEMPORAL split with the same users on both sides; 80% success rate vs ~85-90% here, so compare RELATIVE changes only): -14.5% applied to our leak-free 0.2978 / 0.2642 would be about -0.043 / -0.038. **Discount it:** AnkiHub users study the SAME shared decks, so a text embedding there also works as a cross-user card identity (the crowd's difficulty for this exact card), and v4's near-zero gain says the frozen text already carries that. On personal decks only the text-difficulty part transfers. A third to a half of the effect = **-0.015 to -0.03**, which is still 5-10x everything the algorithmic loop found, and the same order as the whole gap between FSRS-6 and RWKV. It stays contingent: no dataset with card content and the 10k users' structure exists.
+

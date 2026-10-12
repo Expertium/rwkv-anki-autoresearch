@@ -40,6 +40,8 @@ import time
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SHARD_DIR = os.environ.get("RWKV_EVAL_SHARD_DIR") or os.path.join(ROOT, "scratchpad", "eval_shards")
 PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
+if not os.path.exists(PY):  # Linux (the rented box): the interpreter that runs this script
+    PY = sys.executable
 
 
 def read_toml_text(path):
@@ -230,32 +232,46 @@ def main():
     # yet exited 0 -> a silent 1700/5000 "success"): every rostered user must be either
     # merged or explicitly NaN-skipped (get_result's get_loss NaN guard writes
     # <FILE_AHEAD>.nanskip.jsonl). Anything else = incomplete eval = nonzero exit.
-    nanskips = {}
-    for t in tags:
-        p = os.path.join("result", f"{file_ahead}-{t}.nanskip.jsonl")
-        if os.path.exists(p):
-            with open(p, encoding="utf-8") as fh:
-                for line in fh:
-                    if line.strip():
-                        r = json.loads(line)
-                        nanskips[r["user"]] = r
+    def gather(kind):
+        """Per-shard skip files of one kind, merged into the canonical one. Returns {user: record}."""
+        out = {}
+        for t in tags:
+            sp = os.path.join("result", f"{file_ahead}-{t}.{kind}.jsonl")
+            if os.path.exists(sp):
+                with open(sp, encoding="utf-8") as fh:
+                    for line in fh:
+                        if line.strip():
+                            r = json.loads(line)
+                            out[r["user"]] = r
+        if out:
+            dst = os.path.join("result", f"{file_ahead}.{kind}.jsonl")
+            with open(dst, "w", encoding="utf-8") as fh:
+                for u in sorted(out):
+                    fh.write(json.dumps(out[u]) + "\n")
+        return out
+
+    nanskips = gather("nanskip")
+    # 2026-09-20: a user whose mega-chunk does not fit in the card is skipped WHOLE by get_result (the rented box has
+    # 24 GB and no WDDM spill, which is the only reason those users fit on the 12 GB 4070), so it is ACCOUNTED FOR,
+    # exactly like a NaN skip -- not missing. Reported loudly; the verdict tools pair on the intersection.
+    oomskips = gather("oomskip")
+    if oomskips:
+        print(f"OOMSKIP: {len(oomskips)} users skipped on CUDA OOM -> "
+              f"result/{file_ahead}.oomskip.jsonl: {sorted(oomskips)}")
     if nanskips:
-        out = os.path.join("result", f"{file_ahead}.nanskip.jsonl")
-        with open(out, "w", encoding="utf-8") as fh:
-            for u in sorted(nanskips):
-                fh.write(json.dumps(nanskips[u]) + "\n")
-        print(f"NANSKIP: {len(nanskips)} users skipped by the NaN guard -> {out}: {sorted(nanskips)}")
+        print(f"NANSKIP: {len(nanskips)} users skipped by the NaN guard -> "
+              f"result/{file_ahead}.nanskip.jsonl: {sorted(nanskips)}")
     if merged_sets[file_ahead] != merged_sets[file_imm]:
         print(f"MODE MISMATCH: ahead/imm merged user sets differ "
               f"(sym-diff {sorted(merged_sets[file_ahead] ^ merged_sets[file_imm])[:20]})")
         sys.exit(3)
-    missing = set(sizes) - merged_sets[file_ahead] - set(nanskips)
+    missing = set(sizes) - merged_sets[file_ahead] - set(nanskips) - set(oomskips)
     if missing:
-        print(f"INCOMPLETE: {len(missing)} users neither merged nor NaN-skipped: "
+        print(f"INCOMPLETE: {len(missing)} users neither merged nor NaN- nor OOM-skipped: "
               f"{sorted(missing)[:20]}{' ...' if len(missing) > 20 else ''}")
         sys.exit(3)
     print(f"COMPLETE: {len(merged_sets[file_ahead])} merged + {len(nanskips)} nan-skipped "
-          f"= {len(sizes)} rostered")
+          f"+ {len(oomskips)} oom-skipped = {len(sizes)} rostered")
 
 
 if __name__ == "__main__":

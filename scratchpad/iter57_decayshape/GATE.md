@@ -45,7 +45,7 @@ shopping, and the curve-side exception is narrow enough to be tempting.
 
 **This lever gets the BOTH-MODES rule, not the curve-side exception.** `RWKV_DECAY_SHAPE=linear`
 changes the LR schedule of the decay phase, so it acts on the **whole trunk** through the optimizer.
-CLAUDE.md scopes the exception explicitly: it is for levers that touch only the curve/ahead objective
+AGENTS.md scopes the exception explicitly: it is for levers that touch only the curve/ahead objective
 (self-distillation, PAVA lambda, ahead-target and monotonicity changes), and states that
 "trunk / optimizer / capacity / topology changes keep the BOTH-modes rule, because those genuinely
 can move both."

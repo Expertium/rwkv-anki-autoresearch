@@ -3,7 +3,7 @@
 WHY A JUNCTION AND NOT A PATH EDIT. The dbs are addressed by hardcoded absolute
 `F:/rwkv_lmdb/...` strings in the runners AND inside their guard assertions
 (`findstr /C:"F:/rwkv_lmdb/test_db_5k_fix"`). Editing those is the exact "clone a runner,
-update the lever but not everything that depends on it" failure CLAUDE.md keeps recording.
+update the lever but not everything that depends on it" failure AGENTS.md keeps recording.
 So the bytes move to C: and the F: path becomes a junction: every runner, toml and guard
 keeps resolving, unchanged.
 

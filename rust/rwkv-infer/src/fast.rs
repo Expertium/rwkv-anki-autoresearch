@@ -62,8 +62,29 @@ pub struct FastModel {
     /// disagree -- which is precisely the fast/candle divergence class this crate is prone to.
     pub arch: crate::model::ArchFlags,
     compress: crate::model::CompressCfg, // per-stream state compression (matches the candle path)
-    fw: HashMap<String, FastW>,  // raw weights (norms, lerps, bias, bonus, ...) as f32
-    fwt: HashMap<String, FastW>, // linear weights pre-transposed to (in,out) f32
+    fw: HashMap<u64, FastW>,  // raw weights (norms, lerps, bias, bonus, ...) as f32
+    fwt: HashMap<u64, FastW>, // linear weights pre-transposed to (in,out) f32
+}
+
+/// FNV-1a over the key's parts in sequence (= the hash of their concatenation). Weight maps are keyed by it; `build`
+/// asserts there is no collision among the model's own keys.
+#[inline]
+fn fnv(parts: &[&str]) -> u64 {
+    fnv_from(FNV0, parts)
+}
+const FNV0: u64 = 0xcbf29ce484222325;
+const DIG: [&str; 10] = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+/// Continue an FNV-1a hash from `seed` (the state after a prefix) over more parts: a layer's prefix is hashed once.
+#[inline]
+fn fnv_from(seed: u64, parts: &[&str]) -> u64 {
+    let mut h: u64 = seed;
+    for p in parts {
+        for &b in p.as_bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x100000001b3);
+        }
+    }
+    h
 }
 
 fn to_vec(t: &Tensor) -> Result<Vec<f32>> {
@@ -96,12 +117,12 @@ impl FastModel {
                 2 => (dims[0], dims[1]),
                 _ => (t.elem_count(), 1usize), // flatten anything else (e.g. bonus (H,K))
             };
-            fw.insert(key.clone(), FastW { v: to_vec(t)?, d0, d1 });
+            assert!(fw.insert(fnv(&[key]), FastW { v: to_vec(t)?, d0, d1 }).is_none(), "fnv collision on {key}");
         }
         let mut fwt = HashMap::new();
         for (key, t) in lin_wt.iter() {
             let dims = t.dims(); // (in,out)
-            fwt.insert(key.clone(), FastW { v: to_vec(t)?, d0: dims[0], d1: dims[1] });
+            assert!(fwt.insert(fnv(&[key]), FastW { v: to_vec(t)?, d0: dims[0], d1: dims[1] }).is_none(), "fnv collision on {key}");
         }
         Ok(Self { c, h, k, stream_layers, stream_slot, num_curves, num_points, s_space, point_space, arch, compress, fw, fwt })
     }
@@ -119,17 +140,24 @@ impl FastModel {
     }
 
     fn raw(&self, key: &str) -> Result<&FastW> {
-        self.fw.get(key).ok_or_else(|| anyhow!("fast: missing raw weight {key}"))
+        self.fw.get(&fnv(&[key])).ok_or_else(|| anyhow!("fast: missing raw weight {key}"))
     }
     fn lt(&self, key: &str) -> Result<&FastW> {
-        self.fwt.get(key).ok_or_else(|| anyhow!("fast: missing lin weight {key}"))
+        self.fwt.get(&fnv(&[key])).ok_or_else(|| anyhow!("fast: missing lin weight {key}"))
+    }
+    /// Two-part key lookups (prefix + suffix hashed in sequence): no String is built on the hot path.
+    fn raw4(&self, p: (u64, &str, &str), sfx: &str) -> Result<&FastW> {
+        self.fw.get(&fnv_from(p.0, &[p.1, p.2, sfx])).ok_or_else(|| anyhow!("fast: missing raw weight <prefix hash {:x}>{}{}{sfx}", p.0, p.1, p.2))
+    }
+    fn lt4(&self, p: (u64, &str, &str), sfx: &str) -> Result<&FastW> {
+        self.fwt.get(&fnv_from(p.0, &[p.1, p.2, sfx])).ok_or_else(|| anyhow!("fast: missing lin weight <prefix hash {:x}>{}{}{sfx}", p.0, p.1, p.2))
     }
 
     /// y(B,out) = x(B,in) @ Wt(in,out) [+ bias(out)]. Wt reused across all B (cache-friendly).
-    fn linear(&self, x: &[f32], b: usize, prefix: &str, bias: bool) -> Result<Vec<f32>> {
-        let wt = self.lt(&format!("{prefix}.weight"))?;
+    fn linear(&self, x: &[f32], b: usize, prefix: (u64, &str, &str), bias: bool) -> Result<Vec<f32>> {
+        let wt = self.lt4(prefix, ".weight")?;
         let (inn, out) = (wt.d0, wt.d1);
-        let bvec = if bias { Some(&self.raw(&format!("{prefix}.bias"))?.v) } else { None };
+        let bvec = if bias { Some(&self.raw4(prefix, ".bias")?.v) } else { None };
         let mut y = vec![0f32; b * out];
         for bi in 0..b {
             let xr = &x[bi * inn..bi * inn + inn];
@@ -137,25 +165,15 @@ impl FastModel {
             if let Some(bv) = bvec {
                 yr.copy_from_slice(&bv[..out]);
             }
-            // accumulate over in; weight row-major (in,out) -> wt.v[i*out + o]
-            for i in 0..inn {
-                let xi = xr[i];
-                if xi == 0.0 {
-                    continue;
-                }
-                let wrow = &wt.v[i * out..i * out + out];
-                for o in 0..out {
-                    yr[o] += xi * wrow[o];
-                }
-            }
+            matvec_axpy(xr, &wt.v, yr, inn, out);
         }
         Ok(y)
     }
 
     /// LayerNorm over the last `dim` of (B,dim) with weight/bias under `prefix`.
-    fn layernorm(&self, x: &[f32], b: usize, dim: usize, prefix: &str) -> Result<Vec<f32>> {
-        let wv = &self.raw(&format!("{prefix}.weight"))?.v;
-        let bv = &self.raw(&format!("{prefix}.bias"))?.v;
+    fn layernorm(&self, x: &[f32], b: usize, dim: usize, prefix: (u64, &str, &str)) -> Result<Vec<f32>> {
+        let wv = &self.raw4(prefix, ".weight")?.v;
+        let bv = &self.raw4(prefix, ".bias")?.v;
         let mut y = vec![0f32; b * dim];
         for bi in 0..b {
             let xr = &x[bi * dim..bi * dim + dim];
@@ -171,11 +189,11 @@ impl FastModel {
     }
 
     /// GroupNorm over (B,C) with `groups` groups (group size C/groups), weight/bias under prefix.
-    fn groupnorm(&self, x: &[f32], b: usize, prefix: &str) -> Result<Vec<f32>> {
+    fn groupnorm(&self, x: &[f32], b: usize, prefix: (u64, &str, &str)) -> Result<Vec<f32>> {
         let (c, g) = (self.c, self.h);
         let cs = c / g;
-        let wv = &self.raw(&format!("{prefix}.weight"))?.v;
-        let bv = &self.raw(&format!("{prefix}.bias"))?.v;
+        let wv = &self.raw4(prefix, ".weight")?.v;
+        let bv = &self.raw4(prefix, ".bias")?.v;
         let mut y = vec![0f32; b * c];
         for bi in 0..b {
             for gi in 0..g {
@@ -193,23 +211,23 @@ impl FastModel {
         Ok(y)
     }
 
-    fn lora_simple(&self, x: &[f32], b: usize, p: &str) -> Result<Vec<f32>> {
-        let a = self.linear(x, b, &format!("{p}.A"), false)?;
-        self.linear(&a, b, &format!("{p}.B_and_lamb"), true)
+    fn lora_simple(&self, x: &[f32], b: usize, p: (u64, &str)) -> Result<Vec<f32>> {
+        let a = self.linear(x, b, (p.0, p.1, ".A"), false)?;
+        self.linear(&a, b, (p.0, p.1, ".B_and_lamb"), true)
     }
-    fn lora_mlp(&self, x: &[f32], b: usize, p: &str) -> Result<Vec<f32>> {
-        let mut a = self.linear(x, b, &format!("{p}.A"), false)?;
+    fn lora_mlp(&self, x: &[f32], b: usize, p: (u64, &str)) -> Result<Vec<f32>> {
+        let mut a = self.linear(x, b, (p.0, p.1, ".A"), false)?;
         for v in a.iter_mut() {
             *v = v.tanh();
         }
-        self.linear(&a, b, &format!("{p}.B_and_lamb"), true)
+        self.linear(&a, b, (p.0, p.1, ".B_and_lamb"), true)
     }
 
     /// One time-mixer layer. in_x (B,C). Returns (out(B,C), v0_out(B,C), new_t_xshift(B,C), new_state(B*H*K*K)).
     #[allow(clippy::type_complexity)]
     fn time_mixer(
         &self,
-        p: &str,
+        p: u64,
         layer_id: usize,
         in_x: &[f32],
         b: usize,
@@ -217,7 +235,7 @@ impl FastModel {
         st: Option<(&[f32], &[f32])>,
     ) -> Result<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> {
         let (c, h, k) = (self.c, self.h, self.k);
-        let x = self.layernorm(in_x, b, c, &format!("{p}.layer_norm"))?;
+        let x = self.layernorm(in_x, b, c, (p, ".layer_norm", ""))?;
         let zeros;
         let (xshift, s_prev): (&[f32], &[f32]) = match st {
             Some((xs, s)) => (xs, s),
@@ -232,7 +250,7 @@ impl FastModel {
             diff[i] = xshift[i] - x[i];
         }
         // 8 lerp inputs: inp_i = x + lerp_w[i]*diff  (lerp_w is (8,C))
-        let lerp_w = &self.raw(&format!("{p}.rkvdag_lerp"))?.v; // 8*C
+        let lerp_w = &self.raw4((p, ".rkvdag_lerp", ""), "")?.v; // 8*C
         let make_inp = |i: usize| -> Vec<f32> {
             let lw = &lerp_w[i * c..i * c + c];
             let mut out = vec![0f32; b * c];
@@ -253,20 +271,20 @@ impl FastModel {
         let inp_ks = make_inp(6);
         let inp_vs = make_inp(7);
 
-        let r = self.linear(&inp_r, b, &format!("{p}.W_r"), false)?;
-        let kk = self.linear(&inp_k, b, &format!("{p}.W_k"), false)?;
-        let mut k_scale = self.linear(&inp_ks, b, &format!("{p}.k_scale_linear"), true)?; // (B,H)
+        let r = self.linear(&inp_r, b, (p, ".W_r", ""), false)?;
+        let kk = self.linear(&inp_k, b, (p, ".W_k", ""), false)?;
+        let mut k_scale = self.linear(&inp_ks, b, (p, ".k_scale_linear", ""), true)?; // (B,H)
         sigmoid_(&mut k_scale);
-        let mut v_scale = self.linear(&inp_vs, b, &format!("{p}.v_scale_linear"), true)?; // (B,H)
+        let mut v_scale = self.linear(&inp_vs, b, (p, ".v_scale_linear", ""), true)?; // (B,H)
         sigmoid_(&mut v_scale);
 
         let (v, v0_out) = if layer_id == 0 {
-            let v = self.linear(&inp_v, b, &format!("{p}.W_v"), false)?;
+            let v = self.linear(&inp_v, b, (p, ".W_v", ""), false)?;
             (v.clone(), v)
         } else {
-            let mut v_lerp = self.lora_simple(&inp_v, b, &format!("{p}.v_lora_simple"))?;
+            let mut v_lerp = self.lora_simple(&inp_v, b, (p, ".v_lora_simple"))?;
             sigmoid_(&mut v_lerp);
-            let wv = self.linear(&inp_v, b, &format!("{p}.W_v"), false)?;
+            let wv = self.linear(&inp_v, b, (p, ".W_v", ""), false)?;
             let v0 = v0.ok_or_else(|| anyhow!("v0 missing for layer>0"))?;
             // lerp(wv, v0, v_lerp) = wv + v_lerp*(v0 - wv)
             let mut v = vec![0f32; b * c];
@@ -276,14 +294,14 @@ impl FastModel {
             (v, v0.to_vec())
         };
 
-        let mut a = self.lora_simple(&inp_a, b, &format!("{p}.a_lora_simple"))?;
+        let mut a = self.lora_simple(&inp_a, b, (p, ".a_lora_simple"))?;
         sigmoid_(&mut a);
-        let mut g_a = self.linear(&inp_g, b, &format!("{p}.lora_A_g"), false)?;
+        let mut g_a = self.linear(&inp_g, b, (p, ".lora_A_g", ""), false)?;
         sigmoid_(&mut g_a);
-        let g = self.linear(&g_a, b, &format!("{p}.lora_B_g"), false)?;
+        let g = self.linear(&g_a, b, (p, ".lora_B_g", ""), false)?;
 
         // decay: _d = -0.5 - softplus(-d_mlp); w_decay = exp(-exp(_d))
-        let d_mlp = self.lora_mlp(&inp_d, b, &format!("{p}.d_lora_mlp"))?;
+        let d_mlp = self.lora_mlp(&inp_d, b, (p, ".d_lora_mlp"))?;
         let mut w_decay = vec![0f32; b * c];
         for i in 0..b * c {
             let _d = -0.5 - softplus(-d_mlp[i]);
@@ -310,10 +328,10 @@ impl FastModel {
         let (out_hk, next_s) = single_timestep(b, h, k, r_h, &k_h, &v_h, w_h, a_h, &kd_h, s_prev);
 
         // out group norm over (B,C)
-        let out_gn = self.groupnorm(&out_hk, b, &format!("{p}.out_group_norm"))?;
+        let out_gn = self.groupnorm(&out_hk, b, (p, ".out_group_norm", ""))?;
 
         // r_k bonus: term = (r_h * bonus * k_h).sum(K) per head; bonus = term * v_h
-        let bonus_p = &self.raw(&format!("{p}.bonus"))?.v; // (H,K) flat = C
+        let bonus_p = &self.raw4((p, ".bonus", ""), "")?.v; // (H,K) flat = C
         let mut combined = vec![0f32; b * c];
         for bi in 0..b {
             for hh in 0..h {
@@ -331,7 +349,7 @@ impl FastModel {
         for i in 0..b * c {
             combined[i] *= g[i];
         }
-        let out2 = self.linear(&combined, b, &format!("{p}.W_o"), false)?;
+        let out2 = self.linear(&combined, b, (p, ".W_o", ""), false)?;
         let mut out = vec![0f32; b * c];
         for i in 0..b * c {
             out[i] = in_x[i] + out2[i];
@@ -342,15 +360,15 @@ impl FastModel {
     /// One channel-mixer layer. Returns (out(B,C), new_c_xshift(B,C)).
     fn channel_mixer(
         &self,
-        p: &str,
+        p: u64,
         in_x: &[f32],
         b: usize,
         xshift: Option<&[f32]>,
     ) -> Result<(Vec<f32>, Vec<f32>)> {
         let c = self.c;
-        let x = self.layernorm(in_x, b, c, &format!("{p}.layer_norm"))?;
+        let x = self.layernorm(in_x, b, c, (p, ".layer_norm", ""))?;
         let xs = xshift.unwrap_or(&x);
-        let lerp_k = &self.raw(&format!("{p}.lerp_k"))?.v; // (C,)
+        let lerp_k = &self.raw4((p, ".lerp_k", ""), "")?.v; // (C,)
         let mut mixed = vec![0f32; b * c];
         for bi in 0..b {
             for j in 0..c {
@@ -358,12 +376,12 @@ impl FastModel {
                 mixed[idx] = x[idx] + lerp_k[j] * (xs[idx] - x[idx]);
             }
         }
-        let mut kk = self.linear(&mixed, b, &format!("{p}.W_k"), false)?;
+        let mut kk = self.linear(&mixed, b, (p, ".W_k", ""), false)?;
         for v in kk.iter_mut() {
             let r = v.max(0.0);
             *v = r * r; // relu^2
         }
-        let o = self.linear(&kk, b, &format!("{p}.W_v"), false)?;
+        let o = self.linear(&kk, b, (p, ".W_v", ""), false)?;
         let mut out = vec![0f32; b * c];
         for i in 0..b * c {
             out[i] = in_x[i] + o[i];
@@ -400,13 +418,14 @@ impl FastModel {
         input: &[f32],
         b: usize,
         state: Option<&FastStreamState>,
+        persist: bool,
     ) -> Result<(Vec<f32>, FastStreamState)> {
         let mut x = input.to_vec();
         let mut v0: Option<Vec<f32>> = None;
         let mut new_state: FastStreamState = Vec::with_capacity(n_layers);
         for l in 0..n_layers {
             let ls = state.map(|s| &s[l]);
-            let (xo, v0_out, layer_state) = self.run_layer(m, l, &x, b, v0.as_deref(), ls)?;
+            let (xo, v0_out, layer_state) = self.run_layer(m, l, &x, b, v0.as_deref(), ls, persist)?;
             x = xo;
             v0 = Some(v0_out);
             new_state.push(layer_state);
@@ -429,14 +448,15 @@ impl FastModel {
         b: usize,
         v0: Option<&[f32]>,
         ls: Option<&FastLayerState>,
+        persist: bool,
     ) -> Result<(Vec<f32>, Vec<f32>, FastLayerState)> {
         let x = input;
         {
-            let tp = format!("rwkv_modules.{m}.blocks.{l}.time_mixer");
-            let cp = format!("rwkv_modules.{m}.blocks.{l}.channel_mixer");
+            let tp = fnv(&["rwkv_modules.", DIG[m], ".blocks.", DIG[l], ".time_mixer"]);
+            let cp = fnv(&["rwkv_modules.", DIG[m], ".blocks.", DIG[l], ".channel_mixer"]);
             let t_st = ls.map(|s| (s.t_xshift.as_slice(), s.t_state.as_slice()));
             let (xt, v0_out, mut t_xshift, mut t_state) =
-                self.time_mixer(&tp, l, x, b, v0, t_st)?;
+                self.time_mixer(tp, l, x, b, v0, t_st)?;
             // Bound the carried state before the compression round-trip below -- the clamp is
             // part of the recurrence, not a storage step. Mirrors Model::clamp_state.
             self.clamp_state(&mut t_state, b);
@@ -445,7 +465,7 @@ impl FastModel {
             // never written, so the incoming one passes through (mirrors Model::run_stream and
             // RWKV7RNNLayer.forward).
             let (xc, mut c_xshift) = if self.arch.has_cmix[m][l] {
-                self.channel_mixer(&cp, &xt, b, c_st)?
+                self.channel_mixer(cp, &xt, b, c_st)?
             } else {
                 let carried = match c_st {
                     Some(s) => s.to_vec(),
@@ -457,8 +477,13 @@ impl FastModel {
             // current step's output (xt) was already computed from the pre-compression state, so this
             // only affects what the NEXT step reads back.
             let e_prev = ls.map(|s| s.e_state.as_slice());
-            let (e_state, warm_wkv, warm_shift) =
-                self.compress_stream_state(m, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls);
+            // persist == false (a QUERY forward: the caller discards the returned state): the compression only
+            // changes what the NEXT step would read back, never this step's outputs, so skipping it is exact.
+            let (e_state, warm_wkv, warm_shift) = if persist {
+                self.compress_stream_state(m, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls)
+            } else {
+                (Vec::new(), Vec::new(), Vec::new())
+            };
             Ok((
                 xc,
                 v0_out,
@@ -468,11 +493,11 @@ impl FastModel {
     }
 
     fn features2card(&self, feats: &[f32], b: usize) -> Result<Vec<f32>> {
-        let mut x = self.linear(feats, b, "features2card.0", true)?;
+        let mut x = self.linear(feats, b, (FNV0, "features2card.0", ""), true)?;
         silu_(&mut x);
         let hidden = x.len() / b;
-        let mut x = self.layernorm(&x, b, hidden, "features2card.2")?;
-        x = self.linear(&x, b, "features2card.3", true)?;
+        let mut x = self.layernorm(&x, b, hidden, (FNV0, "features2card.2", ""))?;
+        x = self.linear(&x, b, (FNV0, "features2card.3", ""), true)?;
         silu_(&mut x);
         Ok(x)
     }
@@ -484,6 +509,27 @@ impl FastModel {
         feats: &[f32],
         b: usize,
         states: &[Option<FastStreamState>; 5],
+    ) -> Result<(Vec<f32>, FastCurve, Vec<f32>, [FastStreamState; 5])> {
+        self.review_inner(feats, b, states, true)
+    }
+
+    /// A QUERY forward (imm prediction, button probes): identical outputs, but the returned states are NOT
+    /// compressed and must be discarded. Saves the whole state-quantization cost of the call (2026-09-19).
+    pub fn review_query(
+        &self,
+        feats: &[f32],
+        b: usize,
+        states: &[Option<FastStreamState>; 5],
+    ) -> Result<(Vec<f32>, FastCurve, Vec<f32>, [FastStreamState; 5])> {
+        self.review_inner(feats, b, states, false)
+    }
+
+    fn review_inner(
+        &self,
+        feats: &[f32],
+        b: usize,
+        states: &[Option<FastStreamState>; 5],
+        persist: bool,
     ) -> Result<(Vec<f32>, FastCurve, Vec<f32>, [FastStreamState; 5])> {
         let mut x = self.features2card(feats, b)?;
         // GAPS 7 + 8, mirroring Model::review -- keep the two in sync. `states` is in CANONICAL
@@ -503,7 +549,7 @@ impl FastModel {
             for (m, l) in crate::model::interleave_visits(&self.stream_layers) {
                 let ls = states[slot[m]].as_ref().map(|s| &s[l]);
                 let (xo, v0_out, layer_state) =
-                    self.run_layer(m, l, &x, b, v0s[m].as_deref(), ls)?;
+                    self.run_layer(m, l, &x, b, v0s[m].as_deref(), ls, persist)?;
                 x = xo;
                 v0s[m] = Some(v0_out); // STREAM-LOCAL
                 per_stream[slot[m]].push(layer_state);
@@ -513,31 +559,31 @@ impl FastModel {
             new = vec![Vec::new(); 5];
             for m in 0..5 {
                 let (xo, ns) =
-                    self.run_stream(m, self.stream_layers[m], &x, b, states[slot[m]].as_ref())?;
+                    self.run_stream(m, self.stream_layers[m], &x, b, states[slot[m]].as_ref(), persist)?;
                 x = xo;
                 new[slot[m]] = ns;
             }
         }
-        let xh = self.layernorm(&x, b, self.c, "prehead_norm")?;
+        let xh = self.layernorm(&x, b, self.c, (FNV0, "prehead_norm", ""))?;
 
         // curve head -- classic fixed-basis mixture, or the GRU w/S/d triple.
         // Mirrors Model::curve_head; keep the two in sync.
-        let mut hw = self.linear(&xh, b, "head_w.0", true)?;
+        let mut hw = self.linear(&xh, b, (FNV0, "head_w.0", ""), true)?;
         relu_(&mut hw);
         let hwn = hw.len() / b;
-        let hw = self.layernorm(&hw, b, hwn, "head_w.2")?;
-        let hw = self.linear(&hw, b, "head_w.4", true)?;
+        let hw = self.layernorm(&hw, b, hwn, (FNV0, "head_w.2", ""))?;
+        let hw = self.linear(&hw, b, (FNV0, "head_w.4", ""), true)?;
         let curve = match self.arch.gru_curves {
             None => {
-                let mut w = self.linear(&hw, b, "w_linear", true)?;
+                let mut w = self.linear(&hw, b, (FNV0, "w_linear", ""), true)?;
                 softmax_rows_(&mut w, b, self.num_curves);
                 FastCurve { w, s_raw: Vec::new(), d_raw: Vec::new() }
             }
             Some(_) => {
-                let mut w = self.linear(&hw, b, "gru_w", true)?;
+                let mut w = self.linear(&hw, b, (FNV0, "gru_w", ""), true)?;
                 softmax_rows_(&mut w, b, self.num_curves);
-                let s_raw = self.linear(&hw, b, "gru_s", true)?;
-                let d_raw = self.linear(&hw, b, "gru_d", true)?;
+                let s_raw = self.linear(&hw, b, (FNV0, "gru_s", ""), true)?;
+                let d_raw = self.linear(&hw, b, (FNV0, "gru_d", ""), true)?;
                 FastCurve { w, s_raw, d_raw }
             }
         };
@@ -546,17 +592,17 @@ impl FastModel {
         // to (1,1) there, so computing it would be a shape-mismatch matmul (see Model::review).
         let out_ahead = match self.arch.ahead_residual {
             true => {
-                let mut ha = self.linear(&xh, b, "head_ahead_logits.0", true)?;
+                let mut ha = self.linear(&xh, b, (FNV0, "head_ahead_logits.0", ""), true)?;
                 relu_(&mut ha);
-                self.linear(&ha, b, "ahead_linear", true)?
+                self.linear(&ha, b, (FNV0, "ahead_linear", ""), true)?
             }
             false => Vec::new(),
         };
 
         // head_p (4)
-        let mut hp = self.linear(&xh, b, "head_p.0", true)?;
+        let mut hp = self.linear(&xh, b, (FNV0, "head_p.0", ""), true)?;
         relu_(&mut hp);
-        let out_p = self.linear(&hp, b, "p_linear", true)?;
+        let out_p = self.linear(&hp, b, (FNV0, "p_linear", ""), true)?;
 
         let new_arr: [FastStreamState; 5] =
             new.try_into().map_err(|_| anyhow!("stream count mismatch"))?;
@@ -800,7 +846,7 @@ impl FastModel {
         let tiled = self.tile_states_b1(states, NB)?;
 
         // The returned states are DROPPED: probes read state, they never advance it.
-        let (out_ahead, curve, _out_p, _dropped) = self.review_batched(&probe, NB, &tiled)?;
+        let (out_ahead, curve, _out_p, _dropped) = self.review_query(&probe, NB, &tiled)?;
 
         // Per-row views. predict_ahead/interp index from 0, so each button gets its own slice.
         let nc = self.num_curves;
@@ -920,6 +966,63 @@ impl FastModel {
 /// reproduces `(n, unit)` for any unit size — which is what lets `button_intervals` tile all six
 /// fields without knowing any of their shapes. An empty source stays empty, so buffers that are
 /// off (error feedback, warm-start indices) stay off.
+/// y(out) += sum_i x[i] * W[i, :] in the SERIAL order of i (every y[o] sees the same sequence of adds as the plain loop,
+/// so the result is bit-identical): four rows of W per pass over y (4x fewer loads / stores of y), a zero input
+/// skipped exactly as before. The AVX2 build of the same body is elementwise mul + add (no FMA) = the same bits.
+#[inline(always)]
+fn matvec_axpy_body(x: &[f32], w: &[f32], y: &mut [f32], inn: usize, out: usize) {
+    let mut i = 0;
+    while i + 4 <= inn {
+        let (x0, x1, x2, x3) = (x[i], x[i + 1], x[i + 2], x[i + 3]);
+        if x0 != 0.0 && x1 != 0.0 && x2 != 0.0 && x3 != 0.0 {
+            let w0 = &w[i * out..(i + 1) * out];
+            let w1 = &w[(i + 1) * out..(i + 2) * out];
+            let w2 = &w[(i + 2) * out..(i + 3) * out];
+            let w3 = &w[(i + 3) * out..(i + 4) * out];
+            for o in 0..out {
+                y[o] = (((y[o] + x0 * w0[o]) + x1 * w1[o]) + x2 * w2[o]) + x3 * w3[o];
+            }
+        } else {
+            for ii in i..i + 4 {
+                let xi = x[ii];
+                if xi == 0.0 {
+                    continue;
+                }
+                let wr = &w[ii * out..(ii + 1) * out];
+                for o in 0..out {
+                    y[o] += xi * wr[o];
+                }
+            }
+        }
+        i += 4;
+    }
+    while i < inn {
+        let xi = x[i];
+        if xi != 0.0 {
+            let wr = &w[i * out..(i + 1) * out];
+            for o in 0..out {
+                y[o] += xi * wr[o];
+            }
+        }
+        i += 1;
+    }
+}
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn matvec_axpy_avx2(x: &[f32], w: &[f32], y: &mut [f32], inn: usize, out: usize) {
+    matvec_axpy_body(x, w, y, inn, out)
+}
+#[inline]
+fn matvec_axpy(x: &[f32], w: &[f32], y: &mut [f32], inn: usize, out: usize) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            return unsafe { matvec_axpy_avx2(x, w, y, inn, out) };
+        }
+    }
+    matvec_axpy_body(x, w, y, inn, out)
+}
+
 fn tile_b1(v: &[f32], n: usize) -> Vec<f32> {
     v.repeat(n)
 }

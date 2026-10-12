@@ -86,7 +86,7 @@ it as a bias. The genuine cost falls on the 2.6% of **defined** rows whose true 
 0.0, which are read as undefined. Small -- and the LOO sweep already prices the column at
 +0.000205 / +0.000487, so it works despite this.
 
-Also: coverage is **2.6%**, against the **10-16%** CLAUDE.md pre-registered. That ceiling counted
+Also: coverage is **2.6%**, against the **10-16%** AGENTS.md pre-registered. That ceiling counted
 "rows whose note had another card **created** earlier"; the shipped column needs a sibling
 **reviewed** earlier, which is far stricter. The pre-registration used the looser definition.
 

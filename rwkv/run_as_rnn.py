@@ -2,17 +2,41 @@
 This script demonstrates RWKV run as an RNN.
 """
 
+import bisect
+import math
+import os
+
 import numpy as np
 import pandas as pd
 from rwkv import id_features as _idf
 # RWKV_CLOCK_AT_PREV_ANSWER: the query-row clock-leak fix, DEPLOY side (three-way parity with
 # prepare_batch.prepare). Unset => neither hook below changes anything.
 from rwkv import clock_fix as _clock
+# RWKV_PROBE_IMPUTE_K: R1, the imputed probe duration, DEPLOY side (three-way parity with
+# prepare_batch.prepare). Unset => imm_predict keeps the 0.0 "no press yet" duration.
+from rwkv import probe_impute as _imp
 
 # Parameters that exist ONLY in the training loss and are absent from the deployed model. The deploy
 # loader strips exactly these before its strict load; add a name here when a lever adds a
 # conditional train-only Parameter (and nowhere else -- an allowlist, not strict=False).
 TRAIN_ONLY_KEYS = ("ord_cut_a", "ord_cut_c")
+# RWKV_DEPLOY_CUMSUM_LEGACY=1 (2026-09-12): the cumulative elapsed columns as they were BEFORE the
+# deploy half of the sentinel fix (see add_same). Only for models trained on an LMDB built before
+# 2026-08-19 (the published lineage up to iter 53), which learned the buggy column. Default = fixed.
+_CUMSUM_LEGACY = os.environ.get("RWKV_DEPLOY_CUMSUM_LEGACY", "0") == "1"
+from rwkv import extra_features as _extra
+# RWKV_EXTRA_FEATURES: the deploy half of the read-time columns. Read ONCE here, like every other flag
+# in this file, so a mid-run environment change cannot make the builder disagree with the model's width.
+_EXTRA_ACTIVE = _extra.active()
+_EXTRA_CUM_NEW_CARDS = "cum_new_cards" in _EXTRA_ACTIVE
+_EXTRA_REVIEW_TH = "review_th" in _EXTRA_ACTIVE
+_EXTRA_NEW_CARD_SHARE = "new_card_share" in _EXTRA_ACTIVE
+_EXTRA_ANY = bool(_EXTRA_ACTIVE)
+_EXTRA_SIBGAP = "sibgap_none" in _EXTRA_ACTIVE
+# the per-ROW features (session structure, phase coherence, streak, grade mean): the ones whose
+# training half reads `scratchpad/rowtables` rather than a compact table
+_EXTRA_ROW_NAMES = tuple(n for n in _EXTRA_ACTIVE if _extra.SPECS[n][1] == "rowtables")
+_EXTRA_ROW = bool(_EXTRA_ROW_NAMES)
 from rwkv.config import (
     DAY_OFFSET_ENCODE_PERIODS,
     ID_ENCODE_DIMS,
@@ -90,6 +114,27 @@ class RNNProcess:
         self.card2first_day_offset = {}
         self.card2elapsed_days_cumulative = {}
         self.card2elapsed_seconds_cumulative = {}
+        # R1: running medians of the PAST scaled durations (per card, per user); value() before a
+        # review's query row, push() after the review is processed -- never the review's own duration.
+        self.duration_imputer = _imp.OnlineImputer() if _imp.enabled() else None
+        # RWKV_EXTRA_FEATURES, the per-ROW half: the whole deploy state is these ten scalars plus a
+        # window of recent review times (only the last hour is ever kept). Training rebuilds the same
+        # quantities from row 0 of the user; here they are carried forward, and every one of them is
+        # legal at SHOW time -- a live scheduler knows the clock, the streak and the grades so far.
+        self.rf_prev_secs = None        # the previous review's show time, epoch seconds
+        self.rf_sess_start = None       # when the current sitting opened
+        self.rf_sess_pos = 0            # reviews already done in the current sitting
+        self.rf_window = []             # past show times within ROLL_WINDOW_MAX seconds, ascending
+        self.rf_C = self.rf_S = self.rf_C2 = self.rf_S2 = 0.0
+        self.rf_n = 0                   # reviews so far (the denominator of R, R2 and grade_mean)
+        self.rf_last_day = None         # the UTC day of the previous review
+        self.rf_streak = 0              # consecutive UTC days through the previous review
+        self.rf_grade_sum = 0.0
+        # sib_grade / sib_none (2026-09-23): the sitting counter and, per note, the latest review in
+        # the current sitting as (sitting, card, grade, latest grade of a DIFFERENT card before it).
+        # The training side reads the same quantity from scratchpad/rowtables/sib_flat.npy.
+        self.rf_sess_id = 0
+        self.rf_sib = {}
         self.id_encodings = {submodule: {} for submodule in RWKV_SUBMODULES}
         # Precomputed for the VECTORIZED day-offset encoding (replaces ~50 tiny per-period torch ops
         # /row with ~8). float32 f matches torch's weak-scalar promotion in the original per-element
@@ -223,6 +268,121 @@ class RNNProcess:
         curve_logits = curve_logits_raw + ahead_logit_residual
         return torch.sigmoid(curve_logits)
 
+    @staticmethod
+    def _row_secs(row):
+        """The review's SHOW time in epoch seconds -- the same quantity the row table stores."""
+        if "review_time" not in row:
+            raise RuntimeError(
+                "RWKV_EXTRA_FEATURES asked for a per-row feature (%s), which needs `review_time`. "
+                "Only the -id dataset carries it." % ", ".join(_EXTRA_ROW_NAMES))
+        return int(row["review_time"]) // 1000
+
+    def _add_rowfeat(self, row):
+        """Write the per-row columns from the carried-forward state, WITHOUT advancing it.
+
+        Nothing here is updated: `_update_rowfeat` does that at the end of `process_row`, after the row
+        has been built. That ordering is what makes a query row read exactly its real row's value, which
+        is the same coupling the shared `review_th` gives the training side -- and for `grade_mean` it is
+        also the leak guard, because advancing first would fold this review's own rating into the mean
+        the rating head then reads.
+        """
+        secs = self._row_secs(row)
+        n = self.rf_n
+        if "sess_pos" in _EXTRA_ROW_NAMES or "sess_secs" in _EXTRA_ROW_NAMES:
+            new_sess = self.rf_prev_secs is None or (secs - self.rf_prev_secs) > _extra.SESSION_GAP
+            start = secs if new_sess else self.rf_sess_start
+            if "sess_pos" in _EXTRA_ROW_NAMES:
+                row["scaled_sess_pos"] = float(_extra.scale_rowfeat(
+                    "sess_pos", 0 if new_sess else self.rf_sess_pos))
+            if "sess_secs" in _EXTRA_ROW_NAMES:
+                row["scaled_sess_secs"] = float(_extra.scale_rowfeat("sess_secs", secs - start))
+        for nm, w in _extra.ROLL_WINDOWS.items():
+            if nm in _EXTRA_ROW_NAMES:
+                lo = bisect.bisect_left(self.rf_window, secs - w)
+                row["scaled_" + nm] = float(_extra.scale_rowfeat(nm, len(self.rf_window) - lo))
+        if "phase_r" in _EXTRA_ROW_NAMES:
+            if n < 1:
+                row["scaled_phase_r"] = 0.0
+            else:
+                R = math.hypot(self.rf_C, self.rf_S) / n
+                unb = (n * R * R - 1.0) / max(n - 1.0, 1.0)
+                row["scaled_phase_r"] = float(_extra.scale_rowfeat("phase_r", math.sqrt(max(unb, 0.0))))
+        if "phase_r2" in _EXTRA_ROW_NAMES:
+            row["scaled_phase_r2"] = (0.0 if n < 1 else float(_extra.scale_rowfeat(
+                "phase_r2", math.hypot(self.rf_C2, self.rf_S2) / n)))
+        if "streak" in _EXTRA_ROW_NAMES:
+            row["scaled_streak"] = float(_extra.scale_rowfeat("streak", self.rf_streak))
+        if "grade_mean" in _EXTRA_ROW_NAMES:
+            row["scaled_grade_mean"] = (0.0 if n < 1 else float(_extra.scale_rowfeat(
+                "grade_mean", self.rf_grade_sum / n)))
+        if "sib_grade" in _EXTRA_ROW_NAMES or "sib_none" in _EXTRA_ROW_NAMES:
+            sib = self._sibling_grade(row, secs)
+            if "sib_grade" in _EXTRA_ROW_NAMES:
+                row["scaled_sib_grade"] = float(_extra.scale_rowfeat(
+                    "sib_grade", float("nan") if sib == 0 else float(sib)))
+            if "sib_none" in _EXTRA_ROW_NAMES:
+                row["sib_none"] = 1.0 if sib == 0 else 0.0
+
+    def _sib_note(self, row):
+        """The note key for the sibling lookup, or None. A card with no note in the export gets a
+        per-card placeholder from `add_id`; it is treated as NO note, as the training table does."""
+        if float(row.get("note_id_is_nan", 0.0)) == 1.0:
+            return None
+        return int(row["note_id"])
+
+    def _sibling_grade(self, row, secs):
+        """0, or the grade of the latest review of a DIFFERENT card of this note earlier in the SAME
+        sitting. Reads the carried state only; `_update_rowfeat` advances it after the real row."""
+        note = self._sib_note(row)
+        if note is None:
+            return 0
+        new_sess = self.rf_prev_secs is None or (secs - self.rf_prev_secs) > _extra.SESSION_GAP
+        cur = self.rf_sess_id + 1 if new_sess else self.rf_sess_id
+        st = self.rf_sib.get(note)
+        if st is None or st[0] != cur:
+            return 0
+        _, lc, lr, other = st
+        return lr if lc != row["card_id"] else other
+
+    def _update_rowfeat(self, row):
+        """Advance the carried state by this review. Called once per REAL review, never for a query row."""
+        secs = self._row_secs(row)
+        new_sess = self.rf_prev_secs is None or (secs - self.rf_prev_secs) > _extra.SESSION_GAP
+        if new_sess:
+            self.rf_sess_start = secs
+            self.rf_sess_pos = 1
+            self.rf_sess_id += 1
+        else:
+            self.rf_sess_pos += 1
+        note = self._sib_note(row) if ("sib_grade" in _EXTRA_ROW_NAMES or "sib_none" in _EXTRA_ROW_NAMES) else None
+        if note is not None:
+            card, grade = row["card_id"], int(row["rating"])
+            st = self.rf_sib.get(note)
+            if st is None or st[0] != self.rf_sess_id:
+                self.rf_sib[note] = (self.rf_sess_id, card, grade, 0)
+            else:
+                _, lc, lr, other = st
+                self.rf_sib[note] = (self.rf_sess_id, card, grade, lr if lc != card else other)
+        self.rf_prev_secs = secs
+        wmax = max(_extra.ROLL_WINDOWS.values())
+        self.rf_window.append(secs)
+        cut = bisect.bisect_left(self.rf_window, secs - wmax)
+        if cut:
+            del self.rf_window[:cut]            # only the last hour is ever kept
+        th = 2 * math.pi * (secs % 86400) / 86400.0
+        self.rf_C += math.cos(th)
+        self.rf_S += math.sin(th)
+        self.rf_C2 += math.cos(2 * th)
+        self.rf_S2 += math.sin(2 * th)
+        day = secs // 86400
+        if self.rf_last_day is None or day - self.rf_last_day > 1:
+            self.rf_streak = 1
+        elif day - self.rf_last_day == 1:
+            self.rf_streak += 1
+        self.rf_last_day = day
+        self.rf_grade_sum += float(row["rating"])
+        self.rf_n += 1
+
     def add_same(self, row):
         # Use a plain dict, NOT a pandas Series: ~25 new-key assignments/call x2/review, and Series
         # new-key assignment rebuilds the arrow-string index each time (O(n)) -> was ~60% of export
@@ -230,16 +390,30 @@ class RNNProcess:
         # and dict(dict) both work, so the inference path (Series in) is unaffected.
         row = dict(row)
         card_id = row["card_id"]
-        row["elapsed_days_cumulative"] = (
-            self.card2elapsed_days_cumulative.get(card_id, 0) + row["elapsed_days"]
-        )
+        # ⚠ THE SENTINEL MUST NOT BE SUMMED -- the DEPLOY half of data_processing's 2026-08-19 fix,
+        # which only ever reached the training side (found 2026-09-12 by
+        # scratchpad/final_layout/deploy_vs_lmdb.py: scaled_elapsed_days_cumulative disagreed with the
+        # LMDB on 39-73% of VAL rows, by up to 0.31 sigma). elapsed_* = -1 means "no previous review":
+        # the cumulative is -1 on such a row and otherwise sums only REAL gaps, each column masked on
+        # its OWN sentinel (process_row keeps the running sums the same way).
+        _ed, _es = row["elapsed_days"], row["elapsed_seconds"]
+        if _CUMSUM_LEGACY:
+            row["elapsed_days_cumulative"] = self.card2elapsed_days_cumulative.get(card_id, 0) + _ed
+        else:
+            row["elapsed_days_cumulative"] = (
+                -1 if _ed == -1 else self.card2elapsed_days_cumulative.get(card_id, 0) + _ed
+            )
         row["scaled_elapsed_days_cumulative"] = scale_elapsed_days_cumulative(
             row["elapsed_days_cumulative"]
         )
-        row["elapsed_seconds_cumulative"] = (
-            self.card2elapsed_seconds_cumulative.get(card_id, 0)
-            + row["elapsed_seconds"]
-        )
+        if _CUMSUM_LEGACY:
+            row["elapsed_seconds_cumulative"] = (
+                self.card2elapsed_seconds_cumulative.get(card_id, 0) + _es
+            )
+        else:
+            row["elapsed_seconds_cumulative"] = (
+                -1 if _es == -1 else self.card2elapsed_seconds_cumulative.get(card_id, 0) + _es
+            )
         row["scaled_elapsed_seconds_cumulative"] = scale_elapsed_seconds_cumulative(
             row["elapsed_seconds_cumulative"]
         )
@@ -276,6 +450,15 @@ class RNNProcess:
         row["day_of_week"] = ((row["day_offset"] % 7) - 3) / 3
 
         def add_id(name):
+            # ⚠ A row that already carries the pipeline's flag came from get_rwkv_data (every -id
+            # path: the trace exporter, the screens), which has ALREADY replaced a NaN id by the
+            # training fill -- so np.isnan below can never fire there, and the flag came out 0 on
+            # every missing-card row while training has 1 (~26% of all -id reviews; found
+            # 2026-09-12, deploy_vs_lmdb.py). Keep that flag. A raw row (a live scheduler, the
+            # published legacy merge in run()) has no flag column and still derives it here.
+            if f"{name}_is_nan" in row and not np.isnan(row[name]):
+                row[f"{name}_is_nan"] = float(row[f"{name}_is_nan"])
+                return
             if np.isnan(row[name]):
                 # ⚠ note_id gets a PER-CARD placeholder, matching data_processing.py's training
                 # fill (BUG C, 2026-08-26). A bare constant here pooled EVERY NaN-note card in
@@ -322,6 +505,36 @@ class RNNProcess:
         row["cum_reviews_today"] = scale_cum_reviews_today(row_today_reviews)
         row["cum_new_cards_today"] = scale_cum_new_cards_today(row_today_new_cards)
 
+        if _EXTRA_ANY:
+            # Deploy's review_th. `self.i` counts reviews already PROCESSED (it is incremented at the end
+            # of process_row), so this review is the (i+1)-th -- the same 1-based index training reads off
+            # the stored row, and the query row shares it because imm_predict never advances i.
+            _th = self.i + 1
+            _cum = len(self.card_set) + (0 if card_id in self.card_set else 1)
+            if _EXTRA_REVIEW_TH:
+                row["scaled_review_th"] = float(_extra.scale_review_th(_th))
+            if _EXTRA_NEW_CARD_SHARE:
+                row["new_card_share"] = float(_extra.scale_new_card_share(_cum, _th))
+
+        if _EXTRA_CUM_NEW_CARDS:
+            # RWKV_EXTRA_FEATURES=cum_new_cards, the DEPLOY half. Training rebuilds this from the side
+            # table as `searchsorted(first_ths[user], review_th, "right")`, i.e. `is_first_review.cumsum()`
+            # INCLUSIVE of this row (data_processing.py:364); here the same quantity is the running set of
+            # cards seen, plus this card when the review is its first. `card_set` is updated in process_row
+            # AFTER the row is built, so the query row (imm_predict, which never updates it) reads exactly
+            # the value its real row reads -- the same coupling the shared `review_th` gives training.
+            # A live scheduler can compute it: Anki knows it is showing a new card.
+            row["scaled_cum_new_cards"] = float(_extra.scale_cum_new_cards(
+                len(self.card_set) + (0 if card_id in self.card_set else 1)))
+
+        if _EXTRA_ROW:
+            self._add_rowfeat(row)
+        if _EXTRA_SIBGAP:
+            # RWKV_EXTRA_FEATURES=sibgap_none, the DEPLOY half: the same rule as training (flag = the
+            # scaled sibling gap is exactly the 0.0 "no earlier sibling" sentinel), on the value this
+            # builder computed for the row.
+            row["sibgap_none"] = 1.0 if float(row["scaled_sibling_gap"]) == 0.0 else 0.0
+
         row["scaled_elapsed_days"] = scale_elapsed_days(row["elapsed_days"].item())
         row["scaled_elapsed_seconds"] = scale_elapsed_seconds(
             row["elapsed_seconds"].item()
@@ -332,7 +545,11 @@ class RNNProcess:
         row = self.add_same(row)  # add_same does dict(row) (isolated) -> outer Series.copy was redundant
         row["is_query"] = 1.0
         row["skip"] = True
-        row["scaled_duration"] = 0
+        # "no press yet": 0.0, or under R1 the shrinkage median of this card's and this user's PAST
+        # durations (rwkv/probe_impute.py) -- the same value training wrote on the query row.
+        row["scaled_duration"] = (
+            0 if self.duration_imputer is None else self.duration_imputer.value(row["card_id"])
+        )
         row["scaled_state"] = 0
         for i in range(1, 5):
             row[f"rating_{i}"] = 0
@@ -358,12 +575,18 @@ class RNNProcess:
 
         # Update state
         card_id = row["card_id"]
+        if self.duration_imputer is not None:
+            # AFTER the review: its duration joins the past for every LATER query and probe row
+            self.duration_imputer.push(card_id, row["scaled_duration"])
+        # running sums of REAL gaps only (the sentinel rule in add_same); legacy sums the -1 too
+        _ed, _es = row["elapsed_days"], row["elapsed_seconds"]
         self.card2elapsed_days_cumulative[card_id] = (
-            self.card2elapsed_days_cumulative.get(card_id, 0) + row["elapsed_days"]
+            self.card2elapsed_days_cumulative.get(card_id, 0)
+            + (_ed if (_CUMSUM_LEGACY or _ed != -1) else 0)
         )
         self.card2elapsed_seconds_cumulative[card_id] = (
             self.card2elapsed_seconds_cumulative.get(card_id, 0)
-            + row["elapsed_seconds"]
+            + (_es if (_CUMSUM_LEGACY or _es != -1) else 0)
         )
 
         if self.first_day_offset is None:
@@ -380,6 +603,9 @@ class RNNProcess:
             self.card2first_day_offset[card_id] = (
                 row["day_offset"] - self.first_day_offset
             )
+
+        if _EXTRA_ROW:
+            self._update_rowfeat(row)
 
         self.prev_row = row.copy()
         self.last_i[card_id] = self.i

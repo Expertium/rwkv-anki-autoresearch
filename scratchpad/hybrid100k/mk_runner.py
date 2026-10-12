@@ -1,6 +1,6 @@
 """Generate a full WS + decay + eval runner for one hybrid arm.
 
-A GENERATOR, NOT A CLONE. CLAUDE.md's bug-rate audit found the root cause of the 2026-08 failure
+A GENERATOR, NOT A CLONE. AGENTS.md's bug-rate audit found the root cause of the 2026-08 failure
 run: runners were cloned across lineages, so each new run silently inherited its ancestor's
 defects (27 historical runners carry the `endlocal`-before-the-marker bug alone). The fix it asked
 for was one canonical template with the guards baked in. This is that template for the hybrid arms.
@@ -69,7 +69,7 @@ EXTRA_SPECS = {
         "desc": ("FSRS-7 (S_long, S_short, D) replaces the card stream's WKV; the trunk EMITS "
                  "the 34 parameters per review"),
         "env": ["RWKV_FSRS_CARD=0"],
-        "gate": ("REM GATE: CLAUDE.md's SIZE/SPEED EXCEPTION, pre-registered 2026-08-30 BEFORE\n"
+        "gate": ("REM GATE: AGENTS.md's SIZE/SPEED EXCEPTION, pre-registered 2026-08-30 BEFORE\n"
                  "REM this run -- accept iff BOTH modes stay within +0.0015 of the champion AND\n"
                  "REM per-card state strictly shrinks. NOT the parameter-ratio rule: V1 moves\n"
                  "REM per-card state 2,880 floats to 3 while moving parameters only 12.4%, so a\n"
@@ -100,7 +100,7 @@ WS_TOML = '''# HYBRID ARM {arm}: {desc}
 # outputs by step index and verifies a per-step `labels_sum` checksum. Batch composition depends
 # on the db, the user range, MAX_TRAIN_GLOBAL_LEN, the fetch-process count and the seeds -- never
 # on the student's architecture. So a smaller student consumes the same dump.
-# The corollary is the trap recorded in CLAUDE.md: the checksum proves LABEL alignment and says
+# The corollary is the trap recorded in AGENTS.md: the checksum proves LABEL alignment and says
 # nothing about INPUTS, so any input-side change invalidates the dump while it keeps passing.
 # WARNING: the data-affecting fields below MUST stay identical to the dump's. Do not "tidy" them.
 TRAIN_USERS_START = 1

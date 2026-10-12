@@ -8,6 +8,15 @@ THREE phases (rwkv/clock_fix.py). So no weight of this model ever trained on a c
 carried the current review's excess, and (w10lf minus w10plain) is what the leak was worth once
 training can adapt from step 0. It is the base the shipped model is built on.
 
+THE SECOND LEVER (added 2026-09-12, before the run ever started): RWKV_FINAL_LAYOUT=1, the final
+input layout. Andrew: "both [the removed and the dead/duplicate columns] should be removed for the
+Really Really For Real This Time Finalized Final, Finally! version of RWKV". Six duplicate
+card-feature columns leave the MODEL's input (109 -> 103 inputs, params 563,652 -> 561,732), sliced
+out as a gen-5 row is read (rwkv/id_features.py FINAL_LAYOUT_DROPPED; smoke
+scratchpad/final_layout/smoke_final_layout.py). So w10lf differs from ws10 / arm 1 in two things,
+the clock fix and the layout; the layout's value is expected to be ~0 (duplicates), and no run
+separates it from the clock fix.
+
 One env difference from ws10, stated so nobody finds it later: ws10 ran WITHOUT OMP_NUM_THREADS=7
 (it was sliced away when its env was copied; every fetch worker then ran torch on 32 cores, found
 2026-09-09). Arm 1's decay and every later branch set it, and so does this run, WS included. It
@@ -36,6 +45,8 @@ TOML_SRC = "scratchpad/ws10/ws.toml"
 ARM1_SRC = "scratchpad/w10plain/run_w10plain.cmd"
 NL = "\n"
 DRY_STEPS = int(0.05 * 10935)          # train_rwkv: total_steps = int(EPOCHS * len(groups))
+PARAMS_WS10 = 563652
+PARAMS = 561732                        # 563652 - 6 x 320 (features2card.0 rows); smoke part 3
 
 
 def rd(p):
@@ -71,7 +82,9 @@ REM THE LEVER, in all three phases: RWKV_CLOCK_AT_PREV_ANSWER=%T% (rwkv/clock_fi
 REM row (imm) and the PAVA probe rows (rectified ahead) predict at SHOW time, and their clock
 REM columns carried the current review's capped-duration excess; they move to the previous answer
 REM when the gap is in-session, a shift past UTC midnight takes the previous day's calendar
-REM columns, and the ahead label time loses the target review's in-session gap. Params unchanged.
+REM columns, and the ahead label time loses the target review's in-session gap.
+REM THE SECOND LEVER: RWKV_FINAL_LAYOUT=1, the final input layout (6 duplicate card-feature
+REM columns removed from the model input: 103 inputs, params 561732; rwkv/id_features.py).
 REM
 REM Controls: ws10 for the WS phase (same env plus OMP_NUM_THREADS=7, see mk_w10lf.py), arm 1
 REM (w10plain) for the decay and the eval. PREREG: scratchpad/w10lf/PREREG.md.
@@ -81,7 +94,9 @@ REM checkpoints every 2000 steps but does NOT auto-resume; a crash there needs a
 """
 
 LEVER = ("\nREM ---- THE LEVER: the query-row clock-leak fix, in WS, decay, validation and eval ----\n"
-         "set RWKV_CLOCK_AT_PREV_ANSWER=%s\n" % T)
+         "set RWKV_CLOCK_AT_PREV_ANSWER=%s\n"
+         "REM ---- THE FINAL INPUT LAYOUT (Andrew 2026-09-12): 6 duplicate columns out, 103 inputs ----\n"
+         "set RWKV_FINAL_LAYOUT=1\n" % T)
 
 
 def guard(logname, code_on, code_ran, what):
@@ -124,6 +139,8 @@ def phase_a(ws):
     s = sub(s, r"make_resume\.py %DIR% w10_ws scratchpad/ws10/ws\.toml scratchpad/ws10/ws_resume\.toml",
             "make_resume.py %DIR% w10lf_ws scratchpad/w10lf/ws.toml scratchpad/w10lf/ws_resume.toml", 1)
     s = sub(s, r"set CFG=scratchpad/ws10/ws_resume\.toml", "set CFG=scratchpad/w10lf/ws_resume.toml", 1)
+    s = sub(s, 'findstr /C:"Trainable parameters: %d"' % PARAMS_WS10,
+            'findstr /C:"Trainable parameters: %d"' % PARAMS, 1)
     s = s.replace(ok, guard("ws_%STAMP%.log", 58, 59, "WS") + ok, 1)
     s += ("REM The decay is a fresh start from the WS-final: the WS resume flag must not reach it.\n"
           "set RWKV_RESUME_SKIP_GROUPS=\n\n")
@@ -214,12 +231,18 @@ def check(out, wtoml, ws, arm1, toml, dry):
         if diff:
             sys.exit(f"REFUSING ({tag}): env differs from {name}: {diff}")
     extra = set(e) - set(e_ws) - set(e_a1)
-    if extra != {"RWKV_CLOCK_AT_PREV_ANSWER"}:
+    if extra != {"RWKV_CLOCK_AT_PREV_ANSWER", "RWKV_FINAL_LAYOUT"}:
         sys.exit(f"REFUSING ({tag}): unexpected extra env {sorted(extra)}")
     if e["RWKV_CLOCK_AT_PREV_ANSWER"] != T:
         sys.exit("REFUSING: the lever has the wrong value")
     if "set RWKV_CLOCK_AT_PREV_ANSWER=\n" in code:
         sys.exit("REFUSING: the lever is cleared somewhere")
+    if e["RWKV_FINAL_LAYOUT"] != "1" or "set RWKV_FINAL_LAYOUT=\n" in code:
+        sys.exit("REFUSING: the final layout is not on, or is cleared somewhere")
+    if code.index("set RWKV_FINAL_LAYOUT=1") > code.index("rwkv.train_rwkv"):
+        sys.exit("REFUSING: the final layout is set after training starts")
+    if ("Trainable parameters: %d" % PARAMS) not in code or ("Trainable parameters: %d" % PARAMS_WS10) in code:
+        sys.exit("REFUSING: the param guard does not name the final layout's count")
     if code.index("set RWKV_CLOCK_AT_PREV_ANSWER=") > code.index("rwkv.train_rwkv"):
         sys.exit("REFUSING: the lever is set after training starts")
     if code.index("set RWKV_RESUME_SKIP_GROUPS=\n") > code.index("write_decay_setup.py"):

@@ -51,7 +51,7 @@ chunk, calling the code the loop calls):
 ## Gate
 
 The BOTH-MODES rule, not the curve-side exception: this KD rewrites both objectives (the iter 55
-note in CLAUDE.md). Adopt KD into the deploy QAT recipe iff P1 holds.
+note in AGENTS.md). Adopt KD into the deploy QAT recipe iff P1 holds.
 
 ## Cost
 

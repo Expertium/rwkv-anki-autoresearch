@@ -1,5 +1,14 @@
 """Generate run_fit_catalogs.cmd -- the ws10 PQ-catalog refit that arm 2's phase 0 demands.
 
+⚠⚠ FOUND 2026-09-12: THE CORPUS THIS PRODUCED WAS DUMPED FROM A MIS-WIRED MODEL. ENV below has no
+RWKV_STREAM_ORDER, so the Rust engine ran its DEFAULT card,deck,note order on the `_cnd` (card,note,
+deck) architecture: the "note" corpus is another stream (3,612 states for user 156 instead of 903) and
+the card states are 15.5% (relative L2) off. The same holds for the gen-5 dump of 2026-09-08
+(scratchpad/qat_gen5). So reference/pq_cb_*_ws10_* -- arm 2's START catalogs -- and every
+reconstruction number measured on these corpora describe the wrong states. Kept as run, for the
+record; the leak-free refit (scratchpad/w10lf/mk_lf_fit_catalogs.py) sets the variable and checks it
+(scratchpad/lfqat/check_corpus_order.py). Do not reuse this ENV for a Rust dump without it.
+
 WHY IT IS A CHAIN STEP AND NOT A NOTE. Both deployed catalogs were measured STALE on the gen-5
 trunk (scratchpad/qat_gen5/FINDING.md): the WKV one scored 0.9416 against a random control of
 0.9582, and the shift one 1.0352 / 1.0811, i.e. WORSE than encoding everything to zero. A stale

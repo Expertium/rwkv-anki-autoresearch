@@ -9,7 +9,7 @@ REM corruption. CAUSE: run_iter43.cmd was committed AFTER launch and then rewrit
 REM `git rebase --autostash`, while cmd.exe was still executing it. cmd.exe re-reads the batch
 REM file from a byte offset after each command finishes, so the rewrite made it resume
 REM mid-token ("scratchpad" -> "ratchpad"). The 9009 is NOT a training failure.
-REM LESSON (same class as CLAUDE.md's "editing a live .cmd corrupts cmd.exe's saved read
+REM LESSON (same class as AGENTS.md's "editing a live .cmd corrupts cmd.exe's saved read
 REM offset"): ANY git operation that rewrites a running .cmd -- commit is fine, but
 REM rebase/checkout/stash rewrite the working tree -- is the same hazard. Do not touch git on a
 REM running runner's path until its chain reports DONE_EXIT.

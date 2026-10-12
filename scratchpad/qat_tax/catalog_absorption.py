@@ -3,7 +3,7 @@
 
 THE DECISION THIS MAKES. With the rank-1 term closed (iter 47) the remaining QAT tax lives in the
 codebook and norm terms, and the norm levers are closed on mechanism. The obvious surviving candidate
-is the "free axis" recorded in CLAUDE.md: at bits=12 the ORACLE reached 0.2044 against a REFIT of
+is the "free axis" recorded in AGENTS.md: at bits=12 the ORACLE reached 0.2044 against a REFIT of
 0.3224, so CORPUS SIZE limits the fit and more users cost no deploy bytes.
 
 But that gap was measured with FROZEN catalogs. Since then the catalogs LEARN during the run, and the

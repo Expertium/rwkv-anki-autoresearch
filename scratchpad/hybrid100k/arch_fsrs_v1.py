@@ -1,7 +1,7 @@
 # ITER 41 (2026-08-09): architecture_d80_lora4.py with the stream order corrected to TRUE
 # FINE-TO-COARSE -- card -> NOTE -> DECK -> preset -> user (Andrew's directive after the
 # order audit: every historical arch file ran card -> DECK -> NOTE, which is not monotone
-# in granularity -- notes ~0.9x cards, decks ~56/user. CLAUDE.md's invariant text had
+# in granularity -- notes ~0.9x cards, decks ~56/user. AGENTS.md's invariant text had
 # always CLAIMED card->note->deck; the code never did it until this file).
 #
 # ONLY the tuple order changes. Each stream keeps its own depth/mixer/dropout (they travel

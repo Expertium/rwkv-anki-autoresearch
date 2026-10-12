@@ -70,3 +70,13 @@ gaps included, which move the gap column only) and 3-7% of labels shift.
   pre-registered rule, and this file gets a dated note saying so.
 
 **2026-09-10 23:10 -- dated note.** Andrew directed a leak-free run REGARDLESS of phase L (`scratchpad/w10lf/`: WS from scratch with the fix). This branch's predictions stand unchanged; what changes is its role -- it is now a measurement (how much a decay-only fix recovers), not a candidate for the shipped model. It stays armed as-is until phase L reports; if phase L is MATERIAL, the queue is re-planned by hand and this branch may be dropped in favour of the leak-free run. The fix also gained the UTC-midnight calendar shift the same evening (`rwkv/clock_fix.py`), so if this branch runs it uses it.
+
+## VERDICT (2026-09-12 09:55, `verdict_w10clk.py`)
+
+n = 2,499, size 0/2,499, nan 0: **ahead 0.297801 / imm 0.264160.**
+* P1 HELD: ahead +0.000224 (band +0.0001..+0.0008), imm +0.002095 (band +0.0010..+0.0040).
+* P2 HELD: ratio 0.70 against lkc30m on users 5001-5300 (+0.002217 vs +0.003152), band 0.4-0.8.
+* P3 HELD (~60% call): neither criterion met; imm misses 0.2640 by 0.00016.
+* P4 HELD (~55% call): w10clk's imm is WORSE than d=128's by 0.000575.
+* P5 HELD: engaged. The "3-7% of labels shift" figure was the smoke's chunks; the full run's counter
+  (any positive in-session gap, mostly sub-second) says 57%.

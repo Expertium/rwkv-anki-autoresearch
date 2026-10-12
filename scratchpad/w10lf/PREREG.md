@@ -100,3 +100,38 @@ checkpoints.
 
 `python scratchpad/w10clk/verdict_w10clk.py w10lf` (takes a tag; it prints w10clk's bands, so read
 the bands from THIS file), plus `grep "day crossings" scratchpad/w10lf/ws_*.log | tail -1` for P5.
+
+## Addendum 2026-09-12 (written before the run started): the FINAL INPUT LAYOUT
+
+Andrew: "both [the removed and the dead/duplicate columns] should be removed for the Really Really
+For Real This Time Finalized Final, Finally! version of RWKV". w10lf is the base of the shipped
+model, so it trains on that layout: `RWKV_FINAL_LAYOUT=1`, 103 inputs (6 duplicate card-feature
+columns sliced out as each gen-5 row is read), params 563,652 -> **561,732**. Detail and evidence:
+`INPUT_FEATURES.md` "Final layout -- 103 inputs", `scratchpad/final_layout/`.
+
+**So w10lf now differs from arm 1 / w10clk in TWO things: the clock fix (all phases) and the
+layout.** The removed columns are an exact copy (`deck_id_is_nan`), a copy on 99.9985% of reviews
+(`preset_id_is_nan`) and two r = 0.99 near-copies (the decade/century `_first` halves), so the
+expected effect of the layout is ~0, well below every band above. **No run separates the two**; the
+bands stand as written, and a result outside them must not be blamed on the layout without a run
+that isolates it. The param guard in the runner is 561732 (measured, `param_counts.py`).
+
+## VERDICT (2026-09-14 18:05, `verdict_w10clk.py w10lf`)
+
+w10lf = **0.297755 / 0.264195** (n = 2,499, size 0/2,499, nan 0, 0 tracebacks in WS / decay / eval).
+
+| prediction | said | got | holds |
+|---|---|---|---|
+| P1 imm | +0.0005..+0.0030 (revised +0.0006..+0.0022) | +0.002129 | yes (top of the revised band) |
+| P1 ahead | +0.0000..+0.0006 | +0.000178 | yes |
+| P2 ratio vs lkc30m | 0.2..0.7 (likely 0.4-0.8) | 0.73 | at the edge; inside the "likely" band |
+| P3 vs w10clk imm | <= w10clk + 0.0003 | +0.000034 | yes -- a TIE (ahead -0.000046, p 0.42) |
+| P4 stop criterion | ahead not met; imm ~50% | neither met (imm short by 0.0002) | yes |
+| P5 engagement | banners, day crossings | present in all three logs | yes |
+| P6 WS speed | within 5% of 0.80 steps/s | 0.913 (+14%) | NO -- faster; the named OMP_NUM_THREADS=7 difference |
+| P7 size | 0/2,499 | 0/2,499 | yes |
+
+**Reading:** a WS trained without the leak recovers nothing beyond the decay-only fix. The leak's value
+after full adaptation is +0.0021 imm / +0.0002 ahead, and it is the shipped base's number. The layout
+change is ~0 (bounded by the tie against w10clk). The suspended claims are re-decided: the imm stop
+criterion is NOT met and the model does NOT beat the d=128 model on imm (+0.0006 worse).

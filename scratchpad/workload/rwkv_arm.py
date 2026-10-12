@@ -1,7 +1,7 @@
 """RWKV-Curve arm: replay a user's real history through the FROZEN champion and record
 the interval it WOULD assign after every review, at each desired-retention level.
 
-THE DEPLOY CONTRACT IS FOLLOWED, not approximated (CLAUDE.md, "THE DEPLOY CONTRACT"):
+THE DEPLOY CONTRACT IS FOLLOWED, not approximated (AGENTS.md, "THE DEPLOY CONTRACT"):
   1. the most recent review's duration is zeroed  -> button_heads sets RWKV_PROBE_DUR
   2. PAVA rectification is applied                -> button_curves
   3. no piecewise ahead correction                -> RWKV_NO_AHEAD_RESIDUAL=1

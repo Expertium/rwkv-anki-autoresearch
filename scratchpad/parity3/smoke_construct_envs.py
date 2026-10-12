@@ -1,6 +1,6 @@
 """Construct the SCRIPTED model under every env a queued job will use. Run before launching.
 
-This is the check the lesson bank keeps asking for and the repo did not have. CLAUDE.md's
+This is the check the lesson bank keeps asking for and the repo did not have. AGENTS.md's
 TorchScript rules cost two dead launches, both the same shape: a hook that was smoke-tested
 through a plain-Python path while the real runs build a **ScriptModule**, where TorchScript
 resolves attributes even in dead branches and a failure goes SILENT (the NaN-except turns the

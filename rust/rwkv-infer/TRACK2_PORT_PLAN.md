@@ -12,7 +12,7 @@ faster CPU inference in Anki."*
 
 `model.rs` is **already dimension-agnostic**: `load()` derives `c` from `prehead_norm.weight`,
 `h` from `k_scale_linear.weight`, `k = c/h`, and `stream_layers` by counting blocks (model.rs
-:903-919). The stale "K=32-hardwired" note in CLAUDE.md was superseded by `1d3b5b8`. So d=96 /
+:903-919). The stale "K=32-hardwired" note in AGENTS.md was superseded by `1d3b5b8`. So d=96 /
 H=3 / K=32 needs no work on that axis.
 
 ## The five real gaps (all detectable from weight SHAPES — no env flags needed in Rust)
@@ -200,7 +200,7 @@ traces are both sequential and cannot certify this path.
    the usual float tolerance. **A15 parity is the definition of done for the port.**
    **★ DONE 2026-07-26 — `PARITY: PASS` for A18, imm 0.000035 / ahead 0.000044 vs tol 0.0005.**
    The first-ever parity verification of the track-2 architecture, so steps 1–3 are certified.
-   Target regenerated as `reference_a18/` (self-contained at exactly 0.000e+00); see CLAUDE.md
+   Target regenerated as `reference_a18/` (self-contained at exactly 0.000e+00); see AGENTS.md
    §11 for the exact procedure and the 9.6e-3 max-per-review note. The history below is kept
    because the *reason* it was red is the reusable lesson.
    ⚠ **The gate WAS red and its wiring is a trap (found 2026-07-26).** `verify_rust.py` does **not** run the engine: it scores
@@ -264,4 +264,4 @@ version of this line listed them as "track-1 deploy extras, training-only", whic
 wrong twice over: the GRU head is gap 1 above, and the rectifier is the model's button
 ordering guarantee, not a training detail. Both ship. That misfiling is the same error
 that let PAVA go unevaluated from iter 23 to iter 30 — see the three-way parity rule in
-CLAUDE.md §9.
+AGENTS.md §9.

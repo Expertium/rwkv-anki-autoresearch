@@ -6,7 +6,7 @@ REM Motivation, measured today on the identical 2500 val-half users with identic
 REM `size`: teacher 0.294612 ahead / 0.263561 imm vs iter-31 champion 0.298909 /
 REM 0.267637. We are +0.0043 / +0.0041 BEHIND the model we are shrinking -- ~10x a
 REM single iteration's gate. (That teacher number was NOT pending: it was measured
-REM 2026-07-03 by run_base5k_eval.cmd on 5001-10000; CLAUDE.md's "PENDING" was stale.)
+REM 2026-07-03 by run_base5k_eval.cmd on 5001-10000; AGENTS.md's "PENDING" was stale.)
 REM
 REM Family = DISTILLATION, standing at 0/1 and NOT closed. Iter 10's attempt was
 REM warmup-ONLY KD onto the d=32 trunk, which the lesson bank records as DATA-limited;

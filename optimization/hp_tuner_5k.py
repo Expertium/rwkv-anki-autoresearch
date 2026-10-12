@@ -387,7 +387,7 @@ NEXT_ROUND_CANDIDATES = [
 #     epochs, and the split between stable and decay has never been tested at that budget --
 #     WS 1 + decay 1.0 vs WS 1.5 + decay 0.5 at matched cost. ⚠ AND THE CONSTRAINT PINNING WS=1
 #     IS WEAKER THAN IT LOOKS: it rests on the champ5k_b1 A/B ("2nd epoch adds nothing"), which
-#     CLAUDE.md itself flags was run with augmentation OFF -- i.e. with BYTE-IDENTICAL epochs,
+#     AGENTS.md itself flags was run with augmentation OFF -- i.e. with BYTE-IDENTICAL epochs,
 #     the one configuration in which extra epochs CANNOT help. That null does not license WS=1
 #     at a 2-epoch budget.
 #   * Augmentation ON. Same argument from the other side: at 2.0 epochs the second pass is a

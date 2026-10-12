@@ -113,6 +113,11 @@ def main():
                          "changes, which genuinely can move both modes.")
     ap.add_argument("--harm-alpha", type=float, default=0.05,
                     help="significance level for 'imm significantly worse' (default 0.05)")
+    ap.add_argument("--either-mode", action="store_true",
+                    help="THE GATE FROM 2026-09-24 (Andrew): 'either a double improvement, or an improvement in "
+                         "one mode and null in the other'. PASS iff at least one mode improves by raw >= "
+                         "EITHER_BAR (0.00005) at p<1e-4, AND neither mode is significantly worse (mean "
+                         "declines AND p_worse < --harm-alpha).")
     args = ap.parse_args()
 
     results = [compare(args.cand_ahead, args.champ_ahead, "ahead", args.intersect),
@@ -146,6 +151,20 @@ def main():
                                                          "p": r["wilcoxon_p"],
                                                          "p_worse": r["p_worse"]}
                                              for r in results}))
+        sys.exit(0 if ok else 1)
+    if args.either_mode:
+        EITHER_BAR = 0.00005
+        better = [r for r in results if r["delta"] >= EITHER_BAR and r["p_pass"]]
+        worse = [r for r in results if r["delta"] < 0 and r["p_worse"] < args.harm_alpha]
+        for r in results:
+            print(f"[either] {r['mode']:5s} delta {r['delta']:+.6f}  p_better {r['wilcoxon_p']:.3e}  "
+                  f"p_worse {r['p_worse']:.3e}  improves: {'YES' if r in better else 'no'}  "
+                  f"significantly worse: {'YES' if r in worse else 'no'}")
+        ok = bool(better) and not worse
+        print(f"EITHER-MODE GATE (>= {EITHER_BAR} at p<{P_THRESHOLD:g} in at least one mode, the other not "
+              f"significantly worse): {'PASS' if ok else 'FAIL'}")
+        print("PAIRED_P_JSON " + json.dumps({r["mode"]: {"delta": round(r["delta"], 6), "p": r["wilcoxon_p"],
+                                                         "p_worse": r["p_worse"]} for r in results}))
         sys.exit(0 if ok else 1)
     all_pass = all(r["p_pass"] for r in results)
     print(f"P-GATE (both modes p<{P_THRESHOLD:g}): {'PASS' if all_pass else 'FAIL'}")

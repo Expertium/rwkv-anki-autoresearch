@@ -3,7 +3,7 @@
 For each reference user we compare, on the equalized benchmark review set:
   - per-review predictions (Rust vs Python) -> max abs diff (should be ~f32 precision),
   - mean LogLoss (sklearn, same as get_stats) for imm + ahead.
-Gate (CLAUDE.md §5): each mode's by-user-mean LogLoss within +/-0.0005 of Python.
+Gate (AGENTS.md §5): each mode's by-user-mean LogLoss within +/-0.0005 of Python.
 
 Run: python verify_rust.py
 """
@@ -19,7 +19,7 @@ REF_USERS = [107, 136, 156]
 # RWKV_TRACE_DIR, so a parity check always scores ONE self-consistent set of artifacts.
 # ⚠ This script does NOT run the engine -- it scores rust_pred_<user>.json files already sitting
 # in this directory. Run the binary from the repo root first (it writes preds/), copy them here,
-# then run this. See CLAUDE.md sec 11.
+# then run this. See AGENTS.md sec 11.
 REF = Path(os.environ.get("RWKV_REF_DIR", "reference"))
 TOL = 0.0005
 

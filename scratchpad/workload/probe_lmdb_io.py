@@ -2,7 +2,7 @@
 
 WHY MEASURE INSTEAD OF ASSUMING. Moving a db from F: to C: costs 15-30 minutes of USB copy and
 ~100 GB of the SSD we just freed, so it should be worth something. Two facts push the other way:
-CLAUDE.md's own profile says training fetch is ALREADY HIDDEN ("~3-7 ms/step, 7 workers +
+AGENTS.md's own profile says training fetch is ALREADY HIDDEN ("~3-7 ms/step, 7 workers +
 FETCH_AHEAD=5 fully hide prep+IPC"), and the OS page cache will serve a re-read from RAM
 regardless of which disk the file sits on.
 
@@ -85,4 +85,4 @@ for drv, path in TARGETS:
              (nbytes / 1e6) / dt if dt > 0 else float("nan"), t_enum), flush=True)
 print("")
 print("If the F: rows are within ~2x of the C: rows, the drive is not the bottleneck and")
-print("moving a db to the SSD buys little -- CLAUDE.md already measured fetch as hidden.")
+print("moving a db to the SSD buys little -- AGENTS.md already measured fetch as hidden.")

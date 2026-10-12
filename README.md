@@ -1,8 +1,8 @@
 # rwkv-anki-autoresearch
 
 A small **RWKV-7 neural network for Anki spaced-repetition scheduling**, on the path to
-running **CPU-only, inference-only, quantized inside Anki**. See [`CLAUDE.md`](CLAUDE.md)
-for the full goal, roadmap, and baseline numbers.
+running **CPU-only, inference-only, quantized inside Anki**. See [`AGENTS.md`](AGENTS.md)
+for the project guidance, roadmap, and baseline numbers.
 
 This repo vendors the RWKV model + data pipeline from
 [`open-spaced-repetition/srs-benchmark`](https://github.com/open-spaced-repetition/srs-benchmark)
@@ -52,3 +52,26 @@ Verify the package imports standalone:
   LMDB reserves its full `map_size` on disk immediately — always shrink `LMDB_SIZE` for
   subset runs. (Details in the project memory.)
 - **Threads:** cap data-pipeline parallelism at 7 on this machine.
+
+## Scoring ONE foreign collection against the benchmark (added 2026-09-16)
+
+Every stage takes `--config <toml>` on the command line and reads it at IMPORT time (`rwkv/parse_toml.py`,
+`parse_known_args`, so the flag passes through the srs-benchmark parser too). Pass it on the command line,
+never by injecting settings into the parent process: on Windows the `multiprocessing` pool spawns fresh
+interpreters that re-import the module and read `--config` from `sys.argv`; with nothing there the workers
+die or block at import and the parent waits forever (a silent hang at ~4 s of CPU -- seen by the Clanki
+session 2026-09-16 on a single-user run).
+
+Single user, single process, no dependency on the 10k dataset (each user is read from its own parquet):
+copy `rwkv/find_equalize_id_e2s.toml`, set `USER_IDS = [<id>]` (a list; takes precedence over the range),
+`PROCESSES = 1`, `DATA_PATH` to an export in the dataset layout (`revlogs/user_id=<id>/`, `cards/`, `decks/`
+partitioned by user_id), and a NEW `LABEL_FILTER_LMDB_PATH`. Then:
+
+    .venv\Scripts\python.exe -m rwkv.find_equalize_test_reviews --config <toml>
+    .venv\Scripts\python.exe -m rwkv.data_processing --config <test-db toml>
+    .venv\Scripts\python.exe -m rwkv.get_result --config <eval toml>
+
+`get_result`'s per-user jsonl carries LogLoss, RMSE(bins) and AUC on the benchmark's equalized set (first
+reviews and zero-gap rows out, `max_seq_len * 2 = 128` rows per card, the last 5/6 of the surviving rows).
+The interval branch is chosen by the DATASET: an export with `review_time` takes the -id end-to-start
+correction, one without takes the published end-to-end one; match the checkpoint's training.

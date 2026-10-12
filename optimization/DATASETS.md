@@ -2,7 +2,7 @@
 
 Single place for "which review dataset should we train on". Written 2026-07-27 after
 Andrew asked whether the old 20k set was worth training on. Supersedes the scattered
-DATA FACT bullets in CLAUDE.md for questions of *dataset choice* (those bullets stay
+DATA FACT bullets in AGENTS.md for questions of *dataset choice* (those bullets stay
 authoritative for the `-id` build details).
 
 ## The four sets on this machine
@@ -93,7 +93,7 @@ epoch**. Epoch 2 replays the same tensors as epoch 1; only dropout differs.
 nothing" — ahead -0.00006 p=0.31, imm +0.00043 better p=6e-62), which is why WS is
 fixed at 1 epoch, was measured in exactly the configuration where extra epochs *cannot*
 add anything. It establishes "more **identical** epochs don't help", not "more epochs
-don't help", and must not be quoted as the latter. This is the same point CLAUDE.md's
+don't help", and must not be quoted as the latter. This is the same point AGENTS.md's
 endgame item (b) raises for the 10x run, now confirmed in code rather than suspected.
 
 **★ UPDATE 2026-08-16 — the fix is NOT "turn augmentation on", and the premise survives anyway.**

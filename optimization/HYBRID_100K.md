@@ -460,7 +460,7 @@ waiting rather than after. Each arm is one command:
 Order: **A first** (the cheapest and the largest param cut), then B vs C as the matched ~100k
 feature-MLP-vs-depth rebalance.
 
-**`mk_runner.py` is a GENERATOR, not another clone**, which is what CLAUDE.md's bug-rate audit
+**`mk_runner.py` is a GENERATOR, not another clone**, which is what AGENTS.md's bug-rate audit
 asked for: the root cause of the 08-17/18 failure run was runners cloned across lineages, each
 inheriting its ancestor's defects (27 carry the `endlocal`-before-the-marker bug alone). Every
 known scar is a baked-in assert **on the generated output**: `cd /d` present, every `%VAR%` set
@@ -536,7 +536,7 @@ prevent a double launch if the nudge path fires at the same moment.
 
 **Why two GPU readings and not one.** `gpu_free.py 120` already averages over two minutes, but a
 benchmark BETWEEN phases is idle for longer than that, and starting on top of Andrew's benchmark
-is the thing CLAUDE.md forbids outright -- two processes once deadlocked in WDDM paging for 2.7 h.
+is the thing AGENTS.md forbids outright -- two processes once deadlocked in WDDM paging for 2.7 h.
 Same two-witness rule as the 08-20 false alarm and the midnight flight-recorder alarm.
 
 **Every mechanism was proven by EXECUTION, not by reading**, which is the standing rule here and
@@ -712,7 +712,7 @@ At dparams = 69,354 the ratio budget would be **0.0000694 per mode** — *tighte
 0.0001 accept bar. Judging a 960x state reduction by a parameter-ratio rule is a category error:
 V1 barely moves parameters and moves state enormously.
 
-**PRE-REGISTERED GATE for V1 — CLAUDE.md's SIZE/SPEED exception:** accept iff **both modes stay
+**PRE-REGISTERED GATE for V1 — AGENTS.md's SIZE/SPEED exception:** accept iff **both modes stay
 within +0.0015 of the champion** AND per-card state strictly shrinks. That is the rule already used
 for H=2/K=16, which was accepted on exactly this argument (Pareto-dominant at accuracy-parity).
 Registering it before the run, because choosing the gate after seeing the number is how a bar drifts.
@@ -726,7 +726,7 @@ against `srs-benchmark/models/fsrs_v7.py`), `rwkv/fsrs_stream.py` (`FsrsCardCore
 interleave schedule correctly sits the card stream out of every round).
 
 **Owed:** the wiring in `srs_model.py` (training) and `srs_model_rnn.py` (deploy), plus a
-three-way-parity case — CLAUDE.md requires one per new arch env flag, and
+three-way-parity case — AGENTS.md requires one per new arch env flag, and
 `parity_train_vs_rnn.py` is single-stack so it structurally cannot see this. Two inputs the core
 needs are already available in the forward: **`log_dt_N`** (natural-log elapsed SECONDS in
 canonical row order, built for `RWKV_RGATE`; FSRS wants days, so `exp(log_dt)/86400`) and the

@@ -1,3 +1,85 @@
+# ★ QUEUED FOR THE NEXT DATASET + LMDB REBUILD (2026-09-16): cards with NO Learning row
+
+**Andrew's decision for the Anki fork (Clanki, 2026-09-16, his words): "start from the first Review row
+(after a Forget, if a Forget row exists) if no Learning row exists".** 0.18% of his reviewed cards (112 of
+63,620) have answered reviews but no Learning row (imports, other apps, old schedulers); the fork's replay
+started every card at its latest learning start, so those cards never entered the sequence and had no curve.
+**What TRAINING does today (`scratchpad/dataset_id/build_parquet_id.py`, verbatim upstream logic):** manual
+rows (button 0: Forget, Set Due Date) are dropped by `filter_revlog` before anything else; each card is cut
+to its LAST learning start (`last_learn_start` mask); then `groupby("card_id").filter(state.iloc[0] == 0)`
+DROPS EVERY CARD whose first surviving row is not a Learning row. So the training set holds NO such card,
+and a Forget is visible only through the Learning row Anki writes after it. **=> the fork's new rule is an
+INFERENCE-ONLY divergence: the model sees a card whose first row is a Review (elapsed -1 sentinel,
+`is_first_review` = 1, rating, duration -- the `state` column is not an input since gen 5), which it will
+read as a brand-new card and under-predict until the card's real intervals re-inform the state.** Bounded
+to those cards, and strictly better than no curve. Accepted for inference (section 9 three-way parity:
+train and eval agree with each other, deploy differs on 0.18% of cards, recorded here so it is not silent).
+**The rebuild item:** make the builder keep such cards -- when a card has no learn start, start it at its
+first rated row after its last Forget (manual rows are dropped, so this needs the Forget's TIMESTAMP kept
+as a per-card cut point before `filter_revlog` discards it), give that row the usual first-row sentinels,
+and drop the `state.iloc[0] == 0` filter for that case only. Then `find_equalize_test_reviews` and the
+LMDBs must be rebuilt (the row set changes, so `size` moves: a new lineage baseline). Measure first how
+many such cards the 10k dataset holds; if it is ~0.2% as in Andrew's collection, the training effect is
+nil and this rides along with the next rebuild, it does not justify one.
+
+# ★ QUEUED FOR THE NEXT LMDB REBUILD (Andrew 2026-09-13)
+
+> *"let's add another input feature after all (whenever we do an LMDB rebuild): total number of cards
+> reviewed at least once aka upper bound on total knowledge ... at the time of review"*
+
+**The feature:** at each review, the number of DISTINCT cards this user has reviewed at least once so far
+(the card being reviewed counts if this is its first review, i.e. the value AFTER counting this row -- a
+scheduler knows it is showing a new card). It is an upper bound on what the user could know.
+**It already exists as an intermediate, it is just not an input:** `data_processing.py:364`
+`df["cum_new_cards"] = df["is_first_review"].cumsum()` -- the running count of first reviews, which is
+exactly this quantity (`is_first_review` = `elapsed_days == -1`). Today only its DIFFERENCES ship:
+`diff_new_cards` (#12, new cards since this card's last review) and `cum_new_cards_today` (#14).
+**Implementation:** add `scaled_cum_new_cards` = z-scored `log(1 + cum_new_cards)` to
+`CARD_FEATURE_COLUMNS` (constants measured on the TRAIN half only, like `optimization/feature_stats_id.py`
+does), KEEP on the query row (it describes the user, not the outcome). One extra input dim. Deploy: a
+per-user integer counter, +1 on a card's first review (`DEPLOY_FUNCTIONS.md` section 4 rules). It needs a
+rebuild because features are baked into the LMDB rows -- so it rides along with whatever forces the next
+rebuild (the six dead/duplicate columns in the feature audit, or the `label_filter_db` re-base); it does
+not justify one by itself. ⚠ Not the same as tenure (#22, TIME since the first review) nor as the
+cumulative REVIEW count (`cum_reviews_today` is per day; no all-time review count is an input either --
+if this feature is added, consider the all-time review count beside it, one dim each).
+
+**Also queued -- EVERY calendar cycle becomes calendar-EXACT, replacing the fixed-period approximations
+(Andrew 2026-09-13: "day of the week, month and year should ideally perfectly follow the calendar (say hi
+to leap years)" and "Week/month/quarter/year/decade/century should all perfectly follow the calendar
+instead of being approximations like 100 days or 365 days").** Checked in `rwkv/id_features.py:592-598`
+and `CYCLE_PERIODS`: today only the WEEK is exact (pandas `dayofweek`, phase `dow/7`). Day of year is the
+true day number but its phase is `doy * 2pi / 365.25` (up to one day off at the wrap in a leap year). The
+30 / 100 / 3650 / 36500-day cycles are fixed periods counted from the epoch, not calendar months, quarters,
+decades or centuries (the 30-day one drifts ~half a day per month against the calendar).
+**For the next rebuild, each cycle's phase = (position inside the calendar unit) / (length of THAT unit),
+computed with pandas from the UTC timestamp, for the review day AND the card's first-review day (the same
+two halves as today, minus the halves the final layout dropped):**
+
+| unit | phase | replaces |
+|---|---|---|
+| week | `dayofweek / 7` -- unchanged, already exact | -- |
+| month | `(day - 1) / days_in_month` (28/29/30/31) | the 30-day `cyc30_*` |
+| quarter | `(day of quarter - 1) / days in that quarter` (90/91/92) | the 100-day `cyc100_*` |
+| year | `(dayofyear - 1) / days_in_year` (365/366, `is_leap_year`) | the 365.25 phase of `doy_*` and `cyc365_first_*` |
+| decade | `((year mod 10) + year fraction) / 10`, year fraction = the year phase above | the 3650-day `cyc3650_*` |
+| century | `((year mod 100) + year fraction) / 100` | the 36500-day `cyc36500_*` |
+
+The 3-day cycle has no calendar unit; it stays as it is (a fixed 3-day beat) unless an ablation retires it.
+Dims are unchanged (one sin/cos pair per half), so the input width does not move. Both halves are functions
+of `review_time` / the first review's `review_time` only, so the deploy builder computes them from the show
+time (`DEPLOY_FUNCTIONS.md` section 4). Note the decade and century phases are then a monotone "where in the
+2010s / the 21st century" -- the same absolute-date content the fixed versions carry today, made exact.
+The weekday's UTC-vs-local caveat (module docstring) stays.
+**★ AND BOTH HALVES MUST USE ONE FORMULA (Andrew 2026-09-25: "we should unify them").** Today they do not: the
+review-day week/year halves are the CALENDAR columns `dow_*` / `doy_*` (Monday = 0; day of year from 1, /365.25,
+`id_features.py:598-603`), while every first-review half is `epoch_day mod period` (`:715-732`, day 0 = 1970-01-01 =
+a THURSDAY). So the week table row above is exact for the review day only; the first-review week half sits a fixed
+3 days off it and the year halves 0-1 day apart. The model loses nothing (a fixed phase offset of a sin/cos pair is a
+rotation the input layer absorbs), but the deploy builder has to copy two conventions. At the rebuild: compute the
+review-day half and the first-review half with the SAME function of a UTC timestamp for every unit in the table,
+and drop the separate `dow_*` / `doy_*` names in favour of `cyc7_*` / `cyc365_*` so one naming scheme covers all.
+
 # ★★ GENERATION-2 REBUILD (Andrew 2026-08-20): "we still have to do another LMDB rebuild"
 
 > *"Let's do bundle first, but we still have to do another LMDB rebuild"*
@@ -495,7 +577,7 @@ the original plan:
 Each worker holds an entire user's matrix and those are now 1.8x wider, so the inherited
 `PROCESSES=6` exhausted 64 GB and died on a 4 MB allocation. The train config is unaffected -- it
 chunks at 16384. (Compounded by a concurrent training run whose four fetch workers measured ~9.7 GB
-EACH, against the ~2.6 GB CLAUDE.md records.)
+EACH, against the ~2.6 GB AGENTS.md records.)
 
 **STILL OWED before a candidate can be judged on these DBs:**
 * **re-base the champion** -- re-run it on the new DBs; cross-rebuild numbers are NOT comparable;
@@ -802,7 +884,7 @@ every change lands:
    from the feature vector.
 
 ### Disk: build on F:, side by side — do NOT delete first
-CLAUDE.md records the sequencing as "delete the only copy, no rollback", from the estimate that the
+AGENTS.md records the sequencing as "delete the only copy, no rollback", from the estimate that the
 rebuild must land on C:. Measured 2026-07-27, it does not have to:
 
 | | C: (242.2 GB free) | F: (889.5 GB free) |

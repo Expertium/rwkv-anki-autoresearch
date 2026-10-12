@@ -22,7 +22,7 @@ This file is per-*optimization*, paired across **users**.
   review and yields all five stream states, so calls/s is the natural unit (the convention in
   `cpu_speed_log.md` §"What the throughput numbers MEAN").
 - **Unit of pairing: a USER.** 200 users, each contributing one paired point
-  `(before_rate_u, after_rate_u)`. ⚠ This differs from `cpu_speed_log.md` and from CLAUDE.md §11,
+  `(before_rate_u, after_rate_u)`. ⚠ This differs from `cpu_speed_log.md` and from AGENTS.md §11,
   which pair *trials*; both designs are valid, but the p-values are not comparable across them.
 - **User set: 5001–5200** (the first 200 of the val half). Speed is accuracy-neutral so any fixed
   set works; using val keeps TEST (7501–10000) untouched per the live rule. The
@@ -69,7 +69,7 @@ the liveplot). Simultaneity does not remove the noise; it makes the **sign** of 
 clean, which is all the Wilcoxon test needs.
 
 Keep the machine otherwise idle anyway — in particular **no co-tenant GPU work**, which has skewed
-measurements here before. This mirrors CLAUDE.md §11's "paired simultaneous trial", with the pairing
+measurements here before. This mirrors AGENTS.md §11's "paired simultaneous trial", with the pairing
 unit changed from a trial to a user (see above): for each of the 200 users, before and after run
 side by side and yield that user's one paired point.
 
@@ -119,7 +119,7 @@ Two invariants:
 ## ACCEPTANCE CRITERIA (Andrew, 2026-07-26) — accept a speedup iff ALL FOUR hold
 
 1. **Wilcoxon signed-rank p < 0.01**, one-sided, on the 200 paired per-user rates.
-   *Deliberately looser than the accuracy gate's p < 0.0001* (CLAUDE.md §"ACCEPTANCE GATE"):
+   *Deliberately looser than the accuracy gate's p < 0.0001* (AGENTS.md §"ACCEPTANCE GATE"):
    **timing measurements are noisy**, so demanding accuracy-grade significance from them would
    reject real wins for reasons that have nothing to do with the code.
 2. **`size` identical to iter 0.** Per-user equalized review count must match EXACTLY. It is a
@@ -148,7 +148,7 @@ So label every row **exact** or **inexact**, because the same ΔLogLoss means di
   approximation bought the speed. Cost is cumulative against iter 0, not against the previous row,
   so the budget cannot be laundered by taking it 0.0004 at a time.
 
-(Distinct from the +0.0015 *efficiency* budget in CLAUDE.md §5, which covers param-cutting and
+(Distinct from the +0.0015 *efficiency* budget in AGENTS.md §5, which covers param-cutting and
 quantization — architecture changes rather than implementation changes.)
 
 ## Table — `review_features` (states/s)
@@ -183,3 +183,61 @@ Note that the 2.39× already recorded in `CPU_INFERENCE.md` was measured with **
 either side** (LLVM auto-vectorization only, equally available to both). Once explicit AVX2 lands,
 that cross-architecture ratio may move, because the two models have different head widths
 (K=32 vs K=16) and need not vectorize equally well.
+
+---
+
+# 2026-09-19 -- SINGLE-USER REPLAY TABLES (Andrew: "you can make different tables: states/s, R/s, some table for quantization speed")
+
+These are NOT the 200-user paired-Wilcoxon protocol above (that table stays the acceptance scoreboard). They are
+quick replay measurements, one thread, B = 1, on the three parity users of `reference_final_inputs` (107 / 136 / 156,
+~5,300 reviews each; w10lf WS weights, 103 inputs, 561,732 params), taken BESIDE a local GPU training and Andrew's
+FSRS-7 run -- so read ratios, and treat the absolute rates as floors. The replay binary now prints both rates per
+user (`[speed]` line on stderr): the QUERY pass (`review_query`, state read-only = the retrievability / imm
+prediction) and the STATE pass (`review_batched` = `review_features`, returns the five new states, quantized when the
+deploy env is set). Every change below left the three prediction files BYTE-IDENTICAL to the serial-scan engine's.
+Deploy env: `RWKV_STATE_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_LOWRANK_PQ=<wkv catalog> RWKV_SHIFT_PQ=<shift catalog>
+RWKV_QUANT_SHIFTS=1 RWKV_PQ_NORM_BITS=1` (+ stream order / interleave; catalogs = lfq1's learned pair).
+
+## Table S -- states/s (the state pass, `review_features`)
+
+| engine state | state quantization | states/s | ms per state |
+|---|---|---|---|
+| any | off (what every earlier speed number measured) | ~2,800 | 0.36 |
+| before 2026-09-19 (serial warm scan) | deploy contract, b10 | ~470 | 2.12 |
+| after (prescreen scan + stack power iteration) | deploy contract, b10 | **~1,470** | **0.68** |
+| after | deploy contract, b13 WKV catalog (lfq1b13's, if adopted) | ~920 | 1.09 |
+| + no-String weight lookup (2026-09-19 evening: FNV-hashed keys, a layer's prefix hashed once; preds byte-identical) | off | ~4,000 | 0.25 |
+| + no-String weight lookup | deploy contract, b10 | **~1,915** | **0.52** |
+| + 4-row matvec (serial add order kept, AVX2 elementwise, no FMA; byte-identical) | off | ~4,300 | 0.23 |
+| + 4-row matvec | deploy contract, b10 | **~1,950** | **0.51** (quantization is now ~0.28 of it, more than the network) |
+| + INTEGER prescreen (13-bit catalog + query, `madd_epi16`, rigorous error bound -> 1.05 exact rechecks per search; vectorized min; byte-identical preds) | deploy contract, b10 | **~2,350** | **0.43** (network 0.23 + quantization ~0.20) |
+
+## Table R -- R/s (the query pass: retrievability = 1 - P(Again), and each button probe)
+
+| engine state | R/s | note |
+|---|---|---|
+| before 2026-09-19, deploy quantization on | ~470 | the query pass QUANTIZED a state it then threw away |
+| after | **~2,780** | `review_query` skips the compression (its outputs never depended on it); = the unquantized rate |
+| + no-String weight lookup (every `linear` / norm call built 1-2 Strings and hashed them with SipHash: ~20% of the pass) | **~3,970** | byte-identical preds, 3 users; replay 1,395 -> ~1,990 rev/s unquantized, ~990 -> ~1,275 quantized |
+| + 4-row matvec | **~4,320** | replay ~2,160 rev/s unquantized, ~1,320 quantized; an AVX2 build of the WKV step gave nothing (K = 16) |
+
+Button intervals = 4 probe query passes (`button_intervals` now uses `review_query` too) -> ~1,000 cards/s today;
+R2 (`scratchpad/r2/DESIGN.md`) would make it one query pass.
+
+## Table Q -- what the state quantization costs per state pass (ms, b10 unless noted)
+
+| component | before | after | how |
+|---|---|---|---|
+| network, no quantization | 0.36 | 0.36 | -- |
+| shift catalog search (2 roles x 2 chunks per layer, 4096 x 40) | ~1.3 | ~0.18 | transposed-catalog dot-product prescreen + exact recheck of the ~1.01 near-best centroids |
+| WKV joint catalog search (per head, 1024 x 32) | ~0.3 | ~0.06 | the same (b13 = 8192 x 32: ~0.45) |
+| rank-1 power iteration (per head, <= 64 iterations) | ~0.14 | ~0.08 | nalgebra STACK matrices for K = 8 / 16 / 32 (same kernels, no heap traffic) |
+| **total overhead over the network** | **~1.76** | **~0.32** | |
+| the same after the integer prescreen (2026-09-19 evening) | | **~0.20** | integer sums are exact: the prescreen gives the same numbers on every CPU and in the scalar fallback; `RWKV_PQ_SCAN=f32` = the float prescreen, `=exact` = the serial scan |
+| replay rate, query + state pass per review (rev/s) | 233 | **~990** | 4.2x; unquantized = 1,396 |
+
+Tried and DROPPED (exact, but slower than the prescreen): a PCA lower-bound scan (project on the top r catalog
+directions, skip centroids whose bound exceeds the incumbent). The catalogs are near-isotropic, so r = 16 still left
+hundreds of survivors per search: 260 / 290 / 340 / 410 rev/s at r = 4 / 8 / 12 / 16 against ~750 for the prescreen.
+Left on the table: skipping the search when a shift vector did not
+change, SIMD for the network's own matvecs.

@@ -1,3 +1,21 @@
+
+# Derived research data and temporary runner outputs; keep the builders and reports.
+scratchpad/s64hpar/corpus_s64h/
+scratchpad/ablate_cf/rows_ctl/
+scratchpad/ablate_cf/rows_abl/
+scratchpad/r2/rows_pbs64/
+scratchpad/s64hrefine/ptq/dfl_rvq4*/
+scratchpad/s64hrefine/ladder_dfl4.err
+scratchpad/pqcap/tmp/
+scratchpad/w10qat/corpus/
+scratchpad/wstune/old_rf10/
+scratchpad/wtlr2dry_v1_nowsonly/
+scratchpad/GPU_COLD.txt
+scratchpad/gpu_cold_last.txt
+scratchpad/eval_shards/shard_*.toml
+reference_s64h/rust_pred_*.json
+reference_s64h/weight_names.json
+
 # Python virtual env
 .venv/
 venv/
@@ -57,6 +75,10 @@ reference_realcyc/trace_user_*.json
 reference_realcyc/rust_pred_*.json
 reference_realcyc/weight_names.json
 preds_gen5/
+# reference_final_inputs/ = final-layout INPUT traces for the w10lf line (2026-09-12, stand-in
+# weights: never a parity reference). Only ref_metrics.json is tracked.
+reference_final_inputs/rust_pred_*.json
+reference_final_inputs/weight_names.json
 
 # Model checkpoints (regenerable binaries; never track) + papers + any stray safetensors
 *.pth
@@ -152,3 +174,53 @@ scratchpad/fsrs7/out_*/
 scratchpad/fsrs7/*.npz
 scratchpad/qat_gen5/*.txt
 scratchpad/qat_gen5/*.log
+
+# the rented box: address + instance ids stay local
+scratchpad/cloud/BOX.local.md
+
+# The cum_new_cards side table (scratchpad/newcards): 283 MB flat + 102 MB npz, DERIVED and
+# regenerable in ~1 minute from the read-only -id dataset by build_first_ths.py + flatten_first_ths.py.
+# ⚠ I committed these on 2026-09-20 before noticing the size; the blobs are still in local history.
+scratchpad/newcards/first_ths.npz
+scratchpad/newcards/first_ths_flat.npy
+scratchpad/newcards/first_ths_index.npz
+
+# Per-ROW side tables (scratchpad/rowtables): GIGABYTES, derived, rebuilt by build_rowtables.py.
+# Ignored BEFORE the first one is written -- see the note above for why that order matters.
+scratchpad/rowtables/*.npy
+scratchpad/rowtables/*.npz
+scratchpad/rowtables/*.out
+scratchpad/rowtables/*.err
+# The phase-coherence figure's inputs are read-only dataset scans; the PNG is small and is tracked.
+scratchpad/phase_coherence/scan.out
+scratchpad/phase_coherence/scan.err
+scratchpad/phase_coherence/plot.out
+scratchpad/phase_coherence/plot.err
+
+# ⚠ PQ CATALOG CORPORA ARE BULK SCRATCH, NOT RECORD (2026-09-22). A card corpus file is ~33 MB and
+# a wide dump is 160 files / 3.1 GB. `scratchpad/qat_tax/corpus*` was ignored above; the lfqat ones
+# were NOT, so `scratchpad/lfqat/corpus/` (12 files) and `corpus_wide/` (160) are already in local
+# history and `.git` reached 3.9 GB. They are REDUMPABLE in ~40 min from a checkpoint + the trace
+# exporter; what belongs in git is the fitted CATALOG (a few MB) and the runner that dumps them.
+scratchpad/lfqat/corpus/
+scratchpad/lfqat/corpus_wide/
+scratchpad/lfqat/corpus_real/
+scratchpad/lfqat/fit_files_no156.txt
+# throwaway held-out validation catalogs (run_honest_rvq5.cmd); the DEPLOY catalogs in reference/
+# are tracked, their 39-user twins are not -- they exist only to print one number
+scratchpad/lfqat/cb_rvq5_no156.txt
+# Generated data and one-machine process status.
+scratchpad/ablate_cf/rows_ctl/
+scratchpad/ablate_cf/rows_abl/
+scratchpad/r2/rows_pbs64/
+scratchpad/s64hpar/corpus_s64h/
+scratchpad/s64hrefine/ptq/dfl_rvq4*/
+scratchpad/pqcap/tmp/
+scratchpad/w10qat/corpus/
+scratchpad/wstune/old_rf10/
+scratchpad/wtlr2dry_v1_nowsonly/
+scratchpad/GPU_COLD.txt
+scratchpad/gpu_cold_last.txt
+scratchpad/eval_shards/shard_*.toml
+reference_s64h/rust_pred_*.json
+reference_s64h/weight_names.json

@@ -11,6 +11,20 @@ THE STATES ARE LEAK-INDEPENDENT. The corpus is the card/note state after each RE
 trace users; query and probe rows (the only rows the clock fix changes) never update state. So the
 existing traces are the right inputs for a leak-free model.
 
+THE FINAL LAYOUT (2026-09-12). w10lf has 103 inputs (RWKV_FINAL_LAYOUT=1), so the weights export sets
+the flag and the corpus is driven by reference_final_inputs/ (run_export_final_inputs.cmd), NOT by
+reference_realcyc: the Rust engine refuses a 109-wide trace for a 103-input model, and the realcyc
+traces were built by the deploy path before its 2026-09-12 fix (cumulative sentinel, missing-id
+flags; scratchpad/final_layout/deploy_vs_lmdb.py), so their card block disagrees with the LMDB. The
+new traces are checked against the LMDB (check_input_traces.py) and this refit refuses without that.
+
+THE STREAM ORDER (2026-09-12). The Rust engine takes the stream order from RWKV_STREAM_ORDER and
+defaults to the ORIGINAL card,deck,note order; the live `_cnd` architecture runs card,note,deck. The
+ws10 refit this file was copied from never set it, so its corpus was dumped from a MIS-WIRED model
+(the note corpus is another stream; card states 15.5% off). This refit sets it and REFUSES (68)
+unless every corpus file starts with the engine's stream-order line in the Python model's order
+(scratchpad/lfqat/check_corpus_order.py).
+
 FREE MEASUREMENT ON THE WAY PAST. Phase 4 scores ws10's refit catalogs AND arm 2's LEARNED catalogs
 on w10lf's states: does a catalog fitted on a leaked model transfer to a leak-free one at the same
 budget? (Reconstruction cannot rank two WORKING catalogs; it can say whether one went stale.)
@@ -40,6 +54,10 @@ for want in ("set RWKV_CHAMP_CKPT=scratchpad/ws10/w10_ws_109350.pth", "set RWKV_
     assert want in ENV, want
 ENV = [e.replace("scratchpad/ws10/w10_ws_109350.pth", "scratchpad/w10lf/w10lf_ws_109350.pth")
         .replace("scratchpad/w10qat/cb", "scratchpad/lfqat/cb") for e in ENV]
+assert "set RWKV_REAL_CYCLES=1" in ENV
+ENV.insert(ENV.index("set RWKV_REAL_CYCLES=1") + 1, "set RWKV_FINAL_LAYOUT=1")
+assert not any("RWKV_STREAM_ORDER" in e for e in ENV)
+ENV.insert(ENV.index("set RWKV_INTERLEAVE=1") + 1, "set RWKV_STREAM_ORDER=card,note,deck,preset,user")
 
 R = "C:" + B + "Users" + B + "Andrew" + B + "rwkv-anki-autoresearch"
 L = ["@echo off",
@@ -61,6 +79,14 @@ L += ['echo ===== w10lf CATALOG REFIT START %DATE% %TIME% ===== > "%LOG%"',
       '  echo DONE_EXIT_61 %DATE% %TIME% >> "%LOG%"',
       "  exit /b 61",
       ")",
+      "REM The final-layout input traces must exist AND have passed their check against the LMDB.",
+      'findstr /B /C:"DONE_EXIT_0 " "scratchpad' + B + 'final_layout' + B + 'export_final_inputs.log" >nul 2>&1',
+      "if errorlevel 1 (",
+      '  echo the final-layout input traces are missing or failed their check -- run '
+      'scratchpad/final_layout/run_export_final_inputs.cmd %DATE% %TIME% >> "%LOG%"',
+      '  echo DONE_EXIT_67 %DATE% %TIME% >> "%LOG%"',
+      "  exit /b 67",
+      ")",
       "",
       "REM ---- PHASE 1: weights to safetensors (seconds)",
       '"%PY%" -u scratchpad/w10qat/export_weights_only.py >> "%LOG%" 2>&1',
@@ -70,8 +96,8 @@ L += ['echo ===== w10lf CATALOG REFIT START %DATE% %TIME% ===== > "%LOG%"',
       "  exit /b 62",
       ")",
       "",
-      "REM ---- PHASE 2: the corpus, from the Rust engine driven by the existing gen-5 traces",
-      "set RWKV_TRACE_DIR=reference_realcyc",
+      "REM ---- PHASE 2: the corpus, from the Rust engine driven by the final-layout input traces",
+      "set RWKV_TRACE_DIR=reference_final_inputs",
       "set RWKV_WEIGHTS=scratchpad/lfqat/cb/rwkv_ref_558.safetensors",
       'if not exist "%DIR%' + B + 'corpus" mkdir "%DIR%' + B + 'corpus"']
 for u in (107, 136, 156):
@@ -81,7 +107,14 @@ for u in (107, 136, 156):
               'wkv_' + str(u) + '_' + s + '.txt" 2>> "%LOG%"',
               '%BIN% --dump-shift-corpus ' + str(u) + ' ' + s + ' 1 > ' + base +
               'shift_' + str(u) + '_' + s + '.txt" 2>> "%LOG%"']
-L += ["",
+L += ["REM The dump must have run the streams in the MODEL's order (the engine defaults to card,deck,note).",
+      '"%PY%" scratchpad/lfqat/check_corpus_order.py "%DIR%' + B + 'corpus" >> "%LOG%" 2>&1',
+      "if not %ERRORLEVEL%==0 (",
+      '  echo the corpus was dumped in the WRONG stream order %DATE% %TIME% >> "%LOG%"',
+      '  echo DONE_EXIT_68 %DATE% %TIME% >> "%LOG%"',
+      "  exit /b 68",
+      ")",
+      "",
       "REM ---- PHASE 3: fit both catalogs",
       '"%PY%" scratchpad/pq_train_juv.py ' + WKV_OUT + ' '
       '"%DIR%' + B + 'corpus' + B + 'wkv_*_*.txt" --k 16 --h 5 --bits ' + str(WB) + ' >> "%LOG%" 2>&1',
@@ -132,6 +165,10 @@ code = "\n".join(l for l in out.split("\n") if not l.strip().upper().startswith(
 for tok in ("scratchpad/ws10/w10_ws", "scratchpad/w10qat/cb", "w10qat" + B + "corpus"):
     assert tok not in code, tok
 assert "set RWKV_CHAMP_CKPT=scratchpad/w10lf/w10lf_ws_109350.pth" in code
+assert "set RWKV_FINAL_LAYOUT=1" in code and "set RWKV_TRACE_DIR=reference_final_inputs" in code
+assert "reference_realcyc" not in code
+assert "set RWKV_STREAM_ORDER=card,note,deck,preset,user" in code and "check_corpus_order.py" in code
+assert code.index("set RWKV_STREAM_ORDER=") < code.index("--dump-corpus") < code.index("check_corpus_order.py")
 assert out.index("echo DONE_EXIT_0 ") < out.rindex("endlocal")
 os.makedirs("scratchpad/lfqat", exist_ok=True)
 io.open("scratchpad/lfqat/run_fit_catalogs_lf.cmd", "w", encoding="ascii", newline="\r\n").write(out)

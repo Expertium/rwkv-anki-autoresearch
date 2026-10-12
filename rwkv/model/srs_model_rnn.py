@@ -30,7 +30,7 @@ assert [CARD_FEATURE_COLUMNS[_COL_R1 + k] for k in range(4)] == [
 # traces). ⚠ The default used to be -0.12079481388911952 = scale_duration(6433), the retired
 # train-set median, while every actual run overrode it with RWKV_PROBE_DUR=0.0 -- so a caller who
 # just imported this module got a DIFFERENT model than training and eval scored. That cost 15-20%
-# on the button intervals and is exactly the divergence CLAUDE.md sec 9 case 2 records as already
+# on the button intervals and is exactly the divergence AGENTS.md sec 9 case 2 records as already
 # unified on 0.0. The env var remains, for experiments only.
 _PROBE_DUR_SCALED = float(os.environ.get("RWKV_PROBE_DUR", "0.0"))
 
@@ -71,7 +71,7 @@ class SrsRWKVRnn(ModuleType):
         # matches a model trained with a column ablated. Names resolve through the LIVE
         # CARD_FEATURE_COLUMNS and an unknown name raises -- a silent no-op here would make the
         # deploy path disagree with training while every shape check still passed, which is the
-        # exact train-vs-deploy divergence shape CLAUDE.md section 9 exists to catch.
+        # exact train-vs-deploy divergence shape AGENTS.md section 9 exists to catch.
         _ablate_names = [
             t.strip() for t in os.environ.get("RWKV_ABLATE_FEATURES", "").split(",") if t.strip()
         ]

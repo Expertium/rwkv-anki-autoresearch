@@ -2,7 +2,7 @@
 REM Move the gen-5 TRAIN db from F: (USB HDD, random-read-bound at ~11.5 MB/s) to C: (SSD), then
 REM swap the F: path for a junction so no toml or guard string changes. Andrew authorized deleting
 REM train_db_5k_h1_id3 on 2026-09-03 to make the room. Two scripts by design: the verifier's own
-REM handle blocks the rename if done in one process (CLAUDE.md, the e2s move).
+REM handle blocks the rename if done in one process (AGENTS.md, the e2s move).
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch
 set LOG=C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\workload\move_id5.log

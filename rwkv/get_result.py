@@ -321,10 +321,11 @@ def run(
             imm_ps_all = {}
             w_list = []
             nan_batches = []
+            oom_batches = []
             for batch_i, batch in enumerate(batches):
                 print("batch_i, batch:", batch_i, batch)
                 batch = data_fetcher.get(f"validate-{user_id}-{batch_i}")
-                if nan_batches:
+                if nan_batches or oom_batches:
                     # user already failed -- drain the prefetched batch (frees fetcher RAM)
                     # but skip the forward
                     continue
@@ -338,7 +339,25 @@ def run(
                         batch.labels = batch.labels.float()
 
                 with torch.inference_mode():
-                    stats = model.get_loss(batch)
+                    try:
+                        stats = model.get_loss(batch)
+                        if os.environ.get("RWKV_EVAL_FAKE_OOM", "") == str(user_id) and batch_i == 0:
+                            # fault injection (test only, default off): the OOM path below is reachable only on a
+                            # mega-chunk on a card without a WDDM-style spill, which no smoke can arrange.
+                            raise torch.OutOfMemoryError("RWKV_EVAL_FAKE_OOM")
+                    except torch.OutOfMemoryError as exc:
+                        # 2026-09-20, the rented Linux box: a 1,048,576-token mega-chunk needs ~22 GB and the 4090
+                        # has 23.5 -- and Linux has NO WDDM shared-memory spill, which is the only reason the same
+                        # user fits on the 12 GB 4070. The shard used to DIE here (exit 1), losing the rest of the
+                        # eval. Skip the USER entirely, exactly like the NaN guard: partial batches would silently
+                        # change that user's equalized "size", and a wrong size is worse than a missing user, which
+                        # every verdict tool already refuses to pair.
+                        print(f"OOM_SKIP user {user_id} batch {batch_i} {batches[batch_i]}: {exc}")
+                        oom_batches.append(batch_i)
+                        stats = None
+                        batch = None
+                        torch.cuda.empty_cache()
+                        continue
                     if stats is None:
                         # get_loss's NaN guard fired (model emitted NaN logits -- first hit
                         # 2026-07-15: the 1-ep d=128 A0 NaNs on 1,048,576-token mega-chunks
@@ -378,6 +397,12 @@ def run(
             if (i + 1) % EVAL_EMPTY_CACHE_EVERY == 0:
                 print("Emptying cache.")
                 torch.cuda.empty_cache()
+
+            if oom_batches:
+                with open(f"result/{config.FILE_AHEAD}.oomskip.jsonl", "a") as f:
+                    f.write(json.dumps({"user": user_id, "oom_batches": oom_batches,
+                                        "n_batches": len(batches)}) + "\n")
+                continue
 
             if nan_batches:
                 with open(f"result/{config.FILE_AHEAD}.nanskip.jsonl", "a") as f:
@@ -434,6 +459,8 @@ def sort_jsonl(file):
 
 
 def main(config):
+    from rwkv import vram_cap as _vram_cap
+    _vram_cap.apply()
     # Optional explicit user list (JSON array of ids) -- used by optimization/eval_sharded.py to
     # run size-balanced shards in parallel processes. Absent -> the original USER_START..USER_END
     # range, byte-identical behavior. Selection only; per-user numerics are untouched.

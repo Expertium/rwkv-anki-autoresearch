@@ -11,7 +11,15 @@ from rwkv.config import (
     RWKV_SUBMODULES,
 )
 from rwkv.data_processing import CARD_FEATURE_COLUMNS, ModuleData, RWKVSample
+from rwkv.data_processing import FINAL_KEEP_IDX as _FINAL_KEEP_IDX, STORED_CARD_FEATURE_COLUMNS as _STORED_COLUMNS
+_N_FINAL, _N_STORED = len(CARD_FEATURE_COLUMNS), len(_STORED_COLUMNS)  # RWKV_FINAL_LAYOUT, see get_data
+from rwkv import extra_features as _extra                              # RWKV_EXTRA_FEATURES, see get_data
+_N_EXTRA = _extra.width()          # columns appended at read time; 0 unless the flag is set
+_COL_SIBGAP = (CARD_FEATURE_COLUMNS.index("scaled_sibling_gap")
+               if "sibgap_none" in _extra.active() else -1)   # RWKV_EXTRA_FEATURES=sibgap_none reads it
+_N_KEEP = _N_FINAL - _N_EXTRA      # the width after the final-layout slice, BEFORE they are appended
 from rwkv import id_features as _idf
+from rwkv import self_feedback as _selffeed    # RWKV_SELFFEED, see prepare()
 from rwkv.model.srs_model import PreparedBatch
 from rwkv.architecture import DEFAULT_ANKI_RWKV_CONFIG
 from rwkv.utils import load_tensor
@@ -19,6 +27,9 @@ from rwkv import deck_tree as _deck_tree
 # RWKV_CLOCK_AT_PREV_ANSWER (2026-09-10): the query-row clock-leak fix. Unset => clock_fix.enabled()
 # is False and prepare() never calls into it, so every existing run is byte-identical.
 from rwkv import clock_fix as _clock
+# RWKV_PROBE_IMPUTE_K (2026-09-15): R1, the imputed probe duration. Unset => probe_impute.enabled()
+# is False and prepare() never calls into it, so every existing run is byte-identical.
+from rwkv import probe_impute as _imp
 
 # The STREAM CHAIN prepare() builds gathers for. Equals RWKV_SUBMODULES unless
 # RWKV_DECK_TREE inserts the deck-ancestor levels after deck_id.
@@ -69,11 +80,12 @@ _LBL_IS_QUERY = 6
 class ProbeMeta:
     """Local (per-sample) probe indices, remapped to flat b*global_T+t in prepare()."""
 
-    def __init__(self, pos4, target, pressed, query):
+    def __init__(self, pos4, target, pressed, query, pick=None):
         self.pos4 = pos4        # (m,4) int64 new-row positions, Again..Easy
         self.target = target    # (m,) probed real row's new position
         self.pressed = pressed  # (m,) actual rating-1 in 0..3
         self.query = query      # (m,) paired imm query row's new position
+        self.pick = pick        # (m,) probed real row's OLD position (pre-insertion), for probe_impute
 
 
 _unpairable_seen = 0
@@ -250,8 +262,86 @@ def insert_probes(data: RWKVSample, density: float, base_seed,
         target=new_pos_old[pick],
         pressed=pressed,
         query=new_pos_old[query_old],
+        pick=pick,
     )
     return data_new, meta
+
+
+# ---- R2 (RWKV_R2_HEAD=1, scratchpad/r2/DESIGN.md): the button-ordered curve head reads the QUERY row ----
+# No probe rows. Every labelled real row is PAIRED with the query row of the same review; a card's first review has
+# no query row in the LMDB (add_queries skips is_first_review), so ONE synthetic query row is inserted before it:
+# the real row with the outcome columns cleared (duration, the grade one-hot) and is_query set -- measured on 59,714
+# stored (query, real) pairs, those are exactly the columns in which a stored query row differs from its real row.
+_R2 = os.environ.get("RWKV_R2_HEAD", "0") == "1"
+_COL_ISQ = CARD_FEATURE_COLUMNS.index("is_query") if "is_query" in CARD_FEATURE_COLUMNS else -1
+
+
+def insert_r2_queries(data: RWKVSample, equalize_only: bool = False) -> tuple:
+    assert _COL_ISQ >= 0, "R2 needs the is_query input column"
+    sk = data.skips.numpy()
+    lab = data.global_labels.float().numpy()
+    n = sk.shape[0]
+    elig = (~sk) & (lab[:, _LBL_HAS_LABEL] > 0.5)
+    if equalize_only:
+        elig = elig & (lab[:, _LBL_IS_EQUALIZE] > 0.5)
+    pick = np.nonzero(elig)[0]
+    if pick.size == 0:
+        return data, None
+    review_ths = data.review_ths.numpy()
+    q_rows = np.nonzero(sk & (lab[:, _LBL_IS_QUERY] > 0.5))[0]
+    q_map = {int(review_ths[q]): int(q) for q in q_rows}
+    cf = data.card_features
+    grade = cf.float().numpy()[pick, _COL_R1:_COL_R1 + 4]
+    assert np.allclose(grade.sum(axis=1), 1.0), "target rows must carry a one-hot grade"
+    pressed = grade.argmax(axis=1).astype(np.int64)
+    has_q = np.array([int(review_ths[r]) in q_map for r in pick], dtype=bool)
+    syn = pick[~has_q]                       # real rows that need a synthetic query row
+    is_t = np.zeros(n, dtype=bool)
+    is_t[syn] = True
+    new_pos_old = np.arange(n) + np.cumsum(is_t)     # a target's synthetic row sits right BEFORE it
+    m_syn = syn.size
+    query_new = np.empty(pick.size, dtype=np.int64)
+    query_new[has_q] = new_pos_old[[q_map[int(review_ths[r])] for r in pick[has_q]]] if has_q.any() else 0
+    query_new[~has_q] = new_pos_old[syn] - 1
+    if m_syn == 0:
+        return data, ProbeMeta(pos4=np.empty((0, 1), dtype=np.int64), target=pick, pressed=pressed,
+                               query=query_new, pick=pick)
+    new_n = n + m_syn
+    src = np.empty(new_n, dtype=np.int64)
+    src[new_pos_old] = np.arange(n)
+    syn_pos = new_pos_old[syn] - 1
+    src[syn_pos] = syn
+    src_t = torch.from_numpy(src)
+    pm = torch.zeros(new_n, dtype=torch.bool)
+    pm[torch.from_numpy(syn_pos)] = True
+    cf_new = cf[src_t].clone()
+    cf_new[pm, _COL_DUR] = 0
+    cf_new[pm, _COL_R1:_COL_R1 + 4] = 0
+    cf_new[pm, _COL_ISQ] = 1
+    gl_new = data.global_labels[src_t].clone()
+    gl_new[pm, _LBL_HAS_LABEL] = 0           # in no standard loss or metric
+    gl_new[pm, _LBL_IS_QUERY] = 1
+    sk_new = data.skips[src_t].clone()
+    sk_new[pm] = True
+    lrt_new = data.label_review_ths[src_t].clone()
+    lrt_new[pm] = -1
+    ids_new, modules_new = {}, {}
+    for sub in RWKV_SUBMODULES:
+        ids_sub = data.ids[sub][src_t].clone()
+        ids_new[sub] = ids_sub
+        split_len, split_B, from_perm, to_perm = _deck_tree.build_module_data(ids_sub.numpy(), new_n)
+        modules_new[sub] = ModuleData(split_len=split_len, split_B=split_B,
+                                      from_perm=torch.tensor(from_perm, dtype=torch.int32),
+                                      to_perm=torch.tensor(to_perm, dtype=torch.int32))
+    data_new = RWKVSample(
+        user_id=data.user_id, start_th=data.start_th, end_th=data.end_th, length=new_n,
+        card_features=cf_new, modules=modules_new, ids=ids_new, global_labels=gl_new,
+        review_ths=data.review_ths[src_t].clone(), label_review_ths=lrt_new,
+        day_offsets=data.day_offsets[src_t].clone(), day_offsets_first=data.day_offsets_first[src_t].clone(),
+        skips=sk_new,
+    )
+    return data_new, ProbeMeta(pos4=syn_pos.reshape(-1, 1), target=new_pos_old[pick], pressed=pressed,
+                               query=query_new, pick=pick)
 
 
 def build_ahead_query(data, base: int) -> np.ndarray:
@@ -344,16 +434,39 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
     if _clock.enabled():
         data_list = [_clock.apply_to_sample(d) for d in data_list]
 
+    # R1 (RWKV_PROBE_IMPUTE_K): the running medians are computed ONCE per chunk, before the probes
+    # exist, from the real rows strictly before each row; query rows take theirs now, probe rows take
+    # their target's after insertion (meta.pick maps a target back to its pre-insertion row). Only
+    # scaled_duration moves, so the order relative to the clock fix is immaterial. No RNG is drawn.
+    imps = None
+    if _imp.enabled():
+        imps = [_imp.impute_before(d) for d in data_list]
+        data_list = [_imp.apply_to_queries(d, im) for d, im in zip(data_list, imps)]
+
     probe_metas = None
-    if probe_density > 0:
+    if _R2:
+        # every labelled real row is paired (no sampling, no RNG); pos4 = the synthetic rows only, which is what the
+        # clock fix must move (stored query rows were moved by apply_to_sample above)
+        assert imps is None, "R2 and RWKV_PROBE_IMPUTE_K are not combined"
+        new_list, probe_metas = [], []
+        for data in data_list:
+            data2, meta = insert_r2_queries(data, equalize_only=probe_equalize_only)
+            if _clock.enabled() and meta is not None and meta.pos4.size:
+                data2 = _clock.apply_to_probes(data2, meta)
+            new_list.append(data2)
+            probe_metas.append(meta)
+        data_list = new_list
+    elif probe_density > 0:
         base_seed = seed if seed is not None else int(torch.randint(0, 2**31, (1,)).item())
         new_list = []
         probe_metas = []
-        for data in data_list:
+        for j, data in enumerate(data_list):
             data2, meta = insert_probes(data, probe_density, base_seed,
                                         equalize_only=probe_equalize_only)
             if _clock.enabled():
                 data2 = _clock.apply_to_probes(data2, meta)
+            if imps is not None:
+                data2 = _imp.apply_to_probes(data2, meta, imps[j])
             new_list.append(data2)
             probe_metas.append(meta)
         data_list = new_list
@@ -612,6 +725,21 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
                     for i, d in enumerate(data_list)
                 ])
             ).long()
+        # RWKV_SELFFEED: per-CARD self-feedback indices, (B, global_T) flat b*global_T+t, -1 = none.
+        # Gated exactly like ahead_query above: with the flag unset NOT ONE line of self_feedback
+        # runs in the fetch workers, so the change is inert by construction rather than merely
+        # unused. numpy only -- no torch RNG -- so augmentation draws are untouched either way.
+        selffeed_prev_t = selffeed_srcq_t = None
+        if _selffeed.enabled():
+            _pv, _sq = [], []
+            for i, d in enumerate(data_list):
+                p, q = _selffeed.build_indices(d, i * global_T, _LBL_HAS_LABEL, _LBL_IS_QUERY)
+                pad = (0, global_T - d.card_features.size(0))
+                _pv.append(np.pad(p, pad, mode="constant", constant_values=-1))
+                _sq.append(np.pad(q, pad, mode="constant", constant_values=-1))
+            selffeed_prev_t = torch.from_numpy(np.stack(_pv)).long()
+            selffeed_srcq_t = torch.from_numpy(np.stack(_sq)).long()
+
         probe_rows_t = probe_target_t = probe_pressed_t = probe_query_t = None
         if probe_metas is not None and any(m is not None for m in probe_metas):
             rows, tgts, prs, qs = [], [], [], []
@@ -656,6 +784,8 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
             probe_pressed=probe_pressed_t,
             probe_query=probe_query_t,
             ahead_query=ahead_query_t,
+            selffeed_prev=selffeed_prev_t,
+            selffeed_srcq=selffeed_srcq_t,
         )
 
 
@@ -753,8 +883,33 @@ def get_data(txn, key, device) -> RWKVSample:
         ids[submodule] = load_tensor(txn, prefix + submodule + "_id_", device=device)
 
     card_features = load_tensor(txn, prefix + "card_features", device=device)
+    if _FINAL_KEEP_IDX is not None and card_features.size(-1) != _N_KEEP:
+        # RWKV_FINAL_LAYOUT=1 reading a gen-5 LMDB: drop the final layout's removed columns here, at
+        # the one place a stored row is decoded, so everything downstream sees the model's layout.
+        # (Module-level widths: this function binds the builtin name `len` to the chunk length.)
+        if card_features.size(-1) != _N_STORED:
+            raise RuntimeError(
+                f"card_features is {card_features.size(-1)} wide: neither the stored layout "
+                f"({_N_STORED}) nor the final one ({_N_FINAL})"
+            )
+        card_features = card_features.index_select(
+            -1, torch.tensor(_FINAL_KEEP_IDX, dtype=torch.long, device=card_features.device))
     global_labels = load_tensor(txn, prefix + "global_labels", device=device)
     review_ths = load_tensor(txn, prefix + "review_ths", device=device)
+    if _N_EXTRA:
+        # RWKV_EXTRA_FEATURES: rebuild the unstored columns HERE, the one place a stored row is decoded,
+        # from (user_id, review_th) -- so train, eval and the deploy RNN all see one quantity, and a
+        # training CHUNK cannot change it (a running total started at the chunk's first row could).
+        # A query row repeats its real row's review_th, so it inherits the value, which is what we want.
+        extra = _extra.values(user_id, review_ths.cpu().numpy(),
+                              sibgap=(card_features[..., _COL_SIBGAP].float().cpu().numpy()
+                                      if _COL_SIBGAP >= 0 else None))
+        card_features = torch.cat(
+            (card_features,
+             torch.as_tensor(extra, dtype=card_features.dtype, device=card_features.device)), dim=-1)
+        if card_features.size(-1) != _N_FINAL:
+            raise RuntimeError(
+                f"extra features left card_features {card_features.size(-1)} wide, expected {_N_FINAL}")
 
     label_review_ths = load_tensor(txn, prefix + "label_review_ths", device=device)
     day_offsets = load_tensor(txn, prefix + "day_offsets", device=device)

@@ -73,6 +73,8 @@ set RWKV_KD_ALPHA=
 
 REM ---- THE LEVER: the query-row clock-leak fix, in decay, validation and eval ----
 set RWKV_CLOCK_AT_PREV_ANSWER=1800
+REM ---- THE FINAL INPUT LAYOUT (w10lf's): 6 duplicate columns out, 103 inputs ----
+set RWKV_FINAL_LAYOUT=1
 
 
 if not exist "%DIR%" mkdir "%DIR%"

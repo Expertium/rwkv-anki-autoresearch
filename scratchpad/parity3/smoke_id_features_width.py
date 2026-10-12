@@ -62,9 +62,10 @@ print("WIDTH_OK")
 """
 
 
-def run(flag, want, real_cycles="0"):
+def run(flag, want, real_cycles="0", final_layout="0", extra=""):
     env = dict(os.environ, PYTHONPATH=REPO, RWKV_ID_FEATURES=flag, WANT_WIDTH=str(want),
-               RWKV_REAL_CYCLES=real_cycles)
+               RWKV_REAL_CYCLES=real_cycles, RWKV_FINAL_LAYOUT=final_layout,
+               RWKV_EXTRA_FEATURES=extra)
     env.pop("RWKV_ZERO_FEATURES", None)
     p = subprocess.run([sys.executable, "-c", CHILD], cwd=REPO, env=env,
                        capture_output=True, text=True)
@@ -84,7 +85,34 @@ def main():
     # day-offset cycle dims from the encoding block AND the pseudo day_of_week column (its real
     # counterpart is among the 23), and adds 24 real-time cycle columns to the card-feature
     # block. Same discipline: the literal is deliberate.
-    ok = [run("0", 92), run("1", 114), run("1", 109, real_cycles="1")]
+    # 103 = the final layout (RWKV_FINAL_LAYOUT=1 drops 6 duplicate card columns from the 109).
+    # 104 = that plus RWKV_EXTRA_FEATURES=cum_new_cards, which appends ONE card column rebuilt at
+    # read time from a side table (rwkv/extra_features.py). This case is the §9 three-way check for
+    # that flag: the training class, the deploy RNN class and CARD_FEATURE_COLUMNS must all move to
+    # 104 together, because the column is appended in the loader, not stored in the LMDB -- exactly
+    # the asymmetry that could let one path see 103 and another 104. Literals stay deliberate.
+    ok = [run("0", 92), run("1", 114), run("1", 109, real_cycles="1"),
+          run("1", 103, real_cycles="1", final_layout="1"),
+          run("1", 104, real_cycles="1", final_layout="1", extra="cum_new_cards"),
+          # 106 = all three read-time columns, and the flag lists them in the WRONG order on purpose:
+          # extra_features.active() returns declaration order, so the layout is a function of the SET,
+          # not of how a runner spelled it. Two runners with the same features must build the same model.
+          run("1", 106, real_cycles="1", final_layout="1",
+              extra="new_card_share,cum_new_cards,review_th"),
+          # 111 = the eight per-ROW features (session structure, phase coherence, streak, grade
+          # mean). They come from a different table than the three above and, unlike them, make
+          # `data_processing` CARRY `review_time` through get_rwkv_data -- so the width has one
+          # more way to go wrong and gets its own case. Listed out of declaration order again.
+          run("1", 111, real_cycles="1", final_layout="1",
+              extra="grade_mean,streak,phase_r2,phase_r,roll60,roll10,sess_secs,sess_pos"),
+          # 105 = the two sibling columns alone (2026-09-23); 114 = every accepted column plus both
+          # sibling columns, the widest layout a runner can ask for today. The sibling columns are
+          # APPENDED LAST in SPECS, so they must not move the columns of the 112-input layout.
+          run("1", 105, real_cycles="1", final_layout="1", extra="sib_none,sib_grade"),
+          # 106 = the incumbent's two sibling columns + the sibling-gap flag (2026-09-25)
+          run("1", 106, real_cycles="1", final_layout="1", extra="sibgap_none,sib_none,sib_grade"),
+          run("1", 114, real_cycles="1", final_layout="1",
+              extra="sib_grade,cum_new_cards,grade_mean,streak,phase_r2,phase_r,roll60,roll10,sess_secs,sess_pos,sib_none")]
     print("\n" + ("WIDTH_ALL_PASS" if all(ok) else "WIDTH_FAILED"))
     sys.exit(0 if all(ok) else 1)
 

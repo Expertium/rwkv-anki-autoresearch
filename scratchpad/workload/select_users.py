@@ -4,7 +4,7 @@ WHY 5001-7500 AND NOT ANY 2500 USERS. The RWKV champion was trained on users 1-5
 its intervals on those users would be fitted, not predicted, while FSRS-7's per-user
 parameters are fitted for EVERY user by construction. Restricting to the VAL half is what
 keeps the comparison from being rigged in RWKV's favour. (7501-10000 is the untouched TEST
-half; CLAUDE.md's live rules reserve it for track close, and this is a characterisation,
+half; AGENTS.md's live rules reserve it for track close, and this is a characterisation,
 not a gate, so VAL is the right side to spend.)
 
 WHY STRATIFIED AND NOT RANDOM. Collection size spans nearly three orders of magnitude

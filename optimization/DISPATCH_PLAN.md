@@ -452,3 +452,21 @@ first thing to test rather than the last.
 launch overhead against a measured 26%, and graphs lose. That inverts the plan's original ranking
 for the second time, and on the same principle each time: the number that justified them was never
 measured against the configuration we actually run.
+
+## 2026-09-20 -- `RWKV_QAT_NO_MEMFILL` is BIT-IDENTICAL and NOT FASTER (measured on the rented 4090)
+
+The flag turns off `torch.utils.deterministic.fill_uninitialized_memory`, deterministic mode's NaN-fill of every
+fresh tensor. A 2026-07-06 trace attributed ~9,000 of a step's ~15,800 kernel launches to `aten::fill_`, and the flag
+was in every d=32-era runner; it fell out of the d=80 lineage and no runner since track 2 has set it. Expected ~5%.
+
+**Measured** (`scratchpad/cloud/bench_memfill.sh`, s80's env + WS toml, 218 steps per arm, each arm alone at the GPU
+gate, in one process each): warm-up arm 168 s, **flag OFF 165 s, flag ON 184 s**. Both `cmp_traces.py` comparisons are
+**BIT-IDENTICAL across all 218 steps** -- the warm-vs-off control (so the box replays bit-exactly) and the off-vs-on
+test (so the flag is numerically free, as claimed).
+
+**=> not adopted.** `after_pair.sh` only adds a flag that is identical AND faster, so it did not touch the eight
+queued runners. The honest reading: the fill's launch COUNT is not the step's wall-clock cost here -- it is one
+cheap kernel per allocation, and the allocator reuses blocks -- so the d=32-era launch-share argument does not
+survive contact with a d=80 step on torch 2.12. One 218-step measurement per arm; the 19 s gap is larger than the
+3 s warm-vs-off spread, so the flag is at best neutral and possibly a small loss. Do not re-try it without a
+mechanism that explains the sign.

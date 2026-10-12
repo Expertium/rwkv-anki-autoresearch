@@ -1,7 +1,7 @@
 """Generate a DECAY-LENGTH branch off the shared ws10 checkpoint.
 
 WHY THIS IS THE QUEUE'S NEXT LEVER, and why it could not be asked before. The 10+2 split was
-decided on COST, not on evidence: 6+6 = 89 h, 8+4 = 71 h, 10+2 = 53 h, and CLAUDE.md says in as
+decided on COST, not on evidence: 6+6 = 89 h, 8+4 = 71 h, 10+2 = 53 h, and AGENTS.md says in as
 many words that the ~+0.0006 attributed to a longer decay is "being SPENT, not disproven" because
 iter 34's decay_ratio gain is confounded with a budget change. A shared WS checkpoint turns that
 from a 43 h question into a 9 h one: every branch starts from the SAME weights, so decay length is
@@ -14,7 +14,7 @@ is not met). Levers that improve FIT per step are what pay, and decay length is 
 
 WHAT IT DOES NOT ANSWER. This varies decay length at a FIXED 10-epoch WS, so total budget varies
 with it. That is the operationally relevant question for the endgame ("given this WS checkpoint,
-how long should the decay be?"), NOT the fixed-total-budget WS:decay de-confound that CLAUDE.md
+how long should the decay be?"), NOT the fixed-total-budget WS:decay de-confound that AGENTS.md
 leaves as Andrew's call. Do not report one as the other.
 
 Usage: python scratchpad/w10plain/mk_w10decay.py <decay_epochs>     e.g. 1.0, 3.0

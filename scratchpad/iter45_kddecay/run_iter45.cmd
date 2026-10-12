@@ -14,10 +14,10 @@ REM
 REM WHY IT IS WELL-DEFINED (the belief that the dump cannot be used in decay is wrong, and our own
 REM docs contain the reason): decay writes STEP_OFFSET=1 and EPOCHS=1.0 over the SAME db/MAX/seed,
 REM and `random.seed(12345)` + a single get_groups shuffle mean decay step s replays byte-identically
-REM the batch of WS step s (CLAUDE.md: "epochs are BYTE-IDENTICAL replays"). Verified for this run:
+REM the batch of WS step s (AGENTS.md: "epochs are BYTE-IDENTICAL replays"). Verified for this run:
 REM i44_decay.toml has STEP_OFFSET=1, EPOCHS=1.0, MAX=65536; the dump has exactly 10,935 files
 REM step_1.pt..step_10935.pt; decay is 10,935 steps at ratio 1.0. The alignment is EXACT.
-REM ⚠ CLAUDE.md warns "the checksum cannot catch KD misfiring [in decay]" -- that warning is about
+REM ⚠ AGENTS.md warns "the checksum cannot catch KD misfiring [in decay]" -- that warning is about
 REM leaving KD on by ACCIDENT, and its premise (decay reproduces the epoch-0 stream) is precisely
 REM what makes doing it DELIBERATELY correct.
 REM

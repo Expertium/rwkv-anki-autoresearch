@@ -90,7 +90,7 @@ comparison model — decimal when large, scientific when tiny), `review_count_ch
 `state_size_check` (pass/fail ≤ iter-0), `summary` (≤15 words, written **before** running),
 `comment` (any length, written **after**; jsonl only).
 
-Keep dead ends in the log so they aren't re-tried (CLAUDE.md §8).
+Keep dead ends in the log so they aren't re-tried (AGENTS.md §8).
 
 **Documentation discipline (do NOT be sloppy):** every iteration must be logged with ALL
 fields filled in — no leaving values blank or "pending" and moving on. In particular:

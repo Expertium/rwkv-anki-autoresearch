@@ -11,7 +11,7 @@ upstream values whose derivation was never written down (which sample? which use
 "missing" -1 rows included in the mean?). Reproducing them from raw parquet is the only way to know
 that the recipe here matches the one the live features were built with -- otherwise the new columns
 would be normalized on a subtly different convention than the 24 they sit beside, which is exactly
-the silent train/eval/deploy mismatch CLAUDE.md section 9 exists to catch. Treat a mismatch on the
+the silent train/eval/deploy mismatch AGENTS.md section 9 exists to catch. Treat a mismatch on the
 existing constants as a BUG IN THIS SCRIPT, not as a correction to upstream.
 
 The "missing" convention is the ambiguity that matters. Upstream scales as

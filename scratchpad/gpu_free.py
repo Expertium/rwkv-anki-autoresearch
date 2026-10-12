@@ -11,7 +11,7 @@ of a GPU job as "free". So this also asks whether any heavy long-lived python pr
 Andrew's srs-benchmark runs accumulate tens of CPU-hours and are the thing we must not collide
 with. FREE requires BOTH: low average utilization AND no such process.
 
-⚠ Do NOT kill anything this reports. The benchmark pythons are Andrew's, and CLAUDE.md is
+⚠ Do NOT kill anything this reports. The benchmark pythons are Andrew's, and AGENTS.md is
 explicit about it.
 
 Usage: .venv/Scripts/python.exe scratchpad/gpu_free.py [seconds]     (default 120)

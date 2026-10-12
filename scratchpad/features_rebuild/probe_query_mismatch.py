@@ -22,7 +22,7 @@ disagree, and this script reports which one fires:
       Tell: the row has is_first_review == 1.
 
   MECHANISM B -- A NON-FIRST ROW LABELLED is_first_review. is_first_review is derived, not
-      counted (CLAUDE.md: it IS elapsed_days == -1), so a mid-card review can carry it.
+      counted (AGENTS.md: it IS elapsed_days == -1), so a mid-card review can carry it.
       Tell: the row has is_first_review == 1 AND its card_id appears earlier with
       is_first_review == 1 as well, i.e. the same card claims "first" twice.
 

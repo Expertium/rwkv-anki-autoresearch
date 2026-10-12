@@ -7,7 +7,7 @@ REM champion -- and a trace is never overwritten, it lands beside the old ones.
 REM
 REM CPU-only (the RNN path), so it is safe beside the running iter-45 GPU chain.
 REM
-REM Env = the champion's, from CLAUDE.md's champion block. RWKV_INTERLEAVE=1 and the _cnd arch
+REM Env = the champion's, from AGENTS.md's champion block. RWKV_INTERLEAVE=1 and the _cnd arch
 REM module are the two pieces the older traces lack.
 REM ===========================================================================================
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch

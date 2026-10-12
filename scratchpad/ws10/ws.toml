@@ -7,7 +7,7 @@
 # at THIS recipe, so changing anything else would make the outcome uninterpretable against it.
 #
 # KNOWN SUBOPTIMALITY, kept on purpose: WARMUP_STEPS=400 is 3.7% of a 1-epoch run and 0.37% of this
-# one (upstream used 20,000 for ~12 epochs). CLAUDE.md's endgame list flags warmup as one of three
+# one (upstream used 20,000 for ~12 epochs). AGENTS.md's endgame list flags warmup as one of three
 # things tuned for 1 epoch that "must be RECONSIDERED at 12.5". It is NOT changed here because a
 # second variable would confound the one number this run exists to produce. It is a live candidate
 # for a later run if the +0.0042 prediction misses low.
@@ -15,7 +15,7 @@
 # them in and the decay-only branches CANNOT test them. Named so it is not discovered later.
 #
 # VALIDATE_EVERY=1000 is what makes train_rwkv save a checkpoint, so this also yields 109 resume
-# points; over ~34 h a crash or reboot is the one real failure mode (CLAUDE.md).
+# points; over ~34 h a crash or reboot is the one real failure mode (AGENTS.md).
 TRAIN_USERS_START = 1
 TRAIN_USERS_END = 5000
 VALIDATE_USERS_START = 5001

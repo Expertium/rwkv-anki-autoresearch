@@ -1,7 +1,7 @@
 """Numerical parity: the TRAINING stream (RWKV7, parallel form) vs the DEPLOY stream
 (RWKV7RNN, recurrent form), on identical weights and inputs.
 
-Written 2026-07-26 for Andrew's standing three-way-parity rule (CLAUDE.md sec 9). The rule
+Written 2026-07-26 for Andrew's standing three-way-parity rule (AGENTS.md sec 9). The rule
 asks, of every change: what does training optimize, what does eval score, what will CPU
 inference compute? Nothing was actually checking the third against the first at the
 recurrence level, which is how RWKV_STRIP_CMIX / RWKV_STRIP_L0_VLORA reached the champion

@@ -17,7 +17,7 @@ params **558,212 exactly unchanged** (a schedule change has no weights).
 **The basis is confirmed from the run's own log, not from the label.** Its decay log prints the
 pre-iter-53 Muon split — `500,800 matrix params on Muon, 57,412 on AdamW` — against iter 53's
 `528,320 ... incl 27,520 LoRA in a wd=0 group, 29,892 on AdamW`. So `RWKV_MUON_INCLUDE_LORA` is
-genuinely absent here and the two levers are orthogonal. (CLAUDE.md's standing warning applies:
+genuinely absent here and the two levers are orthogonal. (AGENTS.md's standing warning applies:
 diff the runners, do not read the labels.)
 
 **The asymmetry is the finding.** On **ahead**, +0.000057 sits *inside* the ±7.5e-5 noise floor, so

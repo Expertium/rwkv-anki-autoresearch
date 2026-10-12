@@ -268,12 +268,33 @@ def export_weights():
         print(f"weights: BAKED zero-features {_zero_feats} into {key} "
               f"(column L2 was {[f'{b:.4f}' for b in before]}, now 0)")
 
-    save_pt(flat, str(OUT_DIR / WEIGHTS_SFT))
+    # The STREAM ORDER travels WITH the weights (2026-09-12). The tensors name the streams
+    # positionally (`rwkv_modules.{N}`), so which entity module N implements is a recipe fact, and
+    # the Rust engine took it ONLY from RWKV_STREAM_ORDER, defaulting to the historical
+    # card,deck,note order. The `_cnd` trunk runs card,note,deck, so a Rust run without the variable
+    # silently executed a MIS-WIRED model -- two PQ-catalog corpora were dumped that way
+    # (2026-09-08 / 09-10). Written from the exported model's OWN stream_names, i.e. the order these
+    # very tensors were built in; rust/rwkv-infer Model::load uses it when the variable is unset and
+    # refuses a run whose variable disagrees.
+    stream_order = ",".join(n.replace("_id", "") for n in model.stream_names)
+    # The other two recipe facts no weight shape reveals travel the same way (added the same day,
+    # after measuring that a Rust run missing RWKV_INTERLEAVE alone misses by up to 0.66 per
+    # review): the layer schedule and the state-clamp threshold. Both are read off the exported
+    # model object, i.e. what these tensors were actually built with. Anki sets no environment.
+    taus = {float(m.state_clamp_tau) for m in model.modules() if hasattr(m, "state_clamp_tau")}
+    assert len(taus) == 1, f"time mixers disagree on state_clamp_tau: {sorted(taus)}"
+    recipe = {
+        "stream_order": stream_order,
+        "interleave": "1" if model.interleave_on else "0",
+        "interleave_placement": "spread" if model.ilv_spread else "front",
+        "state_clamp_tau": repr(taus.pop()),
+    }
+    save_pt(flat, str(OUT_DIR / WEIGHTS_SFT), metadata=recipe)
     names = sorted(flat.keys())
     with open(OUT_DIR / "weight_names.json", "w") as f:
-        json.dump({"n": len(names), "names": names, "zero_features": _zero_feats,
+        json.dump({"n": len(names), "names": names, "zero_features": _zero_feats, "recipe": recipe,
                    "shapes": {k: list(flat[k].shape) for k in names}}, f, indent=1)
-    print(f"weights: {len(names)} tensors -> {OUT_DIR}/{WEIGHTS_SFT}")
+    print(f"weights: {len(names)} tensors -> {OUT_DIR}/{WEIGHTS_SFT} (recipe metadata {recipe})")
 
 
 def main():
@@ -292,7 +313,7 @@ def main():
     ).exists() else None
     ref = {
         # Record the checkpoint actually exported, not a hardcoded name -- the old constant here
-        # said "rwkv_ref_558.pth" regardless, which is how CLAUDE.md ended up telling people to
+        # said "rwkv_ref_558.pth" regardless, which is how AGENTS.md ended up telling people to
         # verify against a different model than ref_metrics.json named.
         "model": os.path.basename(MODEL_PATH),
         "arch_module": os.environ.get("RWKV_ARCH_MODULE", "rwkv/architecture.py"),

@@ -2,7 +2,7 @@
 REM Waits for the shared 10-epoch WS run to SUCCEED, then launches endgame arm 1 (the plain 2-epoch
 REM decay + eval). Gates on the SUCCESS line, not merely a terminal marker: ws10 auto-resumes across
 REM crashes and can still exit non-zero (no checkpoint, wrong param count, too many attempts), and a
-REM failure marker in a shared log is a live trigger for everything downstream (CLAUDE.md).
+REM failure marker in a shared log is a live trigger for everything downstream (AGENTS.md).
 REM Polls every 5 min -- the WS phase is ~34 h, so a tight poll buys nothing. CRLF: see the goto rule.
 setlocal
 cd /d C:\Users\Andrew\rwkv-anki-autoresearch

@@ -3,7 +3,7 @@ REM ============================================================================
 REM Run the feature ablation once gen4base is out of the GPU.
 REM
 REM NOT run concurrently, deliberately. gen4base is gate-critical -- it establishes the -id
-REM lineage's champion and its size baseline -- and CLAUDE.md's rule is explicit: no co-tenant
+REM lineage's champion and its size baseline -- and AGENTS.md's rule is explicit: no co-tenant
 REM GPU work during gate-critical runs, because cuBLAS algo selection under memory pressure
 REM breaks bit-replay. The ablation is ~1.5 h of GPU and can wait.
 REM

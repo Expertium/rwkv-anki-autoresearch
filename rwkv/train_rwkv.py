@@ -449,6 +449,7 @@ def evaluate_on_user(user_id, batch, model: SrsRWKV):
 
 
 def validate(model, data_fetcher, all_db_keys, users, device):
+    from rwkv import vram_cap as _vram_cap_mod
     _clear_device_cache(device)
     tot_ahead_loss = 0
     tot_ahead_raw_loss = 0
@@ -479,7 +480,8 @@ def validate(model, data_fetcher, all_db_keys, users, device):
                 user_ahead_raw_loss,
                 user_imm_loss,
                 user_imm_n,
-            ) = evaluate_on_user(user_id, batch, model)
+            ) = _vram_cap_mod.run_uncapped_on_oom(lambda: evaluate_on_user(user_id, batch, model),
+                                                  "validation user %s" % user_id)
             assert user_ahead_n == user_imm_n
             tot_ahead_loss += user_ahead_loss
             tot_ahead_raw_loss += user_ahead_raw_loss
@@ -699,6 +701,8 @@ def _dump_stack_attribution(profiler, n_steps, want=("index", "fill_", "scatter"
 
 
 def main_loop(config, task_queue, batch_queue):
+    from rwkv import vram_cap as _vram_cap
+    _vram_cap.apply()
     data_fetcher = DataFetcher(task_queue=task_queue, out_queue=batch_queue)
 
     master_model = SrsRWKV(anki_rwkv_config=DEFAULT_ANKI_RWKV_CONFIG).to(config.DEVICE)
@@ -913,7 +917,9 @@ def main_loop(config, task_queue, batch_queue):
             from rwkv.model import rwkv_ops as _ro
             _m, _sd, _nc = _ro._PQ_META[0], _ro._PQ_META[1], _ro._PQ_META[2]
             _jt = _ro._PQ_META[5] if len(_ro._PQ_META) > 5 else 0  # joint-uv: 1 block (whole catalog)
-            specs.append(("wkvcb", _wkv_cb_param, ((1 if _jt else 2 * _m), _nc, _sd), _ro))
+            # residual VQ: stages*ncent rows, so the resurrection view has one block PER STAGE
+            _st = _ro._PQ_META[6] if len(_ro._PQ_META) > 6 else 1
+            specs.append(("wkvcb", _wkv_cb_param, ((_st if _jt else 2 * _m), _nc, _sd), _ro))
         for name, p, (nb, nc, sd), ro in specs:
             gn = p.grad.detach().float().view(nb, nc, sd).norm(dim=-1)  # [blocks, centroids]
             ema = _res_ema.get(name)
@@ -1135,10 +1141,32 @@ def main_loop(config, task_queue, batch_queue):
     vprune_delta_imm = float(os.environ.get("RWKV_VPRUNE_DELTA_IMM") or "0.006")
     vprune_min_step = int(os.environ.get("RWKV_VPRUNE_MIN_STEP") or "1000")
     vprune_persist = int(os.environ.get("RWKV_VPRUNE_PERSIST") or "2")
+    # RWKV_VPRUNE_WINDOW_MEAN=W / RWKV_VPRUNE_MAX_STEP (WS tuning, 2026-09-22; both default OFF, so
+    # every existing run is byte-identical). W>0 tests the MEAN of the last W checkpoint deltas
+    # instead of the latest one, and MAX_STEP closes the window so the rule can decide ONCE.
+    #
+    # WHY, measured in scratchpad/wstune/ on the four 10-epoch traces: at epoch 3 of ten the
+    # validation curves fall ~0.0001 per 1000 steps, a HUNDRED times flatter than the 1-epoch
+    # regime the inherited 0.004/0.006 deltas were set for -- but the per-checkpoint NOISE does
+    # not shrink with them. The null pair (same recipe, different hardware) reaches |d| = 0.0017
+    # ahead / 0.0011 imm on single checkpoints, overlapping a near-tie arm's range, so no
+    # single-checkpoint threshold separates them. A 5-checkpoint mean does: over 107 sliding
+    # windows the null's both-modes-worse floor never exceeds +0.00012.
+    #
+    # AND MAX_STEP IS NOT A REFINEMENT, IT IS THE POINT. `lfwu20k` (warmup 400 -> 20,000) sits at
+    # +0.1492 ahead at step 1000 -- because its knob IS the warmup -- and is a near-tie by the
+    # gate. A rule that may fire before its decision step kills the late bloomers it exists to
+    # measure. min_step == max_step gives exactly one decision, at the calibrated step.
+    vprune_window_mean = int(os.environ.get("RWKV_VPRUNE_WINDOW_MEAN") or "0")
+    vprune_max_step = int(os.environ.get("RWKV_VPRUNE_MAX_STEP") or "0")
+    vprune_recent = []  # the last W (d_ahead, d_imm) pairs, only used when window_mean > 0
     vprune_strikes = 0
     vprune_window = []  # [step, d_ahead, d_imm] of each strike checkpoint (marker gets it)
     vchamp_meta, vchamp_vals = None, {}
-    if config.TRAIN_MODE != "WS":
+    # RWKV_VPRUNE_DECAY=1 (phase 5, 2026-09-13): allow the same rule in a DECAY run, against a
+    # reference built from the incumbent's decay validation trace (scratchpad/phase5/mk_vprune_ref.py).
+    # Unset = the historical WS-only behaviour, byte-identical.
+    if config.TRAIN_MODE != "WS" and os.environ.get("RWKV_VPRUNE_DECAY", "") != "1":
         vprune_ref_path = ""
     if vprune_ref_path:
         with open(vprune_ref_path) as _f:
@@ -1205,8 +1233,15 @@ def main_loop(config, task_queue, batch_queue):
 
         if _shape:
             print(f"[decay-shape] LR decay shape = {_shape} (default is 1-sin(pi x/2), mass 0.3634)")
+        # RWKV_DECAY_RESUME_SCHED=1 (2026-09-19, the lfqkd1 crash resume): a decay resumed at
+        # STEP_OFFSET = n + 1 must continue the LR curve at x = n / total, not restart it at 1.0.
+        # Unset = byte-identical (offset 0).
+        _sched_off = (config.STEP_OFFSET - 1) if os.environ.get("RWKV_DECAY_RESUME_SCHED", "") == "1" else 0
+        if _sched_off:
+            print(f"[decay-resume] LR schedule continues at step {_sched_off} of {total_steps} "
+                  f"(factor {_decay_factor(_sched_off, total_steps):.6f})")
         scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer, lr_lambda=lambda t: _decay_factor(t, total_steps)
+            optimizer, lr_lambda=lambda t: _decay_factor(t + _sched_off, total_steps)
         )
     else:
         raise ValueError(f"Invalid train mode: {config.TRAIN_MODE}")
@@ -1663,19 +1698,38 @@ def main_loop(config, task_queue, batch_queue):
                                 "step": step, "val_ahead": validation_out[0],
                                 "val_imm": validation_out[1]}) + "\n")
                     if (vchamp_meta is not None and step in vchamp_vals
-                            and step >= vprune_min_step):
+                            # the window must ACCUMULATE from the first checkpoint; only the
+                            # DECISION is gated by min/max step.  Gating the accumulation too is
+                            # the bug scratchpad/wstune/smoke_vprune_window.py caught: with
+                            # min_step == max_step the deque never fills and the rule can never
+                            # fire, which looks exactly like a well-behaved trial.
+                            and (step >= vprune_min_step or vprune_window_mean > 0)):
                         _ca, _ci = vchamp_vals[step]
                         _da = validation_out[0] - _ca
                         _di = validation_out[1] - _ci
+                        if vprune_window_mean > 0:
+                            vprune_recent.append((_da, _di))
+                            del vprune_recent[:-vprune_window_mean]
+                            _ready = len(vprune_recent) == vprune_window_mean
+                            _in_window = (step >= vprune_min_step
+                                          and (vprune_max_step <= 0 or step <= vprune_max_step))
+                            _da = sum(x[0] for x in vprune_recent) / len(vprune_recent)
+                            _di = sum(x[1] for x in vprune_recent) / len(vprune_recent)
+                            print(f"[vprune] step {step}: window-{vprune_window_mean} mean "
+                                  f"d_ahead {_da:+.5f} d_imm {_di:+.5f}"
+                                  + ("" if _ready and _in_window else "  (not decidable here)"))
+                            if not (_ready and _in_window):
+                                _da = _di = -9.9  # cannot decide: force the no-strike branch
                         if _da >= vprune_delta_ahead and _di >= vprune_delta_imm:
                             vprune_strikes += 1
                             vprune_window.append([step, _da, _di])
                         else:
                             vprune_strikes = 0
                             vprune_window = []
-                        print(f"[vprune] step {step}: d_ahead {_da:+.4f} d_imm {_di:+.4f}"
-                              + (f" strikes={vprune_strikes}/{vprune_persist}"
-                                 if vprune_strikes else ""))
+                        if vprune_window_mean <= 0:
+                            print(f"[vprune] step {step}: d_ahead {_da:+.4f} d_imm {_di:+.4f}"
+                                  + (f" strikes={vprune_strikes}/{vprune_persist}"
+                                     if vprune_strikes else ""))
                         if vprune_strikes >= vprune_persist:
                             marker = {
                                 "pruned_at_step": step, "rule": "val",

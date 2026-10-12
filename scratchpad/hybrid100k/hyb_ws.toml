@@ -9,7 +9,7 @@
 # outputs by step index and verifies a per-step `labels_sum` checksum. Batch composition depends
 # on the db, the user range, MAX_TRAIN_GLOBAL_LEN, the fetch-process count and the seeds -- never
 # on the student's architecture. So a smaller student consumes the same dump.
-# The corollary is the trap recorded in CLAUDE.md: the checksum proves LABEL alignment and says
+# The corollary is the trap recorded in AGENTS.md: the checksum proves LABEL alignment and says
 # nothing about INPUTS, so any input-side change invalidates the dump while it keeps passing.
 # WARNING: the data-affecting fields below MUST stay identical to the dump's. Do not "tidy" them.
 TRAIN_USERS_START = 1

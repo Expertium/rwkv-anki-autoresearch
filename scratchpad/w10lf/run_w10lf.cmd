@@ -7,7 +7,9 @@ REM THE LEVER, in all three phases: RWKV_CLOCK_AT_PREV_ANSWER=1800 (rwkv/clock_f
 REM row (imm) and the PAVA probe rows (rectified ahead) predict at SHOW time, and their clock
 REM columns carried the current review's capped-duration excess; they move to the previous answer
 REM when the gap is in-session, a shift past UTC midnight takes the previous day's calendar
-REM columns, and the ahead label time loses the target review's in-session gap. Params unchanged.
+REM columns, and the ahead label time loses the target review's in-session gap.
+REM THE SECOND LEVER: RWKV_FINAL_LAYOUT=1, the final input layout (6 duplicate card-feature
+REM columns removed from the model input: 103 inputs, params 561732; rwkv/id_features.py).
 REM
 REM Controls: ws10 for the WS phase (same env plus OMP_NUM_THREADS=7, see mk_w10lf.py), arm 1
 REM (w10plain) for the decay and the eval. PREREG: scratchpad/w10lf/PREREG.md.
@@ -84,6 +86,8 @@ set RWKV_KD_ALPHA=
 
 REM ---- THE LEVER: the query-row clock-leak fix, in WS, decay, validation and eval ----
 set RWKV_CLOCK_AT_PREV_ANSWER=1800
+REM ---- THE FINAL INPUT LAYOUT (Andrew 2026-09-12): 6 duplicate columns out, 103 inputs ----
+set RWKV_FINAL_LAYOUT=1
 
 
 if not exist "%DIR%" mkdir "%DIR%"
@@ -123,7 +127,7 @@ goto trainloop
 :wsdone
 REM The run must have used the width it claims: the one check that catches RWKV_ID_FEATURES /
 REM RWKV_REAL_CYCLES failing to reach the fetch workers.
-findstr /C:"Trainable parameters: 563652" "%DIR%\ws_%STAMP%.log" >nul
+findstr /C:"Trainable parameters: 561732" "%DIR%\ws_%STAMP%.log" >nul
 if not %ERRORLEVEL%==0 (
   echo %TAG% WRONG_PARAM_COUNT %DATE% %TIME% >> "%LOG%"
   echo DONE_EXIT_33 %DATE% %TIME% >> "%LOG%"

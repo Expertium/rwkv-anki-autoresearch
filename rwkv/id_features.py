@@ -29,6 +29,8 @@ import os
 
 import numpy as np
 
+from rwkv import extra_features as _extra   # RWKV_EXTRA_FEATURES; width 0 unless it is set
+
 # pandas is imported lazily inside the two functions that need it: this module is imported by
 # `srs_model.py` / `srs_model_rnn.py` purely for the input WIDTH, and the deploy path should not
 # pull pandas in to answer an integer question.
@@ -219,10 +221,47 @@ def dropped_columns():
     return [DROPPED_COLUMN] + ([DROPPED_UNDER_REAL_CYCLES] if real_cycles_enabled() else [])
 
 
+# ---- RWKV_FINAL_LAYOUT=1 (default OFF): THE FINAL INPUT LAYOUT (Andrew 2026-09-12) ----
+# "both ❌ and ⚠️ should be removed for the Really Really For Real This Time Finalized Final,
+# Finally! version of RWKV". The ❌ columns are already gone under RWKV_REAL_CYCLES=1; these are the
+# ⚠️ ones -- duplicates per the 2026-09-09 feature audit (scratchpad/feataudit/FINDINGS.md), each
+# claim re-measured on the full data before removal (scratchpad/final_layout/).
+# They are removed from the MODEL's input (63 card features + 40 ID dims = 103), not zeroed: the
+# model has no weights for them. A gen-5 LMDB still stores them, so prepare_batch.get_data slices
+# them out as it reads a row; an LMDB built WITH this flag stores only the kept columns and needs no
+# slicing. Every consumer resolves columns BY NAME through data_processing.CARD_FEATURE_COLUMNS, so
+# train, eval, the Python deploy RNN and the trace exporter all see the same 103 inputs.
+# ⚠ `is_default_deck` STAYS, although the audit (W4) called it dead: that was a 17-user sample.
+# On 100 users it is set on 14 of them -- up to 100% of one user's rows -- and on those rows
+# deck_id_is_nan = 0 and deck age = 0, so it is the only thing that separates Anki's default deck
+# from a deck created at review time.
+FINAL_LAYOUT_DROPPED = (
+    "deck_id_is_nan",       # == note_id_is_nan BY CONSTRUCTION (both from the one card-row join)
+    "preset_id_is_nan",     # == note_id_is_nan except on 11,095 of 727.7 M reviews (0.0015%, 77 users):
+                            # a card whose deck has no row in the decks table (preset_join_scan.py)
+    "cyc3650_first_sin", "cyc3650_first_cos",        # near-duplicates of the review-day halves (W5,
+    "cyc36500_first_sin", "cyc36500_first_cos",      # r 0.99): the card's age mod a decade/century
+)
+
+
+def final_layout_enabled():
+    on = os.environ.get("RWKV_FINAL_LAYOUT", "0") == "1"
+    if on and not real_cycles_enabled():
+        raise RuntimeError(
+            "RWKV_FINAL_LAYOUT=1 requires RWKV_ID_FEATURES=1 and RWKV_REAL_CYCLES=1: it removes "
+            "columns of the gen-5 layout."
+        )
+    return on
+
+
 def card_feature_width():
+    # + RWKV_EXTRA_FEATURES (rwkv/extra_features.py, default OFF => width 0 => this line is inert):
+    # columns appended at READ time from a side table instead of being stored, so they need no rebuild.
+    # They live in this one width helper so the model, the deploy RNN and the column list cannot disagree.
     if not enabled():
-        return BASE_CARD_FEATURES
-    return BASE_CARD_FEATURES - len(dropped_columns()) + len(active_new_columns())
+        return BASE_CARD_FEATURES + _extra.width()
+    w = BASE_CARD_FEATURES - len(dropped_columns()) + len(active_new_columns())
+    return w - (len(FINAL_LAYOUT_DROPPED) if final_layout_enabled() else 0) + _extra.width()
 
 
 def input_width():

@@ -310,10 +310,26 @@ __constant__ int c_pq_ncent = 0;
 // per head selects BOTH factor directions, each half rescaled by its own (quantized) norm. subdim=2K,
 // layout g_pq_cb[c*subdim + j] (no role blocks). Mirror of engine PqCodebook::encode_decode_joint.
 __constant__ int c_pq_joint = 0;
+// RESIDUAL VQ (2026-09-20, Andrew: "start with a 100% increase"): c_pq_stages > 1 makes the joint
+// catalog stage-major -- g_pq_cb[(st*ncent + c)*subdim + j] -- and each stage codes what the previous
+// stages left. Two 15-bit indices cost 30 bits/head and search 65,536 centroids yet address 2^30
+// points, which no single fittable catalog can (the corpus caps a single index near b15). The
+// stages == 1 path below is UNTOUCHED, on purpose: restructuring its distance expression would change
+// FMA contraction and break bit-identity with every run in the record.
+__constant__ int c_pq_stages = 1;
 // task24: warm-started joint search (previous step's pick primes the pruning bound). Provably
 // pick-identical; RWKV_QAT_NO_WARM=1 (read at codebook upload) disables it for bitwise A/B / fallback.
 __constant__ int c_pq_warm = 1;
-__device__ float g_pq_cb[32768];   // grown 8192 -> 32768 for joint-uv (ncent<=1024 x subdim 32)
+// Catalog capacity in floats. 2026-09-11 (Andrew's byte grant, "1-3 more bits"): 32768 -> 262144 so a
+// joint-uv WKV catalog can reach b13 (8192 x subdim 32). 2026-09-20 (the top-down bit sweep, target
+// QAT tax < 0.0010): -> 1048576 so it can reach b15 (32768 x 32). Measured on a held-out user, the
+// JOINT index is where bits pay -- b10 0.1042 relative error, b13 0.0317, while role-splitting u and v
+// at 20 bits/head only reaches 0.0922 -- and the catalog is capped by the CORPUS, not by taste.
+// Only the array SIZE changes: every access is bounded by the uploaded ncent, so any catalog that fit
+// before computes bit-identically (proven by scratchpad/pqcap/check_pqcap.py, which also proves the
+// grown region is really read).
+#define PQ_CB_MAX_FLOATS 1048576
+__device__ float g_pq_cb[PQ_CB_MAX_FLOATS];   // 8192 -> 32768 (joint-uv b10) -> 262144 (b13) -> 1048576 (b15)
 // ---- NORM QUANT for the PQ branch (train==deploy analog of engine RWKV_PQ_NORM_BITS): reconstruct with
 // the factor norm quantized to n bits, log2-uniform over [c_nq_lo, c_nq_hi] octaves; centroid MATCHING
 // still uses the TRUE norm (mirrors PqCodebook::encode_decode). c_nq_levels = 2^bits - 1; 0 = off. ----
@@ -326,7 +342,7 @@ __constant__ float c_nq_hi = 0.f;
 // gradient dL/dQ_t is outer-product-reduced against the counterpart factor. Python fetches the buffer
 // into the codebook Parameter's .grad each step and re-uploads the stepped codebook. ----
 __constant__ int c_pq_learn = 0;
-__device__ float g_pq_cb_grad[32768];
+__device__ float g_pq_cb_grad[PQ_CB_MAX_FLOATS];
 
 // Quantize a factor norm exactly like engine encode_decode: t -> round (HALF-AWAY, matches Rust
 // f32::round) -> clamp -> exp2. Caller guarantees norm is finite and >= 1e-20.
@@ -383,6 +399,7 @@ __device__ inline float qat_lr_rank1(float a_val, int K, float qmax, int* rec_id
     const int nthreads = blockDim.x * blockDim.y;
     __shared__ float As[32 * 32];
     __shared__ float uvec[32], tvec[32], nvec[32], ufq[32], vfq[32];
+    __shared__ float acc_u[32], acc_v[32];   // residual-VQ: reconstruction so far, unit space
     __shared__ float red[32];
     __shared__ int s_bidx[32];
     __shared__ float sc_nrm, sc_dot, sc_su, sc_sv, sc_sgn, sc_nu, sc_nv;
@@ -480,8 +497,74 @@ __device__ inline float qat_lr_rank1(float a_val, int K, float qmax, int* rec_id
         // FIRST strict minimum exactly like the serial "d < bestd" scan -- ties resolve to the lower c,
         // all-NaN/inf distance sets fall back to centroid 0 just like the serial init best=0).
         if (rec_idx != nullptr && tid == 0) {                  // learnable-cb recording: default -1/0
-            for (int i = 0; i < 2 * c_pq_m; i++) rec_idx[i] = -1;
+            int nslot = (c_pq_joint && c_pq_stages > 1) ? c_pq_stages : 2 * c_pq_m;
+            for (int i = 0; i < nslot; i++) rec_idx[i] = -1;
             rec_norm[0] = 0.f; rec_norm[1] = 0.f;
+        }
+        if (c_pq_joint && c_pq_stages > 1) {
+            // ---- JOINT-UV, RESIDUAL VQ (stages > 1). Same search as the single-stage block below,
+            // run once per stage against the RESIDUAL, with the picks summed. Kept separate so the
+            // single-stage path stays bit-identical to every run in the record.
+            float nu = sc_nu, nv = sc_nv;
+            if (isfinite(nu) && nu >= 1e-20f && isfinite(nv) && nv >= 1e-20f) {
+                float iu = 1.0f / nu, iv = 1.0f / nv;
+                float qu = (c_nq_levels > 0.f) ? nq_quant_norm(nu) : nu;
+                float qv = (c_nq_levels > 0.f) ? nq_quant_norm(nv) : nv;
+                if (rec_norm != nullptr && tid == 0) { rec_norm[0] = qu; rec_norm[1] = qv; }
+                if (tid < K) { acc_u[tid] = 0.f; acc_v[tid] = 0.f; }
+                __syncthreads();
+                for (int st = 0; st < c_pq_stages; st++) {
+                    const float* base = &g_pq_cb[(size_t)st * c_pq_ncent * c_pq_subdim];
+                    // Every stage keeps its OWN warm pick. The stage-1 scan was the whole cost: measured
+                    // 0.087 steps/s (a 35 h decay) with stage 1 cold, against lfq1's 0.23 at b10.
+                    const int wc = (warm != nullptr && c_pq_warm) ? warm[st] : -1;
+                    float bd = INFINITY; int bi = 0x7fffffff;
+                    for (int sidx = (wc >= 0 ? -1 : tid); sidx < c_pq_ncent; sidx = (sidx < 0 ? tid : sidx + nthreads)) {
+                        const int c = (sidx < 0) ? wc : sidx;
+                        if (sidx >= 0 && c == wc) continue;
+                        const float* cc = &base[c * c_pq_subdim];
+                        float d = 0.f;
+                        bool alive = true;
+                        for (int j0 = 0; j0 < K && alive; j0 += 8) {
+                            const int je = (j0 + 8 < K) ? j0 + 8 : K;
+                            for (int j = j0; j < je; j++) { float diff = (ufq[j] * iu - acc_u[j]) - cc[j]; d += diff * diff; }
+                            alive = (d < bd) || (d == bd && c < bi);
+                        }
+                        for (int j0 = 0; j0 < K && alive; j0 += 8) {
+                            const int je = (j0 + 8 < K) ? j0 + 8 : K;
+                            for (int j = j0; j < je; j++) { float diff = (vfq[j] * iv - acc_v[j]) - cc[K + j]; d += diff * diff; }
+                            alive = (d < bd) || (d == bd && c < bi);
+                        }
+                        if (alive) { bd = d; bi = c; }
+                    }
+                    for (int o = 16; o > 0; o >>= 1) {
+                        float od = __shfl_down_sync(FULL_MASK, bd, o);
+                        int oi = __shfl_down_sync(FULL_MASK, bi, o);
+                        if (od < bd || (od == bd && oi < bi)) { bd = od; bi = oi; }
+                    }
+                    if ((tid & 31) == 0) { red[tid >> 5] = bd; s_bidx[tid >> 5] = bi; }
+                    __syncthreads();
+                    if (tid == 0) {
+                        int nwarps = (nthreads + 31) / 32;
+                        float fd = red[0]; int fi = s_bidx[0];
+                        for (int i = 1; i < nwarps; i++) {
+                            if (red[i] < fd || (red[i] == fd && s_bidx[i] < fi)) { fd = red[i]; fi = s_bidx[i]; }
+                        }
+                        sc_best = (fi == 0x7fffffff) ? 0 : fi;
+                        if (rec_idx != nullptr) rec_idx[st] = sc_best;   // slot per stage (joint uses 0..stages-1)
+                    }
+                    __syncthreads();
+                    if (tid < K) {
+                        acc_u[tid] += base[sc_best * c_pq_subdim + tid];
+                        acc_v[tid] += base[sc_best * c_pq_subdim + K + tid];
+                    }
+                    __syncthreads();
+                    if (warm != nullptr) warm[st] = sc_best;
+                }
+                if (tid < K) { ufq[tid] = acc_u[tid] * qu; vfq[tid] = acc_v[tid] * qv; }
+                __syncthreads();
+            }
+            return ufq[x] * vfq[y];
         }
         if (c_pq_joint) {
             // ---- JOINT-UV: one 2K-dim code selects BOTH directions (engine encode_decode_joint
@@ -905,7 +988,7 @@ __global__ void rwkv7_wkv_qat_lr_forward_kernel(
     const int b = blockIdx.x, h = blockIdx.y;
     const int x = threadIdx.y, y = threadIdx.x;
     float st = 0.0f;                                       // this thread's carried (truncated) state entry
-    int warm_joint = -1;                                   // previous step's joint-cb pick (block-uniform)
+    int warm_joint[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // previous step's joint-cb pick PER STAGE (block-uniform)
     int64_t global_y = get_index3(b, 0, h, y, T, H, K);
     int64_t global_x = get_index3(b, 0, h, x, T, H, K);
     for (int t = 0; t < T; t++) {
@@ -934,7 +1017,7 @@ __global__ void rwkv7_wkv_qat_lr_forward_kernel(
         if (skip) {
             st = in_st;
         } else {
-            st = qat_lr_rank1(ns, K, qmax, nullptr, nullptr, &warm_joint);  // rank-1 int-N truncation (STE forward)
+            st = qat_lr_rank1(ns, K, qmax, nullptr, nullptr, warm_joint);  // rank-1 int-N truncation (STE forward)
         }
         global_x += H * K;
         global_y += H * K;
@@ -983,8 +1066,9 @@ __global__ void rwkv7_wkv_qat_lr_backward_kernel(
     }
 
     float dS_xy_contrib = 0.0;
-    int warm_joint = -1;  // joint-cb warm pick: chunks recompute in reverse order, but any previously
-                          // selected centroid is an EXACT distance bound, so correctness is unaffected
+    int warm_joint[8] = {-1, -1, -1, -1, -1, -1, -1, -1};  // joint-cb warm pick PER STAGE: chunks recompute in
+                          // reverse order, but any previously selected centroid is an EXACT distance
+                          // bound, so correctness is unaffected
     for (int l = L - 1; l >= 0; l--) {
         // recompute states from the checkpoint, re-applying the rank-1 truncation each step
         float state_xy = state_checkpoints_BLHKK[get_index4(b, l, h, x, y, L, H, K, K)];
@@ -1018,7 +1102,7 @@ __global__ void rwkv7_wkv_qat_lr_backward_kernel(
                 state_xy = qat_lr_rank1(state_xy, K, qmax, // re-apply truncation (block-uniform branch)
                     c_pq_learn ? &rec_idx_chunk[c * 8] : nullptr,
                     c_pq_learn ? &rec_norm_chunk[c * 2] : nullptr,
-                    &warm_joint);
+                    warm_joint);
             }
         }
 
@@ -1108,7 +1192,20 @@ __global__ void rwkv7_wkv_qat_lr_backward_kernel(
             if (c_pq_learn && c_pq_active && !skip) {
                 KK_G[get_index1(x, y, K + 1)] = G_xy;
                 if (x == 0 && y < K) {                 // reconstruct step-t factors from the recording
-                    if (c_pq_joint) {                  // joint-uv: ONE code, halves u=[0,K) v=[K,2K)
+                    if (c_pq_joint && c_pq_stages > 1) {   // residual VQ: the reconstruction is the SUM
+                        float su = 0.f, sv = 0.f;
+                        bool any = false;
+                        for (int st = 0; st < c_pq_stages; st++) {
+                            int ci = rec_idx_chunk[c * 8 + st];
+                            if (ci < 0) continue;
+                            const float* base = &g_pq_cb[(size_t)st * c_pq_ncent * c_pq_subdim];
+                            su += base[ci * c_pq_subdim + y];
+                            sv += base[ci * c_pq_subdim + K + y];
+                            any = true;
+                        }
+                        K_ufq[y] = any ? su * rec_norm_chunk[c * 2] : 0.f;
+                        K_vfq[y] = any ? sv * rec_norm_chunk[c * 2 + 1] : 0.f;
+                    } else if (c_pq_joint) {           // joint-uv: ONE code, halves u=[0,K) v=[K,2K)
                         int ci = rec_idx_chunk[c * 8];
                         K_ufq[y] = (ci >= 0) ? g_pq_cb[ci * c_pq_subdim + y] * rec_norm_chunk[c * 2] : 0.f;
                         K_vfq[y] = (ci >= 0) ? g_pq_cb[ci * c_pq_subdim + K + y] * rec_norm_chunk[c * 2 + 1] : 0.f;
@@ -1128,7 +1225,15 @@ __global__ void rwkv7_wkv_qat_lr_backward_kernel(
                     gv += __shfl_down_sync(FULL_MASK, gv, o, K);
                 }
                 if (y == 0) {
-                    if (c_pq_joint) {                  // joint-uv: both halves of ONE centroid
+                    if (c_pq_joint && c_pq_stages > 1) {   // residual VQ: d(sum)/d(each stage) = 1
+                        for (int st = 0; st < c_pq_stages; st++) {
+                            int ci = rec_idx_chunk[c * 8 + st];
+                            if (ci < 0) continue;
+                            size_t off = (size_t)st * c_pq_ncent * c_pq_subdim + (size_t)ci * c_pq_subdim;
+                            atomicAdd(&g_pq_cb_grad[off + x], rec_norm_chunk[c * 2] * gu);
+                            atomicAdd(&g_pq_cb_grad[off + K + x], rec_norm_chunk[c * 2 + 1] * gv);
+                        }
+                    } else if (c_pq_joint) {           // joint-uv: both halves of ONE centroid
                         int ci = rec_idx_chunk[c * 8];
                         if (ci >= 0) {
                             atomicAdd(&g_pq_cb_grad[ci * c_pq_subdim + x], rec_norm_chunk[c * 2] * gu);
@@ -1163,7 +1268,7 @@ at::Tensor rwkv7_lr_trunc_test_cuda(const at::Tensor& state_BHKK, double qmax) {
 // Upload the rank-1 PQ codebook (roles 0,1) to the device globals; m<=0 disables PQ (qat_lr_rank1 reverts
 // to its int-N path). cb_flat = float[2*m*ncent*sub] in layout ((role*m+p)*ncent+c)*sub+j (roles 0=u,1=v).
 // Called ONCE before a PQ-QAT run. Not templated (global state), registered as a plain CUDA op.
-static int h_pq_m = 0, h_pq_sub = 0, h_pq_ncent = 0, h_pq_joint = 0;   // host mirror of the codebook shape
+static int h_pq_m = 0, h_pq_sub = 0, h_pq_ncent = 0, h_pq_joint = 0, h_pq_stages = 1;   // host mirror of the codebook shape
 
 void rwkv7_set_pq_codebook_cuda(const at::Tensor& cb_flat, int64_t m, int64_t sub, int64_t ncent, int64_t joint) {
     int active = (m > 0) ? 1 : 0;
@@ -1177,15 +1282,23 @@ void rwkv7_set_pq_codebook_cuda(const at::Tensor& cb_flat, int64_t m, int64_t su
     const char* nw = getenv("RWKV_QAT_NO_WARM");           // task24 escape hatch: disable the
     int wa = (nw != nullptr && nw[0] == '1') ? 0 : 1;      // warm-started joint search (bitwise A/B)
     cudaMemcpyToSymbol(c_pq_warm, &wa, sizeof(int));
+    int stages = 1;
     if (active) {
         auto cbf = cb_flat.to(torch::kFloat32).to(torch::kCPU).contiguous();
         size_t n = (size_t)cbf.numel();
-        size_t want = ji ? (size_t)(ncent * sub) : (size_t)(2 * m * ncent * sub);  // joint = 1 block
-        TORCH_CHECK(n == want, "PQ codebook size mismatch: ", n, " != ", want);
-        TORCH_CHECK(n <= 32768, "PQ codebook too large: ", n, " > 32768");
+        size_t block = ji ? (size_t)(ncent * sub) : (size_t)(2 * m * ncent * sub);
+        // RESIDUAL VQ: the stage count is DERIVED from the upload's size, so the op schema and every
+        // existing caller stay exactly as they were -- a one-block upload is a one-stage catalog.
+        TORCH_CHECK(block > 0 && n % block == 0, "PQ codebook size mismatch: ", n, " not a multiple of ", block);
+        stages = (int)(n / block);
+        TORCH_CHECK(n <= PQ_CB_MAX_FLOATS, "PQ codebook too large: ", n, " > ", PQ_CB_MAX_FLOATS);
         TORCH_CHECK(!ji || m == 1, "joint PQ codebook requires m == 1");
+        TORCH_CHECK(stages == 1 || ji, "residual VQ (stages > 1) is joint-mode only");
+        TORCH_CHECK(stages >= 1 && stages <= 8, "stages out of range: ", stages);
         cudaMemcpyToSymbol(g_pq_cb, cbf.data_ptr<float>(), n * sizeof(float));
     }
+    cudaMemcpyToSymbol(c_pq_stages, &stages, sizeof(int));
+    h_pq_stages = stages;
     cudaDeviceSynchronize();
 }
 
@@ -1212,12 +1325,12 @@ void rwkv7_set_pq_learn_cuda(const at::Tensor& dev, int64_t on) {
 void rwkv7_pq_cb_grad_zero_cuda(const at::Tensor& dev) {
     void* addr = nullptr;
     cudaGetSymbolAddress(&addr, g_pq_cb_grad);
-    cudaMemsetAsync(addr, 0, sizeof(float) * 32768);
+    cudaMemsetAsync(addr, 0, sizeof(float) * PQ_CB_MAX_FLOATS);
 }
 
 // Fetch the accumulated centroid grads (same layout as g_pq_cb) as a CUDA float tensor.
 at::Tensor rwkv7_pq_cb_grad_get_cuda(const at::Tensor& dev) {
-    int n = h_pq_joint ? h_pq_ncent * h_pq_sub : 2 * h_pq_m * h_pq_ncent * h_pq_sub;
+    int n = h_pq_joint ? h_pq_stages * h_pq_ncent * h_pq_sub : 2 * h_pq_m * h_pq_ncent * h_pq_sub;
     TORCH_CHECK(n > 0, "pq_cb_grad_get: no codebook uploaded");
     at::Tensor out = torch::empty({n}, torch::dtype(torch::kFloat32).device(dev.device()));
     cudaMemcpyFromSymbol(out.data_ptr<float>(), g_pq_cb_grad, n * sizeof(float), 0, cudaMemcpyDeviceToDevice);

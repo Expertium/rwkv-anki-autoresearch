@@ -118,6 +118,7 @@ fn run_user_fast(model: &Model, user: i64) -> Result<()> {
     let mut pred_imm = vec![0.0f32; n];
     let mut pred_ahead = vec![None; n];
 
+    let (mut t_query, mut t_state) = (0f64, 0f64);
     let t0 = Instant::now();
     for i in 0..n {
         let (cidx, nidx, didx, pidx) = (route[i][0], route[i][1], route[i][2], route[i][3]);
@@ -136,11 +137,15 @@ fn run_user_fast(model: &Model, user: i64) -> Result<()> {
         ];
 
         // immediate forward (state read-only)
-        let (_, _, out_p, _) = fm.review_batched(&feats_imm[i], 1, &states)?;
+        let tq = Instant::now();
+        let (_, _, out_p, _) = fm.review_query(&feats_imm[i], 1, &states)?;
+        t_query += tq.elapsed().as_secs_f64();
         pred_imm[i] = san(fm.imm_prob(&out_p, 1)[0]);
 
         // ahead-of-time forward (updates state, stores curve)
+        let ts = Instant::now();
         let (al, ow, _, new_states) = fm.review_batched(&feats_proc[i], 1, &states)?;
+        t_state += ts.elapsed().as_secs_f64();
         let [n0, n1, n2, n3, n4] = new_states;
         s_card.insert(cidx, n0);
         s_deck.insert(didx, n1);
@@ -154,6 +159,7 @@ fn run_user_fast(model: &Model, user: i64) -> Result<()> {
             println!("  user {user}: {}/{n}  ({rate:.1} rev/s)", i + 1);
         }
     }
+    eprintln!("[speed] user {user}: R/s (query pass, retrievability) {:.1}   states/s (state pass, review_features) {:.1}", n as f64 / t_query, n as f64 / t_state);
     write_preds(user, review_th, pred_imm, pred_ahead, n, t0)
 }
 
@@ -1270,7 +1276,7 @@ fn main() -> Result<()> {
         for _ in 0..nb {
             feats4.extend_from_slice(&row); // four IDENTICAL rows on purpose
         }
-        let (_a4, c4, p4, _) = model.fast.review_batched(&feats4, nb, &tiled)?;
+        let (_a4, c4, p4, _) = model.fast.review_query(&feats4, nb, &tiled)?;
         let nc = model.fast.num_curves;
         let mut worst_rows = 0f32;
         for bi in 1..nb {
@@ -1281,7 +1287,7 @@ fn main() -> Result<()> {
                 worst_rows = worst_rows.max((c4.w[bi * nc + j] - c4.w[j]).abs());
             }
         }
-        let (_a1, c1, p1, _) = model.fast.review_batched(&row, 1, &states)?;
+        let (_a1, c1, p1, _) = model.fast.review_query(&row, 1, &states)?;
         let mut worst_b1 = 0f32;
         for j in 0..4 {
             worst_b1 = worst_b1.max((p4[j] - p1[j]).abs());
@@ -1319,6 +1325,13 @@ fn main() -> Result<()> {
     };
     for u in users {
         run_user(&model, u)?;
+    }
+    {
+        use std::sync::atomic::Ordering::Relaxed;
+        let (n, c) = (crate::model::CAND_N.load(Relaxed), crate::model::CAND_CALLS.load(Relaxed));
+        if c > 0 {
+            eprintln!("[pq-scan] {} catalog searches, {:.2} exact rechecks per search", c, n as f64 / c as f64);
+        }
     }
     Ok(())
 }

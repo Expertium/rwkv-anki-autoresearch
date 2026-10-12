@@ -61,6 +61,7 @@ else:
 # Free: validation runs under model.eval() inside no_grad, so it draws no main-process RNG --
 # proven, with a non-vacuity control, by scratchpad/ws10/rng_neutrality.py.
 _valevery = int(os.environ.get("RWKV_DECAY_VALIDATE_EVERY", "100000"))
+_nfetch = int(os.environ.get("RWKV_DECAY_FETCH_PROCESSES", "2"))   # was a hardcoded 4 until 2026-09-15 (RAM)
 
 src_optim = f"{folder}/{ws_prefix}_optim_{step}.pth"
 dst_optim = f"{folder}/{ws_prefix}_{step}_optim.pth"
@@ -83,10 +84,13 @@ VALIDATE_DATASET_LMDB_SIZE = 250_000_000_000
 LABEL_FILTER_LMDB_PATH = "{_LFDB}"
 LABEL_FILTER_LMDB_SIZE = 40_000_000_000
 
-# 4 fetch workers (was 7, Andrew 2026-07-08): each costs ~2.6 GB RAM and fetch runs far
-# ahead of demand (~4 ms get() waits); 4 still fully hides prep. Worker count never
-# affects batch content/order (seeded shuffle), only parallelism.
-NUM_FETCH_PROCESSES = 4
+# 2 fetch workers (was 4; 7 before Andrew 2026-07-08). 2026-09-15, RAM at 0.4 GB available during lfd3:
+# each decay worker held ~3.2 GB private + a ~9 GB LMDB mapping in its working set, 4 of them beside a
+# 10.6 GB trainer. The WS phase of the same runs uses 2 workers at the same batch size and the same
+# steps/s (w10lf 0.913), and fetch is hidden either way (~4 ms get() waits). Worker count never affects
+# batch content/order: DataFetcher reassembles by group index, so the numbers are bit-identical.
+# RWKV_DECAY_FETCH_PROCESSES overrides (a giant-batch run may want more).
+NUM_FETCH_PROCESSES = {_nfetch}
 MAX_TRAIN_GLOBAL_LEN = {max_len}
 
 TRAIN_MODE = "D"

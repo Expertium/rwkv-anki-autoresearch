@@ -102,3 +102,55 @@ Both-modes rule vs arm 1 (a trunk capacity change can move either mode). Control
 same WS checkpoint, same 21,870-step decay, same env but for `RWKV_STRIP_CMIX` and the checkpoint
 prefix. Not a champion candidate -- the gen-5 lineage's champion is decided on the research gate,
 and this is an endgame branch.
+
+## PREVIEW at step 8,000 of 21,870 (2026-09-12 12:50) -- NOT the verdict
+
+10-user validation (row-weighted, 4 dp) against arm 1 at the same steps, from the two decay logs:
+
+| step | cmixgraft ahead / imm | arm 1 ahead / imm | delta |
+|---|---|---|---|
+| 50 | 0.3220 / 0.2968 | 0.3221 / 0.2968 | -0.0001 / +0.0000 |
+| 2000 | 0.3222 / 0.2968 | 0.3222 / 0.2968 | +0.0000 / +0.0000 |
+| 4000 | 0.3204 / 0.2969 | 0.3208 / 0.2968 | -0.0004 / +0.0001 |
+| 6000 | 0.3216 / 0.2967 | 0.3210 / 0.2966 | +0.0006 / +0.0001 |
+| 8000 | 0.3218 / 0.2960 | 0.3219 / 0.2960 | -0.0001 / +0.0000 |
+
+The deltas oscillate around zero with no trend: no visible capacity effect so far. This instrument
+predicted arm 1's gate deltas within 0.0004 (2026-09-10), so an effect of the size the PREREG hopes
+for on ahead (~0.001+) would likely show by the decay's end. The gate on 2,499 users decides; a null
+stays a WEAK null (two epochs for new parameters).
+
+## PREVIEW at the END of the decay (step 21,870, 2026-09-12 18:05) -- NOT the verdict
+
+Late 10-user validation deltas vs arm 1 (cmixgraft minus arm 1; positive = cmixgraft WORSE):
+step 10,000 +0.0002 / -0.0002, 12,000 +0.0004 / +0.0000, 14,000 +0.0007 / -0.0001, 16,000 +0.0001 /
++0.0000, 18,000 +0.0003 / +0.0000, 20,000 +0.0003 / -0.0001, **21,870 +0.0003 / -0.0001** (ahead / imm).
+From step 10,000 on the ahead delta is positive at every point: the early read is **ahead ~0.0003
+WORSE, imm equal**, i.e. a null or a small loss, not the win P1 hoped for. Read it with the PREREG's
+two caveats: the restored mixers also switch on p=0.005 layer dropout on six blocks (which should hurt
+the treatment), and 2 epochs is short training for new parameters -- so a null here is WEAK.
+
+## VERDICT (2026-09-12 21:05, `verdict_cmixgraft.py`, n = 2,499, size 0/2,499) -- A WEAK NULL
+
+| mode | arm 1 | cmixgraft | gain | one-sided Wilcoxon (candidate better) |
+|---|---|---|---|---|
+| ahead | 0.297577 | 0.297492 | **+0.000085** | p = 0.948 (47.2% of users better, median gain -0.000022) |
+| imm | 0.262066 | 0.262105 | **-0.000039** | p = 1.0 (39.0% better) |
+
+* **P3 HOLDS (read first):** all six restored `W_v` are engaged, ||W_v||_F at 19.8-31.2% of the
+  neighbouring trained median (21.11) against a 10% bar. The run is interpretable.
+* **P1 FAILS:** ahead +0.000085 against the >= +0.0003 bar. **P2 holds** (|imm| < |ahead|).
+* **P4 FIRES:** ahead within +/-0.0001 with P3 satisfied -- two epochs of coarse-stream capacity buy
+  nothing measurable.
+* **Where the +0.000085 sits (size quartiles, ahead):** Q1 +0.000156 (50.7% better), Q2 +0.000136,
+  Q3 +0.000068, **Q4 -0.000017 (45.1% better)**. So the mean is carried by the smallest, noisiest users,
+  and the users with the most coarse-stream history -- where user/preset capacity should matter most --
+  gain nothing. imm is slightly worse in every quartile, most often for the largest users (Q4: 31.7%
+  better), which fits the favourable-direction caveat above: the restored mixers also switch on p=0.005
+  layer dropout on six layer-steps.
+* **Read it with the asymmetry stated before the run: a WEAK null.** It bounds user/preset channel-mixer
+  capacity from below at a 2-epoch decay; it does not say "capacity does not bind". It also does NOT
+  test the card stream, which is where the per-user gap to the d=128 model grows (with reviews per
+  card); the card grafts `lfcmf2` / `lflora16` test that, on w10lf's WS.
+* Consequence for option C (the 48-60 h full-budget capacity run): per P4 it needs a better argument
+  than this run before it is worth the GPU.

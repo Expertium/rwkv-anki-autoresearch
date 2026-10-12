@@ -3,7 +3,7 @@ given real checkpoints for free.
 
 WHY IT MATTERS. `write_decay_setup.py` writes VALIDATE_EVERY = 100000, so a 21,870-step decay
 checkpoints at step 50 and at the end and NOTHING else -- a crash at step 21,000 costs 6.2 h.
-CLAUDE.md flags this as a MUST-FIX for the endgame decay (a PC restart already killed one at
+AGENTS.md flags this as a MUST-FIX for the endgame decay (a PC restart already killed one at
 10,681/10,935). The fix is trivial, but only FREE if raising the validation frequency leaves the
 training trajectory alone. If validation draws from the main-process RNG, arm 1's dropout draws
 would diverge from realcyc's decay and the one CLEAN comparison in PREREG.md picks up a confound.

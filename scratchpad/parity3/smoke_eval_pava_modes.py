@@ -7,7 +7,7 @@ were never exercised before a run -- so exercise it here, on CPU, in seconds.
 
 Each mode runs in its OWN subprocess: the flag is read in __init__ and the old-style ScriptModule
 API bakes the first construction's env into the compiled class, so two modes cannot coexist in one
-process (CLAUDE.md "TorchScript hook rules").
+process (AGENTS.md "TorchScript hook rules").
 
 What is asserted, on synthetic tensors with a KNOWN answer:
   mode 0 -> the eval-rectify path is inert (curve_probs returned unchanged)

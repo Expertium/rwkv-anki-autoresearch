@@ -23,7 +23,7 @@ no gradient reaches the rating head; and the imm objective is `p_loss` = cross-e
 **`label_rating`**, which this lever never touches — it rewrites `label_y`, which feeds only
 `curve_loss` / `curve_raw_loss` / the PAVA probe target. imm can therefore move **only through the
 shared trunk**. Demanding imm also improve by ≥0.0001 would be demanding a side effect the
-mechanism cannot produce. (`CLAUDE.md` §9 already stated the general form: "a curve-side change
+mechanism cannot produce. (`AGENTS.md` §9 already stated the general form: "a curve-side change
 moves only one of the two gate modes".)
 
 ⚠ `label_y` *does* reach one imm-side term — `p_binary_loss`, `srs_model.py:1128` — but

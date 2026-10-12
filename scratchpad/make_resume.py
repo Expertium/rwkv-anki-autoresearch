@@ -74,6 +74,21 @@ def main():
         out_lines.append(f"# appended by make_resume.py -- absent from {ws_toml.name}")
         out_lines.extend(want[k] for k in missing)
     body = "\n".join(out_lines) + "\n"
+    # RWKV_RESUME_KEEP_WARMUP=1 (2026-09-17, for lfwu20k's 20,000-step warmup): train_rwkv builds its
+    # LinearLR warmup FRESH on every launch and the LOAD_MODEL path resets every group's lr to PEAK_LR,
+    # so a resumed WS re-runs the WHOLE warmup from 1e-4 x peak. Harmless at 400 steps (what every
+    # earlier resume did), a different experiment at 20,000. With the flag, the resume toml's
+    # WARMUP_STEPS becomes the REMAINING warmup, max(1, WARMUP_STEPS - n), so the ramp still ends
+    # where the uninterrupted run's would (its first steps ramp from 1e-4 again -- a crash path,
+    # not bit-reproducible either way). Default unset = byte-identical to the old output.
+    import os
+    import re
+    if os.environ.get("RWKV_RESUME_KEEP_WARMUP", "") == "1":
+        m = re.search(r"(?m)^WARMUP_STEPS = (\d+)$", body)
+        assert m, "RWKV_RESUME_KEEP_WARMUP=1 but the toml has no integer WARMUP_STEPS line"
+        remaining = max(1, int(m.group(1)) - n)
+        body = body[:m.start()] + f"WARMUP_STEPS = {remaining}  # make_resume: a resume at step {n} of a {m.group(1)}-step warmup" + body[m.end():]
+        print(f"[keep-warmup] WARMUP_STEPS {m.group(1)} -> {remaining} for a resume at step {n}")
     present = {l.split("=")[0].strip() for l in body.splitlines() if "=" in l}
     for k in want:
         assert k in present, f"resume toml lacks {k} -- train_rwkv would die AND still exit 0"

@@ -1,10 +1,10 @@
 """Can quant-aware training run with TorchScript ON? CPU-only, seconds, no GPU needed.
 
-WHY THIS MATTERS (CLAUDE.md "THE ENDGAME, ORDERED"). The final 10x-epoch run is quant-aware, and
+WHY THIS MATTERS (AGENTS.md "THE ENDGAME, ORDERED"). The final 10x-epoch run is quant-aware, and
 QAT currently forces `RWKV_NO_JIT=1`. The QAT wall-clock tax is ~1.7x, and the decomposition says
 almost all of it is LOST JIT (1.13 kernel x 1.38 JIT = 1.56, vs 1.7 observed) rather than kernel
 work. So if QAT can keep JIT, roughly **1.5 days comes off a 4-day run** -- the cheapest large win
-available, which is why CLAUDE.md flags "JIT on the grafted q72u paths unverified -- A/B once at
+available, which is why AGENTS.md flags "JIT on the grafted q72u paths unverified -- A/B once at
 champion-run launch".
 
 The GPU A/B is blocked behind the queue, but the question underneath it is NOT a GPU question. It
@@ -28,7 +28,7 @@ NO_JIT path (the whole point of QAT is that the simulated quantization matches d
 actual steps/s A/B. This only says whether that GPU experiment is worth queueing.
 
 Each env gets its OWN subprocess -- old-style ScriptModule bakes the first construction's flags
-into the compiled class (CLAUDE.md "TorchScript hook rules").
+into the compiled class (AGENTS.md "TorchScript hook rules").
 
 Run:  .venv/Scripts/python.exe scratchpad/parity3/smoke_qat_jit.py
 """
@@ -38,7 +38,7 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# The champion's QAT recipe (CLAUDE.md "5k-PHASE METHODOLOGY (a)"), minus RWKV_NO_JIT -- which is
+# The champion's QAT recipe (AGENTS.md "5k-PHASE METHODOLOGY (a)"), minus RWKV_NO_JIT -- which is
 # the variable under test. Codebooks are the tracked q72u deploy pair.
 QAT_ENV = {
     "RWKV_QAT_LOWRANK_SCOPE": "card:1:int4,note:1:int4",

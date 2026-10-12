@@ -48,7 +48,7 @@ names the untested variant: a teacher that is NOT the same forward pass. Iter 54
 such a teacher -- iter 45's final checkpoint, same size, same layout, separate frozen pass -- against
 the d=128 teacher in a KD decay, and got an EXACT TIE (+0.000084 / -0.000070). Read together with iter
 45 (d=128 teacher in decay beats no teacher in decay by +0.000192 / +0.000104, plain): a same-size
-separate-pass teacher delivers the decay-phase KD gain in full. CLAUDE.md's line "iter 46 showed a
+separate-pass teacher delivers the decay-phase KD gain in full. AGENTS.md's line "iter 46 showed a
 teacher that is not a bigger/different function distils nothing" over-generalises iter 46 to a case
 iter 54 contradicts. The ensemble-teacher demotion (r=0.946, teacher B is teacher A's student) is about
 averaging two teachers, not about using one. And KD is OFF on this lineage only because the 92-dim

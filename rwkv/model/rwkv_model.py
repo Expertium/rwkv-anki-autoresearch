@@ -104,6 +104,12 @@ _SHIFT_PQ_META = None  # (m, sub, ncent)
 # analog is uploaded to the CUDA kernel in rwkv_ops.maybe_upload_pq_codebook (range [-3,0]).
 _NORM_BITS = int(os.environ.get("RWKV_QAT_NORM_BITS", "0") or 0)
 _SHIFT_NQ_LO, _SHIFT_NQ_HI = 2.2, 2.9
+# RWKV_QAT_NORM_RANGE_SHIFT="lo,hi" (2026-09-24): override the fixed shift-norm range. The default [2.2, 2.9] was
+# fitted in the d=32 era; unset = byte-identical. Must equal the engine's RWKV_PQ_NORM_RANGE_SHIFT.
+if os.environ.get("RWKV_QAT_NORM_RANGE_SHIFT", ""):
+    _SHIFT_NQ_LO, _SHIFT_NQ_HI = (float(x) for x in os.environ["RWKV_QAT_NORM_RANGE_SHIFT"].split(","))
+    assert _SHIFT_NQ_HI > _SHIFT_NQ_LO, (_SHIFT_NQ_LO, _SHIFT_NQ_HI)
+    print(f"[QAT-SHIFT-PQ] norm range override: [{_SHIFT_NQ_LO}, {_SHIFT_NQ_HI}] octaves")
 
 
 def _nq_quant_norm(norm):

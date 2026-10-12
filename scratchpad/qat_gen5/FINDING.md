@@ -71,3 +71,23 @@ loss being uncertain, not for leaving a broken starting point in place.
      does not.
    `export_rnn_trace.py` now takes `RWKV_REF_USERS` (default unchanged), so widening is a
    half-hour of work if a reason to want it ever appears.
+
+## ⚠ Addendum 2026-09-12: this corpus was dumped from a MIS-WIRED model -- the verdict STANDS
+
+The Rust engine takes the stream order from `RWKV_STREAM_ORDER` and defaults to the original
+card,deck,note order; the gen-5 architecture (`_cnd`) runs card,note,deck, and this dump did not set
+the variable. So the "note" corpus above is another stream (3,612 states for user 156 instead of 903)
+and the card states are 15.5% (relative L2) off. Re-checked on a CORRECTLY wired dump of the same
+model and traces (`RWKV_STREAM_ORDER=card,note,deck,preset,user`, held out by user 156):
+
+| catalog | WKV | shift TS / CS | random |
+|---|---|---|---|
+| `pq_cb_wkv_c80_b10` / `pq_cb_shift_c80_m2b12` (the old live pair) | **0.9392** | **1.0564 / 1.0857** | 0.9597 / 0.969 / 0.972 |
+| `pq_cb_wkv_gen5_b10` / `pq_cb_shift_gen5_m2b12` (fitted on the mis-wired corpus) | **0.6046** | **0.2881 / 0.2326** | |
+| WKV refit on the correct corpus | 0.4845 (oracle 0.2451) | | |
+
+**The stale verdict on the old pair stands.** The replacements work (far below random), but the WKV
+one is ~25% worse than a correct refit -- and ws10's catalogs (arm 2's start catalogs,
+`scratchpad/w10qat/run_fit_catalogs.cmd`) were fitted the same mis-wired way. The leak-free refit
+(`scratchpad/w10lf/mk_lf_fit_catalogs.py`) sets the variable and checks every corpus header
+(`scratchpad/lfqat/check_corpus_order.py`).

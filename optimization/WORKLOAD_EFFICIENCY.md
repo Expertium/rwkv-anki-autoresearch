@@ -230,7 +230,7 @@ between DR levels. Negligible.
 
 ### The deploy contract is followed, and it is load-bearing
 
-Per CLAUDE.md's deploy contract: duration of the most recent review zeroed, PAVA applied, no
+Per AGENTS.md's deploy contract: duration of the most recent review zeroed, PAVA applied, no
 piecewise ahead correction. That costs **five** forward passes per review (four counterfactual
 buttons, because PAVA pools *across* buttons, plus one to advance the state with the real
 duration). Both shortcuts were measured rather than assumed (`probe_contract.py`, user 5100,

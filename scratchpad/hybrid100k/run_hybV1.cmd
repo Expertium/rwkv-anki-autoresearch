@@ -3,7 +3,7 @@ REM ============================================================================
 REM HYBRID ARM V1: FSRS-7 (S_long, S_short, D) replaces the card stream's WKV; the trunk EMITS the 34 parameters per review
 REM Priced at 488858 params vs the champion's 558,212. Design: optimization/HYBRID_100K.md.
 REM
-REM GATE: CLAUDE.md's SIZE/SPEED EXCEPTION, pre-registered 2026-08-30 BEFORE
+REM GATE: AGENTS.md's SIZE/SPEED EXCEPTION, pre-registered 2026-08-30 BEFORE
 REM this run -- accept iff BOTH modes stay within +0.0015 of the champion AND
 REM per-card state strictly shrinks. NOT the parameter-ratio rule: V1 moves
 REM per-card state 2,880 floats to 3 while moving parameters only 12.4%, so a

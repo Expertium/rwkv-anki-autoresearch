@@ -283,7 +283,7 @@ genuine end-to-end test of the new-features path: **exit 0, trained to step 546 
 **The arm that ran did not test what this matrix says it tests.** `diag_idfeat/ws.toml` points at
 `F:/rwkv_lmdb/train_db_5k_h1_id`, a **matching-width** database, so `idfeat_ws_546.pth` proves the
 features path *executes* end-to-end and says nothing about the mismatch case. (It also ran against
-a gen-1 `-id` build, which CLAUDE.md now records as superseded by `*_id3` — harmless, since a
+a gen-1 `-id` build, which AGENTS.md now records as superseded by `*_id3` — harmless, since a
 diagnostic's logloss is meaningless, but do not read that checkpoint as anything else.)
 
 The untested half — *does a wrong-width LMDB fail LOUDLY?* — needs no GPU, because a shape

@@ -83,7 +83,7 @@ if MODE == "real":
 torch.manual_seed(1234)
 model = SrsRWKV(DEFAULT_ANKI_RWKV_CONFIG)
 model.eval()
-# ⚠ THE VACUITY TRAP (CLAUDE.md section 9): a freshly built RWKV7 has ZERO-INIT output
+# ⚠ THE VACUITY TRAP (AGENTS.md section 9): a freshly built RWKV7 has ZERO-INIT output
 # projections, so every layer is EXACTLY the identity and no change to sequence grouping can
 # show up. The first run of this smoke reported `real` == `off` for precisely that reason.
 # Randomize per parameter NAME (not in iteration order) so the tree model's one extra parameter

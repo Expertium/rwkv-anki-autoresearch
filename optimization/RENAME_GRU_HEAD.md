@@ -42,7 +42,7 @@ but `pfc` is an opaque acronym in code. `power_mix` reads without expansion.
 | `srs_model.py` + `srs_model_rnn.py` | 53 |
 | `rust/rwkv-infer` (`model.rs`, `fast.rs`) | 48 |
 | runners setting the flag | **122** |
-| docs (CLAUDE.md, HISTORY, log.md, …) | ~77 |
+| docs (AGENTS.md, HISTORY, log.md, …) | ~77 |
 | **checkpoint parameter keys** | **6** (`gru_{w,s,d}_{weight,bias}`) |
 
 ## Backward compatibility is mandatory, not optional
@@ -61,7 +61,7 @@ parity gate breaks.
 
 ## ⚠ WHY THIS WAITS FOR A FREE GPU — a mandatory guard needs one
 
-This edits `srs_model.py`, and CLAUDE.md's rule after touching that file is to run
+This edits `srs_model.py`, and AGENTS.md's rule after touching that file is to run
 **`scratchpad/parity3/smoke_scripted_eval.sh`** before any launch: a plain eval is the *only* path
 that scripts the model, so this bug class is invisible to training and to QAT evals. That guard is
 GPU-gated, and the "no co-tenant GPU work during gate-critical runs" rule forbids running it beside

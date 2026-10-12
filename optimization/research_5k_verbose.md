@@ -4506,3 +4506,704 @@ Same checkpoint, users 5001-5300, the deploy env minus one value quantizer per a
   remaining routes are QAT-KD (re-based on the leak-free WS) and Andrew's byte grant (rank-2 state).
   ⚠ Removal is a weak instrument on a co-adapted model: "not decidable by removal", not "the
   catalogs carry nothing".
+
+## ENDGAME: `w10clk`, the leak-free DECAY branch (2026-09-12 09:55)
+
+ws10's WS-final (trained WITH the clock leak) -> arm 1's 2-epoch decay -> arm 1's rectified eval, with
+`RWKV_CLOCK_AT_PREV_ANSWER=1800` in all three and nothing else changed. Full precision. PREREG and
+verdict: `scratchpad/w10clk/PREREG.md`, `verdict_w10clk.py`.
+
+| | ahead | imm |
+|---|---|---|
+| w10clk (n = 2,499, size 0/2,499, nan 0) | 0.297801 | 0.264160 |
+| vs arm 1 (leaked), P1 | +0.000224 (band +0.0001..+0.0008), 64.6% worse | +0.002095 (band +0.0010..+0.0040), 89.8% worse |
+| vs the old d=128 model, P4 | +0.003178 worse | **+0.000575 worse** |
+| stop criterion, P3 | 0.2950: NOT met (0.0028 short) | 0.2640: NOT met (0.00016 short) |
+
+* **P2 -- ordered against phase L on imm (users 5001-5300):** the branch costs +0.002217 against phase
+  L's no-adaptation +0.003152, ratio **0.70** (band 0.4-0.8). A leak-free DECAY recovers ~30% of what
+  the leak was worth to a model that learned it; the rest is reliance baked into the WS.
+* **P4 settles the suspended claim:** without the leak our 563k model does NOT beat the 2.76M d=128
+  model on imm (it trails by 0.0006); on ahead it trails by 0.0032 as before.
+* **P5 engaged.** 192 banner lines; the counters report 77% of query rows and 57% of labels shifted.
+  ⚠ The PREREG said "3-7% of labels shift", from the smoke's chunks. The counter counts ANY positive
+  in-session gap of the target review, and most target reviews come under a second after the previous
+  answer, so most of those shifts are sub-second against multi-day intervals. The smoke proved every
+  label shift equals an independent recomputation; the 57% is a population number, not a defect.
+* **Deploy estimate, additive and untested:** + arm 2's tax = 0.300330 / 0.268626. The leak-free QAT
+  arm (`lfq<L*>`, on w10lf) is the direct test.
+* **What it changes:** w10clk is the honest leak-free number until w10lf lands; w10lf (the WS trained
+  without the leak) can recover part of the remaining 70%, and its PREREG band (imm +0.0005..+0.0030
+  worse than arm 1) now has a decay-only point at +0.0021 to beat.
+
+## ENDGAME: `cmixgraft`, the coarse-stream capacity probe (2026-09-12 21:05) -- A WEAK NULL
+
+**The question (Q2 of arm 1):** at the real 12-epoch budget the 4.95x reduction costs ~0.003 ahead
+against the d=128 model, and every earlier capacity reject was measured at ~1.25 epochs. Is capacity
+binding now? This run tests the one zero-deploy-byte direction: the user/preset streams (gate #3 lets
+them grow). **The lever:** the six user/preset channel mixers that `RWKV_STRIP_CMIX` removes are
+restored on ws10's WS-final by a function-preserving graft (`scratchpad/cmixgraft/expand_ckpt.py`:
+new `W_v` zero-initialised, so the model is bit-identical to ws10 at step 0, 563,652 -> 641,862
+params; `expand_optim.py` maps the optimizer state by name), then arm 1's exact 2-epoch decay and
+rectified eval. The only other change: `Block.forward` applies p=0.005 layer dropout to a restored
+mixer's output (PREREG, "the second variable": a bias against the treatment).
+
+| mode | arm 1 | cmixgraft | gain | Wilcoxon (cand. better) |
+|---|---|---|---|---|
+| ahead | 0.297577 | 0.297492 | +0.000085 | p = 0.948, 47.2% of users better, median -0.000022 |
+| imm | 0.262066 | 0.262105 | -0.000039 | p = 1.0, 39.0% better |
+
+**Engagement first (P3, holds):** restored `W_v` Frobenius norms 4.18-6.58 = 19.8-31.2% of the
+neighbouring trained median 21.11 (bar 10%), so the decay USED the capacity and the result is
+interpretable. **P1 fails** (bar +0.0003), **P2 holds**, **P4 fires** (ahead within +/-0.0001).
+
+**Where the ahead mean sits:** by size quartile Q1 +0.000156 (50.7% better), Q2 +0.000136, Q3
++0.000068, Q4 -0.000017 (45.1%). The mean is carried by the smallest, noisiest users; the users with
+the most coarse-stream history -- the ones user/preset capacity should help -- gain nothing. imm is
+slightly worse in every quartile and most often for the largest users (Q4 31.7% better), consistent
+with the extra layer dropout.
+
+**What it does and does not say.** Two epochs is little for brand-new parameters, so this bounds
+coarse-stream mixer capacity from BELOW: a weak null, never "capacity does not bind". It also says
+nothing about the CARD stream -- the 2026-09-12 per-user check put the d=128 model's ahead advantage
+there (it grows with reviews per card), and `lfcmf2` / `lflora16` test exactly that on w10lf's WS.
+It is the fourth capacity placement to return a null (iters 49, 60/61 at 1.25 epochs; this one at the
+real budget, decay-only), and it matches the FAMILY SCOREBOARD's pattern: the parameters engaged and
+the loss did not move. Option C (48-60 h, full-budget coarse capacity) needs a better argument than
+this before it is worth the GPU. Verdict: `scratchpad/cmixgraft/verdict_cmixgraft.py`; record
+`research_log.jsonl` `cmixgraft`.
+
+## SCREEN: `ablcf`, how much does the model rely on creation -> first review? (2026-09-12 21:29)
+
+**The question (Andrew, 2026-09-12):** "zero out the Creation -> first review interval feature and do
+an eval. I wanna see how much it's worth." **The instrument:** w10clk's checkpoint
+(`scratchpad/ws10/w10lk_d_21870.pth`, the honest leak-free-eval 10+2 model) evaluated on users
+5001-5300 in w10clk's exact eval env (clock fix T=1800, rectified metric, gen-5 db) plus ONE change,
+`RWKV_ABLATE_FEATURES=scaled_creation_to_first_review` (input dim 33 set to 0, which is its training
+mean after standardisation). Control = w10clk's own per-user results on the same 300 users; phase L
+showed a subset eval reproduces the full eval's per-user numbers at max |d| = 0, so no control eval
+was needed. No training; ~26 min of GPU. `scratchpad/ablate_cf/` (`mk_ablate_cf.py` with guards 11-17
+incl. the `[feat-mask]` banner for exactly this feature; `verdict_ablate_cf.py`).
+
+| mode | w10clk (n=300) | feature zeroed | cost | Wilcoxon (ablated worse) |
+|---|---|---|---|---|
+| ahead | 0.301019 | 0.301207 | +0.000189 | p = 7.0e-06, worse on 61.0% of users |
+| imm | 0.268798 | 0.269027 | +0.000229 | p = 1.5e-18, worse on 71.3% |
+
+size 0/300 mismatches, 0 exceptions in the eval log, clock-fix ON in both workers.
+
+**What it says.** The model USES the feature: zeroing it hurts on a clear majority of users in both
+modes, at p far below any noise floor. But the amount is small -- about +0.0002 in each mode. For
+scale, the same instrument on featB's checkpoint put `t_since_any_review` at +0.001325 ahead /
++0.005076 imm (the LOO sweep, n=300), so creation -> first review carries ~1/7 of that on ahead and
+~1/22 on imm.
+
+**What it does NOT say -- RELIANCE, not VALUE.** This is the cost of removing the input from a
+model TRAINED with it. A model retrained without it would route part of the same information
+through neighbours (`t_since_any_review`, tenure, deck age, the cycles all touch the same clock), so
++0.0002 is a CEILING on what the feature is worth, not the number. Measuring the value needs a
+retrain (~47 h at the endgame budget), which the question does not justify. The feature stays in the
+final 103-input layout (`INPUT_FEATURES.md` row 23); nothing changes in the chain. Record:
+`research_log.jsonl` `ablcf` (status screen).
+
+---
+
+## ENDGAME: `w10lf`, the LEAK-FREE run and the base of the shipped model (2026-09-14 18:05)
+
+ws10's 10-epoch WS repeated from scratch, arm 1's 2-epoch decay, arm 1's rectified eval -- with
+`RWKV_CLOCK_AT_PREV_ANSWER=1800` in all three phases and the FINAL input layout (`RWKV_FINAL_LAYOUT=1`,
+103 inputs, params 561,732). Full precision. PREREG: `scratchpad/w10lf/PREREG.md`; verdict
+`scratchpad/w10clk/verdict_w10clk.py w10lf`. Started 2026-09-12 21:58, WS_OK 09-14 07:14 (0.913 steps/s),
+DECAY_OK 13:35, EVAL_OK 18:05; 0 tracebacks in all three logs.
+
+| | ahead | imm |
+|---|---|---|
+| w10lf (n = 2,499, size 0/2,499, nan 0) | 0.297755 | 0.264195 |
+| vs arm 1 (leaked), P1 | +0.000178 (band +0.0001..+0.0008), 54.9% worse, p 2e-06 | +0.002129 (band +0.0010..+0.0040; revised +0.0006..+0.0022), 83.5% worse, p 2e-292 |
+| vs w10clk (leak-free decay only), P3 | -0.000046, 50.0% worse, p 0.42 | +0.000034, 53.0% worse, p 0.02 (band <= +0.0003) |
+| vs the old d=128 model, P4 | +0.003143 worse | +0.000634 worse |
+| stop criterion | 0.2950: NOT met (0.0028 short) | 0.2640: NOT met (0.0002 short) |
+
+* **THE RESULT: a leak-free WS recovers NOTHING beyond the leak-free decay.** w10clk (leaked WS, leak-free
+  decay + eval) and w10lf (leak-free everything) are a tie at n = 2,499: ahead -0.00005 (p 0.42), imm
+  +0.00003 (p 0.02, inside the +0.0003 band). The compaction focus said "imm must beat +0.0021 vs arm 1 to
+  show the WS mattered" -- it did not (+0.002129 vs w10clk's +0.002095). So the leak's value after full
+  adaptation is **+0.0021 imm / +0.0002 ahead**, and the "part of the remaining 70%" that a from-scratch
+  run was expected to recover is zero: what a decay could not re-learn without the leaked clock, a WS
+  could not either. The information was in the leak, not in the adaptation.
+* **P2:** on phase L's users 5001-5300 the run costs +0.002298 imm against the no-adaptation +0.003152,
+  ratio **0.73** -- at the top edge of the "0.2..0.7" band (inside the "likely 0.4-0.8" one). Consistent
+  with the point above: adaptation recovers ~27%, and all of it in the decay.
+* **The layout change is ~0, as predicted** (the addendum said the two changes cannot be separated; a tie
+  against w10clk, which has the 109-input layout, bounds the layout's effect at the noise floor).
+* **P5 engaged:** ON banners and the chunk-count line in the WS log (230,501 chunks, 77% of query rows
+  shifted, `day crossings` present), the decay log (193 lines) and the eval shard log. **P6:** WS
+  0.913 steps/s vs ws10's 0.80, +14%, OUTSIDE the 5% band -- the one named env difference is
+  `OMP_NUM_THREADS=7` (present here, absent in ws10); the fetch workers' CPU work is the plausible
+  beneficiary. Not a concern for the number (0 exceptions; the decay and eval match arm 1's rates).
+* **P7 size 0/2,499** against arm 1 and against w10clk.
+* **What follows.** w10lf is the base of every leak-free branch: the decay-length pair (lfd3/lfd1), the
+  card grafts (lfcmf2/lflora16), the leak-free QAT arms (lfq*, lfqkd*, b13) and the budget curve all
+  branch from its WS checkpoints, which exist (`w10lf_ws_109350.pth`, `_22000`, `_55000`). The deploy
+  estimate if arm 2's tax is additive: 0.300284 / 0.268661; the leak-free QAT arms measure the real one.
+  Ledger row 14 is now measured on the shipped base (`research_5k.md` THE LEDGER).
+
+## SCREEN: `ablfr`, the creation -> first-review reliance on SECOND reviews (2026-09-14 19:06)
+
+Andrew asked for the `ablcf` ablation "but calculate log loss only on first reviews". A first review is
+never predicted: `data_processing.add_queries` builds no query row for `is_first_review` (no imm), no
+earlier row of the card exists for an ahead target, and the benchmark's `delta_t > 0` drops it anyway. The
+closest event is each card's SECOND review -- the first the model predicts, where creation->first review is
+the freshest fact about the card. `get_result` keeps no per-row predictions, so both arms were re-run
+through `scratchpad/ablate_cf/eval_rows.py` (the same forward, every labelled row kept per user) and
+scored by `score_second.py` (second reviews from the -id parquet: `elapsed_days == -1`, then the card's
+next row; `review_th` = parquet row + 1, verified against the LMDB). w10clk's checkpoint, users 5001-5300,
+`RWKV_ABLATE_FEATURES=scaled_creation_to_first_review` on the ablated arm. ~1 h of GPU between w10lf and
+the decay-length pair (`run_ablate_fr.cmd`, `wait_lf_then_fr.cmd`).
+
+**Harness cross-check first:** the control dump reproduces w10clk's recorded per-user equalized LogLoss
+(max |d| 1e-6 / 0), the ablated dump reproduces ablcf's (1e-6 / 1e-6). Counts: 2,721,956 first reviews,
+2,488,608 second reviews, all predicted, 1,907,863 inside the equalized set.
+
+| rows (n = 300 users) | mode | control | ablated | per-user delta | worse on / p | row-pooled delta |
+|---|---|---|---|---|---|---|
+| second reviews, equalized set (1,907,863; rectified) -- PRIMARY | ahead | 0.252502 | 0.253218 | **+0.000716** | 62.3% / 4.1e-10 | +0.000403 |
+| | imm | 0.232062 | 0.232642 | **+0.000580** | 69.0% / 7.3e-17 | +0.000322 |
+| all second reviews (2,488,608; unrectified outside the set) | ahead | 0.251392 | 0.252087 | +0.000696 | 66.0% / 2.0e-13 | +0.000489 |
+| | imm | 0.230824 | 0.231372 | +0.000548 | 69.7% / 2.7e-18 | +0.000339 |
+| ALL rows (ablcf, for scale) | ahead / imm | | | +0.000189 / +0.000229 | 61% / 71% | |
+
+* **The reliance is 3.8x (ahead) / 2.5x (imm) larger on second reviews than on all rows.** That is the
+  mechanism one expects for a per-card constant that describes the card BEFORE any review: it is most of
+  what the model knows about a brand-new card, and it dilutes as the card accumulates its own history.
+* Second reviews are ~15% of the scored rows, so this ~+0.0007 on them is a large share of the ~+0.0002
+  all-rows number; the remaining rows carry the rest at a smaller per-row weight.
+* Still RELIANCE, not value: a retrained model compensates for part of it. The feature stays in the final
+  layout. The per-row dump tool (`eval_rows.py`) is reusable for any other row-subset question.
+
+## ENDGAME: `lfd3`, the 3-epoch decay (2026-09-15 10:33) -- a longer decay HURTS ahead
+
+w10lf's WS-final -> a 3-epoch cosine decay (32,805 steps; w10lf's is 2 epochs) -> w10lf's rectified eval.
+Single variable (`mk_lf_branch.py decay 3`). It ran on 4 fetch workers (the write_decay_setup change to 2
+landed at 02:55 while it was running; lfd1 is the first decay on 2). 0 tracebacks.
+
+| | ahead | imm |
+|---|---|---|
+| w10lf (2-epoch decay) | 0.297755 | 0.264195 |
+| lfd3 (3-epoch decay) | 0.298003 | 0.264177 |
+| lfd3 - w10lf | **+0.000248 WORSE**, worse on 55.0% of users (p for "better" = 1.0) | -0.000018, better on 54.5% (p 3.8e-07), a null in size |
+| PREREG P1 (branch better by) | -0.00005 .. +0.00020 -> OUTSIDE, wrong side | +0.00005 .. +0.00060 -> below |
+
+* **Rule 1 of the L* rule fails** (L* = 3 needs both modes >= +0.0001 better at p < 1e-4). L* is 1 or 2,
+  decided by lfd1 (started 10:33; rule 2: L* = 1 iff lfd1 is not worse than w10lf beyond the noise floor
+  in either mode, else L* = 2 and nothing is re-run).
+* **What it says beyond the length question:** a third epoch of decay after a 10-epoch WS makes ahead
+  WORSE by 0.00025 at n = 2,499 -- not flat, worse. On byte-identical epochs (augmentation off) the extra
+  pass costs generalisation on the curve head while the rating head is indifferent. That is the same
+  direction as the ledger's unrecovered recipe cost (rows 1/2/13) and the strongest hint yet that the
+  10x budget is past its useful length for the 558k model on this data pipeline. The params x epochs grid
+  (`scratchpad/pxe/PREREG.md`, link D) is the experiment that separates "the model saturates" from "the
+  recipe's epochs stop paying".
+* size 0/2,499 vs w10lf; nan 0; P5 engagement banners present.
+
+## SCREEN: `r2probe`, the four button curves per scored review (2026-09-15 14:20) -- PAVA's cost is information, not an artefact
+
+Before building R2 (monotone-by-design head), PROPOSALS.md asked which button pairs cross and whether the pooling
+cost sits in a few large violations. `scratchpad/r2/probe_buttons.py` (get_result's forward with RWKV_EVAL_PAVA=1
+on w10lf's decayed checkpoint, CPU bf16, 40 moderate-size VAL users, 321,332 scored rows; the rebuilt per-user
+LogLoss matches the recorded jsonl within 1.7e-4) captured the four unrectified values and the four rectified
+ones per scored review; `analyze_buttons.py` did the rest.
+
+* Pooling cost (rect - unrect at the pressed button): **+0.001007 by-user ahead** (27/40 users worse; row-pooled
+  +0.001573). Larger than iter 31's +0.0006 (n=500) but the same quantity.
+* 47.1% of rows carry an adjacent order violation: Again>Hard 8.5% (mean excess 0.075), **Hard>Good 10.6% (mean
+  0.091, p90 0.29)**, Good>Easy 37.5% (mean 0.021). The rectifier changed the pressed value on 35.2% of rows.
+* **Concentrated:** rows where the pressed value moved by > 0.05 are 2.9% of all rows and carry 83% of the net
+  cost; 61% of the net cost is on HARD-pressed rows (+0.0044 per row) where the model put the Hard curve above the
+  Good curve and pooling it down raised the loss. Pooling helped on 8.0% of rows (sum -1554) and hurt on 27.2%
+  (sum +2060): the net is a small difference of two large numbers.
+* **So the pooling cost is mostly information the monotone constraint forbids.** A head monotone by construction
+  cannot express Hard > Good either; it can only fit the best monotone curves instead of clipping unconstrained
+  ones, which PAVA-in-the-loss (lambda 0.2) already pushes toward. R2's accuracy ceiling is well below +0.0010 and
+  plausibly near zero. Its remaining motivation is DEPLOY SPEED (one forward pass instead of four probe passes).
+  Recommendation to Andrew: not before the QAT arms; if at all, after phase 5, for the speed win.
+  `scratchpad/r2/FINDINGS.md`.
+
+## ENDGAME: `lfd1`, the 1-epoch decay (2026-09-15) -- L* = 1
+
+w10lf's WS-final -> a 1-epoch cosine decay (10,935 steps; w10lf's is 2 epochs, lfd3's 3) -> w10lf's rectified eval.
+Single variable (`mk_lf_branch.py decay 1`); the first decay on 2 fetch workers (RAM). 0 tracebacks.
+
+| | ahead | imm |
+|---|---|---|
+| w10lf (2-epoch decay) | 0.297755 | 0.264195 |
+| lfd3 (3-epoch decay) | 0.298003 | 0.264177 |
+| lfd1 (1-epoch decay) | 0.297477 | 0.264243 |
+| lfd1 - w10lf (positive = lfd1 better) | +0.000278, p(better) 7.3e-08, p(worse) 1.0e+00 | -0.000049, p(better) 1.0e+00, p(worse) 2.9e-24 |
+
+* **Rule 2 of the L* rule** (lfd1 not worse than w10lf beyond the -0.000075 noise floor in either mode) -> **L* = 1**. L* = 1: a 1-epoch decay is as good as w10lf's 2-epoch one within the noise floor in both modes, so the QAT arms decay 1 epoch (half the QAT wall-clock).
+* The decay-length curve at 558k after a 10-epoch WS: 1 ~ 2 > 3 epochs (flat, then falling). The QAT arms (lfq / lfqkd / b13) and R1 run at L* = 1.
+* size 0/2499 vs w10lf; nan 0.
+
+## ENDGAME: `lfcmf2`, the card channel-mixer graft (2026-09-16 13:45) -- a weak NULL, barely engaged
+
+w10lf's WS-final -> `graft.py` (card channel-mixer factor 1.0 -> 2.0, hidden 80 -> 160; new output weights zero, so the grafted
+model is bit-identical to w10lf at step 0; optimizer moments carried by name) -> w10lf's own 2-epoch decay (0.78 steps/s, 11
+validations of ~7 min each, cold from the F: HDD under the RAM guard) -> w10lf's rectified full-VAL eval. Params 574,534 (w10lf 561,732);
+per-card state unchanged. 0 tracebacks. Control = w10lf; PREREG `scratchpad/cardgraft/PREREG.md`.
+
+| | ahead | imm |
+|---|---|---|
+| w10lf (control) | 0.297755 | 0.264195 |
+| lfcmf2 | 0.297742 | 0.264204 |
+| lfcmf2 - w10lf (positive = graft better) | +0.000013, p(better) 2.5e-01, p(worse) 7.5e-01 | -0.000009, p(better) 8.7e-01, p(worse) 1.3e-01 |
+
+* **Verdict NULL** (both deltas inside the +/-7.5e-5 noise floor; neither rank test moves).
+* **Engagement (P3): the grown region was barely used.** The new W_v columns ended the decay at norm 0.3875 against 20.4101 for
+  the old columns (~1.9%). Not zero, so the null is interpretable -- but a 2-epoch decay at an annealing LR gave the doubled
+  hidden layer almost nothing to do, which is exactly PREREG P4's caveat: **a null here bounds the value of card channel-mixer
+  capacity from below only.** It does NOT say the card stream cannot use more capacity; it says 12.8k zero-initialised units
+  cannot pay for themselves inside one decay.
+* P1 (ahead >= +0.0003 in at least one arm) is not met by this arm; P2 (gain concentrated in the many-reviews-per-card bucket) is
+  moot at a zero mean. **lflora16** (card LoRA ranks 4/4/2/4 -> 16/16/8/16, the d=128 original's) started its decay at 14:09 and
+  decides the pair; a WIN there is decisive, a second null leaves the card-capacity question open at this training budget.
+* size 0/2499 vs w10lf; nan 0.
+
+## ENDGAME: `lflora16`, the card LoRA-rank graft (2026-09-17) -- a NULL, and the architecture-graft family is CLOSED at 0/3
+
+w10lf's WS-final -> `graft.py` (card LoRA ranks 4/4/2/4 -> 16/16/8/16 = the d=128 original's; new gate-B output columns and
+new decay-A rows zero, so the grafted model equals w10lf at step 0 up to float32 summation order (2.4e-07 on the deploy path);
+optimizer moments carried by name) -> w10lf's own 2-epoch decay (21,870 steps, ~0.78 steps/s, 14:09-22:46 on 09-16) -> w10lf's
+rectified full-VAL eval. Params 574,212 (w10lf 561,732); per-card state unchanged. 0 tracebacks. Control = w10lf; PREREG
+`scratchpad/cardgraft/PREREG.md`.
+
+| | ahead | imm |
+|---|---|---|
+| w10lf (control) | 0.297755 | 0.264195 |
+| lflora16 | 0.297696 | 0.264189 |
+| lflora16 - w10lf (positive = graft better) | +0.000059, p(better) 2.6e-02, p(worse) 9.7e-01 | +0.000006, p(better) 8.5e-03, p(worse) 9.9e-01 |
+
+* **Verdict NULL.**
+* **Engagement (P3):** L0 new gate-B cols |new| 1.2517 vs |old| 23.9245; L0 new decay-A rows |new| 2.5666 vs |old| 8.0172; L1 new gate-B cols |new| 1.3989 vs |old| 32.4165; L1 new decay-A rows |new| 2.7828 vs |old| 6.4400. Read beside lfcmf2's ~2% engagement: a zero-initialised region inside a 2-epoch decay at an
+  annealing LR trains only through the weights that are zero, and gets the smallest budget any parameter in the model ever gets.
+* **The family is CLOSED (Andrew 2026-09-16, before this result: "Seems like grafting in general doesn't work very well" ...
+  "Yeah, let's not do grafts anymore").** Three architecture grafts, three nulls at low engagement: cmixgraft (coarse mixers
+  restored on ws10, +0.000085 / -0.000039), lfcmf2 (card mixer doubled on w10lf, +0.000013 / -0.000009), lflora16 (this one).
+  None says capacity does not bind -- PREREG P4: a graft null bounds the value of that capacity from below only. The clean
+  answer is a from-scratch run: link D's d=128 at 10+2 (`scratchpad/pxe/PREREG.md`). A mid-WS graft (branch at
+  `w10lf_ws_55000`) stays unscheduled unless link D says size binds AND Andrew asks.
+* size 0/2499 vs w10lf; nan 0. The chain moves on by itself: `verdict_cardgraft.py` on the pair -> the R1 link (`lfr1e1` at L* = 1).
+
+## ENDGAME: `lfr1e1`, R1 = the imputed probe duration (2026-09-17) -- NOT adopted (R1 OFF)
+
+`RWKV_PROBE_IMPUTE_K=3` (`rwkv/probe_impute.py`): the imm query row and the four PAVA probe rows of a review carry
+`w * median(this card's PAST durations) + (1 - w) * median(this user's PAST durations)`, `w = n_card / (n_card + 3)`, both RUNNING
+medians over the real rows strictly earlier in the frame (prefix-invariant, proven by `scratchpad/r1/smoke_probe_impute.py`), instead
+of the constant 0.0 ("no press yet"). A plain 1-epoch decay from `w10lf_ws_109350` with the flag in the decay, its validation and the
+rectified full-VAL eval; control = the plain twin at L = 1 (`lfd1`). No new parameters (561,732). 0 tracebacks. PREREG `scratchpad/r1/PREREG.md`;
+the link's verdict `scratchpad/r1/r1_report.txt`.
+
+| | ahead | imm |
+|---|---|---|
+| lfd1 (control) | 0.297477 | 0.264243 |
+| lfr1e1 | 0.297401 | 0.264247 |
+| lfr1e1 - lfd1 (positive = R1 better) | +0.000076, p(better) 2.2e-05, p(worse) 1.0e+00 | -0.000004, p(better) 9.6e-01, p(worse) 3.8e-02 |
+
+* **Gate (curve-side rule, pre-registered): R1 OFF.** ahead >= +0.0001 at p < 1e-4: NO; imm significantly worse (mean down AND
+  p(worse) < 0.05): YES.
+* **P1 (ahead +0.0003..+0.0010): MISSED. P2 (imm -0.0002..+0.0006): held.**
+* **P3 engagement:** 99.99% of query rows had a history to impute from (7,253,506,648 of 7,254,328,870; the rest are the first rows of a chunk, where the
+  user median is empty); probe rows 1,513,695,772 of 1,513,695,772. The ON banner and the count lines are in every worker's log (guards 58/59).
+* **P4 size** 0/2499 vs lfd1. **P5 speed:** decay 3.45 h vs the twin's 3.62 h.
+* **What follows:** the QAT arms run WITHOUT the flag, twin `lfd1`; the "impute the duration" idea is closed -- the between-card duration signal is already in the trunk state and the +0.0014 rectifier cost is the within-review excess, which no show-time quantity can supply. R2 (monotone by design) stays postponed (Andrew 2026-09-15).
+
+## ENDGAME: `lfq1`, the LEAK-FREE QAT arm (2026-09-18) -- the deploy number is 0.299630 / 0.267711; the tax is +0.002153 / +0.003468
+
+`lfd1`'s plain decay (L* = 1) from `w10lf_ws_109350` with the QAT stack added: card/note rank-1 int4 WKV state on a learnable b10
+catalog, learnable m2b12 shift catalog, 1-bit norms, fused kernel; start catalogs refit on w10lf's WS-final with the stream order
+the model runs (`check_corpus_order.py`); clock fix T=1800 and the final 103-input layout in the decay, the probe and the eval; KD
+explicitly cleared; R1 off (R1.txt). **Evaluated QUANTIZED on its own learned step-10935 catalogs** (the probe proved the loaded
+paths; the pre-eval `assert_qat_live` passed; no post-check note). Params 561,732, 0 tracebacks, QAT decay 12.7 h, eval 12.9 h.
+
+| | ahead | imm |
+|---|---|---|
+| lfd1 (plain twin) | 0.297477 | 0.264243 |
+| lfq1 (deployed, quantized) | 0.299630 | 0.267711 |
+| **the leak-free QAT tax** | **+0.002153** (worse on the rank test at p 6.6e-269) | **+0.003468** (p 0.0e+00) |
+| arm 2's LEAKED tax (w10qat - w10plain, L=2) | +0.002529 | +0.004466 |
+
+* **P1 held in both modes** (bands +0.0015..+0.0030 / +0.0025..+0.0045). **P1-imm was the informative half and it answered:** the
+  leak-free imm tax is +0.000998 SMALLER than the leaked one, so ~a fifth of arm 2's imm tax was the quantizer stripping the precision
+  the CLOCK LEAK needed -- not real information. The ahead tax moved -0.000376, i.e. ~unchanged: budget- and leak-independent at ~+0.002.
+  ⚠ The two taxes also differ in decay length (L=1 vs 2) and in the start catalogs (correct stream order here), so the split is
+  indicative, not a single-variable pair.
+* **The deployed model misses the stop criterion by +0.004630 / +0.003711** and trails the old UNQUANTIZED d=128 model by +0.005018 / +0.004150.
+  The QAT tax stays the project's largest single cost. Routes left, both already armed: QAT-KD (`lfqkd1`, running) and b13.
+* P5 size 0/2499 vs the twin; nan 0.
+
+## ENDGAME: `lfqkd1` (number 85, 2026-09-19) -- live QAT-KD does NOT reduce the QAT tax: ahead -0.000061 / imm +0.000034 vs lfq1
+
+lfq1's QAT decay with one change: live distillation from the plain decayed twin `lfd1` (the teacher runs full precision on the
+same batches; KD weight 1.0; `qat_kd_targets`, the path whose gradient vanishes when teacher == student). Evaluated QUANTIZED on its
+own learned step-10935 catalogs. ⚠ The decay died at step 8,234 in the 2026-09-19 01:04 reboot and resumed at step 8,000
+(`RWKV_DECAY_RESUME_SCHED=1`, step-8000 learned catalogs; loss at 8,008 = 1.614233 vs 1.614112 before the crash); the eval was
+resumed twice. Weights, optimizer, catalogs and LR curve are exact; the tail's dropout draws differ.
+
+| | ahead | imm |
+|---|---|---|
+| lfq1 (84, no KD) | 0.299630 | 0.267711 |
+| lfqkd1 (KD) | 0.299692 | 0.267677 |
+| KD effect (positive = better) | -0.000061 (KD better on the rank test p 8.84e-01) | +0.000034 (p 3.89e-03) |
+| tax vs lfd1 with KD | +0.002215 | +0.003434 |
+
+* **The adoption rule (raw >= +0.0001 in both modes at p < 1e-4) fails in both modes**; both deltas sit inside the 7.5e-5 noise
+  floor. `pick_kd.py` wrote `KD.txt = nokd`; the b13 arm is `lfq1b13`.
+* **Reading:** the teacher has the same architecture and the same data, so its soft targets carry no information the labels lack
+  (the iter-46 self-distillation shape), and the tax is a STATE-precision cost that a better target cannot repair. The remaining
+  route is bits (b13, running); after it the tax is a fixed price of the 185 / 105-bit contract.
+* size 0/2499, nan 0, 0 tracebacks.
+
+## ENDGAME: `cw10lf` (number 86) and `lfwu20k` (number 87, 2026-09-20) -- the warmup length at the 10-epoch budget
+
+Both runs are w10lf's leak-free recipe from scratch on the rented RTX 4090, trained SIDE BY SIDE (1.16 + 1.16 steps/s
+against 1.87 solo, +24% total). `cw10lf` is the control; `lfwu20k` changes one thing, `WARMUP_STEPS` 400 -> 20,000.
+
+| | ahead | imm |
+|---|---|---|
+| cw10lf (control, box) | 0.297371 | 0.264162 |
+| lfwu20k (warmup 20,000) | 0.297135 | 0.264109 |
+| effect (positive = warmup better) | +0.000236 (p 1.41e-02) | +0.000053 (p 7.00e-05) |
+| the control vs the local lfd1 (hardware offset) | -0.000023 | -0.000021 |
+
+* The both-modes rule (raw >= +0.0001 in each mode at p < 1e-4) FAILS.
+* ⚠ The hardware offset is an UPPER BOUND: cw10lf lost 20 of 109,350 WS steps to CUDA OOM caused by my own co-tenant
+  tests, lfwu20k lost 14, and lfd1 lost none. The pair shares the insult, so the experiment is unaffected.
+* ⚠ Both evals hung at 46 users on the box's 1024 file-descriptor limit and were re-run under `eval_box.sh` with
+  `ulimit -n 65535`; banked users were kept, and the eval is deterministic, so this does not touch the numbers.
+* size 0/2487, nan 0, 0 tracebacks.
+
+## SHRINK: `s80` (number 88, 2026-09-20) -- the shrink track's base
+
+SHRINK TRACK BASE: the unchanged 561,732-parameter architecture re-trained from scratch at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Andrew 2026-09-19 re-opened size reduction as a side goal at <= 0.0002 LogLoss per 100k parameters removed in BOTH modes; every arm is paired against THIS run, so the budget, the hardware and the co-tenancy are shared. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s80 | 0.298133 | 0.265375 |
+| vs lfd1 (10+1, same users) | +0.000902 | +0.001371 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s64dh` (number 89, 2026-09-20) -- 273747 params
+
+SHRINK arm s64dh: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s64dh | 0.298983 | 0.266414 |
+| s80 (base) | 0.299567 | 0.267163 |
+| cost / rate per 100k removed | +0.000584 / +0.000203 | +0.000750 / +0.000260 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s64d` (number 90, 2026-09-21) -- 313811 params
+
+SHRINK arm s64d: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s64d | 0.299007 | 0.266521 |
+| s80 (base) | 0.299614 | 0.267375 |
+| cost / rate per 100k removed | +0.000606 / +0.000245 | +0.000854 / +0.000345 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s48` (number 91, 2026-09-21) -- 222448 params
+
+SHRINK arm s48: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s48 | 0.299310 | 0.266777 |
+| s80 (base) | 0.300249 | 0.267935 |
+| cost / rate per 100k removed | +0.000939 / +0.000277 | +0.001158 / +0.000341 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s64` (number 92, 2026-09-21) -- 372986 params
+
+SHRINK arm s64: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s64 | 0.298797 | 0.266085 |
+| s80 (base) | 0.299196 | 0.266506 |
+| cost / rate per 100k removed | +0.000399 / +0.000211 | +0.000421 / +0.000223 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s80d` (number 93, 2026-09-21) -- 471927 params
+
+SHRINK arm s80d: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s80d | 0.298420 | 0.265679 |
+| s80 (base) | 0.298590 | 0.265846 |
+| cost / rate per 100k removed | +0.000171 / +0.000190 | +0.000167 / +0.000186 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s64h` (number 94, 2026-09-21) -- 332922 params
+
+SHRINK arm s64h: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s64h | 0.298667 | 0.266110 |
+| s80 (base) | 0.298970 | 0.266603 |
+| cost / rate per 100k removed | +0.000304 / +0.000133 | +0.000493 / +0.000216 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## ENDGAME: `lfq1rvq3b10` (number 95, 2026-09-22) -- +100% of state bits as 3 residual stages: QAT tax +0.002980 / +0.004638
+
+lfq1's QAT decay with one change: the WKV joint catalog is coded in 3 RESIDUAL stages of b10, so each head stores
+30 index bits instead of 10 and the reconstruction is the sum of 3 picks. Card state 185 -> 385 bits, note 105 -> 205.
+Evaluated QUANTIZED on its own learned catalogs.
+
+| | ahead | imm |
+|---|---|---|
+| lfd1 (plain twin, full precision) | 0.297348 | 0.264141 |
+| lfq1 (84, one b10 index) | 0.299503 | 0.267600 |
+| lfq1rvq3b10 (3 x b10) | 0.300328 | 0.268778 |
+| QAT tax (arm - lfd1) | +0.002980 | +0.004638 |
+| bits effect (arm - lfq1, positive = better) | -0.000825 (p 1.00e+00) | -0.001178 (p 1.00e+00) |
+
+* **NOT ENOUGH.** Andrew's rule, pre-registered: tax >= 0.0010 in either mode -> +200%; below it -> keep; <= 0.0003 in both
+  -> try +50%. Next: +200% (5 stages).
+* size 0/2487, nan 0, 0 tracebacks.
+
+## `newc2` (number 98, 2026-09-22) -- read-time features cum_new_cards,review_th,new_card_share
+
+RWKV_EXTRA_FEATURES=cum_new_cards,review_th,new_card_share -- read-time input column(s) rebuilt from a side table as prepare_batch decodes a stored row, so NO LMDB rebuild and no new size baseline. Control s80, 1 WS epoch + 1 decay epoch on the rented 4090. 562692 params (+960 vs s80).
+
+| | ahead | imm |
+|---|---|---|
+| deployed | 0.298115 | 0.265383 |
+| vs s80 | +0.000018 | -0.000008 |
+| p | 6.2e-01 | 8.8e-01 |
+
+* n=2485, size 0, 0 tracebacks.
+
+## ENDGAME: `lfq1rvq3b10v2` (number 99, 2026-09-22) -- +100% of state bits as 3 residual stages: QAT tax +0.001605 / +0.002645
+
+lfq1's QAT decay with one change: the WKV joint catalog is coded in 3 RESIDUAL stages of b10, so each head stores
+30 index bits instead of 10 and the reconstruction is the sum of 3 picks. Card state 185 -> 385 bits, note 105 -> 205.
+Evaluated QUANTIZED on its own learned catalogs.
+
+| | ahead | imm |
+|---|---|---|
+| lfd1 (plain twin, full precision) | 0.297348 | 0.264141 |
+| lfq1 (84, one b10 index) | 0.299503 | 0.267600 |
+| lfq1rvq3b10v2 (3 x b10) | 0.298953 | 0.266786 |
+| QAT tax (arm - lfd1) | +0.001605 | +0.002645 |
+| bits effect (arm - lfq1, positive = better) | +0.000551 (p 3.17e-116) | +0.000814 (p 8.74e-287) |
+
+* **NOT ENOUGH.** Andrew's rule, pre-registered: tax >= 0.0010 in either mode -> +200%; below it -> keep; <= 0.0003 in both
+  -> try +50%. Next: +200% (5 stages).
+* size 0/2487, nan 0, 0 tracebacks.
+
+## SHRINK: `s64dhc` (number 100, 2026-09-22) -- 273747 params
+
+SHRINK arm s64dhc: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s64dhc | 0.298624 | 0.266178 |
+| s80 (base) | 0.299115 | 0.266980 |
+| cost / rate per 100k removed | +0.000491 / +0.000170 | +0.000803 / +0.000279 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## SHRINK: `s80ddh` (number 101, 2026-09-22) -- 311327 params
+
+SHRINK arm s80ddh: a reduced architecture at 1 WS epoch + 1 decay epoch (the track-2 budget), from scratch on the rented 4090, leak-free, final 103-input layout. Paired against the base s80 at the pre-registered rate of 0.0002 LogLoss per 100k parameters removed. scratchpad/shrink/PREREG.md.
+
+| | ahead | imm |
+|---|---|---|
+| s80ddh | 0.298842 | 0.266449 |
+| s80 (base) | 0.299551 | 0.267523 |
+| cost / rate per 100k removed | +0.000709 / +0.000283 | +0.001074 / +0.000429 |
+
+* n=2485. ⚠ The box cannot evaluate the giant users (a 1,048,576-token chunk needs ~22 GB of the 24, and Linux has no
+  WDDM spill), so ~14 of the 2,499 are OOM-skipped and every pairing is on the intersection.
+* 0 tracebacks in the decay.
+
+## `rowfeat` (number 102, 2026-09-22) -- read-time features sess_pos,sess_secs,roll10,roll60,phase_r,phase_r2,streak,grade_mean
+
+RWKV_EXTRA_FEATURES=sess_pos,sess_secs,roll10,roll60,phase_r,phase_r2,streak,grade_mean -- read-time input column(s) rebuilt from a side table as prepare_batch decodes a stored row, so NO LMDB rebuild and no new size baseline. Control s80, 1 WS epoch + 1 decay epoch on the rented 4090. 564292 params (+2560 vs s80).
+
+| | ahead | imm |
+|---|---|---|
+| deployed | 0.298046 | 0.265205 |
+| vs s80 | +0.000087 | +0.000171 |
+| p | 3.8e-03 | 3.1e-32 |
+
+* n=2485, size 0, 0 tracebacks.
+
+## ENDGAME: `lfq1rvq3b10real` (number 103, 2026-09-23) -- +100% of state bits as 3 residual stages: QAT tax +0.001534 / +0.002468
+
+lfq1's QAT decay with one change: the WKV joint catalog is coded in 3 RESIDUAL stages of b10, so each head stores
+30 index bits instead of 10 and the reconstruction is the sum of 3 picks. Card state 185 -> 385 bits, note 105 -> 205.
+Evaluated QUANTIZED on its own learned catalogs.
+
+| | ahead | imm |
+|---|---|---|
+| lfd1 (plain twin, full precision) | 0.297348 | 0.264141 |
+| 99 `lfq1rvq3b10v2` (stand-in-fitted catalog) | 0.298953 | 0.266786 |
+| lfq1rvq3b10real (3 x b10) | 0.298881 | 0.266609 |
+| QAT tax (arm - lfd1) | +0.001534 | +0.002468 |
+| provenance effect (arm - 99, positive = better) | +0.000071 (p 7.59e-11) | +0.000178 (p 1.84e-42) |
+
+* **NOT ENOUGH.** Andrew's rule, pre-registered: tax >= 0.0010 in either mode -> +200%; below it -> keep; <= 0.0003 in both
+  -> try +50%. Next: +200% (5 stages).
+* size 0/2487, nan 0, 0 tracebacks.
+* PREREG (`scratchpad/lfq1rvq3b10real/PREREG.md`): P2 HELD (the null): tax within 0.0003 of 99's in both modes -- provenance is immaterial when the catalogs learn (tax - 99: -0.000071 / -0.000177). P4 held: all 3x1024 rows moved, stage norms stay decreasing.
+
+## SHRINK CONFIRMATION: `s64hc10` (number 104, 2026-09-23) -- PASS
+
+10+1 confirmation of the directed-accepted 94 s64h (332,922 params, 1.69x smaller) against lfd1 (561,732, same budget): cost +0.000028 ahead (p_better 1.0e+00) / +0.000402 imm (p_better 1.0e+00), i.e. 0.000012 / 0.000176 per 100k removed against the 0.0002 rule (allowance +0.000458) -> PASS. At 1+1 it cost +0.000304 / +0.000493, so the cost scaled x0.09 / x0.82 with the 10x budget. n=2492, size 0, 0 tracebacks. Adoption would re-base phases 5-6 (d=64 catalogs, card-bit budget): Andrew's call.
+
+## `r2s64h` (number 105, 2026-09-23) -- R2 on the d=64 trunk: rejected, the same trade as 97
+
+The same TRADE as 97 r2s80, now on the d=64 trunk and LARGER on ahead: ahead -0.000573 (worse at p=3.5e-29) against imm +0.000171 (better at p=1.0e-24) vs 94 s64h, n=2499, size 0/2499, 0 tracebacks. Rejected under the both-modes rule. Same caveat as 97: R2 evaluates PLAIN (monotone by construction, no PAVA probes) while s64h evaluates RECTIFIED, so this compares the two deploy quantities, not a single variable. Two trunks, same sign both times: the button-ordered head buys a little imm and costs more ahead. Its only remaining case is deploy speed (one forward pass instead of four probes), now priced at +0.00057 ahead on the trunk that may ship. The R2 route is closed for accuracy.
+
+## `s64hsib` (number 106, 2026-09-24) -- the sibling rating: imm +0.000098, ahead null
+
+Sibling rating (sib_grade + sib_none, read-time columns) on the s64h trunk at 1+1 vs 94 s64h: ahead -0.000003 (p_better 0.14, a null) / imm +0.000098 (p_better 1.3e-09), n=2493, size 0, 0 tracebacks. Rejected under the both-modes rule: imm misses the raw 0.0001 bar by 0.000002 and ahead is a null. PREREG held on every point: P1 (+0.00003..+0.00015 imm, +0..+0.00008 ahead), P2 (imm is the mode that moves), P4 (no harm); P3 (imm > +0.0003) did not fire, so the note stream already carries most of the sibling signal. Same shape as 96 newc1 and 102 rowfeat, which Andrew directed-accepted: imm resolved, ahead null. At 1+1 effects run ~0.65 of full size.
+
+## ENDGAME: `lfq1rvq5b10` (number 107, 2026-09-24) -- +200% of state bits as 5 residual stages: QAT tax +0.001302 / +0.002109
+
+lfq1's QAT decay with one change: the WKV joint catalog is coded in 5 RESIDUAL stages of b10, so each head stores
+50 index bits instead of 10 and the reconstruction is the sum of 5 picks. Card state 185 -> 585 bits, note 105 -> 305.
+Evaluated QUANTIZED on its own learned catalogs.
+
+| | ahead | imm |
+|---|---|---|
+| lfd1 (plain twin, full precision) | 0.297348 | 0.264141 |
+| 99 `lfq1rvq3b10v2` (stand-in-fitted catalog) | 0.298953 | 0.266786 |
+| lfq1rvq5b10 (5 x b10) | 0.298649 | 0.266250 |
+| QAT tax (arm - lfd1) | +0.001302 | +0.002109 |
+| bits+provenance effect (arm - 99, positive = better) | +0.000303 (p 8.33e-68) | +0.000536 (p 1.68e-219) |
+
+* **NOT ENOUGH.** Andrew's rule, pre-registered: tax >= 0.0010 in either mode -> +200%; below it -> keep; <= 0.0003 in both
+  -> try +50%. Next: no further stages until the tax models are read (BITS.md; PREREG outcomes).
+* size 0/2487, nan 0, 0 tracebacks.
+* PREREG (`scratchpad/lfq1rvq3b10real/PREREG.md`): both still over 0.0010 -- +200% not enough either; P4's reading applies; P1 band HELD; imm nearer model B (a floor; imm never clears 0.0010 by WKV bits) (|imm - A| 0.000641, |imm - B| 0.000057); tax - 99: -0.000303 / -0.000536. P3 (catalog stage norms still decreasing): HELD.
+
+## `s64hq1` (number 108, 2026-09-24) -- the QAT tax on d=64
+
+THE QAT TAX ON THE ADOPTED d=64 TRUNK: lfq1's exact recipe (1-epoch leak-free QAT decay, one b10 WKV joint stage at --h 4, m2b12 shift at c64, learned catalogs, 1-bit norms, int4 low-rank) from s64hc10's WS-final, evaluated quantized on the box. Deployed 0.300306 / 0.268698; tax vs its plain twin s64hc10 +0.002782 ahead / +0.004005 imm (p_worse 1e-300 / 0), against +0.002153 / +0.003468 on d=80 (84 lfq1) = 1.29x / 1.15x. n=2492, size 0, 0 tracebacks. PREREG (scratchpad/s64hq1/PREREG.md): P1 MISSED on ahead (band +0.0018..+0.0026), HELD on imm; P2's falsifier (>1.3x in either mode) did NOT fire, by 0.01 on ahead. CONSEQUENCE: the 1.69x cut costs MORE once quantized -- plain gap vs lfd1 +0.000028 / +0.000402 (104), deployed gap vs 84 lfq1 +0.000650 / +0.000940. The smaller model leans harder on each quantized state value. Card state at b10 = 88 WKV bits + shift (d=80: 110 + shift).
+
+## `s64hrf10` (number 109, 2026-09-24) -- the nine columns at 10+1 on d=64: imm up, ahead worse
+
+10+1 CONFIRMATION of the nine directed-accepted read-time columns (cum_new_cards + the eight rowfeat columns; 112 inputs, 334,074 params) on the adopted d=64 trunk vs s64hc10 (same runner, same box): ahead -0.000209 (WORSE, p_worse 1.4e-03) / imm +0.000150 (p 3.9e-18), n=2492, size 0, 0 tracebacks. FAILS the 2026-09-24 either-mode gate: imm improves, but ahead is significantly worse. At 1+1 on d=80 the same columns gave rowfeat +0.000087 / +0.000171 and newc1 +0.000112 / +0.000104; at the full budget on d=64 the ahead half turns negative. Keeping the columns is Andrew's call (they were directed accepts). s64hrs10 (on the box now) uses s64hrf10 as its control, and the WS trials use its WS trace as reference.
+
+## `s64hsm10` (number 110, 2026-09-25) -- sibling rating + Muon on the scale matrices at 10+1 on d=64: ACCEPTED
+
+10+1 CONFIRMATION of the two levers the relaxed gate admits, together on the adopted d=64 trunk: the sibling rating (sib_grade, sib_none; 106 s64hsib) + Muon on the 26 scale matrices (RWKV_MUON_INCLUDE_SCALE=1; 67 muonscale). 105 inputs, 333,178 params (s64hc10 + 256), control s64hc10 (same runner, same box): imm +0.000105 (p 7.4e-11) / ahead -0.000011 (p_better 0.022, p_worse 0.98: not significantly worse), n=2492 on the intersection, size 0, 0 tracebacks in WS and decay, the Muon log shows 6,656 scale-matrix params in a wd=0 group. PASSES the 2026-09-24 either-mode gate -> ACCEPTED; s64hsm10 is the new plain incumbent. At 1+1 the sibling columns gave imm +0.000098 and Muon-on-scale imm +0.000109 on d=80; together at 10+1 the imm gain is +0.000105, i.e. not additive. OWED before it ships: the sibling columns in the deploy builders (Rust engine, Anki fork; the Python RNN path already computes them), and the QAT recipe re-based on its WS-final.
+
+### Addendum 2026-09-25 -- WHY 109 `s64hrf10` made ahead worse (Andrew: "strange that adding more info made loss worse")
+Tool: `scratchpad/s64hrefine/rf10_traces.py` (per-epoch train and 10-user validation diffs vs s64hc10) + a size split of
+the eval jsonls. (1) TRAIN ahead is BETTER than the control by a steady ~0.00013 from epoch 2 to 10 (train imm CE
+~0.0004 better), so "the columns cost the curve head capacity" is refuted -- the model fits the curve better with
+them. (2) The gain does not grow with epochs, so it is not growing memorization over the 10 replays. (3) The held-out
+loss is concentrated in the SMALLEST users: ahead +0.00042 in the smallest size quartile (worse on 56%), +0.00019,
++0.00017, +0.00005 in the others. Reading: the columns are user-level SUMMARIES (regularity R/R2, streak, mean past
+grade, rolling counts, cards seen) that are reliable for large users and noisy for small ones. Training loss is
+per ROW, so large users dominate it and the model learns to trust the summaries; the metric is per USER, so the small
+users, where the summaries are noise, carry equal weight. s64hsm10 (sibling rating, a per-review not per-user
+signal) shows the same train-better pattern but no size gradient (+0.00027, -0.00025, -0.00003, +0.00006) and a
+null ahead delta. Not proven: a seed pair (~17 h box) is the only way to exclude run noise. If the columns ever
+return, gate them on history length (e.g. zero them below N past reviews) instead of feeding raw summaries.
+
+## `s64hqnr` (number 111, 2026-09-25) -- the fitted WKV norm range DOUBLES the QAT tax
+
+THE NORM-RANGE REPAIR BACKFIRES UNDER QAT. s64hqnr = 108 s64hq1 + RWKV_QAT_NORM_RANGE_WKV=-3.1,-2.3 (the 1-bit WKV norm range refitted on the PLAIN s64hc10 states; zero extra bits). Deployed 0.303398 / 0.272570 vs s64hq1 0.300306 / 0.268698: -0.003092 ahead / -0.003872 imm (p_worse 1.6e-280 / 0), n=2492, size 0, 0 tracebacks; QAT tax vs s64hc10 +0.005875 / +0.007877 = 2.1x / 2.0x s64hq1's. The local 10-user probe agrees (+0.0051 / +0.0082 vs +0.0024 / +0.0042), and the box eval loaded the learned catalogs and the [-3.1,-2.3] range, so it is not an eval artefact (the decay was resumed at step 6000 after the disk-full crash; steps 6001-6004 matched the crashed run). PREREG (scratchpad/s64hrefine/FINDINGS.md): P1 (tax falls 0.0003-0.0012) FAILED, P2 (null) FAILED -- it is a harm. Reading: the PTQ ladder on the plain model ranked the fitted range best (+0.0030 / +0.0058 vs +0.0059 / +0.0086), but the narrow range caps the largest representable WKV state norm at 2^-2.3 = 0.20 instead of 1.0, and under QAT the model evidently needs that high level. A PTQ ranking of a quantizer RANGE on the plain model does not transfer to QAT. Consequence: s64hqr4 (4 stages + a narrow 2-bit range) was stopped at decay step ~1500 and replaced by s64hqr4b = s64hq1 + 4 stages only.
+
+
+## `s64hqr4b` (number 112, 2026-09-26) -- 4 residual WKV stages (card 403 b) cut the d=64 QAT tax by ~1/3
+
+THE 450-BIT BUDGET PAYS: 4 RESIDUAL WKV STAGES CUT THE d=64 QAT TAX ~1/3. s64hqr4b = 108 s64hq1 + 4 residual WKV stages of b10 (reference/pq_cb_wkv_s64h_rvq4b10.txt as the start catalog; 1-bit norm on the default range; everything else identical). Card 403 b / note 214 b (s64hq1: 163 / 94), ~1,037x smaller than the fp32 d=128 card, inside Andrew's 450 / 235 budget. Deployed 0.299369 / 0.267496 vs s64hq1 0.300306 / 0.268698: +0.000937 ahead / +0.001202 imm (p 7.4e-190 / 0), n=2492, size 0, 0 tracebacks; the box eval loaded the learned 4-stage catalog (stages=4, 131072 floats) and the low-rank scopes. QAT tax vs s64hc10 +0.001846 / +0.002803 (s64hq1 +0.002782 / +0.004005: -34% / -30%). PTQ ladder on the plain model predicted +0.0019 / +0.0039 at this recipe vs +0.0030 / +0.0058 at one stage; QAT lands close on ahead and better on imm. vs the old d=128 model (VAL half, fp32): +0.0048 / +0.0039. Adopted as the deploy recipe for the d=64 trunk (Andrew's budget: 1000x instead of 2250x if it significantly improves log loss).
+
+
+## `s64hsg10` (number 113, 2026-09-26) -- the sibling-gap flag is a clean null
+
+THE SIBLING-GAP FLAG IS A CLEAN NULL. s64hsg10 = 110 s64hsm10 + sibgap_none (read-time: 1.0 when the stored scaled_sibling_gap is the 0.0 sentinel, i.e. no earlier review of another card of the note; 333,306 params, 106 inputs), 10+1 on the box vs s64hsm10 (same runner, same box). Deployed plain 0.297438 / 0.264545 vs 0.297474 / 0.264535: +0.000037 ahead (p 0.64) / -0.000010 imm (p 0.74), n=2493, size 0, 6 users OOM-skipped. Fails the either-mode gate: neither mode improves, neither is worse. The sentinel ambiguity was real (97% of rows carry 0.0 with no flag) but the model already separates the two cases from the other sibling columns (sib_none) and the note stream. deploy_vs_lmdb had 0 disagreements. Not adopted.
+
+
+## `s64hsmq4` (number 114, 2026-09-26) -- the QAT recipe on the incumbent loses to the same recipe on the old base
+
+THE 4-STAGE QAT RECIPE ON THE 105-INPUT INCUMBENT IS WORSE THAN ON THE OLD BASE. s64hsmq4 = 112's recipe (4 residual WKV stages b10, 1-bit default norm, learned catalogs, card 403 b / note 214 b) as a 1-epoch QAT decay from s64hsm10's WS-final, on the BOX (mk_box_qat.py; box test run passed). Deployed 0.299839 / 0.268197, n=2492, size 0, 7 users OOM-skipped, 0 tracebacks; eval loaded the learned 4-stage catalog. QAT tax vs its plain twin s64hsm10: +0.002304 / +0.003609 (112 on s64hc10: +0.001846 / +0.002803). vs 112 s64hqr4b: -0.000470 ahead / -0.000701 imm (p_better 1.0): the plain gain of 110 (+0.000011 / +0.000105) does not survive QAT and turns into a loss. Three differences to 112: the base (sibling columns + Muon on the scale matrices, which also act in the QAT decay), the box vs the PC for the QAT decay, and the start catalog fitted on s64hc10's states. Control queued on the box: s64hcq4 = 112 re-run on the box (differs from s64hsmq4 ONLY in the two base env lines). Deploy recipe stays 112 (s64hc10 base) until that resolves.
+
+
+## `s64hsmq4n2` (number 115, 2026-09-27) -- the 2-bit WKV norm buys nothing under QAT
+
+THE 2-BIT WKV NORM BUYS NOTHING UNDER QAT (again). s64hsmq4n2 = 114 s64hsmq4 with RWKV_QAT_NORM_BITS=2 on the SAME default range [-3,0] (card 411 b / note 218 b, +8 / +4 bits), same base, same box, decayed side by side. Deployed 0.299899 / 0.268200 vs s64hsmq4 0.299839 / 0.268197: -0.000061 ahead (significantly WORSE, p_worse 5.2e-05) / -0.000003 imm (null), n=2492, size 0, 7 OOM-skips, 0 tracebacks; eval loaded the learned 4-stage catalog and the int2 norm. The PTQ ladder on the plain model said 2 bits remove ~2/3 of the norm cost (+0.0051/+0.0071 -> +0.0025/+0.0048); under QAT the learned catalogs absorb the 1-bit norm, so the extra bits have nothing left to buy. Third time a PTQ ranking of the norm term failed to transfer to QAT (08-13 2-bit norm, 111 fitted range, this). The norm axis is closed at 1 bit; the 8 card bits stay unspent.
+
+
+## `s64hcq4` (number 116, 2026-09-27) -- the box reproduces 112; 114's loss is the base change
+
+CONTROL: THE BOX REPRODUCES 112, SO 114's LOSS IS THE BASE CHANGE. s64hcq4 = 112 s64hqr4b's exact recipe (4-stage QAT decay from s64hc10's WS-final) run on the box with mk_box_qat.py; it differs from 114 s64hsmq4 ONLY in the two base env lines (RWKV_EXTRA_FEATURES sib_grade,sib_none and RWKV_MUON_INCLUDE_SCALE=1). Deployed 0.299377 / 0.267501; vs 112 (PC): -0.000009 / -0.000005 (p 0.29 / 0.48) = the same model; vs 114: +0.000461 / +0.000696 (p 3e-25 / 5e-182). So box vs PC is immaterial for QAT, and 110's base change (sibling columns and/or Muon on the scale matrices, which also acts in the QAT decay) costs ~0.0005 / ~0.0007 once quantized, although it gained +0.00001 / +0.0001 plain. Isolation queued on the box at 1+1: s64hq4s (QAT decay from 94 s64h's WS) vs s64hsibq4 (from 106 s64hsib's WS): the sibling columns alone, no Muon-scale in either. Deploy recipe stays 112 (s64hc10 base).
+
+## 117 `s64hsibq4` -- the sibling columns under QAT (2026-09-27)
+Isolation pair for 114's loss, both on the box at the 1+1 budget with 112's 4-stage QAT recipe (`scratchpad/cloud/mk_box_qat.py`), neither with Muon-on-scale: `s64hq4s` decays from 94 `s64h`'s WS-final, `s64hsibq4` from 106 `s64hsib`'s (the same trunk + `sib_grade,sib_none`). Both evals loaded their own learned step-10935 4-stage catalogs (shard logs on the box). n=2492 (6701 excluded, 7 giants OOM-skipped).
+
+| | ahead | imm |
+|---|---|---|
+| s64hq4s (control) | 0.300645 | 0.268943 |
+| s64hsibq4 | 0.301000 | 0.270003 |
+| delta (cand - control) | +0.000355 (p_worse 1.2e-29) | +0.001059 (p_worse 4.4e-268) |
+| plain effect of the columns (106 vs 94, same users) | +0.000003 | -0.000097 |
+| QAT tax s64h / s64hsib | +0.001943 / +0.002295 | +0.002785 / +0.003942 |
+
+The columns gain on imm when plain and lose 11x that once quantized. The size matches 114 vs 112 (-0.00047 / -0.00070), so the sibling columns alone explain 114's loss and Muon-on-scale is not needed to explain it (its own QAT effect is not measured; no box budget left for it). Mechanism unknown; a guess to test only if the columns return: the sibling signal lives in the note stream, whose state is the most compressed (note 214 b), so the model leans on a state the quantizer degrades. Consequence: 110 `s64hsm10` is not the deploy base; the deploy recipe stays 112 on `s64hc10`.
+
+## 118 `s64hsf` -- self-feed on the adopted d=64 trunk (2026-09-27)
+The re-run of the withdrawn d=80 `selffeed` (whose lever never executed: `PreparedBatch.to` dropped the fields), now on 94 `s64h` at 1+1 on the box with the artifact guard `assert_fb2h_live.py`. The lever ran: `fb2h is LIVE`, weight absmax 2.53, bias absmax 0.31, 0 skipped WS batches, 333,882 params. vs 94 `s64h` (n=2492): ahead -0.000175 (p_worse 4.8e-06), imm -0.000183 (p_worse 1.9e-34). PREREG P1 band (-0.0002..+0.0003) held at its lower edge; P2's "trajectory effect" did not appear; P4 (base-vs-final agreement) was not measured. Family 0/1, deprioritized; the listed variants (two-step ahead score, DETACH=0) are not queued, the box budget ends 09-29.
+
+## 119 `s64hcq4cb05` -- catalog LR x0.5 under QAT (2026-09-28)
+Phase 5, knob 1, first half, on the box: 112 s64hqr4b recipe (4-stage QAT decay from s64hc10 WS-final) with `RWKV_CB_LR_MULT=0.5`; control 116 `s64hcq4` (same recipe at x1, same box). vs 116 (n=2492): ahead -0.000097 (p_worse 9e-11), imm -0.000072 (p_worse 3e-16). Guard 76 confirmed the x0.5 echo; the eval loaded the learned step-10935 catalogs. Reading: the catalog must follow the weights as QAT moves them (that tracking is why learned catalogs cut the tax 45%), and a halved LR tracks worse. The x2 arm decides the direction.
+
+## 120 `s64hcq4cb2` -- catalog LR x2 under QAT (2026-09-28)
+Second half of phase-5 knob 1. vs 116 `s64hcq4` (n=2492): ahead -0.000176 (p_worse 1e-34), imm -0.000346 (p_worse 9e-126). Together with 119 (x0.5: -0.000097 / -0.000072) the catalog LR is at its optimum at x1 (the d=32-era default); knob 1 closed. A faster catalog is worse than a slower one, so the catalog is not lagging the weights in the incumbent. Knob 2 (decay LR, Muon + AdamW together, `mk_box_qat.py --declr`, guards 77/78) started on the box 11:18 local: `s64hcq4dl0p5`, `s64hcq4dl2`; both LR echoes verified in the decay logs.
+
+## 121 `s64hcq4dl0p5` -- decay LR x0.5 under QAT (2026-09-28)
+Phase-5 knob 2, first half (`mk_box_qat.py --declr 0.5`: Muon 0.00125, PEAK_LR 5e-4; echoes verified). vs 116 `s64hcq4` (n=2492): ahead -0.000150 (p_worse 2e-17), imm -0.000069 (p_worse 8e-10). The x2 arm decides the direction.
+
+## 122 `s64hcq4dl2` -- decay LR x2 under QAT (2026-09-28)
+Second half of phase-5 knob 2 (Muon 0.005, PEAK_LR 2e-3). vs 116 `s64hcq4` (n=2492): ahead -0.000056 (p_worse 4e-06), imm -0.000132 (p_worse 3e-26). With 121 the decay LR is at its optimum at x1; with 119/120 the catalog LR is too. The 112 recipe is locally optimal on both LR knobs, so phase 5 has no LR gain to bank; what remains is QAT-phase wd (not run; no box budget).
+
+
+## 123 `wtlr0p5` -- WS peak LR x0.5 (2026-09-29)
+First WS-tuning knob (optimization/WS_TUNE_PLAN.md): PEAK_LR 1e-3 -> 5e-4 and RWKV_MUON_LR 0.0025 -> 0.00125 in the 10-epoch WS from scratch on s64hc10's runner (mk_ws_trial.py lr 0.5), WS-only with the epoch-3 kill rule (passed). WS resumed once after the 09-28 PC restart (step 96,000). WS endpoint vs s64hc10, last-5 validation window: -0.00110 ahead / +0.00024 imm (10 users). Decay bought with scratchpad/wstune/mk_decay_eval.py at the trial's own LR (the generator had hardcoded 1e-3 for the decay; fixed). Eval (plain, rectified, 5001-7500 minus 6701): 0.297751 / 0.264803 own-file, 0.297760 / 0.264852 on the 2492 users paired with s64hc10 (box eval). vs 104: ahead -0.000237 (p_worse 7.6e-04), imm -0.000159 (p_worse 1.3e-28). Interim on 1642 users read the same (-0.000203 / -0.000139), so the verdict did not move. **Lesson:** the WS endpoint is biased toward the lower LR under WSD; LR-type trials (lr, muon) are judged after the decay. wtlr2's WS-endpoint rejection (+0.00022 / +0.00061) is re-opened; its decay + eval run next in chain v3.
+
+
+## 124 `wtlr2` -- WS peak LR x2 (2026-09-29)
+PEAK_LR 2e-3, RWKV_MUON_LR 0.005 in the 10-epoch WS (ran 09-26 .. 09-27, survived the epoch-3 kill check at +0.00042 / +0.00035), then the 1-epoch decay at its own LR bought on 09-29 (mk_decay_eval.py). The eval was stopped at 1,893 users when RAM hit 0 GB (this eval + the FSRS-rs session's benchmark) and resumed under RWKV_VRAM_CAP_GB=11, which OOM-skipped 8 giant users (6988, 7033, 7128, 7221, 7238, 7244, 7285, 7369). vs 104 on 2486 paired users: ahead -0.000236 (p_worse 5.8e-12), imm -0.000157 (p_worse 7.8e-32). With 123 the WS LR sits at its optimum at x1: both halvings and doublings cost ~0.0002 per mode after the decay. WS knob 1 closed; next WS knob is the Muon/AdamW ratio (wtmuon0p5 / wtmuon2), queued after d128e10, judged after their decays.

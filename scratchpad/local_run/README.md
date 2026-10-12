@@ -3,7 +3,7 @@
 Scripts to run the current champion recipe (iter 41: interleave + fine-to-coarse order) on a
 single Linux box, plus a training-pipeline speed/stability finding turned up while doing it.
 Xemor's own machine, not Andrew's official Windows research box — nothing here touches
-`CLAUDE.md`, `research_log.jsonl`, or any promoted-champion artifact.
+`AGENTS.md`, `research_log.jsonl`, or any promoted-champion artifact.
 
 ## What's here
 
@@ -64,7 +64,7 @@ warmup) shows `EVERY=1`: 0.6484 steps/s (8.875 GB peak) vs `EVERY=0`: 0.6887 ste
 -- **1.06x**, with `cudaFree` at 299 calls/102 ms (~0.34 ms/call) there vs 414 calls/433 ms
 (~1.05 ms/call) here: similar call count, ~4x cheaper per call on Windows. So the ceiling for
 this lever on the research box is ~1.06x against a documented 4x paging cliff it prevents --
-right call to leave the champion defaults alone. (Also: `CLAUDE.md`'s "expandable_segments does
+right call to leave the champion defaults alone. (Also: `AGENTS.md`'s "expandable_segments does
 NOT help" note is about a different failure mode -- single giant users, 266k-367k reviews,
 OOMing during eval from one huge allocation, not segment fragmentation -- it isn't evidence
 against using it here.)
@@ -79,7 +79,7 @@ regardless.
 Separately (not a speed lever, an ops bug): a background `data_processing` build left orphaned
 worker/writer processes running well after its parent script reported completion, holding CPU
 and (transiently) GPU memory into later experiments and causing avoidable OOM cascades in a
-few of the runs during this investigation -- same failure mode `CLAUDE.md` already flags for the
+few of the runs during this investigation -- same failure mode `AGENTS.md` already flags for the
 eval path ("CHECK + KILL ORPHAN PYTHONS after every run"); apparently not unique to eval.
 
 ## Follow-up: the interleave gather/scatter (was "still open", now has a fix)

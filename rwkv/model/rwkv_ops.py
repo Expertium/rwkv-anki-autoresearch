@@ -451,14 +451,22 @@ def maybe_upload_pq_codebook():
         return
     with open(path) as fh:
         lines = [ln for ln in fh if ln.strip()]
-    m, bits, sub, k, ncent = (int(x) for x in lines[0].split()[:5])
+    hdr = lines[0].split()
+    m, bits, sub, k, ncent = (int(x) for x in hdr[:5])
+    # RESIDUAL VQ (2026-09-20): an optional 6th header field is the STAGE count -- the file then holds
+    # stages*ncent rows, stage-major, and each stage codes the previous stages' residual. A 5-field
+    # header is stages=1 and everything below behaves exactly as before.
+    stages = int(hdr[5]) if len(hdr) > 5 else 1
     # joint-uv (task23): header sub == 2*k with m == 1 -> single catalog of concat(u,v) entries,
     # ONE code per head selects both directions. File = 1 centroid block (no roles).
     joint = 1 if (sub == 2 * k and m == 1) else 0
     vals = []
     for ln in lines[1:]:
         vals.extend(float(x) for x in ln.split())
-    need = ncent * sub if joint else 2 * m * ncent * sub  # role mode: roles 0,1 only (rank-1)
+    need = stages * ncent * sub if joint else 2 * m * ncent * sub  # role mode: roles 0,1 only (rank-1)
+    assert stages == 1 or joint, "residual VQ (stages > 1) is joint-mode only"
+    assert 1 <= stages <= 8, f"PQ codebook {path}: stages={stages} out of range"
+    assert not (_PQ_LEARN and joint and stages > 8), "rec_idx slot stride is 8 ints per timestep"
     assert len(vals) >= need, f"PQ codebook {path}: {len(vals)} floats < {need}"
     # ⚠ KERNEL SHAPE INVARIANT, enforced here because violating it CORRUPTS SILENTLY. The learnable-cb
     # recording buffer is `__shared__ int rec_idx_chunk[CHUNK_LEN * 8]` (rwkv7_cuda.cu:965) -- a hardcoded
@@ -474,9 +482,10 @@ def maybe_upload_pq_codebook():
     )
     cb = torch.tensor(vals[:need], dtype=torch.float32, device="cuda")
     _set_pq_cb(cb, m, sub, ncent, joint)
-    print(f"[QAT-PQ] uploaded rank-1 codebook {path}: m={m} sub={sub} ncent={ncent} joint={joint} ({need} floats)")
-    n_rows = ncent if joint else 2 * m * ncent
-    _PQ_META = (m, sub, ncent, lines[0].strip(), [ln.strip() for ln in lines[1 + n_rows:]], joint)
+    print(f"[QAT-PQ] uploaded rank-1 codebook {path}: m={m} sub={sub} ncent={ncent} joint={joint} "
+          f"stages={stages} ({need} floats)")
+    n_rows = stages * ncent if joint else 2 * m * ncent
+    _PQ_META = (m, sub, ncent, lines[0].strip(), [ln.strip() for ln in lines[1 + n_rows:]], joint, stages)
     if _PQ_LEARN:
         _PQ_CB_PARAM = torch.nn.Parameter(cb.clone())
         torch.ops.rwkv.rwkv7_set_pq_learn(cb, 1)
@@ -486,8 +495,14 @@ def maybe_upload_pq_codebook():
     # shift-path analog lives in rwkv_model.fake_pq_shift (range [2.2,2.9]).
     nq_bits = int(os.environ.get("RWKV_QAT_NORM_BITS", "0") or 0)
     if nq_bits > 0:
-        torch.ops.rwkv.rwkv7_set_norm_quant(cb, nq_bits, -3.0, 0.0)
-        print(f"[QAT-PQ] norm quant ON: int{nq_bits} log2-uniform over [-3,0] octaves (WKV factor norms)")
+        # RWKV_QAT_NORM_RANGE_WKV="lo,hi" (2026-09-24): override the fixed [-3, 0] octave range (fitted in the d=32
+        # era); unset = byte-identical. Must equal the engine's RWKV_PQ_NORM_RANGE_WKV.
+        nlo, nhi = -3.0, 0.0
+        if os.environ.get("RWKV_QAT_NORM_RANGE_WKV", ""):
+            nlo, nhi = (float(x) for x in os.environ["RWKV_QAT_NORM_RANGE_WKV"].split(","))
+            assert nhi > nlo, (nlo, nhi)
+        torch.ops.rwkv.rwkv7_set_norm_quant(cb, nq_bits, nlo, nhi)
+        print(f"[QAT-PQ] norm quant ON: int{nq_bits} log2-uniform over [{nlo:g},{nhi:g}] octaves (WKV factor norms)")
     _PQ_UPLOADED = True
 
 
@@ -511,7 +526,7 @@ def wkv_pq_grad_fetch():
 
 def wkv_pq_reupload():
     """Push the stepped Parameter values back to the kernel's codebook globals (after optimizer.step)."""
-    m, sub, ncent, _, _, joint = _PQ_META
+    m, sub, ncent, _, _, joint, _stages = _PQ_META
     _set_pq_cb(_PQ_CB_PARAM.detach(), m, sub, ncent, joint)
 
 
@@ -519,8 +534,11 @@ def wkv_pq_export(path):
     """Write the (learned) codebook back in the engine text format: learned roles 0,1 + the ORIGINAL
     roles 2,3 rows (rank-1 never touches them; keeps the 4-role file format the engine expects).
     Joint mode: the single learned block (the engine loader detects joint from the header)."""
-    m, sub, ncent, header, tail, joint = _PQ_META
-    cb = _PQ_CB_PARAM.detach().float().cpu().view(ncent if joint else 2 * m * ncent, sub)
+    m, sub, ncent, header, tail, joint, stages = _PQ_META
+    # RESIDUAL VQ: the learned Parameter holds stages*ncent rows (stage-major). Exporting only the
+    # first block would hand the eval a ONE-STAGE catalog of a model trained with several -- silently
+    # wrong numbers. The header already carries the stage count, so the file round-trips.
+    cb = _PQ_CB_PARAM.detach().float().cpu().view(stages * ncent if joint else 2 * m * ncent, sub)
     out_lines = [header]
     for row in cb:
         out_lines.append(" ".join(f"{x:.6e}" for x in row.tolist()))

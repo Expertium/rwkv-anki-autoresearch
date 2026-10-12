@@ -1,2 +1,16 @@
 base=realcyc
 control=realcyc
+
+[auto_control] base=realcyc
+gate: size PASS  raw>=1e-4 both FAIL  p<1e-4 both FAIL  =>  REJECT
+mk rc=0
+preflight rc=0
+wrote run_eqw.cmd + ws.toml from realcyc: visited 10 lines (>= 9); guard params 563652
+
+=== scratchpad/eqw/run_eqw.cmd  [PASS]
+    - config decay.toml generated at line 115
+    - config eval.toml generated at line 149
+    - decay source eq_ws_<step>.pth is written in-run by the train_rwkv at line 84
+
+PREFLIGHT_ALL_PASS
+

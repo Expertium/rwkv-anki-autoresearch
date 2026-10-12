@@ -7,7 +7,7 @@ thread; the pool size IS the thread budget.
 
 RESUMABLE BY ARTIFACT, not by exit code. A user is skipped only when its output parquet
 exists AND its .meta.json parses -- an interrupted arm leaves a parquet-less or
-meta-less user that is simply redone. (CLAUDE.md: gate a phase on the ARTIFACT, because a
+meta-less user that is simply redone. (AGENTS.md: gate a phase on the ARTIFACT, because a
 Python entry point can swallow a fatal error and still exit 0.)
 
 Usage:

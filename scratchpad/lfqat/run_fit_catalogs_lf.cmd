@@ -13,6 +13,7 @@ set PYTHONIOENCODING=utf-8
 set OMP_NUM_THREADS=4
 set RWKV_ARCH_MODULE=scratchpad/track2_a18/architecture_d80_lora4_cnd.py
 set RWKV_INTERLEAVE=1
+set RWKV_STREAM_ORDER=card,note,deck,preset,user
 set RWKV_GRU_HEAD=3
 set RWKV_PAVA_LAMBDA=0.2
 set RWKV_NO_AHEAD_RESIDUAL=1
@@ -22,6 +23,7 @@ set RWKV_STATE_CLAMP_WINDOW=32768
 set RWKV_STRIP_CMIX=user_id:0,user_id:1,user_id:2,preset_id:0,preset_id:1,preset_id:2,deck_id:1,deck_id:2,card_id:1
 set RWKV_ID_FEATURES=1
 set RWKV_REAL_CYCLES=1
+set RWKV_FINAL_LAYOUT=1
 set RWKV_ZERO_FEATURES=
 set RWKV_CHAMP_CKPT=scratchpad/w10lf/w10lf_ws_109350.pth
 set RWKV_REF_DIR=scratchpad/lfqat/cb
@@ -33,6 +35,13 @@ if not exist "scratchpad\w10lf\w10lf_ws_109350.pth" (
   echo DONE_EXIT_61 %DATE% %TIME% >> "%LOG%"
   exit /b 61
 )
+REM The final-layout input traces must exist AND have passed their check against the LMDB.
+findstr /B /C:"DONE_EXIT_0 " "scratchpad\final_layout\export_final_inputs.log" >nul 2>&1
+if errorlevel 1 (
+  echo the final-layout input traces are missing or failed their check -- run scratchpad/final_layout/run_export_final_inputs.cmd %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_67 %DATE% %TIME% >> "%LOG%"
+  exit /b 67
+)
 
 REM ---- PHASE 1: weights to safetensors (seconds)
 "%PY%" -u scratchpad/w10qat/export_weights_only.py >> "%LOG%" 2>&1
@@ -42,8 +51,8 @@ if not %ERRORLEVEL%==0 (
   exit /b 62
 )
 
-REM ---- PHASE 2: the corpus, from the Rust engine driven by the existing gen-5 traces
-set RWKV_TRACE_DIR=reference_realcyc
+REM ---- PHASE 2: the corpus, from the Rust engine driven by the final-layout input traces
+set RWKV_TRACE_DIR=reference_final_inputs
 set RWKV_WEIGHTS=scratchpad/lfqat/cb/rwkv_ref_558.safetensors
 if not exist "%DIR%\corpus" mkdir "%DIR%\corpus"
 %BIN% --dump-corpus 107 card 1 > "%DIR%\corpus\wkv_107_card.txt" 2>> "%LOG%"
@@ -58,6 +67,13 @@ if not exist "%DIR%\corpus" mkdir "%DIR%\corpus"
 %BIN% --dump-shift-corpus 156 card 1 > "%DIR%\corpus\shift_156_card.txt" 2>> "%LOG%"
 %BIN% --dump-corpus 156 note 1 > "%DIR%\corpus\wkv_156_note.txt" 2>> "%LOG%"
 %BIN% --dump-shift-corpus 156 note 1 > "%DIR%\corpus\shift_156_note.txt" 2>> "%LOG%"
+REM The dump must have run the streams in the MODEL's order (the engine defaults to card,deck,note).
+"%PY%" scratchpad/lfqat/check_corpus_order.py "%DIR%\corpus" >> "%LOG%" 2>&1
+if not %ERRORLEVEL%==0 (
+  echo the corpus was dumped in the WRONG stream order %DATE% %TIME% >> "%LOG%"
+  echo DONE_EXIT_68 %DATE% %TIME% >> "%LOG%"
+  exit /b 68
+)
 
 REM ---- PHASE 3: fit both catalogs
 "%PY%" scratchpad/pq_train_juv.py reference/pq_cb_wkv_w10lf_b10.txt "%DIR%\corpus\wkv_*_*.txt" --k 16 --h 5 --bits 10 >> "%LOG%" 2>&1

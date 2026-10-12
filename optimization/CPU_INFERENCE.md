@@ -94,7 +94,7 @@ DAY — parity PASSES.** This caveat was written before the gate was run and is 
 sequence is legible. The A18 port verified at **imm 0.000035 / ahead 0.000044 against a ±0.0005
 tolerance** (14x and 11x inside), once the *reference trace* was regenerated — the old June trace
 was not reproducible by current Python, so the gate had been scoring stale artifacts rather than
-the engine. Procedure and the `trace_selfcontained.py` diagnostic are in CLAUDE.md §11. So the
+the engine. Procedure and the `trace_selfcontained.py` diagnostic are in AGENTS.md §11. So the
 throughput below is now backed by predictions that are also *correct*, not merely finite.
 (2) The two rows differ in more than width — architecture generation, curve head and
 stripped sublayers all move together. That is deliberate: it is the honest "what we shipped
@@ -239,3 +239,128 @@ i5 is the same order, not the same number; 15 W marginal is an estimate, not a m
 assumes button intervals are served on EVERY card (an upper bound); and the dataset's review counts
 are to-date, not full lifetimes, hence the 20-year hypothetical row. FSRS by comparison is a closed
 form costing microseconds — RWKV is ~1000x its compute, which is still ~1000x of nothing.
+
+## PRIOR ART TO READ FIRST WHEN PHASE 7 STARTS: Clanki PR 160 (Andrew 2026-09-19)
+
+https://github.com/Expertium/Clanki/pull/160 (MERGED; `rslib/src/rwkv/mod.rs`, the Anki fork's engine for the OLD d=128 model). Andrew: "record this for when we start working on speeding up CPU inference (not that there is much left to optimize)". What it established, measured on his collection:
+
+* **The AVX2/FMA kernels were ALREADY in the fork** (from JSchoreels, 2026-07-14: `dot_product`, `add_scaled_in_place`, a 4-row projection block, the recurrence update; runtime `is_x86_feature_detected!("avx2")` + `"fma"`, scalar fallback). Our `rust/rwkv-infer` has NO SIMD; the same source is `vendor/jschoreels_anki/rust/x86_simd.patch` (AGPL: flag to Andrew, keep provenance).
+* **What still paid: BATCHING rows** (`Linear::apply_batch` -> `apply_block_into`, 32 rows per block; batch = items / threads, rounded up to 4, clamped 4..128): 1,024 real query rows per-row -> batched = **+147%** (548 -> 221 ms, p 1e-34). A **wider projection tile** (4 rows x 16 outputs, 8 accumulators, no per-row zero branch) = **+57%** at kernel level. Same lesson as `BATCHING_PLAN.md`: matrix x matrix beats a faster dot product at our widths.
+* **End to end the gain is small**: calibration replay 11.08 -> 10.16 s per 100k reviews; the Total Knowledge graph did NOT move, because its time is in the Python glue per card per day (input building and parsing), not in the Rust query. **Profile the caller before the kernel.**
+* **The parity gate that worked**: scalar path = the test reference (bit-exact tests pinned to it; SIMD opt-in per test through a thread-local switch); AVX2 vs scalar max |diff| 9.5e-7 over 100,000 replay predictions (p99 1.2e-7), new vs old AVX2 kernel bit-identical, batched vs per-row 2.4e-7. FMA and summation order are not bit-exact against scalar and that is fine; ~1e-3 per prediction would be a formula error. State stays f32; no crate-wide target feature; NEON untouched; macOS keeps Accelerate.
+* An algorithmic lever I gave that session and it has not used yet: a query step does not change state, so one warm state per card serves every day of a per-day graph; only the input projection and the head re-run.
+
+
+## 2026-09-19 -- PROFILE OF THE DEPLOY-QUANTIZED ENGINE: THE CATALOG SEARCH WAS 85% OF THE TIME; FIXED, PICK-IDENTICAL (speed plan item a)
+
+Measured on `reference_final_inputs` (w10lf WS weights, 103 inputs, users 107 / 136 / 156, ~5,300 reviews each), one thread,
+beside a local GPU training and Andrew's FSRS-7 run (so absolute numbers are ceilings on time, the ratios are the result).
+Deploy env = lfq1's learned catalogs: `RWKV_STATE_LOWRANK_SCOPE=card:1:int4,note:1:int4 RWKV_LOWRANK_PQ=..wkvcb.. RWKV_SHIFT_PQ=..shiftcb..
+RWKV_QUANT_SHIFTS=1 RWKV_PQ_NORM_BITS=1` + `RWKV_STREAM_ORDER=card,note,deck,preset,user RWKV_INTERLEAVE=1`.
+
+| configuration | reviews/s | ms per review |
+|---|---|---|
+| no state quantization (the number every earlier speed row used) | 1,395 | 0.72 |
+| + WKV rank-1 + b10 joint catalog | 654 | 1.53 |
+| + shift catalog m2b12 = THE DEPLOY CONTRACT, serial warm scan (before) | 233 | 4.29 |
+| the same, prescreen scan (after) | ~757 (610-760 under load) | ~1.32 |
+| the same with the b13 WKV catalog | ~440 | ~2.3 |
+
+* **Every earlier CPU speed number in this file is for the UNQUANTIZED engine.** The shipped contract was 6x slower, and ~85% of
+  its time was the nearest-centroid search: 50 searches per review (4096 x 40 shift chunks, 1024 x 32 joint WKV entries), done
+  by a serial early-exit scalar loop (60 us per search even with the warm bound).
+* **The fix (`model.rs::nearest`, default on; `RWKV_PQ_SCAN=exact` restores the serial scan):** stage 1 scores every centroid
+  with `||c||^2 - 2 q.c` on a TRANSPOSED catalog (sub_dim axpy passes over ncent floats: vectorizes across centroids, AVX2+FMA
+  by runtime detection, plain fallback); stage 2 re-measures every centroid within 1e-3 of the best score (1.01 candidates on
+  average) with the EXACT serial sum and the same tie rule. The winner is provably in the candidate set while the f32 error of
+  a <= 64-term unit-scale sum (~1e-5) stays under 5e-4, so the pick -- and therefore every prediction -- is identical on every
+  CPU, whatever the SIMD path. **Verified: the three users' prediction files are BYTE-IDENTICAL to the serial scan's.** 8.4 us
+  per search (7x), 3.25x end to end. A first version with a per-centroid 8-lane dot product was latency-bound (60 us): the
+  transposed layout is what pays.
+* The warm index is still stored (state layout unchanged) but no longer needed for speed.
+* What is left of the quantization overhead (~0.6 ms per review): ~0.42 ms of search, the rest = the rank-1 power iteration.
+  Next candidates, unmeasured: skip the search when the vector did not change (query rows), SIMD for the network's own
+  matvecs (jschoreels' AVX2 patch, AGPL -- ask first), exp / sigmoid approximations (~2,500 calls per review).
+* The Anki port must carry this search (or the serial one); both give the same indices, so stored states are interchangeable.
+
+* **Later the same day: ~990 rev/s (4.2x), still byte-identical** -- the query pass no longer quantizes a state it discards (`review_query`), and the rank-1 power iteration runs on stack matrices. Tables (states/s, R/s, quantization cost by component): `DEPLOY_SPEED_LOG.md` "2026-09-19".
+
+## 2026-09-19 -- do quantized states diverge across CPUs / kernel versions? (question from the Clanki session)
+
+Concern: SIMD and scalar kernels differ by ~1e-6; with QUANTIZED stored states a near-tie in the catalog search or an int4
+rounding can flip, so the same card gets a different state on another CPU. MEASURED with `RWKV_DEBUG_JITTER=<rel>` (debug only,
+`model.rs::compress_wkv_state`: every state element times 1 +/- rel, deterministic hash sign, before compression; unset = preds
+byte-identical), deploy-quantized engine, users 107 / 136 / 156 of `reference_final_inputs` (16,033 imm / 13,314 ahead predictions):
+
+| jitter | mean abs dp imm | p99 | share > 1e-3 | share > 1e-2 | max | identical |
+|---|---|---|---|---|---|---|
+| 1e-7 | 2.5e-04 | 4.8e-03 | 2.5% | 0.51% | 0.202 | 12% |
+| 1e-6 | 7.5e-05 | 1.3e-03 | 1.5% | 0.08% | 0.062 | 30% |
+| 1e-5 | 1.6e-04 | 3.6e-03 | 2.8% | 0.29% | 0.055 | 29% |
+
+* NOT dose-dependent: any perturbation flips some picks; the size is chaotic, not proportional. The signed mean is ~0 (3e-05 at
+  most), so accuracy does not move; the quantization tax itself is ~0.002-0.003 LogLoss.
+* It GROWS along a user's history (user 107, quartile means 2e-05, 1e-04, 4e-05, 6e-04): a flipped card/note state feeds the
+  fp32 deck / preset / user recurrences, which never re-quantize.
+* Rounding before the quantizer does NOT fix it (rounding has its own boundaries). "Scalar for the state step" means scalar
+  for the WHOLE state pass, because k / v / w come out of the network's matvecs. The clean fix is ONE canonical float order:
+  the SIMD kernels and the scalar fallback use the same lane count and reduction order with fused multiply-add
+  (`f32::mul_add` in the fallback), so every CPU gives the same bits; plus a kernel-version tag on the state cache so a
+  kernel change triggers a rebuild from the review log. Query passes store nothing and need no such care.
+
+## 2026-09-20 -- THE ENGINE IS BATCH-1 PER REVIEW, AND A CHUNKED REPLAY IS THE BIGGER LEVER (from the Clanki session)
+
+The Clanki session measured its own bulk replay against ours and the comparison is worth keeping, because
+it names a structural gap that none of yesterday's four micro-optimizations touch.
+
+| pass | ms per review | what it contains |
+|---|---|---|
+| ours, `rwkv-infer` replay, unquantized | 0.46 | query pass + state pass, 558k params, single thread, features PRE-EXPORTED in the trace |
+| ours, deploy contract (b10 + m2b12 + 1-bit norms) | 0.68-0.76 | the same, with state quantization (~45% of it) |
+| theirs, release build, both lanes + heads + recording | 0.136 | 2.76M params, feature building INSIDE the loop |
+| theirs, state pass only, no recorders | 0.064 | the same minus the query lane |
+
+Their `warm_up_reviews_bulk_impl` runs **chunks of 16,384 rows as a wavefront**, so every dispatch and
+every weight-matrix read is amortized over thousands of rows; ours steps one review at a time. That is
+the whole of the apparent 3.4x-at-5x-the-arithmetic gap, and it is not an implementation trick.
+
+⚠ **Two caveats before quoting their number**, both raised with them and not yet answered: their bulk path
+uses `rayon::join` and `into_par_iter`, so 0.136 ms may be WALL-CLOCK over several cores while ours is one
+thread -- and Andrew's mobile constraint makes CPU-SECONDS the number, not wall-clock; and it is not stated
+whether states are compressed in that pass.
+
+**What it means for us.** In the LIVE Anki scheduler B=1 is inherent -- one review happens at a time, and
+0.46 ms is far below any latency a user can feel -- so this does NOT say the shipped path is slow. It says
+every BULK use of the engine (a historical replay, a state-cache rebuild, our own speed benchmarks, a future
+parity sweep) should go through a chunked/batched path, and that `review_batched` is the piece to grow
+rather than another micro-optimization of the B=1 loop.
+
+One number of theirs transfers directly to a question this file asked: with the query lane stubbed out their
+recording pass costs 0.071 ms against 0.136 ms, so **the query (prediction) lane is 82% of the recording
+cost** -- the second lane really is ~one full lane, exactly as the structure predicts, and there is no
+cheaper exact substitute for it.
+
+## 2026-09-25 -- Clanki speed hunt round 5 (fork-side study latency; ON HOLD with all CPU work)
+
+Reported by the Clanki session; nothing measured or changed here. For when CPU work resumes (after the model is
+finished, Andrew 2026-09-24):
+1. Show answer spends ~4.5 ms predicting the RWKV-Curve button intervals when they are not cached. Predicting them
+   while the question shows (Clanki plan item A2) removes it from the visible path.
+2. `record_reviewer_answer` adds 3.5 ms to a 7 ms answer op (the Rust answer itself is 2.3 ms).
+3. Undo's queue rebuild spends 5.5 ms gathering RWKV keys, 5.0 ms of it reading 2,340 card rows from SQLite.
+None of the three is the engine's forward pass; they are call placement and I/O in the fork.
+
+## QUEUED (postponed: Andrew 2026-09-24, CPU work waits for the finished model) -- post-sync refresh in the Anki fork (Clanki hand-over 2026-09-25)
+Measured by Clanki's batch-B agent on a copy of Andrew's profile (868k revlog rows, 200 reviews synced from another client; probe `C:\Users\Andrew\clanki-logs\bench\sync6\post_sync_probe.py`, Clanki `138f08fe7`): sync 266 ms, then `refresh_rwkv_state_after_sync` 2,676 ms = checkpoint restore 1,447 ms (`rslib/src/rwkv/mod.rs:1542`) + review fingerprint 880 ms (`scheduler/rwkv.rs`) + input build 215 ms + replay 64 ms.
+Ideas to judge when the work reopens: (1) when every synced review is newer than the resident state's last review, keep the resident state and replay only the new reviews (skips the restore; needs a proof that the append-only case gives the same state as restore + replay, e.g. deploy_vs_lmdb-style equality on the final state); (2) otherwise run the restore and the fingerprint at the same time (both release the GIL), about -0.9 s.
+
+## 2026-09-26 -- exact inference speedups: what the Anki fork ALREADY does (Clanki, read from origin/main, not measured)
+Do not re-propose these for the fork:
+1. Batched query passes across cards: DONE (`review_retrievability_query_refs_batched` -> `run_query_batch`, pinned to the scalar path by `batched_retrievability_matches_scalar_query_path`; batched interval and curve paths too).
+2. PAVA button probes only when needed: DONE (R uses the query pass only; the probes run in the interval prediction at show-answer time, ~4.5 ms uncached). Open idea there: predict the intervals while the question shows.
+4. Curve cached after each review: DONE for RWKV-Curve (Reschedule, due search, R review orders, Stats Stability / prop:s read the stored curve). RWKV-Instant has no curve and still needs query passes.
+Still open: 3. the 4-stage catalog search of the next deploy model (112 recipe) -- measure its share when it ships. All in Clanki's backlog "after the model is final".
+
+## QUEUED (postponed with all CPU work) -- Clanki speed hunt round 8, 2026-09-28 (reported, nothing changed)
+1. **First Stats open of a session waits ~0.94 s** in `RwkvInference.card_curve_s90s`: the `OnceLock` in `stored_curve_s90` computes the S90 of all ~159k stored curves on first use (later opens 4-9 ms); every state reload (e.g. after a sync) re-arms it. Fix options: compute the S90s on a background thread right after the state loads, or persist them with the saved state (they are a pure function of the stored curve, so a stale-cache risk exists only if the curve format changes -- key them on the model/kernel version tag). Probe: `clanki-logs/bench/hunt_r8_8.log` r0/r1.
+2. **Kept state + exact rebuild at open: the first Stats open froze the main thread 1.45 s** in `deckoptions._warm -> get_current_deck`, while `total_knowledge.start_rwkv`'s `find_cards` took 3.5 s; no Python backend call held the collection. Most likely holder: the rebuild itself, holding the Rust backend's collection lock (the Python side only sees the wait). Check first whether the exact-rebuild loop takes the collection mutex for its whole duration instead of per batch. Probe: `bench/hunt_r8_7.log/.json` r0.

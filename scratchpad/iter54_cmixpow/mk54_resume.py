@@ -5,7 +5,7 @@ clean checkpoint pair at step 8000 (verified loadable: 434 keys, 558,225 params)
 ZERO NUL bytes, so nothing is corrupt. Resuming costs ~110 lost steps against ~2.4 h of salvaged
 training.
 
-MECHANISM (CLAUDE.md "MID-EPOCH RESUME"): `make_resume.py` wrote `i54_ws_resume.toml`
+MECHANISM (AGENTS.md "MID-EPOCH RESUME"): `make_resume.py` wrote `i54_ws_resume.toml`
 (LOAD_MODEL=true, LOAD_MODEL_NAME=i54_ws_8000, STEP_OFFSET=8001) and copied the optimizer file to
 the loader's expected name. The resume RUN must additionally set **RWKV_RESUME_SKIP_GROUPS=1**, or
 train_rwkv re-trains the early data and drops the tail.
@@ -48,7 +48,7 @@ s = s.replace(OLD_WS, NEW_WS, 1)
 # --- ARTIFACT GUARD: exit code 0 does NOT mean the WS ran ---
 # The first resume attempt died instantly on a missing LOAD_MODEL_FOLDER, train_rwkv SWALLOWED the
 # AttributeError and exited 0, and the runner logged "WS OK" after 8 seconds then proceeded to
-# decay from a half-trained checkpoint. CLAUDE.md already warns "train_rwkv can swallow fatal
+# decay from a half-trained checkpoint. AGENTS.md already warns "train_rwkv can swallow fatal
 # errors to exit 0"; the only reliable test is whether the ARTIFACT exists.
 OLD_DEC0 = 'echo === DECAY SETUP %TIME% === >> "%LOG%"\r\n'
 GUARD = ('REM Exit code 0 is not evidence the WS ran -- train_rwkv can swallow a fatal error and\r\n'

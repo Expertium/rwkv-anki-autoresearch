@@ -76,7 +76,11 @@ ckpt_dry = (ckpt[:-2] + "dry_d") if ckpt.endswith("_d") else (ckpt + "dry")
 # every dry run died at DECAY_SHORT after doing its job perfectly. It cost 2 h of idle GPU on
 # 2026-09-10: the arm-2 waiter saw the dry run fail and correctly refused to launch.
 # 10935 is len(groups) for THIS lineage's train db at MAX=65536; a different db moves it.
-steps = int(EPOCHS * 10935)
+# MKDRY_GROUPS / MKDRY_MAX (2026-09-14): a runner on another batch size has another len(groups) and another
+# MAX token in its write_decay_setup line (the d=128 grid cells: 22346 groups at MAX 32768). Unset = unchanged.
+_GROUPS = int(os.environ.get("MKDRY_GROUPS", "10935"))
+_MAX = os.environ.get("MKDRY_MAX", "65536")
+steps = int(EPOCHS * _GROUPS)
 
 out = src
 out = out.replace("scratchpad" + B + tag, "scratchpad" + B + dry)
@@ -86,14 +90,19 @@ out = out.replace(tag + ".log", dry + ".log")
 out = out.replace(ckpt, ckpt_dry)
 out = out.replace(tag + " START", dry + " START")
 # The decay length and the eval user range are the whole point of a dry run.
-out = re.sub(r"(1 5000 )[0-9.]+( 1e-3)", r"\g<1>%g\g<2>" % EPOCHS, out)
+# The peak LR is whatever the runner passes (1e-3 in every arm; a phase-5 lr trial scales it), so it is
+# matched, not assumed -- the assert below re-checks the rewritten line with the SAME LR.
+_m_lr = re.search(r"1 5000 [0-9.]+ ([0-9.e-]+) %s " % _MAX, out)
+assert _m_lr, "no write_decay_setup line with '1 5000 <epochs> <peak_lr> %s'" % _MAX
+_PEAK_LR = _m_lr.group(1)
+out = re.sub(r"(1 5000 )[0-9.]+( %s %s )" % (re.escape(_PEAK_LR), _MAX), r"\g<1>%g\g<2>" % EPOCHS, out)
 out = re.sub(r"set STEPS=\d+", "set STEPS=%d" % steps, out)
 out = re.sub(r"(write_eval_toml\.py.+?)\d+ \d+(\s*>)", r"\g<1>%s\g<2>" % USERS, out)
 
 body = NL.join(l for l in out.split(NL) if not l.strip().startswith("REM"))
 assert "set STEPS=%d" % steps in body, "decay step count not rewritten"
 assert USERS in body, "eval user range not rewritten"
-assert "1 5000 %g 1e-3" % EPOCHS in body, "decay epochs not rewritten"
+assert "1 5000 %g %s %s " % (EPOCHS, _PEAK_LR, _MAX) in body, "decay epochs not rewritten"
 # Whole-LINE test for the tag: "set TAG=w10qatdry" contains "set TAG=w10qat" as a substring, so a
 # naive `in` fails a correct file. Same shape as the eqw banner exempted from mk_muongates' scan.
 assert ("set TAG=" + tag) not in [l.strip() for l in body.splitlines()], "tag line not rewritten"

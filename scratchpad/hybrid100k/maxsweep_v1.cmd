@@ -3,7 +3,7 @@ REM ============================================================================
 REM V1 MAX sweep: is the 12x slowdown DISPATCH or MEMORY PRESSURE?
 REM
 REM The compile-on arm measured peak_reserved_gb=12.583 on a 12 GB card -- over the ceiling and
-REM into WDDM paging, which CLAUDE.md records as depressing every arm of a measurement. The FSRS
+REM into WDDM paging, which AGENTS.md records as depressing every arm of a measurement. The FSRS
 REM T-loop saves ~40 intermediates per review for backward, so its activation memory scales with
 REM the batch's review count in a way the fused WKV kernel's did not.
 REM

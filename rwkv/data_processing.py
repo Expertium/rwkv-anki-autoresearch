@@ -10,6 +10,7 @@ import torch
 import pandas as pd
 import random
 from rwkv.config import RWKV_SUBMODULES
+from rwkv import extra_features as _extra
 from rwkv import id_features as _idf
 from rwkv.parse_toml import parse_toml
 from rwkv.utils import save_tensor
@@ -53,6 +54,28 @@ if _idf.enabled():
     CARD_FEATURE_COLUMNS = [
         c for c in CARD_FEATURE_COLUMNS if c not in _idf.dropped_columns()
     ] + list(_idf.active_new_columns())
+
+# The layout a gen-5 LMDB STORES, and the one the MODEL reads. They differ only under
+# RWKV_FINAL_LAYOUT=1 (id_features.FINAL_LAYOUT_DROPPED, Andrew 2026-09-12); off => identical lists
+# and FINAL_KEEP_IDX is None, so nothing downstream changes.
+STORED_CARD_FEATURE_COLUMNS = list(CARD_FEATURE_COLUMNS)
+FINAL_KEEP_IDX = None
+if _idf.final_layout_enabled():   # called unconditionally: it RAISES if set without the -id + real-cycle flags
+    _missing = [c for c in _idf.FINAL_LAYOUT_DROPPED if c not in STORED_CARD_FEATURE_COLUMNS]
+    assert not _missing, f"RWKV_FINAL_LAYOUT drops columns this layout does not have: {_missing}"
+    CARD_FEATURE_COLUMNS = [c for c in STORED_CARD_FEATURE_COLUMNS if c not in _idf.FINAL_LAYOUT_DROPPED]
+    FINAL_KEEP_IDX = [STORED_CARD_FEATURE_COLUMNS.index(c) for c in CARD_FEATURE_COLUMNS]
+
+# RWKV_EXTRA_FEATURES (rwkv/extra_features.py, default OFF => nothing appended and this is a no-op):
+# columns that are NOT stored and are rebuilt exactly from (user_id, review_th) as a row is decoded --
+# `prepare_batch.get_data` appends them in this order, so the MODEL's layout is stored-minus-dropped
+# plus these, while STORED_CARD_FEATURE_COLUMNS stays what the LMDB actually holds.
+EXTRA_FEATURE_COLUMNS = list(_extra.columns())
+if EXTRA_FEATURE_COLUMNS:
+    _clash = [c for c in EXTRA_FEATURE_COLUMNS if c in CARD_FEATURE_COLUMNS]
+    assert not _clash, f"RWKV_EXTRA_FEATURES would shadow stored columns: {_clash}"
+    CARD_FEATURE_COLUMNS = CARD_FEATURE_COLUMNS + EXTRA_FEATURE_COLUMNS
+assert len(CARD_FEATURE_COLUMNS) == _idf.card_feature_width(), "input width disagrees with id_features"
 
 STATISTICS = {
     "elapsed_days_mean": 1.51,
@@ -310,7 +333,16 @@ def get_rwkv_data(data_path, user_id, equalize_review_ths=[]):
     # ~30% of users. Gating the drop would make that arm impossible: `-id` + flag off would die on
     # the very assert this line exists to satisfy. Published data has no `review_time`, so every
     # live run is unaffected.
-    if "review_time" in df.columns:
+    #
+    # ⚠ EXCEPTION (2026-09-21): the per-ROW read-time features (session structure, phase coherence,
+    # the streak) are functions of the absolute show time, and the DEPLOY builder must recompute them
+    # online as a live scheduler would -- so `run_as_rnn.add_same` needs this column. It is carried
+    # ONLY when such a feature is active, and it is carried as a plain frame column, never as an
+    # input: `CARD_FEATURE_COLUMNS` is an explicit list and `card_feature_width()` asserts against it,
+    # so the magnitude objection above is handled by the guard rather than by the column's absence.
+    # Letting deploy read the same side table training reads would be the easy alternative and is the
+    # wrong one -- it would make `deploy_vs_lmdb.py` compare the table with itself.
+    if "review_time" in df.columns and not _extra.row_features():
         df = df.drop(columns=["review_time"])
 
     # find cards with a nan note_id and fill them with a unique value individually
@@ -543,6 +575,11 @@ def add_queries(section_df, equalize_review_ths):
     # and deck_id_is_nan, which are kept today. The scheduler knows when it is showing a card.
     if _idf.enabled():
         keep_columns = keep_columns + list(_idf.active_new_columns())
+    # `review_time` survives get_rwkv_data only when a per-ROW read-time feature needs it (see the
+    # drop site). It is a KEEP column for the same reason the clock columns are: the query row is
+    # this review's SHOW time, which the scheduler knows. It is a carried column, never an input.
+    if _extra.row_features():
+        keep_columns = keep_columns + ["review_time"]
 
     reject_columns = [
         "rating",

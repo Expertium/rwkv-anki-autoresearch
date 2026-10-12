@@ -8,7 +8,7 @@ It therefore proved the features path executes and never tested the mismatch at 
 disagreement needs no GPU, so the open half is answerable here.
 
 WHY IT MATTERS MORE THAN IT SOUNDS. The features phase runs two database generations side by side
-and CLAUDE.md already records gen 1 and gen 2 as superseded by `*_id3`. Pointing a run at the wrong
+and AGENTS.md already records gen 1 and gen 2 as superseded by `*_id3`. Pointing a run at the wrong
 generation is a one-character mistake in a toml, and the failure this smoke is looking for is the
 silent kind: a width that is absorbed, padded or truncated somewhere, so the run trains happily on
 a misaligned feature vector and reports a number.

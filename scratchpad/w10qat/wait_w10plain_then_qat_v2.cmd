@@ -4,7 +4,7 @@ REM ARM 2. One waiter, strictly sequential, so the CPU-heavy k-means never compe
 REM training run for fetch workers -- it costs ~15 min of idle GPU and buys no contention.
 REM
 REM Gates on the SUCCESS line, never on a bare terminal marker: a failure marker in a shared log
-REM is a live trigger for everything downstream (CLAUDE.md), and arm 1 can exit non-zero from any
+REM is a live trigger for everything downstream (AGENTS.md), and arm 1 can exit non-zero from any
 REM of its own phase guards.
 REM
 REM Why the catalog refit is here and not a note: both deployed catalogs were measured STALE on

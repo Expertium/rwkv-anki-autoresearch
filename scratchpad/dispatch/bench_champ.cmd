@@ -9,7 +9,7 @@ REM   ARM bench   -- steps/s, reviews/s and PEAK RESERVED VRAM at the production
 REM                  V1's timing measured peak_reserved_gb=12.583 on a 12 GB card. If the
 REM                  CHAMPION is also near the ceiling then WDDM paging is depressing every run
 REM                  we have ever timed, which would be a bigger lever than any fusion work.
-REM                  CLAUDE.md already records the QAT config at 12.807 GB and flags exactly this.
+REM                  AGENTS.md already records the QAT config at 12.807 GB and flags exactly this.
 REM   ARM profile -- the dispatch breakdown, to confirm the 85%-CPU-bound split still holds at
 REM                  this arch and to re-derive the Amdahl ceiling. TRAINING_SPEED.md's numbers
 REM                  predate iter 53.

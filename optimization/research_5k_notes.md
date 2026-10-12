@@ -5,7 +5,8 @@ running notes live here. Pre-5k history: `research_log.md` / `log.md` / `HISTORY
 
 **Front-table conventions:** LogLoss to 4 decimal places; parameter counts exact (e.g. 2,762,884 /
 193,724, from `optimization/model_stats.py`); working precision here in the notes may be higher.
-`provenance` = **adopted** (idea from literature / existing work) or **invented** (our own idea).
+`provenance` uses the four categories defined in `research_5k.md`: **Tuning**, **Adopted**,
+**Invented**, and **Reference**. Use the primary experimental change to select one category.
 `summary` (rightmost) = pre-registered: ≤15 words, written BEFORE the result is known.
 `logloss` = **exact** (training finished, real eval) or **estimated** (run Wilcoxon-pruned early; value =
 `champ_final + (cand@s − champ@s)` at the prune step — see methodology pt 9).
@@ -433,7 +434,7 @@ Ported from `C:\Users\Andrew\rwkv-state-quant` (research DONE; its final log = `
   Resumed via `run_champ5k_r1_resume.cmd` (decay-onward, same frozen env, appends to the same
   log); WS artifacts were all intact (ckpt + optim + resolved WS cbs).
 
-## Speedups banked (detail also in CLAUDE.md)
+## Speedups banked (detail also in AGENTS.md)
 - 2026-07-08 **EVAL CPU PATH VECTORIZED (byte-identical, banked mid-champion-run).** The per-review
   Python loops in the eval post-processing were the CPU drag between users: `extract_p` (per-index dict
   builds over every timestep), `get_stats` (per-eq-review gather loop + an up-to-800k-row Python
@@ -764,7 +765,7 @@ training and evaluating each candidate -- is GPU work that competes with the alg
 the same single 4070, and every pre-rebuild iteration is measured against a champion the rebuild
 will invalidate. So features are not a free parallel track; they are a PHASE that largely displaces
 the loop, and only their ~2-4 day preprocessing head start can overlap it.
-(The same wrong claim is in CLAUDE.md's ORDER FROM HERE and is corrected there too.)
+(The same wrong claim is in AGENTS.md's ORDER FROM HERE and is corrected there too.)
 
 ## The C=80 shift-PQ refit: what a bit budget actually buys (2026-08-12, no GPU)
 
@@ -924,7 +925,7 @@ that catalog matches its model; those loglosses stand. (b) On this d=80 trunk th
 catalog in the first place. (c) `CPU_INFERENCE.md`'s q72u figures are **speed** (ms/rev), and
 codebook-search cost depends on catalog SIZE, not fidelity — they are unaffected. The finding
 therefore changes what the tax measurement should measure; it does not retract anything recorded.
-⚠ The one live document that needs editing is the methodology-(a) env string (CLAUDE.md:579), which
+⚠ The one live document that needs editing is the methodology-(a) env string (AGENTS.md:579), which
 still names the q72u WKV catalog — hold that edit until the refit is validated by the probe matrix.
 
 **Cross-user honesty check** (train user 101, test user 102; the deployed catalog is fitted on a
@@ -983,7 +984,7 @@ tried before spending state bits. The dump is CPU-only and reuses existing trace
 
 **TWO PROCESS BUGS THIS RUN, both worth keeping:**
 1. **A non-ASCII character killed a data point.** A `⚠` in a print statement raised
-   `UnicodeEncodeError` under cmd.exe's cp1252 redirect and aborted the bits=14 arm. CLAUDE.md's
+   `UnicodeEncodeError` under cmd.exe's cp1252 redirect and aborted the bits=14 arm. AGENTS.md's
    "plain ASCII in shell-written values" rule applies to **Python that prints into a redirected
    log**, not only to shell-authored strings.
 2. **`%ERRORLEVEL%` inside a `for` loop is a LIE.** The bits=14 arm crashed and the runner still
@@ -1131,7 +1132,7 @@ recollection ("IIRC it ended by being like 3x slower") rather than either record
 - **1.7x** was d=32 WALL-CLOCK (`champ5k_plain` vs `champ5k_b1`).
 - **3.76x** is d=80 wall-clock — and the growth is expected: **per-card state is 2,880 floats here
   vs 576 at d=32 (5x)**, and the fake-quant work (rank-1 SVD + PQ search + norm quant) scales with
-  state size, while the rest of the step does not. CLAUDE.md predicted this would need re-measuring
+  state size, while the rest of the step does not. AGENTS.md predicted this would need re-measuring
   "at d=80" for precisely that reason.
 
 **CONSEQUENCE FOR THE 10x-BUDGET ENDGAME.** The plan costs the QAT arm at ~1.7x. At 3.76x, a
@@ -1145,7 +1146,7 @@ slightly, but not by enough to change the conclusion.
 2,733.** `decay_ratio` has been **1.0** since iter 34 ("decay is HALF of all training"), and
 `qtaxc_m2b12_decay.toml` carries `EPOCHS = 1.0` — byte-identical in that respect to iter 45's decay
 toml, so the single-variable comparison is intact; only my step-count estimate was wrong (it came
-from the retired 0.25 ratio, which is also where CLAUDE.md's "decay 63 -> 40 min" speedup figure
+from the retired 0.25 ratio, which is also where AGENTS.md's "decay 63 -> 40 min" speedup figure
 comes from — that line predates iter 34 and should not be read as the current decay cost).
 The comment inside `run_qat_chain.cmd` still says 2733/~1.0 h and CANNOT be fixed while the file is
 executing (cmd.exe resumes from a byte offset); fix it after the run.
@@ -1392,7 +1393,7 @@ schedule. Paired on the same users:
 10-user probe 44.7%/39.3%, n=569 47.0%/43.0%, n=1186 46.1%/43.0%, n=2500 45.4%/43.9% -- so the
 early reads were trustworthy and the partial-eval habit is vindicated again.
 **Costs nothing:** deploy size is unchanged (catalog VALUES move, not structure) and wall-clock is
-unchanged (0.3333 vs 0.335 steps/s). It also closes the export->eval wiring gap CLAUDE.md had
+unchanged (0.3333 vs 0.335 steps/s). It also closes the export->eval wiring gap AGENTS.md had
 listed as queued -- the eval consumed the catalogs exported at the final checkpoint.
 
 **Effect on the stopping-point balance sheet:**

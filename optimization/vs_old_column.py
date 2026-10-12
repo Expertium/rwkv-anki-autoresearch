@@ -17,7 +17,7 @@ depending on the model, and it is a cost the baseline never paid. So the true ah
 than this column shows by about that much. `imm` is closer to comparable -- the rectifier does not
 touch the rating head -- up to the ~0.0003 probe-insertion noise.
 This column is therefore a PROGRESS INDICATOR, not a gate. The gate is always vs the current
-champion (see CLAUDE.md "ACCEPTANCE GATE").
+champion (see AGENTS.md "ACCEPTANCE GATE").
 
 Idempotent: inserts the column if missing, recomputes it if present. Re-run after adding a row.
 

@@ -23,7 +23,7 @@ indirect one acting through the shared trunk.
 
 ### Why the curve-side exception looks applicable and is not
 
-CLAUDE.md's curve-side exception is verified for **iter 46's self-distillation**, and correctly so:
+AGENTS.md's curve-side exception is verified for **iter 46's self-distillation**, and correctly so:
 that lever rewrote only `label_y`, so "the imm objective is `p_loss` = cross-entropy on
 `label_rating`, which the lever never touches" was true *of that lever*.
 

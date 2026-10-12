@@ -9,7 +9,7 @@ REM overhead: its 2-epoch plain decay IS arm 1 of the endgame (the plain-10x num
 REM
 REM SINGLE VARIABLE vs realcyc: EPOCHS 1 -> 10 in ws.toml. The env below is realcyc's, byte-identical.
 REM
-REM RESUME. Over ~34 h a crash or reboot is the one real failure mode (CLAUDE.md), so this loops:
+REM RESUME. Over ~34 h a crash or reboot is the one real failure mode (AGENTS.md), so this loops:
 REM train -> if the final checkpoint exists, done -> else if any checkpoint exists, make_resume.py and
 REM go again with RWKV_RESUME_SKIP_GROUPS=1. VALIDATE_EVERY=1000 gives 109 resume points, so a crash
 REM costs <=1000 steps (~17 min) instead of the run. Attempts are capped so a hard-failing config

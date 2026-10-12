@@ -13,7 +13,7 @@ WHAT IT CHECKS -- in the order the failures actually happen:
     in srs_model_rnn.py records.
  2. **PRESENT WHEN ON**, and exactly +4 params.
  3. **NOT VACUOUS.** `rcouple_w` is ZERO-INIT, so every comparison below would pass trivially on an
-    untouched model -- the documented vacuity trap (CLAUDE.md §9: "randomize the zero-init params
+    untouched model -- the documented vacuity trap (AGENTS.md §9: "randomize the zero-init params
     ... and assert the output scale is non-trivial before comparing"). The coupling is therefore
     given a random non-zero w and asserted to MOVE the rating probabilities.
  4. **TRAIN AND DEPLOY COMPUTE THE SAME FUNCTION.** srs_model.py applies

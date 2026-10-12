@@ -39,6 +39,34 @@ fn get<'a>(m: &'a TMap, k: &str) -> Result<&'a Tensor> {
     m.get(k).ok_or_else(|| anyhow!("missing weight: {k}"))
 }
 
+/// The string map a safetensors file carries under `__metadata__` (empty if it has none -- every
+/// file exported before 2026-09-12). candle's loader returns tensors only, so the header is read
+/// here directly from the format: an 8-byte little-endian header length, then that many bytes of
+/// JSON. Only the header is read, never the tensor data.
+fn safetensors_metadata(path: &str) -> Result<HashMap<String, String>> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path)?;
+    let mut len8 = [0u8; 8];
+    f.read_exact(&mut len8)?;
+    let n = u64::from_le_bytes(len8);
+    if n > 100_000_000 {
+        return Err(anyhow!("{path}: safetensors header claims {n} bytes -- not a safetensors file?"));
+    }
+    let mut hdr = vec![0u8; n as usize];
+    f.read_exact(&mut hdr)?;
+    let v: serde_json::Value = serde_json::from_slice(&hdr)
+        .map_err(|e| anyhow!("{path}: unreadable safetensors header: {e}"))?;
+    let mut out = HashMap::new();
+    if let Some(meta) = v.get("__metadata__").and_then(|m| m.as_object()) {
+        for (k, val) in meta {
+            if let Some(s) = val.as_str() {
+                out.insert(k.clone(), s.to_string());
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// True iff `k` is a STRIPPED component's leftover dummy.
 ///
 /// The training side removes a sublayer by replacing it with a `d_model=1, n_heads=1` module
@@ -162,7 +190,11 @@ impl ArchFlags {
 
 /// Recover [`ArchFlags`] from weight shapes + the two recipe env vars that leave no trace in
 /// the weights.
-fn detect_arch(w: &TMap, stream_layers: &[usize]) -> Result<ArchFlags> {
+fn detect_arch(
+    w: &TMap,
+    stream_layers: &[usize],
+    meta: &HashMap<String, String>,
+) -> Result<ArchFlags> {
     let mut has_cmix = Vec::new();
     let mut has_vlora = Vec::new();
     for (m, &n_layers) in stream_layers.iter().enumerate() {
@@ -202,16 +234,61 @@ fn detect_arch(w: &TMap, stream_layers: &[usize]) -> Result<ArchFlags> {
         Some(t) => Some(t.flatten_all()?.to_vec1::<f32>()?),
         None => None,
     };
-    let state_clamp_tau = match std::env::var("RWKV_STATE_CLAMP_TAU") {
-        Ok(s) if !s.is_empty() => {
-            let v: f32 = s.parse().map_err(|_| anyhow!("bad RWKV_STATE_CLAMP_TAU: {s}"))?;
-            if v > 0.0 { Some(v) } else { None }
+    // RECIPE flags: not detectable from any weight shape. Since 2026-09-12 the export writes them
+    // into the safetensors metadata, with the stream order's precedence (Model::load): env +
+    // metadata must AGREE or the load is refused; metadata alone is used; env alone, or neither,
+    // is exactly the old behaviour (every file exported before that date has no metadata).
+    // Measured the same day: a run missing RWKV_INTERLEAVE alone misses by up to 0.66 per review.
+    let env_set = |k: &str| std::env::var(k).ok().filter(|s| !s.is_empty());
+    let parse_tau = |s: &str, src: &str| -> Result<Option<f32>> {
+        let v: f32 = s.parse().map_err(|_| anyhow!("bad state clamp tau in {src}: {s}"))?;
+        Ok(if v > 0.0 { Some(v) } else { None })
+    };
+    let state_clamp_tau = match (env_set("RWKV_STATE_CLAMP_TAU"), meta.get("state_clamp_tau")) {
+        (Some(e), Some(m)) => {
+            let (te, tm) = (parse_tau(&e, "RWKV_STATE_CLAMP_TAU")?, parse_tau(m, "the weights' metadata")?);
+            if te != tm {
+                return Err(anyhow!(
+                    "RWKV_STATE_CLAMP_TAU={e:?} disagrees with the weights' metadata ({m:?}). \
+                     Refusing; unset the variable to use the weights' value."
+                ));
+            }
+            te
         }
-        _ => None,
+        (Some(e), None) => parse_tau(&e, "RWKV_STATE_CLAMP_TAU")?,
+        (None, Some(m)) => {
+            eprintln!("[rwkv-infer] state clamp tau from the weights' metadata: {m}");
+            parse_tau(m, "the weights' metadata")?
+        }
+        (None, None) => None,
     };
 
-    // Recipe flag, like state_clamp_tau: not detectable from any weight shape.
-    let interleave = matches!(std::env::var("RWKV_INTERLEAVE").as_deref(), Ok("1"));
+    let interleave = match (env_set("RWKV_INTERLEAVE"), meta.get("interleave")) {
+        (Some(e), Some(m)) => {
+            if (e == "1") != (m == "1") {
+                return Err(anyhow!(
+                    "RWKV_INTERLEAVE={e:?} disagrees with the weights' metadata ({m:?}). \
+                     Refusing: one of the two schedules computes a different model. Unset the \
+                     variable to use the weights' value."
+                ));
+            }
+            e == "1"
+        }
+        (Some(e), None) => e == "1",
+        (None, Some(m)) => {
+            eprintln!("[rwkv-infer] interleave from the weights' metadata: {m}");
+            m == "1"
+        }
+        (None, None) => false,
+    };
+    if let Some(p) = meta.get("interleave_placement") {
+        if p != "front" {
+            return Err(anyhow!(
+                "the weights were exported with interleave placement {p:?}; this engine implements \
+                 the front-loaded placement only (iter 44's spread variant was never ported)"
+            ));
+        }
+    }
 
     Ok(ArchFlags {
         has_cmix,
@@ -519,6 +596,16 @@ pub struct PqCodebook {
     pub k: usize,
     pub ncent: usize,
     cb: Vec<Vec<f32>>, // [role*m + pos] -> flat ncent*sub_dim centroids (centroid c at [c*sub_dim..])
+    /// 2026-09-19 fast scan: ||centroid||^2 per block, for the dot-product PRESCREEN (see `nearest`).
+    cn2: Vec<Vec<f32>>,
+    /// the same blocks TRANSPOSED (dimension j of every centroid contiguous at [j*ncent..]): the prescreen is then
+    /// sub_dim axpy passes over ncent floats, which vectorizes across centroids (throughput-bound, not latency-bound).
+    cbt: Vec<Vec<f32>>,
+    /// RWKV_PQ_SCAN=exact restores the serial early-exit scan (the verification reference). Picks are identical.
+    fast_scan: bool,
+    /// 2026-09-19 (evening): 13-bit integer copy of each block for the INTEGER prescreen (`I16Blk`); RWKV_PQ_SCAN=f32
+    /// keeps the float prescreen. Empty when off.
+    cb16: Vec<I16Blk>,
     /// RWKV_PQ_NORM_BITS: quantize the per-direction norm scalar to n bits, uniform in log2 domain over
     /// a fixed per-codebook range (octaves). Ranges are corpus-derived globals (2026-07-04: WKV √σ spans
     /// log2 [-2.5,-0.6], shift norms [2.4,2.7] — layernorm pins them). None = exact f32 norm (legacy).
@@ -530,6 +617,13 @@ pub struct PqCodebook {
     /// entries; ONE index per head selects BOTH factor directions (u/v correlation captured), each
     /// half rescaled by its own (norm-quantized) norm. File = 1 centroid block instead of 4.
     pub joint: bool,
+    /// RESIDUAL VQ (2026-09-20, joint mode only): the catalog holds `stages` blocks of `ncent`
+    /// centroids and each stage codes the RESIDUAL left by the earlier ones, so the reconstruction is
+    /// the SUM of `stages` picks and the per-head index cost is `stages * bits`. A single index cannot
+    /// be fitted or searched past ~b15, so this is the only way to spend a large bit grant. The header
+    /// carries the stage count as an optional 6th field; a file without it is a 1-stage catalog and
+    /// takes exactly the code path it always took.
+    pub stages: usize,
     /// task25 (port of the CUDA warm-start, RWKV_QAT_NO_WARM analog): callers that compress the SAME
     /// entity's state/shift on consecutive reviews can pass the previous winning index as a warm bound —
     /// the vectors drift slowly, so most of the catalog prunes after a few dims. PROVABLY pick-identical
@@ -556,8 +650,12 @@ impl PqCodebook {
         // joint-uv detection: one catalog of concat(u,v) entries (only meaningful for WKV, n_roles=4)
         let joint = sub_dim == 2 * k && m == 1;
         let n_roles = if joint { 1 } else { n_roles };
-        let mut cb = Vec::with_capacity(n_roles * m);
-        for _ in 0..n_roles * m {
+        // optional 6th header field = residual-VQ stage count (see the `stages` field). Absent = 1.
+        let stages = if h.len() > 5 { h[5] } else { 1 };
+        anyhow::ensure!(stages >= 1 && stages <= 8, "PQ stages out of range: {stages}");
+        anyhow::ensure!(stages == 1 || joint, "residual VQ (stages > 1) is joint-mode only");
+        let mut cb = Vec::with_capacity(n_roles * m * stages);
+        for _ in 0..n_roles * m * stages {
             let mut flat = Vec::with_capacity(ncent * sub_dim);
             for _ in 0..ncent {
                 let ln = lines.next().ok_or_else(|| anyhow!("PQ codebook truncated"))?;
@@ -569,7 +667,26 @@ impl PqCodebook {
             cb.push(flat);
         }
         let warm_enabled = std::env::var("RWKV_NO_WARM").map(|v| v != "1").unwrap_or(true);
-        Ok(Self { m, sub_dim, k, ncent, cb, norm_bits: None, norm_lo_log2: 0.0, norm_hi_log2: 0.0, joint, warm_enabled })
+        let cn2: Vec<Vec<f32>> = cb
+            .iter()
+            .map(|blk| blk.chunks_exact(sub_dim).map(|c| c.iter().map(|x| x * x).sum::<f32>()).collect())
+            .collect();
+        let cbt: Vec<Vec<f32>> = cb
+            .iter()
+            .map(|blk| {
+                let mut t = vec![0f32; blk.len()];
+                for c in 0..ncent {
+                    for j in 0..sub_dim {
+                        t[j * ncent + c] = blk[c * sub_dim + j];
+                    }
+                }
+                t
+            })
+            .collect();
+        let fast_scan = std::env::var("RWKV_PQ_SCAN").map(|v| v != "exact").unwrap_or(true);
+        let int_scan = fast_scan && std::env::var("RWKV_PQ_SCAN").map(|v| v != "f32").unwrap_or(true);
+        let cb16: Vec<I16Blk> = if int_scan { cb.iter().map(|blk| I16Blk::build(blk, ncent, sub_dim)).collect() } else { Vec::new() };
+        Ok(Self { m, sub_dim, k, ncent, cb, cn2, cbt, fast_scan, cb16, norm_bits: None, norm_lo_log2: 0.0, norm_hi_log2: 0.0, joint, stages, warm_enabled })
     }
 
     /// Enable norm quantization (see field docs). Called by Model::load per codebook with its range.
@@ -619,6 +736,26 @@ impl PqCodebook {
         }
         let inv = 1.0 / norm; // chunks normalized by the TRUE norm (centroid match unaffected)
         norm = self.quant_norm(norm);
+        if self.fast_scan {
+            let mut scratch: Vec<f32> = Vec::new();
+            let mut q = vec![0f32; self.sub_dim];
+            for p in 0..self.m {
+                let s = p * self.sub_dim;
+                let blk = role * self.m + p;
+                for j in 0..self.sub_dim {
+                    q[j] = col[s + j] * inv; // the same product the serial scan forms per element
+                }
+                let best = nearest(&q, &self.cb[blk], &self.cbt[blk], &self.cn2[blk], self.cb16.get(blk));
+                if let Some(w) = warm.as_deref_mut() {
+                    w[p] = best as i32;
+                }
+                let base = best * self.sub_dim;
+                for j in 0..self.sub_dim {
+                    col[s + j] = self.cb[blk][base + j] * norm;
+                }
+            }
+            return;
+        }
         for p in 0..self.m {
             let s = p * self.sub_dim;
             let cents = &self.cb[role * self.m + p];
@@ -682,6 +819,56 @@ impl PqCodebook {
         }
         let (iu, iv) = (1.0 / nu, 1.0 / nv);
         let (qu, qv) = (self.quant_norm(nu), self.quant_norm(nv));
+        if self.stages > 1 {
+            // RESIDUAL VQ: stage 0 codes the unit pair, every later stage codes what the earlier
+            // stages left behind, and the reconstruction is their SUM -- the same order the CUDA
+            // kernel accumulates in (`c_pq_stages`), so train and deploy pick the same centroids.
+            // The warm-start bound is not used here: it is a speed optimization with a per-stage slot
+            // in the kernel, and the deploy state cache carries one slot per (head, component).
+            let mut acc = vec![0f32; 2 * k];
+            let mut q = vec![0f32; 2 * k];
+            for st in 0..self.stages {
+                for j in 0..k {
+                    q[j] = u[j] * iu - acc[j];
+                    q[k + j] = v[j] * iv - acc[k + j];
+                }
+                let best = if self.fast_scan {
+                    nearest(&q, &self.cb[st], &self.cbt[st], &self.cn2[st], self.cb16.get(st))
+                } else {
+                    nearest_exact(&q, &self.cb[st], self.ncent, self.sub_dim)
+                };
+                let base = best * self.sub_dim;
+                for j in 0..2 * k {
+                    acc[j] += self.cb[st][base + j];
+                }
+            }
+            if let Some(w) = warm {
+                *w = -1; // no single winning index to carry forward
+            }
+            for j in 0..k {
+                u[j] = acc[j] * qu;
+                v[j] = acc[k + j] * qv;
+            }
+            return;
+        }
+        if self.fast_scan {
+            let mut q = vec![0f32; 2 * k];
+            for j in 0..k {
+                q[j] = u[j] * iu;
+                q[k + j] = v[j] * iv;
+            }
+            let mut scratch: Vec<f32> = Vec::new();
+            let best = nearest(&q, &self.cb[0], &self.cbt[0], &self.cn2[0], self.cb16.first());
+            if let Some(w) = warm {
+                *w = best as i32;
+            }
+            let base = best * self.sub_dim;
+            for j in 0..k {
+                u[j] = self.cb[0][base + j] * qu;
+                v[j] = self.cb[0][base + k + j] * qv;
+            }
+            return;
+        }
         let cents = &self.cb[0];
         let wc: Option<usize> = match (self.warm_enabled, warm.as_deref()) {
             (true, Some(&w)) => (w >= 0 && (w as usize) < self.ncent).then_some(w as usize),
@@ -732,6 +919,279 @@ impl PqCodebook {
     }
 }
 
+/// Plain argmin with first-strict-min tie-breaking -- the `RWKV_PQ_SCAN=exact` reference for one
+/// residual-VQ stage. The single-stage exact scan keeps its own early-exit loop, which is the same
+/// function written for the u-half/v-half accumulation order; this one takes an already-built query.
+fn nearest_exact(q: &[f32], cents: &[f32], ncent: usize, sub_dim: usize) -> usize {
+    let (mut best, mut bestd) = (0usize, f32::INFINITY);
+    for c in 0..ncent {
+        let base = c * sub_dim;
+        let mut d = 0f32;
+        for j in 0..sub_dim {
+            let diff = q[j] - cents[base + j];
+            d += diff * diff;
+        }
+        if d < bestd {
+            bestd = d;
+            best = c;
+        }
+    }
+    best
+}
+
+#[inline(always)]
+fn prescreen_body(q: &[f32], cbt: &[f32], cn2: &[f32], out: &mut [f32]) {
+    let n = cn2.len();
+    out.copy_from_slice(cn2);
+    for (j, &qj) in q.iter().enumerate() {
+        let w = -2.0 * qj;
+        let col = &cbt[j * n..(j + 1) * n];
+        for (o, &x) in out.iter_mut().zip(col.iter()) {
+            *o += w * x;
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn prescreen_avx2(q: &[f32], cbt: &[f32], cn2: &[f32], out: &mut [f32]) {
+    prescreen_body(q, cbt, cn2, out)
+}
+
+fn prescreen_scores(q: &[f32], cbt: &[f32], cn2: &[f32], out: &mut [f32]) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
+            unsafe { prescreen_avx2(q, cbt, cn2, out) };
+            return;
+        }
+    }
+    prescreen_body(q, cbt, cn2, out)
+}
+
+/// Nearest centroid to the (already normalized) query `q`, PICK-IDENTICAL to the serial scan
+/// (argmin by exact serial distance, then lower index; centroid 0 if nothing is finite).
+/// Stage 1: approximate scores ||c||^2 - 2 q.c for every centroid (vectorizable; = distance - ||q||^2).
+/// Stage 2: every centroid within PRESCREEN_EPS of the best approximate score is re-measured with the
+/// EXACT serial sum of squared differences, in index order, strict-less update. The true winner is always
+/// in that set while the approximation error stays under EPS/2: q and the centroids are unit-scale, so
+/// the error of a <=64-term f32 sum is ~1e-5 against an EPS of 1e-3. A non-finite best score (cannot
+/// happen for finite inputs) falls back to the full exact scan.
+const PRESCREEN_EPS: f32 = 1e-3;
+thread_local! { static NEAREST_SCRATCH: std::cell::RefCell<(Vec<f32>, Vec<i32>, Vec<i16>)> = std::cell::RefCell::new((Vec::new(), Vec::new(), Vec::new())); }
+
+/// INTEGER prescreen block. Centroids and the query are rounded to 13-bit integers (|x| <= 4095, so a sum of <= 32
+/// pair products stays inside i32); dims are stored in PAIRS, interleaved per centroid ([c0_j, c0_j+1, c1_j, c1_j+1, ..]),
+/// so one `madd_epi16` gives q_j c_j + q_j+1 c_j+1 for 8 centroids = 16 multiply-adds per instruction, on half the bytes
+/// of the f32 table. Integer sums are exact, so the prescreen gives the same numbers on every CPU and in the scalar
+/// fallback. The rounding error of the dot product is BOUNDED (|q.c - sq sc qi.ci| <= 0.5 sq sc ||qi||_1 + 0.5 sq max||c||_1),
+/// and every centroid within twice the score bound (+ slack) of the best approximate score is re-measured exactly,
+/// so the pick is identical to the serial scan.
+pub(crate) struct I16Blk {
+    pairs: Vec<i16>, // [pair p][centroid c][2]
+    npairs: usize,
+    sc: f32,    // centroid scale: c ~ sc * ci
+    c1max: f32, // max over centroids of ||c||_1
+}
+impl I16Blk {
+    fn build(blk: &[f32], ncent: usize, d: usize) -> Self {
+        let amax = blk.iter().fold(0f32, |m, x| m.max(x.abs()));
+        let sc = if amax > 0.0 && amax.is_finite() { amax / 4095.0 } else { 1.0 };
+        let npairs = (d + 1) / 2;
+        let mut pairs = vec![0i16; npairs * ncent * 2];
+        let mut c1max = 0f32;
+        for c in 0..ncent {
+            let mut l1 = 0f32;
+            for j in 0..d {
+                let x = blk[c * d + j];
+                l1 += x.abs();
+                pairs[(j / 2) * ncent * 2 + c * 2 + (j & 1)] = (x / sc).round().clamp(-4095.0, 4095.0) as i16;
+            }
+            c1max = c1max.max(l1);
+        }
+        Self { pairs, npairs, sc, c1max }
+    }
+}
+#[inline(always)]
+fn int_scores_body(qi: &[i16], blk: &I16Blk, acc: &mut [i32]) {
+    let n = acc.len();
+    for p in 0..blk.npairs {
+        let (q0, q1) = (qi[2 * p] as i32, qi[2 * p + 1] as i32);
+        let col = &blk.pairs[p * n * 2..(p + 1) * n * 2];
+        for c in 0..n {
+            acc[c] += q0 * col[2 * c] as i32 + q1 * col[2 * c + 1] as i32;
+        }
+    }
+}
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn int_scores_avx2(qi: &[i16], blk: &I16Blk, acc: &mut [i32]) {
+    use std::arch::x86_64::*;
+    let n = acc.len();
+    let n8 = n / 8 * 8;
+    for p in 0..blk.npairs {
+        let (q0, q1) = (qi[2 * p], qi[2 * p + 1]);
+        let qv = _mm256_set1_epi32(((q1 as u16 as i32) << 16) | (q0 as u16 as i32));
+        let col = blk.pairs.as_ptr().add(p * n * 2);
+        let mut c = 0;
+        while c < n8 {
+            let cv = _mm256_loadu_si256(col.add(2 * c) as *const __m256i);
+            let a = acc.as_mut_ptr().add(c) as *mut __m256i;
+            _mm256_storeu_si256(a, _mm256_add_epi32(_mm256_loadu_si256(a), _mm256_madd_epi16(cv, qv)));
+            c += 8;
+        }
+        while c < n {
+            acc[c] += q0 as i32 * *col.add(2 * c) as i32 + q1 as i32 * *col.add(2 * c + 1) as i32;
+            c += 1;
+        }
+    }
+}
+
+#[inline(always)]
+fn scores_from_int_body(out: &mut [f32], cn2: &[f32], acc: &[i32], k2: f32) {
+    for ((o, &n2), &a) in out.iter_mut().zip(cn2.iter()).zip(acc.iter()) {
+        *o = n2 + k2 * a as f32;
+    }
+}
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2")]
+unsafe fn scores_from_int_avx2(out: &mut [f32], cn2: &[f32], acc: &[i32], k2: f32) {
+    scores_from_int_body(out, cn2, acc, k2)
+}
+fn scores_from_int(out: &mut [f32], cn2: &[f32], acc: &[i32], k2: f32) {
+    #[cfg(target_arch = "x86_64")]
+    {
+        if is_x86_feature_detected!("avx2") {
+            return unsafe { scores_from_int_avx2(out, cn2, acc, k2) };
+        }
+    }
+    scores_from_int_body(out, cn2, acc, k2)
+}
+/// min of a slice in 8 independent lanes (min is exact, so the lane order cannot change the result; NaN never wins,
+/// like the `v < smin` loop this replaces).
+fn slice_min(x: &[f32]) -> f32 {
+    let mut lanes = [f32::INFINITY; 8];
+    let mut it = x.chunks_exact(8);
+    for ch in &mut it {
+        for l in 0..8 {
+            lanes[l] = if ch[l] < lanes[l] { ch[l] } else { lanes[l] };
+        }
+    }
+    let mut m = f32::INFINITY;
+    for &v in lanes.iter().chain(it.remainder().iter()) {
+        if v < m {
+            m = v;
+        }
+    }
+    m
+}
+
+fn nearest(q: &[f32], cents: &[f32], cbt: &[f32], cn2: &[f32], i16blk: Option<&I16Blk>) -> usize {
+    NEAREST_SCRATCH.with(|sc| {
+        let mut g = sc.borrow_mut();
+        let (f, a, qi) = &mut *g;
+        nearest_with(q, cents, cbt, cn2, i16blk, f, a, qi)
+    })
+}
+#[allow(clippy::too_many_arguments)]
+fn nearest_with(q: &[f32], cents: &[f32], cbt: &[f32], cn2: &[f32], i16blk: Option<&I16Blk>, scratch: &mut Vec<f32>, acc: &mut Vec<i32>, qi: &mut Vec<i16>) -> usize {
+    let d = q.len();
+    let ncent = cn2.len();
+    scratch.resize(ncent, 0.0);
+    let qmax = q.iter().fold(0f32, |m, x| m.max(x.abs()));
+    let mut eps = PRESCREEN_EPS;
+    match i16blk {
+        Some(blk) if qmax > 0.0 && qmax.is_finite() => {
+            let sq = qmax / 4095.0;
+            qi.clear();
+            qi.resize(blk.npairs * 2, 0);
+            let mut q1 = 0f32;
+            for j in 0..d {
+                let v = (q[j] / sq).round().clamp(-4095.0, 4095.0);
+                qi[j] = v as i16;
+                q1 += v.abs();
+            }
+            acc.clear();
+            acc.resize(ncent, 0);
+            #[cfg(target_arch = "x86_64")]
+            {
+                if is_x86_feature_detected!("avx2") {
+                    unsafe { int_scores_avx2(qi, blk, acc) };
+                } else {
+                    int_scores_body(qi, blk, acc);
+                }
+            }
+            #[cfg(not(target_arch = "x86_64"))]
+            int_scores_body(qi, blk, acc);
+            let k2 = -2.0 * sq * blk.sc;
+            scores_from_int(scratch, cn2, acc, k2);
+            // score error <= 2 * dot error; candidates within twice that of the best, plus the float slack
+            let bound = 0.5 * sq * blk.sc * q1 + 0.5 * sq * blk.c1max;
+            eps = 4.0 * bound + PRESCREEN_EPS;
+        }
+        _ => prescreen_scores(q, cbt, cn2, scratch),
+    }
+    let smin = slice_min(scratch);
+    let all = !smin.is_finite();
+    let lim = smin + eps;
+    let (mut best, mut bestd) = (0usize, f32::INFINITY);
+    let mut ncand = 0u64;
+    for c0 in (0..ncent).step_by(64) {
+        let c1 = (c0 + 64).min(ncent);
+        // one vectorizable test per 64 scores; the index order of the recheck (and so the tie rule) is unchanged
+        if !all && !scratch[c0..c1].iter().fold(false, |any, &v| any | (v <= lim)) {
+            continue;
+        }
+        for c in c0..c1 {
+        if all || scratch[c] <= lim {
+            ncand += 1;
+            let base = c * d;
+            let mut dist = 0f32;
+            for j in 0..d {
+                let diff = q[j] - cents[base + j];
+                dist += diff * diff;
+            }
+            if dist < bestd {
+                bestd = dist;
+                best = c;
+            }
+        }
+        }
+    }
+    CAND_N.fetch_add(ncand, std::sync::atomic::Ordering::Relaxed);
+    CAND_CALLS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    best
+}
+pub static CAND_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+pub static CAND_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The rank-1 power iteration of `compress_wkv_state` on STACK matrices (no heap traffic per head / per iteration).
+/// Same nalgebra generic kernels, same operation order as the dynamic path. Returns (u, sigma*v, sigma).
+fn rank1_static<const K: usize>(a_rows: &[f32], scale: f32) -> Option<(Vec<f32>, Vec<f32>, f32)> {
+    use nalgebra::{SMatrix, SVector};
+    let a = SMatrix::<f32, K, K>::from_row_slice(a_rows);
+    let an = a * (1.0 / scale);
+    let ant = an.transpose();
+    let mut u = SVector::<f32, K>::from_element(1.0 / (K as f32).sqrt());
+    for _ in 0..64 {
+        let atu = ant * u;
+        let nu = an * atu;
+        let nrm = nu.norm();
+        if !nrm.is_finite() || nrm < 1e-30 {
+            break;
+        }
+        let nu = nu / nrm;
+        let dot = u.dot(&nu).abs();
+        u = nu;
+        if 1.0 - dot < 1e-7 {
+            break;
+        }
+    }
+    let v_un = a.transpose() * u;
+    let sigma = v_un.norm();
+    Some((u.iter().copied().collect(), v_un.iter().copied().collect(), sigma))
+}
+
 /// In-place rank-r SVD-truncation + quantization of a flat row-major (H,K,K) WKV state. The SHARED
 /// compression core called by BOTH the candle `lowrank_roundtrip` and the plain-Rust fast engine
 /// (`fast.rs`), so the two inference paths produce bit-identical compressed states. Each head's KxK is
@@ -756,6 +1216,21 @@ pub fn compress_wkv_state(
     mut warm: Option<&mut [i32]>,
 ) {
     use nalgebra::DMatrix;
+    // DEBUG ONLY (2026-09-19): RWKV_DEBUG_JITTER=<rel> multiplies every state element by 1 +/- rel (deterministic hash
+    // sign) before compression -- a stand-in for another CPU's float order, to measure how far quantized states diverge.
+    {
+        use std::sync::OnceLock;
+        static J: OnceLock<f32> = OnceLock::new();
+        static CNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let j = *J.get_or_init(|| std::env::var("RWKV_DEBUG_JITTER").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0));
+        if j != 0.0 {
+            let c = CNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            for (i, x) in data.iter_mut().enumerate() {
+                let hsh = (c.wrapping_mul(0x9E3779B97F4A7C15) ^ (i as u64).wrapping_mul(0xC2B2AE3D27D4EB4F)).wrapping_mul(0x165667B19E3779F9);
+                *x *= if (hsh >> 40) & 1 == 0 { 1.0 + j } else { 1.0 - j };
+            }
+        }
+    }
     let r = rank.min(k);
     // QuIP#/QuaRot incoherence rotation (#3): built once, reused per head. None if K not a power of 2.
     let hmat = if hadamard { hadamard_matrix(k) } else { None };
@@ -782,6 +1257,20 @@ pub fn compress_wkv_state(
             // are scale-invariant, so it's also A's), converged tightly so it matches the full-eig top
             // vector to ~1e-6 -- parity-preserving -- while avoiding the full KxK symmetric eigendecomp
             // AND forming the Gram. (Sign is arbitrary but cancels in the uf*vf^T outer product.)
+            if let Some((uu, vv, sg)) = match k {
+                16 => rank1_static::<16>(&data[off..off + k * k], scale),
+                32 => rank1_static::<32>(&data[off..off + k * k], scale),
+                8 => rank1_static::<8>(&data[off..off + k * k], scale),
+                _ => None,
+            } {
+                if sg > 1e-20 && sg.is_finite() && uu.iter().all(|x| x.is_finite()) {
+                    let sj = sg.sqrt();
+                    for i in 0..k {
+                        uf[(i, 0)] = uu[i] * sj;
+                        vf[(i, 0)] = (vv[i] / sg) * sj;
+                    }
+                }
+            } else {
             let mut u = nalgebra::DVector::<f32>::from_element(k, 1.0 / (k as f32).sqrt());
             for _ in 0..64 {
                 let atu = an.transpose() * &u; // (= sigma_n * v_n)
@@ -805,6 +1294,7 @@ pub fn compress_wkv_state(
                     uf[(i, 0)] = u[i] * sj;
                     vf[(i, 0)] = (v_un[i] / sigma) * sj;
                 }
+            }
             }
         } else {
             // Top-r (r>1, or ALS) via symmetric eigendecomposition of the Gram G = an an^T (KxK PSD):
@@ -1138,7 +1628,10 @@ impl Model {
             stream_layers.push(l);
         }
         // Which architecture is this checkpoint? Recovered from weight shapes -- see detect_arch.
-        let arch = detect_arch(&w, &stream_layers)?;
+        // The recipe facts the export wrote into the safetensors metadata (stream order, layer
+        // schedule, clamp threshold); empty for files exported before 2026-09-12.
+        let meta = safetensors_metadata(path)?;
+        let arch = detect_arch(&w, &stream_layers, &meta)?;
         eprintln!("[rwkv-infer] {}", arch.describe());
 
         // RWKV_ZERO_FEATURES: the input-feature mask the Python model applies at its own input
@@ -1257,12 +1750,52 @@ impl Model {
         // 5,760 floats vs note's 1,440 -- so both the accuracy effect and the deploy size
         // accounting would be wrong while every shape check still passed. Same class of bug as
         // model_stats.py's positional deck/note labels (fixed 2026-08-09).
-        let stream_order: Vec<String> = std::env::var("RWKV_STREAM_ORDER")
-            .unwrap_or_else(|_| "card,deck,note,preset,user".into())
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect();
+        //
+        // ★ 2026-09-12: THE ORDER NOW TRAVELS WITH THE WEIGHTS. Relying on the environment alone
+        // failed exactly as predicted: two PQ-catalog corpus dumps (2026-09-08 / 09-10) ran a `_cnd`
+        // checkpoint without RWKV_STREAM_ORDER, i.e. mis-wired (the note corpus was another stream,
+        // card states 15.5% off), and a parity run without it misses by ~0.5 per review.
+        // export_rnn_trace.py now writes `stream_order` into the safetensors METADATA from the
+        // exported model's own stream names. Precedence:
+        //   env + metadata -> they must AGREE, else refuse (a wrong recipe must not run silently);
+        //   metadata only  -> use it;
+        //   env only       -> use it (every file exported before 2026-09-12: unchanged behaviour);
+        //   neither        -> the historical default, with a loud warning on stderr.
+        // Every new message goes to STDERR: stdout is captured into corpus files, whose first line
+        // scratchpad/lfqat/check_corpus_order.py reads.
+        let split_order = |s: &str| -> Vec<String> {
+            s.split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect()
+        };
+        let meta_order = meta.get("stream_order").cloned();
+        let stream_order: Vec<String> = match (std::env::var("RWKV_STREAM_ORDER").ok(), meta_order) {
+            (Some(env), Some(meta)) => {
+                let (e, m) = (split_order(&env), split_order(&meta));
+                if e != m {
+                    return Err(anyhow!(
+                        "RWKV_STREAM_ORDER={env:?} disagrees with the stream order the weights were \
+                         exported with ({meta:?}, safetensors metadata of {path}). Refusing: one of \
+                         the two would run a mis-wired model. Unset the variable to use the weights' order."
+                    ));
+                }
+                e
+            }
+            (Some(env), None) => split_order(&env),
+            (None, Some(meta)) => {
+                eprintln!("[rwkv-infer] stream order from the weights' metadata: {meta}");
+                split_order(&meta)
+            }
+            (None, None) => {
+                eprintln!(
+                    "[rwkv-infer] WARNING: neither RWKV_STREAM_ORDER nor the weights' metadata \
+                     names the stream order; assuming the HISTORICAL card,deck,note,preset,user. \
+                     A card,note,deck (`_cnd`) checkpoint runs MIS-WIRED under this default."
+                );
+                split_order("card,deck,note,preset,user")
+            }
+        };
         assert_eq!(
             stream_order.len(),
             5,
@@ -1397,7 +1930,8 @@ impl Model {
             let mut cb = PqCodebook::load(&path)
                 .unwrap_or_else(|e| panic!("failed to load RWKV_LOWRANK_PQ '{path}': {e}"));
             if let Some(b) = norm_bits {
-                cb.set_norm_quant(b, -3.0, 0.0);
+                let (lo, hi) = norm_range_env("RWKV_PQ_NORM_RANGE_WKV", -3.0, 0.0);
+                cb.set_norm_quant(b, lo, hi);
             }
             std::sync::Arc::new(cb)
         });
@@ -1407,7 +1941,8 @@ impl Model {
             let mut cb = PqCodebook::load_roles(&path, 2)
                 .unwrap_or_else(|e| panic!("failed to load RWKV_SHIFT_PQ '{path}': {e}"));
             if let Some(b) = norm_bits {
-                cb.set_norm_quant(b, 2.2, 2.9);
+                let (lo, hi) = norm_range_env("RWKV_PQ_NORM_RANGE_SHIFT", 2.2, 2.9);
+                cb.set_norm_quant(b, lo, hi);
             }
             std::sync::Arc::new(cb)
         });
@@ -2526,5 +3061,19 @@ mod schedule_tests {
         assert!(interleave_visits(&[0, 0]).is_empty());
         // A zero-depth stream simply never appears; the others are unaffected.
         assert_eq!(interleave_visits(&[0, 2]), vec![(1, 0), (1, 1)]);
+    }
+}
+
+/// RWKV_PQ_NORM_RANGE_{WKV,SHIFT}="lo,hi" (2026-09-24): override a fixed norm-quant range (octaves). The defaults
+/// were fitted in the d=32 era; unset = the old behaviour. Must equal the QAT run's RWKV_QAT_NORM_RANGE_{WKV,SHIFT}.
+fn norm_range_env(name: &str, lo: f32, hi: f32) -> (f32, f32) {
+    match std::env::var(name) {
+        Ok(v) if !v.is_empty() => {
+            let p: Vec<f32> = v.split(',').map(|x| x.trim().parse().expect("bad norm range")).collect();
+            assert!(p.len() == 2 && p[1] > p[0], "{name} must be lo,hi with hi > lo");
+            eprintln!("[norm range] {name} = [{}, {}] octaves", p[0], p[1]);
+            (p[0], p[1])
+        }
+        _ => (lo, hi),
     }
 }

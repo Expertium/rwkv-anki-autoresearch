@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, fields as _dc_fields
 import math
 
 import numpy as np
@@ -88,7 +88,7 @@ def interleave_schedule(depths: list, spread: bool) -> list:
     Returns sched[stream][round] = layer index, or -1 for "this stream sits this round out".
     Rounds = max(depths). Shared by the training path (srs_model) and the deploy RNN mirror
     (srs_model_rnn) so the two schedules cannot drift -- a divergence here is invisible to
-    every gate, since each path stays self-consistent (CLAUDE.md SS9).
+    every gate, since each path stays self-consistent (AGENTS.md SS9).
 
     FRONT-LOADED (spread=False, iter 41's schedule): layer j runs in round j, so a stream of
     depth d occupies rounds 0..d-1 and then sits out the rest. Bit-identical to the original
@@ -227,35 +227,45 @@ class PreparedBatch:
     # canonical-order bool over num_data*global_T rows. An EMPTY tensor = every row active, which
     # is what the five ordinary streams always get; None = the lever is off entirely.
     stream_active: "list[torch.Tensor] | None" = None
+    # RWKV_SELFFEED (2026-09-21): per-CARD self-feedback indices, (B, global_T) int64 flat
+    # b*global_T+t, -1 = none. selffeed_prev = the previous REAL row of this row's card;
+    # selffeed_srcq = that review's QUERY row. Built by prepare() only when the flag is set.
+    selffeed_prev: "torch.Tensor | None" = None
+    selffeed_srcq: "torch.Tensor | None" = None
 
     def to(self, device):
-        start = self.start.to(device)
-        sub_gather = [[x.to(device) for x in sub] for sub in self.sub_gather]
-        time_shift_selects = [
-            [x.to(device) for x in sub] for sub in self.time_shift_selects
-        ]
-        skips = [[x.to(device) for x in sub] for sub in self.skips]
-        labels = self.labels.to(device)
-        label_review_th = self.label_review_th.to(device)
-        return PreparedBatch(
-            num_data=self.num_data,
-            start=start,
-            sub_gather=sub_gather,
-            sub_gather_lens=self.sub_gather_lens,
-            time_shift_selects=time_shift_selects,
-            skips=skips,
-            labels=labels,
-            label_review_th=label_review_th,
-            probe_rows=None if self.probe_rows is None else self.probe_rows.to(device),
-            probe_target=None if self.probe_target is None else self.probe_target.to(device),
-            probe_pressed=None if self.probe_pressed is None else self.probe_pressed.to(device),
-            probe_query=None if self.probe_query is None else self.probe_query.to(device),
-            user_weight=None if self.user_weight is None else self.user_weight.to(device),
-            ahead_query=None if self.ahead_query is None else self.ahead_query.to(device),
-            stream_active=(None if self.stream_active is None
-                           else [t.to(device) for t in self.stream_active]),
-        )
+        """Move every tensor field to `device`.
 
+        !! THIS USED TO NAME EACH FIELD BY HAND, AND IT SILENTLY DROPPED `selffeed_prev` /
+        `selffeed_srcq` -- the two fields added on 2026-09-21. The dataclass declares them with a
+        `None` default, so the hand-written constructor call compiled, ran, and returned a batch
+        whose selffeed indices were None. `forward` then took the `selffeed is None` branch, the
+        second head pass never ran, `fb2h` never received a gradient, and the arm trained 21,870
+        steps producing a model BIT-IDENTICAL to its control on all 2,485 shared eval users -- an
+        "exact null" that was really a dead lever. `fb2h.weight` and `fb2h.bias` were exactly 0.0
+        in the finished checkpoint, which is the tell: a zero BIAS cannot survive a pass that ran,
+        whatever the features were.
+
+        The generic form cannot drop a field: it enumerates the dataclass itself. Numerically it is
+        identical to the hand-written version -- the same `.to(device)` on the same tensors, with
+        ints, `None` and lists of ints passed through untouched.
+
+        THE RULE, which this repo has now paid for three times (make_resume's replace-only keys,
+        the parsed-then-discarded QAT env, this): a function that REBUILDS a structure must derive
+        its field list from the structure, or assert that it covered it. Adding a field to a
+        dataclass must not require remembering a second place.
+        """
+        def mv(v):
+            if torch.is_tensor(v):
+                return v.to(device)
+            if isinstance(v, list):
+                return [mv(x) for x in v]
+            return v
+
+        return PreparedBatch(**{f.name: mv(getattr(self, f.name)) for f in _dc_fields(self)})
+
+
+from rwkv import self_feedback as _selffeed   # RWKV_SELFFEED; inert unless set
 
 DTYPE_EXCLUDE = [
     "w_linear",
@@ -266,6 +276,7 @@ DTYPE_EXCLUDE = [
     "p_linear",
     "ahead_linear",
     "gru_",  # GRU head root Parameters -- fp32 like the linears they replace
+    "fb2h",  # RWKV_SELFFEED projection -- fp32; absent entirely when the flag is off
     "pava_",  # rectifier junction thetas -- fp32, used in the eager fp32 probe loss
     # RNN baselines (2026-07-24): bf16 nn.GRU/LSTM falls off cuDNN onto a 30x-slower
     # native path (micro-benched 1258 vs 42 ms) -- keep the stream weights fp32;
@@ -346,6 +357,14 @@ class SrsRWKV(ModuleType):
         # heads they replace. Default 0/unset = byte-identical legacy head.
         self.gru_n = int(os.environ.get("RWKV_GRU_HEAD", "0"))
         self.gru_on = self.gru_n > 0
+        # R2 (scratchpad/r2/DESIGN.md): the GRU head emits S for the FOUR buttons, ordered by construction
+        # (logS_Again, then + softplus increments), read at the QUERY row; no probes, no PAVA.
+        self.r2_on = os.environ.get("RWKV_R2_HEAD", "0") == "1"
+        if self.r2_on:
+            assert self.gru_on, "RWKV_R2_HEAD needs RWKV_GRU_HEAD"
+            assert float(os.environ.get("RWKV_PAVA_LAMBDA", "0")) == 0.0, "R2 replaces PAVA: set RWKV_PAVA_LAMBDA=0"
+            assert os.environ.get("RWKV_EVAL_PAVA", "0") == "0", "R2 needs no rectified eval: unset RWKV_EVAL_PAVA"
+            print(f"[r2] button-ordered curve head ON: S for 4 buttons x N={self.gru_n}, read at the query row")
         if self.gru_on:
             self.no_ahead_residual = True
             print(f"[gru] GRU curve head ON: N={self.gru_n} predicted (w, S, d) curves; "
@@ -768,6 +787,30 @@ class SrsRWKV(ModuleType):
                 torch.nn.ReLU(),
             )
 
+            # ---- RWKV_SELFFEED (Andrew 2026-09-21): the head reads its own readout from this
+            # card's PREVIOUS review. See rwkv/self_feedback.py for the mechanism, the 14 features
+            # and the leak analysis.
+            # ⚠ WHEN THE FLAG IS OFF THIS MUST ADD *NO* PARAMETER AND *NO* state_dict KEY, or every
+            # existing checkpoint fails a strict load and every param guard (561,732) trips.
+            # nn.Identity has neither, so it is the off-state attribute -- unlike the 1x1 dummies
+            # above, which do cost 6 params and are baked into the recorded counts.
+            self.selffeed_on = _selffeed.enabled()
+            self.selffeed_detach = _selffeed.detach_feedback()
+            self.selffeed_base_only = _selffeed.base_only()
+            if self.selffeed_on:
+                assert self.gru_on, "RWKV_SELFFEED reads the GRU head's w/S/d; it needs RWKV_GRU_HEAD"
+                assert not self.r2_on, "RWKV_SELFFEED + RWKV_R2_HEAD: out_s_raw carries 4N rows there"
+                _fbd = 3 * self.gru_n + 5
+                self.fb2h = torch.nn.Linear(_fbd, self.d_model)
+                # ZERO-INIT => at step 0 the final readout is EXACTLY the base readout, so the
+                # lever is function-preserving and the run starts from the control's function.
+                torch.nn.init.zeros_(self.fb2h.weight)
+                torch.nn.init.zeros_(self.fb2h.bias)
+                print("[selffeed] ON: per-card feedback, %d features -> d_model %d, detach=%s"
+                      % (_fbd, self.d_model, self.selffeed_detach), flush=True)
+            else:
+                self.fb2h = torch.nn.Identity()
+
             self.max_e = 21
             self.point_spread = 18.5
             self.num_points = anki_rwkv_config.num_points
@@ -781,10 +824,15 @@ class SrsRWKV(ModuleType):
                 _N = self.gru_n
                 self.gru_w_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
                 self.gru_w_bias = torch.nn.Parameter(torch.zeros(_N))
-                self.gru_s_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
-                self.gru_s_bias = torch.nn.Parameter(
-                    torch.linspace(math.log(3600.0), math.log(31536000.0), _N)
-                )
+                _SR = 4 * _N if self.r2_on else _N
+                self.gru_s_weight = torch.nn.Parameter(torch.zeros(_SR, self.w_head_dim))
+                _s_prior = torch.linspace(math.log(3600.0), math.log(31536000.0), _N)
+                if self.r2_on:
+                    # rows [0,N) = log S of Again; rows [N,2N), [2N,3N), [3N,4N) = raw increments (softplus'ed).
+                    # Again starts 2 increments below the single-curve prior, so Good starts ON it.
+                    _inc = torch.full((_N,), 0.5413)     # softplus(0.5413) = 1.0 -> each button starts e x longer
+                    _s_prior = torch.cat([_s_prior - 2.0, _inc, _inc, _inc])
+                self.gru_s_bias = torch.nn.Parameter(_s_prior)
                 self.gru_d_weight = torch.nn.Parameter(torch.zeros(_N, self.w_head_dim))
                 self.gru_d_bias = torch.nn.Parameter(
                     torch.full((_N,), math.log(0.5))
@@ -951,6 +999,14 @@ class SrsRWKV(ModuleType):
         w = torch.nn.functional.linear(x_w, self.gru_w_weight, self.gru_w_bias)
         s = torch.nn.functional.linear(x_w, self.gru_s_weight, self.gru_s_bias)
         d = torch.nn.functional.linear(x_w, self.gru_d_weight, self.gru_d_bias)
+        if self.r2_on:
+            # (..., 4N) raw -> (..., 4N) ORDERED log S, button-major: logS_b = logS_Again + sum_{j<=b} softplus(inc_j)
+            n = self.gru_n
+            base = s[..., :n]
+            i1 = torch.nn.functional.softplus(s[..., n:2 * n])
+            i2 = torch.nn.functional.softplus(s[..., 2 * n:3 * n])
+            i3 = torch.nn.functional.softplus(s[..., 3 * n:4 * n])
+            s = torch.cat([base, base + i1, base + i1 + i2, base + i1 + i2 + i3], dim=-1)
         return w, s, d
 
     @torch.jit.ignore
@@ -1026,6 +1082,25 @@ class SrsRWKV(ModuleType):
         return out
 
     @torch.jit.ignore
+    def _r2_substitute(
+        self, curve_probs_raw: torch.Tensor, out_w: torch.Tensor, out_s_raw: torch.Tensor,
+        out_d_raw: torch.Tensor, label_elapsed_seconds: torch.Tensor,
+        probe_target: torch.Tensor, probe_pressed: torch.Tensor, probe_query: torch.Tensor,
+    ) -> torch.Tensor:
+        """R2: for each labelled real row, the PRESSED button's curve read at its QUERY row, evaluated at the real
+        row's label time, written over that real row's own curve value (differentiable)."""
+        n = self.gru_n
+        w = out_w.reshape(-1, n)[probe_query].float()                       # (M,N)
+        d = out_d_raw.reshape(-1, n)[probe_query].float()
+        s4 = out_s_raw.reshape(-1, 4, n)[probe_query].float()               # (M,4,N) button-major
+        s = s4.gather(1, probe_pressed.view(-1, 1, 1).expand(-1, 1, n)).squeeze(1)
+        t = label_elapsed_seconds.reshape(-1)[probe_target].float().unsqueeze(-1)
+        p = self.gru_forgetting_curve(w, s, d, t)
+        flat = curve_probs_raw.reshape(-1)
+        out = flat.index_put((probe_target,), p.to(flat.dtype))
+        return out.reshape(curve_probs_raw.shape)
+
+    @torch.jit.ignore
     def _horizon_order_loss(
         self, out_w: torch.Tensor, out_s_raw: torch.Tensor, out_d_raw: torch.Tensor,
         label_elapsed_seconds: torch.Tensor, probe_rows: torch.Tensor, probe_target: torch.Tensor,
@@ -1080,6 +1155,88 @@ class SrsRWKV(ModuleType):
         loss = torch.nn.functional.binary_cross_entropy(pressed, target)
         pool_frac = (rect != v).any(dim=1).float().mean()
         return loss, pool_frac
+
+    @FunctionType
+    def _selffeed_feats(self, out_w, out_s_raw, out_d_raw, out_p_logits, prev, srcq, labels):
+        """The 14 self-feedback features, read off the BASE readout at this card's previous review.
+
+        ⚠ EVERY index here is `prev` or `srcq`, never the row itself. `labels[:, 0]` is
+        label_elapsed_seconds = the gap from a row to its OWN ahead target, so `les[prev]` is the
+        gap from the previous review TO THIS ONE -- which is exactly the horizon the previous
+        readout was making a claim about. Using `les` at the row itself would evaluate the curve at
+        the gap to the NEXT review, i.e. the event being scored. That is the one-index leak.
+        """
+        B, T = out_w.size(0), out_w.size(1)
+        N = B * T
+        w = out_w.reshape(N, -1).float()
+        sr = out_s_raw.reshape(N, -1).float()
+        dr = out_d_raw.reshape(N, -1).float()
+        pp = torch.softmax(out_p_logits.reshape(N, -1).float(), dim=-1)
+        lab = labels.reshape(N, -1).float()
+        les = lab[:, 0]
+        rating = torch.clamp(lab[:, 3].long() - 1, min=0, max=3)
+        pv, qv = prev.reshape(N), srcq.reshape(N)
+        hp = (pv >= 0).float()
+        hq = (qv >= 0).float()
+        pi = torch.clamp(pv, min=0)
+        qi = torch.clamp(qv, min=0)
+        wp, sp, dp = w[pi], sr[pi], dr[pi]
+        # feature 9: the previous readout's own curve at its own horizon == R(this review)
+        R = self.gru_forgetting_curve(wp, sp, dp, les[pi].unsqueeze(-1))
+        R = torch.clamp(R, min=1e-5, max=1.0 - 1e-5)
+        f_r = torch.log(R / (1.0 - R)) * hp / 8.0
+        ps = torch.clamp(1.0 - pp[:, 0], min=1e-5, max=1.0 - 1e-5)
+        psq = ps[qi]
+        f_ri = torch.log(psq / (1.0 - psq)) * hq / 8.0
+        # feature 11: THE SURPRISE, as a proper score. -log P(the button that was actually
+        # pressed at the previous review), taken from that review's QUERY row -- i.e. from the
+        # prediction made BEFORE its grade was read.
+        # BOTH indices are `qi`, and a `pi` here would be A LEAK -- the smoke caught exactly that.
+        # At a REAL row `label_rating` refers to that row's AHEAD TARGET, i.e. the NEXT review
+        # (build_ahead_query: a real row's label is the next review of the same card), so a
+        # predecessor-indexed rating is THIS review's own button. At a QUERY row the label refers
+        # to its own review, so the query-indexed rating is the previous review's button -- the
+        # one actually pressed when the previous prediction was made.
+        f_sc = -torch.log(torch.clamp(
+            pp[qi].gather(-1, rating[qi].unsqueeze(-1)).squeeze(-1), min=1e-6)) * hq / 4.0
+        hp1, hq1 = hp.unsqueeze(-1), hq.unsqueeze(-1)
+        feats = torch.cat([
+            wp * hp1,
+            torch.clamp(sp, min=-25.0, max=25.0) / 25.0 * hp1,
+            torch.clamp(dp, min=-25.0, max=25.0) / 25.0 * hp1,
+            f_r.unsqueeze(-1), f_ri.unsqueeze(-1), f_sc.unsqueeze(-1), hp1, hq1,
+        ], dim=-1)
+        return feats.reshape(B, T, -1)
+
+    @FunctionType
+    def _head_selffeed(self, input, selffeed: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]):
+        """head(x), then head(x + fb2h(feedback)). ONE trunk pass, two head passes.
+
+        The feedback enters HERE and not at `features2card` on purpose: an input-side feedback
+        makes input(n) depend on trunk_out(n-1), a sequential dependency the chunked WKV scan
+        cannot express, which is what made V1 ~9x slower. This form leaves the kernel untouched.
+
+        The base readout is DETACHED by default, so the head weights are trained only through the
+        final application and the base application rides along by weight sharing.
+        ⚠ That is the exposure-bias risk (Bengio et al. 2015): if the head comes to expect the
+        offset, head(x) degrades and the feedback it produces becomes noise -- which would make a
+        null uninterpretable. `scratchpad/selffeed/` reports base-vs-final agreement for exactly
+        that reason; RWKV_SELFFEED_DETACH=0 is the variant that lets the gradient reach back.
+        """
+        out = self.head_and_out(input)
+        if selffeed is None:
+            return out
+        if self.selffeed_base_only:
+            # RWKV_SELFFEED_BASE_ONLY=1 (eval-only, PREREG P4): score the BASE readout, the one
+            # the feedback is read off. It is detached and unsupervised, so the head can drift to
+            # expect the fb2h offset and degrade on bare `x` -- and then the feedback is noise and
+            # a null result measures nothing. Same checkpoint, one flag, one cheap 300-user eval.
+            return out
+        prev, srcq, labels = selffeed
+        feats = self._selffeed_feats(out[1], out[4], out[5], out[3], prev, srcq, labels)
+        if self.selffeed_detach:
+            feats = feats.detach()
+        return self.head_and_out(input + self.fb2h(feats).to(input.dtype))
 
     @FunctionType
     def head_and_out(self, input):
@@ -1173,6 +1330,8 @@ class SrsRWKV(ModuleType):
         # RWKV_DECK_TREE: per-stream row-activity in canonical order; an EMPTY tensor means
         # "every row active". None (the default) = the lever is off for every stream.
         batch_stream_active: Optional[list[torch.Tensor]] = None,
+        # RWKV_SELFFEED: (prev_row, src_query_row, batch_labels); None = off.
+        selffeed: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ):
         if self.input_feat_mask_on:
             batch_start = self._apply_input_feat_mask(batch_start)
@@ -1224,7 +1383,7 @@ class SrsRWKV(ModuleType):
                 rating_N,
             )
             x = x.view(batch_num_data, -1, self.d_model)
-            return self.head_and_out(x)
+            return self._head_selffeed(x, selffeed)
         for i, submodule in enumerate(self.rwkv_modules):
             module_splits = batch_sub_gather[i]
             sub_lens = batch_sub_gather_lens[i]
@@ -1257,7 +1416,7 @@ class SrsRWKV(ModuleType):
             x = torch.cat(y)
 
         x = x.view(batch_num_data, -1, self.d_model)
-        return self.head_and_out(x)
+        return self._head_selffeed(x, selffeed)
 
     # iter 41 RWKV_INTERLEAVE -- the round-robin execution of the same 5 stacks.
     #
@@ -1476,6 +1635,9 @@ class SrsRWKV(ModuleType):
         ahead_query: Optional[torch.Tensor] = None,
         # RWKV_DECK_TREE per-stream row-activity (see forward_batch)
         stream_active: Optional[list[torch.Tensor]] = None,
+        # RWKV_SELFFEED: (selffeed_prev, selffeed_srcq, batch_labels). None = the lever is off and
+        # head_and_out is applied exactly once, as it always was.
+        selffeed: Optional[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
     ):
         out_ahead_logits, out_w, out_w_log_p, out_p_logits, out_s_raw, out_d_raw = self.forward_batch(
             batch_start,
@@ -1485,6 +1647,7 @@ class SrsRWKV(ModuleType):
             batch_skips,
             batch_num_data,
             stream_active,
+            selffeed,
         )
         # NaN probe: with the residual disabled, out_ahead_logits is constant zeros and can
         # never NaN -- probe the (live) rating head instead, so a trunk NaN still returns
@@ -1542,11 +1705,18 @@ class SrsRWKV(ModuleType):
             label_y = _km_alpha * _km_curve + (1.0 - _km_alpha) * label_y
         label_elapsed_seconds = label_elapsed_seconds.unsqueeze(-1)
         if self.gru_on:
+            # R2: a row's own curve = the GOOD curve (rows [2N,3N)); the scored quantity is the paired one below
+            _s_row = out_s_raw[..., 2 * self.gru_n:3 * self.gru_n] if self.r2_on else out_s_raw
             curve_probs_raw = self.gru_forgetting_curve(
-                out_w, out_s_raw, out_d_raw, label_elapsed_seconds
+                out_w, _s_row, out_d_raw, label_elapsed_seconds
             )
         else:
             curve_probs_raw = self.forgetting_curve(out_w, label_elapsed_seconds)
+        if self.r2_on and probes is not None:
+            # R2: a paired real row's ahead prediction IS the pressed-button curve of its query row. Substituted HERE
+            # (with gradient), so the ordinary ahead loss, every statistic, validation and get_result read one quantity.
+            curve_probs_raw = self._r2_substitute(curve_probs_raw, out_w, out_s_raw, out_d_raw,
+                                                  label_elapsed_seconds, probes[1], probes[2], probes[3])
         curve_logits_raw = torch.log(
             curve_probs_raw / (1 - curve_probs_raw)
         )  # inverse sigmoid
@@ -1828,6 +1998,8 @@ class SrsRWKV(ModuleType):
             user_weight=batch.user_weight,
             ahead_query=batch.ahead_query,
             stream_active=batch.stream_active,
+            selffeed=(None if batch.selffeed_prev is None
+                      else (batch.selffeed_prev, batch.selffeed_srcq, batch.labels)),
         )
 
     def copy_downcast_(self, master_model, dtype):

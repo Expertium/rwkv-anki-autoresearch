@@ -1,10 +1,10 @@
 # Optimization research narrative — ARCHIVE
 
 This file is the verbose research narrative (reasoning, breakthroughs, measured lever costs, dead
-ends) that used to live inline in `CLAUDE.md`. It was moved here on 2026-06-29 to declutter the
+ends) that used to live inline in `AGENTS.md`. It was moved here on 2026-06-29 to declutter the
 handover. **The canonical numeric record is `optimization/log.md`** (iteration table + State-
 quantization section + QAT section, regenerated from `log.jsonl` / `quant_log.jsonl` / `qat_log.jsonl`).
-CLAUDE.md keeps only the current champion, the compact lesson bank, and the active plan; everything
+AGENTS.md keeps only the current champion, the compact lesson bank, and the active plan; everything
 historical/explanatory is here.
 
 ---
@@ -214,9 +214,9 @@ hang/panic was purely SVD numerics, NOT state divergence).
 
 ---
 
-## CLAUDE.md optimization-state snapshot (archived 2026-06-30 tidy)
+## AGENTS.md optimization-state snapshot (archived 2026-06-30 tidy)
 
-Verbatim copy of the `## Optimization state` section as it stood in CLAUDE.md before the 2026-06-30 declutter. Superseded plans (NEW PHASE PLAN, deck/preset-grow RESUME, stateful-BPTT ROUTE-R narrative, step-4 groundwork, old active agenda) and the full iter36/iter45 champion lineage live here now; CLAUDE.md keeps only the current champion + gate + compact lesson bank.
+Verbatim copy of the `## Optimization state` section as it stood in AGENTS.md before the 2026-06-30 declutter. Superseded plans (NEW PHASE PLAN, deck/preset-grow RESUME, stateful-BPTT ROUTE-R narrative, step-4 groundwork, old active agenda) and the full iter36/iter45 champion lineage live here now; AGENTS.md keeps only the current champion + gate + compact lesson bank.
 
 ## Optimization state (steps 4-5-7)
 
@@ -814,10 +814,10 @@ impossible with this dataset (would need real Anki collections). elapsed_seconds
 
 ---
 
-# 5k-era LIVE STATE archive (moved verbatim from CLAUDE.md, 2026-07-15 housekeeping)
+# 5k-era LIVE STATE archive (moved verbatim from AGENTS.md, 2026-07-15 housekeeping)
 
 > Chronological live-state entries 2026-07-03 .. 2026-07-15, superseded by the compact
-> CURRENT STATE section in CLAUDE.md. Per-iteration detail also in research_5k_verbose.md.
+> CURRENT STATE section in AGENTS.md. Per-iteration detail also in research_5k_verbose.md.
 
 ### LIVE STATE (2026-07-13)
 - **★★ TRACK-2 ANCHOR A0 LANDED (2026-07-15 10:40): ahead 0.299857 / imm 0.269030 (n=4993,
@@ -1191,10 +1191,10 @@ impossible with this dataset (would need real Anki collections). elapsed_seconds
 
 ---
 
-## 5k-era LIVE STATE archive (moved out of CLAUDE.md 2026-07-26)
+## 5k-era LIVE STATE archive (moved out of AGENTS.md 2026-07-26)
 
 Verbatim copy of the `### CURRENT STATE` section as it stood when the two tracks merged at
-A18 and work continued as iter 31. It had grown to 45% of CLAUDE.md, which is re-injected
+A18 and work continued as iter 31. It had grown to 45% of AGENTS.md, which is re-injected
 into every turn; the chronology below is superseded by `research_5k_verbose.md` (per-iter
 detail), `research_5k.md` / `log.md` (numbers) and git history. Kept unedited for provenance.
 
@@ -1734,16 +1734,16 @@ deploy-side state-norm clamp (NaN guard, MONOTONICITY_PLAN-adjacent ship-time wo
 
 
 
-## 5k-era LIVE STATE archive (moved out of CLAUDE.md 2026-07-30)
+## 5k-era LIVE STATE archive (moved out of AGENTS.md 2026-07-30)
 
 The "3-job GPU chain" block, verbatim. All five jobs COMPLETED; every finding in it is
 also recorded in `research_5k_verbose.md` (rectified evals + the PAVA/rectification
 result, the mode-2 duration decomposition, the mode-3 noise control, iter 32, iter 33)
 and in `research_log.jsonl` / `research_5k.md` for iters 32-33. Archived because
-CLAUDE.md's CURRENT STATE section is loaded every turn and its own header says KEEP
+AGENTS.md's CURRENT STATE section is loaded every turn and its own header says KEEP
 THIS SECTION SHORT. The two REUSABLE ops lessons that lived at the end of the block
 (the `findstr /B` waitloop anchor and detach.ps1's absolute-path requirement) were NOT
-archived -- they moved into CLAUDE.md's LIVE RULES, where they belong.
+archived -- they moved into AGENTS.md's LIVE RULES, where they belong.
 
 #### LIVE — a 3-job GPU chain, each parked on the previous one's `DONE_EXIT_`
 1. **★ DONE 00:28 (2026-07-27): rectified evals — BOTH METRICS AGREE, and the deploy metric is
@@ -1864,9 +1864,9 @@ archived -- they moved into CLAUDE.md's LIVE RULES, where they belong.
    before committing.
 
 
-## CLAUDE.md chronology archive (moved out 2026-08-10)
+## AGENTS.md chronology archive (moved out 2026-08-10)
 
-Andrew: *"your Claude.md is like 150k characters or something, trim it down"*. CLAUDE.md was 162,746 chars / 1,888 lines, i.e. ~40k tokens loaded EVERY turn, and the section whose own heading says "KEEP THIS SECTION SHORT" was 54% of it. Nothing below was deleted from the project record -- it is chronology (completed experiments, superseded champions, finished queues) moved here verbatim, with one-line pointers left in CLAUDE.md. Rules, invariants, live state and operative plans stayed.
+Andrew: *"your AGENTS.md is like 150k characters or something, trim it down"*. AGENTS.md was 162,746 chars / 1,888 lines, i.e. ~40k tokens loaded EVERY turn, and the section whose own heading says "KEEP THIS SECTION SHORT" was 54% of it. Nothing below was deleted from the project record -- it is chronology (completed experiments, superseded champions, finished queues) moved here verbatim, with one-line pointers left in AGENTS.md. Rules, invariants, live state and operative plans stayed.
 
 ### superseded champion blocks (iters 39, 36, 35, 34, 32, 31, A18)
 
@@ -2090,7 +2090,7 @@ settings). (4) The SCHEDULE is the productive lever and where the next TOPOLOGY 
 ⚠ OPS, self-inflicted, zero GPU time lost: WS completed (i43_ws_10935.pth 02:54:37) but the
 chain died 27 s later with `DONE_EXIT_WSFAIL_9009` / `'ratchpad' is not recognized` —
 **`git rebase --autostash` REWROTE the running `run_iter43.cmd`**, corrupting cmd.exe's saved
-read offset. Generalizes CLAUDE.md's live-`.cmd`-edit rule: **no git operation that rewrites the
+read offset. Generalizes AGENTS.md's live-`.cmd`-edit rule: **no git operation that rewrites the
 working tree may touch a running runner's path until its chain reports DONE_EXIT.** Recovered
 via `run_iter43b.cmd` (decay+eval from the final ckpt, guard asserting step 10935); collateral
 was the WS log truncated to 99 B, so iter 43 has no step trace. Detail:
@@ -2122,7 +2122,7 @@ TOPOLOGY at the incumbent's HPs — one lr_mult probe before writing the family 
 HP TUNING was ITER 34 (2026-08-05, 24 rows). The previous "3-job GPU
 chain" (iter 31's rectified evals, the mode-2 duration decomposition, the mode-3 noise control,
 iter 32, iter 33) is COMPLETE and was archived to `optimization/HISTORY.md` "5k-era LIVE STATE
-archive (moved out of CLAUDE.md 2026-07-30)" — go there for the verbatim entries. The findings
+archive (moved out of AGENTS.md 2026-07-30)" — go there for the verbatim entries. The findings
 themselves are in `research_5k_verbose.md`; the numbers are in `research_5k.md` + `log.md`. The
 three that still drive decisions are quoted where they are used, not here: **training under PAVA
 halves the deploy-time rectification cost** (A18 pays +0.003588 on ahead, iter 31 only +0.001893)
@@ -2476,7 +2476,7 @@ user-visible speed. Bench: `python optimization/cpu_infer_bench.py`.
 7.11x fewer params, sublinear as the elementwise-dominated profile predicts.)
 
 
-### deploy-contract narrative (the ZERO_FEATURES bug story, the A/B/global-vs-surgical design, queue item 0) (moved out of CLAUDE.md 2026-08-10)
+### deploy-contract narrative (the ZERO_FEATURES bug story, the A/B/global-vs-surgical design, queue item 0) (moved out of AGENTS.md 2026-08-10)
 
 ### ★★ THE DEPLOY CONTRACT IS NOW ONE QUANTITY IN ALL THREE PATHS (Andrew, 2026-07-27)
 > *"Everywhere (train+eval+CPU inference): duration of the most recent review zeroed out + PAVA +
@@ -2641,7 +2641,7 @@ take it; if it loses by less than the +0.001451 duration penalty it removes, (B)
    verdict without re-running anything.
 
 
-### section 11's parity archaeology (the June stale-trace saga, A18 and iter-31 procedures) (moved out of CLAUDE.md 2026-08-10)
+### section 11's parity archaeology (the June stale-trace saga, A18 and iter-31 procedures) (moved out of AGENTS.md 2026-08-10)
 
 **Rust-parity invariant:** `verify_rust.py` (3-user float32) must pass for
 the champion arch before "shipping" (re-export trace + match the trained model bit-exactly).
@@ -2666,7 +2666,7 @@ a parity gate looks wrong; a stale reference is far likelier than a broken engin
 **FIX = regenerate, do not archaeologise.** `export_rnn_trace.py` now honours `RWKV_REF_DIR` (and
 `verify_rust.py` too, matching the engine's `RWKV_TRACE_DIR`), so a fresh trace lands beside the old one
 instead of clobbering it; `ref_metrics.json` now records the checkpoint + arch module actually exported
-(the old code hardcoded "rwkv_ref_558.pth" regardless -- the very thing that made CLAUDE.md's
+(the old code hardcoded "rwkv_ref_558.pth" regardless -- the very thing that made AGENTS.md's
 instruction wrong). The fresh A18 trace is `reference_a18/` and is SELF-CONTAINED at exactly 0.000e+00.
 **RESULT -- the first-ever track-2 parity verification: `PARITY: PASS`, imm 0.000035 / ahead 0.000044
 vs tol 0.0005** (14x and 11x inside). Procedure:
@@ -2704,7 +2704,7 @@ because this is the one tool whose entire job is detecting a stale reference. Po
 are self-contained at exactly 0.000e+00, A18 reproducing its recorded verdict.
 
 
-### superseded d=32 HISTORICAL CHAMPION block (H=2/K=16 on the 1500-user recipe) (moved out of CLAUDE.md 2026-08-10)
+### superseded d=32 HISTORICAL CHAMPION block (H=2/K=16 on the 1500-user recipe) (moved out of AGENTS.md 2026-08-10)
 
 ### HISTORICAL CHAMPION (SUPERSEDED -- the live champion is A18, see CURRENT STATE) = H=2/K=16 on the 1500-user data-variety recipe  (d=32, 2 heads x K=16; 193,724 params)
 - arch `[1,4,3,3,3]` (card,deck,note,preset,user), d_model=32 split as **2 heads x 16 (K=16)** via the NEW
@@ -2739,7 +2739,7 @@ are self-contained at exactly 0.000e+00, A18 reproducing its recorded verdict.
   `research_log_h2k16.md` + explainer `how_state_compression_works.md`.
 
 
-### probe-insertion noise measurements (moved out of CLAUDE.md's file map 2026-08-10)
+### probe-insertion noise measurements (moved out of AGENTS.md's file map 2026-08-10)
 
   **★★ REFINED 2026-07-27 BY THE MODE-3 CONTROL — THE NOISE IS CHANNEL- AND MODEL-DEPENDENT, AND
   ON `ahead` IT IS ZERO.** The bullet below generalized A18's imm measurement into a blanket "probe
@@ -2770,9 +2770,9 @@ are self-contained at exactly 0.000e+00, A18 reproducing its recorded verdict.
   2080/2500)** — post-hoc rectification badly hurts a model never trained under the constraint,
   which is 10x the noise and so a real effect, not an artifact.
 
-## HP TUNER (MAX=65536 era) -- the LIVE block archived from CLAUDE.md 2026-08-17
+## HP TUNER (MAX=65536 era) -- the LIVE block archived from AGENTS.md 2026-08-17
 
-Launched 2026-07-30, completed, and became **iter 34**. Archived because CLAUDE.md still
+Launched 2026-07-30, completed, and became **iter 34**. Archived because AGENTS.md still
 presented it as `▶ LIVE ... RUNNING` weeks after it finished, while its own family
 scoreboard said HP tuning was CLOSED. Verbatim below.
 
@@ -2867,9 +2867,9 @@ right/env wrong, control inheriting the treatment).
 A sweep treats the symptom; the template removes the mechanism.
 
 
-## CLAUDE.md LIVE archive (moved out 2026-09-11)
+## AGENTS.md LIVE archive (moved out 2026-09-11)
 
-Moved VERBATIM from `CLAUDE.md` on 2026-09-11 while arm 2's QAT decay ran, because CLAUDE.md had
+Moved VERBATIM from `AGENTS.md` on 2026-09-11 while arm 2's QAT decay ran, because AGENTS.md had
 grown to 356,872 chars (~95k tokens re-injected every session). Three spans, in their original
 order. The still-operative facts were condensed into a single LIVE entry that points here.
 
@@ -3700,7 +3700,7 @@ columns replace Anki's card-state column, width **92 -> 112**. Nothing changes f
 not set the flag (verified: original 24-column list, width 92, all seven CPU parity cases still pass).
 **WHY NOW:** the algorithmic loop is visibly running dry -- **0-for-6** since iter 45 (46, 47, 48, 49,
 50, 51), with ahead-vs-imm CLOSED on mechanism, topology CLOSED, capacity 0/3, low-rank-reg CLOSED and
-the optimizer remainder demoted. CLAUDE.md's own instruction was to "start scoping it BEFORE the
+the optimizer remainder demoted. AGENTS.md's own instruction was to "start scoping it BEFORE the
 algorithmic loop runs dry, not after". ⚠ This is preparation only -- **starting the ~23 h rebuild is
 still Andrew's call** and is step 1 of the FEATURES phase, not a preparatory step.
 **★ THREE PLAN CORRECTIONS, each found by running it, full detail in `FUTURE_FEATURES.md`:**
@@ -4311,4 +4311,213 @@ around it, so measure what it has ALREADY absorbed before adding a lever beside 
 **Iters 35-44 are COMPLETE and their narratives are archived** to `HISTORY.md` (2026-08-10). Verdicts: 35 seed pair ACCEPTED · 36 PAVA lambda DIRECTED-ACCEPTED · 37 by-user weighting REJECTED (mechanism refuted in every size quartile) · 38 KD alpha 0.75 rejected (missed by 2e-6) · 39 KD alpha 0.9 ACCEPTED · 40 alpha 1.0 rejected (brackets the peak; lever closed) · 41 interleave+reorder ACCEPTED (champion) · 42 order-only rejected · 43 interleave at the original order rejected as a TIE · 44 spread placement rejected as a TIE. Detail: `research_5k_verbose.md`.
 **★ THE TOPOLOGY FINDING (iters 41-44 together), which supersedes the individual verdicts:** interleaving is worth +0.000216..+0.000611 in both modes, but THREE structurally different arrangements of it (stream order, layer placement) are mutually indistinguishable at |delta| <= 7.5e-5. So the EXISTENCE of a cross-scope information path is what pays; the choreography is not. The rearrangement sub-family is EXHAUSTED -- further topology work must change WHAT is computed (extra rounds via layer reuse, cross-stream fusion), not when. That ±7.5e-5 same-capacity spread is also the measurement that moved the accept bar to a raw 0.0001.
 
+## AGENTS.md LIVE archive (moved out 2026-09-12)
 
+The LIVE entries dated 2026-09-08 .. 2026-09-10, moved VERBATIM from AGENTS.md on 2026-09-12. AGENTS.md keeps a condensed OPERATIVE block in their place.
+
+**⟶ 2026-09-10 23:10 -- ★★ ANDREW: "I think we should do a leak-free run anyway. Nothing that cheats should make it into the final version that will be shipped." -- THE LEAK-FREE 10-EPOCH RUN IS BUILT AND ARMED (`scratchpad/w10lf/`).** Not conditional on phase L. `run_w10lf.cmd` (generated by `mk_w10lf.py [T]`) = ws10's WS FROM SCRATCH (109,350 steps, auto-resume) + arm 1's 2-epoch decay + arm 1's rectified eval, with `RWKV_CLOCK_AT_PREV_ANSWER` in ALL THREE phases, so no weight ever trained on a leaking clock column; it is the BASE of the shipped model. Env asserted equal to ws10's and arm 1's except the lever (plus `OMP_NUM_THREADS=7` in the WS, which ws10 lost by accident -- CPU threads only). ~47 h. PREREG `scratchpad/w10lf/PREREG.md` (P1 imm +0.0005..+0.0030 / ahead +0.0000..+0.0006 worse than arm 1; P4 imm criterion ~50%). Stub-tested on five paths incl. crash -> `make_resume` -> finish (**ws10's resume branch had never executed**), dry run `scratchpad/w10lfdry/` (0.05 + 0.05 epochs, WS validation every 250 steps). **PLACEMENT: END of the queue by default** -- `wait_decaylen_then_lf.cmd` (pid 3724) fires on the decay-length waiter's marker, takes T from `clk_decide.py` (3 -> 10800, else 1800), regenerates + preflights both runners, dry run, then the run; stub-tested on nine paths. **If phase L says MATERIAL, move it behind cmixgraft BY HAND and re-base QAT-KD / budget / decay-length on it** (at a large leak their imm conclusions on a leaked base are unsafe: KD from a leaked teacher can pass the leak on); w10clk (pid 3644) stays armed until that decision. **★ AND THE FIX GREW ONE CHANNEL FIRST, because a 38 h run must not keep a measured leak:** `scratchpad/leak/residual_channels.py` counted what `clock_fix` left unshifted (users 5001-5040, T=1800): a shift past **UTC midnight** changes dow/doy/is_weekend/the review-time cycles on 0.013% of query rows, and those rows fail at **0.29 vs 0.14** -- a real leak. **Now fixed** (`shift_features`: crossing iff delta > seconds since UTC midnight, read from the STORED tod pair; the calendar pairs rotate back one day, is_weekend re-derived; deploy via `SHIFTED_COLUMNS`; `DEPLOY_FUNCTIONS.md` section 5). Smoke part 5 checks it against the builder's own formulas at the moved time on nine synthetic show times (err <= 7e-16; doy on 1 January approximated, 4.3e-3). **Still unshifted, measured:** Anki-day columns (0.0036% of query rows) and creation-batch counts (0.021%), at P(fail) 0.10 / 0.16 vs 0.14 = ~3e-7 nats per query row, the estimator's bias floor; closing them needs an LMDB rebuild -- **Andrew 2026-09-10: "no LMDB rebuild", the residual is ACCEPTED.** Smoke PASS on all five parts; flag-off still bit-identical.
+
+**⟶ 2026-09-10 22:05 -- THE CLOCK-LEAK FIX IS BUILT AND PROVEN INERT; THE LEAK-FREE BRANCH IS BUILT, NOT YET ARMED.** `RWKV_CLOCK_AT_PREV_ANSWER=<T s>` (`rwkv/clock_fix.py`, `8914d1a`): query + probe rows moved to the previous answer for in-session gaps, a labelled real row's ahead t minus its target's gap; train/val/eval via `prepare_batch.prepare`, Python deploy via `run_as_rnn.imm_predict` + `clock_fix.ahead_t` (+ the trace exporter's t for Rust); the Anki-fork rule is `DEPLOY_FUNCTIONS.md` section 5. **Default off = byte-identical, PROVEN not argued:** `scratchpad/leak/smoke_clock_fix.py` shows prepare() bit-identical to the pre-hook file on gen-5 test/train chunks at probe densities 0 / 1.0 / 0.08 and on a published e2s chunk (the chain's later phases import it fresh), the ON query transform equal to phase L's counterfactual on its 12 columns, every label shift equal to an independent recomputation, and deploy-vs-LMDB parity (the same rows shift, delta within bf16, flag-off agreement not degraded). ⚠ delta is recovered from the bf16-stored gap: ~1% of delta, up to ~18 s at T=1800 -- a storage limit, not a path disagreement. **`scratchpad/w10clk/`** = arm 1 + the flag and nothing else (`mk_w10clk.py [T]`, both-direction asserts, guards 56 = ON banner / 57 = the chunk line only `apply_to_sample` prints; dry run `scratchpad/w10clkdry/`; stub-tested on four paths; PREREG + `verdict_w10clk.py`). **PLACEMENT IS AUTOMATIC (armed 22:04):** `wait_qateval_then_clk.cmd` (pid 3644) waits for arm 2's eval (which holds phase L and phase D) to end `DONE_EXIT_0`, then `clk_decide.py` applies the pre-registered rule to phase L's jsonls -- MATERIAL => dry run + w10clk next (T=10800 instead if the 3 h arm costs >= +0.0005 imm more; the runner is regenerated and preflighted first), below MATERIAL or a failed harness => `DONE_EXIT_137`, skipped. cmixgraft's waiter v1 (35108) was stopped in gate 0 and replaced by `wait_clk_then_cmixgraft.cmd` (pid 36904, same log, refuses only on 130 = arm 2's eval failed). Both waiters stub-tested on eleven paths, `clk_decide.py` on five synthetic outcomes. Either way every NEW runner sets the flag from now on.
+
+**⟶ 2026-09-10 20:35 -- ★★ A QUERY-ROW CLOCK LEAK IN THE WHOLE `-id` LINEAGE, reported on Discord and CONFIRMED in our own data (`scratchpad/leak/`).** Every clock column is measured to the reconstructed SHOW time `id - taken_millis`, and `add_queries` keeps all new columns on the query row (data_processing.py:540, argued as "the scheduler knows when it is showing a card"). That argument FAILS: Anki CAPS `taken_millis` (60 s default, 30 of 40 users) and a capped review's show time comes out late by its excess; uncapped reviews show a second channel (timer reset on edit / leave-and-return). Raw data, users 5001-5040, 2.36 M reviews (`mechanism.py`): 71.4% of reviews come <1 s after the previous answer (P(fail) 15.1%, 0.08% capped); 2 s - 30 min gaps are 11.2% of reviews at P(fail) 21-30% and 12-36% capped, and UNCAPPED ones still fail at 20-28%; the gap bucket alone carries 0.009 nats. A deploy scheduler predicts at show time, right after the previous answer, and sees ~0 s. **LEAKING ROWS: query rows (imm) and PAVA probe rows (the pre-answer button intervals = the rectified ahead metric). REAL rows are legitimate** (finished reviews; deploy rebuilds them from the same revlog fields). The ahead LABEL time carries a smaller version (the next review's own excess) -- not yet covered. It fits the record: the features' gain was imm -0.0024 vs ahead -0.0003, the LOO put +0.005076 imm on `t_since_any_review`, and the ablation located the imm asymmetry in the query row's clock. **Until measured, "imm stop criterion MET" and "beats d=128 on imm by 0.0015" are SUSPENDED** (the d=128 model has no timestamp features, so no leak). **MEASUREMENT ARMED as PHASE L at the START of arm 2's eval runner (~1 h, never fatal):** `get_result_cf.py` patches `insert_probes` (a spawn probe proves fetch workers see it; production files untouched) and moves query + probe rows to "card shown at the previous answer" -- t_since_any_review -> 0, sibling gap / same-card interval / cumulative minus the in-session gap, daily sin/cos rotated back -- unit-tested on real gen-5 chunks (T=0 changes nothing; T=1800 changes only in-session query/probe rows, never a real row). Arms on arm 1's `w10p_d_21870`, users 5001-5300: lkc0 (control), lkc30m, lkc3h. PREREG + decision rule `scratchpad/leak/PREREG.md` (imm at 30 min >= +0.0010 = MATERIAL: build the fix env-gated in train/eval/deploy with a parity case and queue a leak-free decay branch from ws10). **The general rule this adds to §9 three-way parity: a prediction made at SHOW time may use only what exists at show time, and the reconstructed show time itself carries the current review's excess.**
+
+**⟶ 2026-09-10 19:00 -- ARM 2's EVAL NOW ENDS WITH A TAX DECOMPOSITION (phase D, ~2.5 h, `scratchpad/qat_decomp/`).** Same checkpoint, users 5001-5300, two more evals each = deploy MINUS one VALUE quantizer: `noshift` (S) and `nowcb` (WKV codebook + norm off, rank-1 kept at int8; C). R = T - S - C is rank-1 + drift and cannot be split -- a whole-QAT-off arm is DELIBERATELY absent (cell 3: structural quantization makes the fp score garbage). Decides the bit split by a pre-registered rule (PREREG P4; my expectation MARGINAL) and bounds every catalog lever. Proven before arming: `assert_arm.py` 9/9 incl. six refusals on the FINAL config; `check_banners.py` fails a real deploy log for both arms; 4 stub variants of `run_decomp.cmd` + the modified eval runner reach `DONE_EXIT_0` (the bad-catalog variant still stops at 72). Inserted via `mk_w10qat_eval.py` (regenerated runner = the old one byte-for-byte + 8 lines; backup `run_w10qat_eval.cmd.bak_before_decomp`) while waiter 16064 was still polling. **Never fatal:** logs to `scratchpad/w10qat/decomp.log`, always returns, so cmixgraft and later links shift ~2.5 h. ⚠ The fused rank-1 kernel needs a FINITE factor level -- `card:1` (fq=inf) falls to the per-timestep Python loop -- which is why `nowcb` uses int8. ⚠ NOT wired into the KD runner (`mk_w10qatkd.py` asserts the eval folder appears twice; phase D adds a third).
+
+**CHAIN NOW FIVE DEEP (19:06): ... -> budget curve (29148) -> DECAY-LENGTH pair (pid 36528, `scratchpad/w10d3/wait_budget_then_decaylen.cmd`, generated by `mk_wait_decaylen.py`): dry w10d3, dry w10d1, then w10d3 (3-epoch decay, ~12 h) and w10d1 (1-epoch, ~6 h), control = arm 1. A GPU-idle guard, not a priority claim -- displace it by stopping 36528 (cmd FIRST) while it loops in gate 0.** Its gate counts terminal lines in `wait_budget.log`, which already holds one SPURIOUS `DONE_EXIT_100`; it fires on the SECOND and refuses (120) only if that one is again 100. Stub-tested on five paths (one line = keeps waiting; 100 = refuse; 0 and 101 = run; failed dry run = 121), 70 s in the foreground, then detached. GPU booked to ~09-15.
+
+**⟶ 2026-09-10 16:05 -- ARM 2 VALIDATION PREVIEW (step 8,042; NOT the verdict; `scratchpad/w10qat/PREREG.md` "PREVIEW").** On the same 10 users vs arm 1 at matching steps, the tax falls from +0.0097 / +0.0128 at step 50 to ~+0.003 ahead / ~+0.005 imm by step 2,000 and is FLAT through 8,000. Two readings: (1) **~90% of the 2-epoch QAT phase buys no further closure** -- a cost fact for every future QAT A/B; (2) if the preview transfers as it did for arm 1 (within 0.0004), the budget does NOT shrink the tax and deployed imm (~0.267) misses the 0.2640 criterion that full precision meets -- which makes the QAT-KD arm the most valuable run in the queue.
+
+**★★★ 2026-09-10 13:25 -- ANDREW: "Yep, do KD" -- QAT WITH DISTILLATION FROM THE FULL-PRECISION TWIN IS BUILT AND QUEUED (`scratchpad/w10qatkd/`).** This supersedes "Let's skip KD" (2026-09-04, a research-lineage decision about a 4-day teacher retrain) FOR QAT ONLY. The arm = arm 2 exactly + `RWKV_QAT_KD=1.0` + `RWKV_QAT_KD_TEACHER=scratchpad/ws10/w10p_d_21870.pth` (arm 1's decayed final: same WS, same batches, fp) -- verified single-variable by diffing the env at the decay call. `w10qat - w10qatkd` IS what KD does to the tax. Live teacher, not a dump: the teacher forwards the same batch each step, so alignment holds by construction. lambda 1.0 == target-mix alpha 0.5 (iter 45's decay strength); ⚠ unlike iter 45's dump KD it leaves the PAVA probe targets hard. PREREG `scratchpad/w10qatkd/PREREG.md` (P1 both modes >= +0.0001, expected 10-30% of the tax; P3 the KD loss trace must sit ABOVE arm 2's from the first steps; P4 falsifier), verdict `verdict_w10qatkd.py`.
+**★★ THE LIVE QAT-KD PATH WAS STALE AND WOULD HAVE POISONED THE RUN -- FIXED AND PROVEN BEFORE USE.** `RWKV_QAT_KD` (task22, d=32 era) built the teacher's CURVE target with the plain `forgetting_curve(w, t)`, while under `RWKV_GRU_HEAD` the student's own curve is `gru_forgetting_curve(w, s, d, t)` -- a KD term pulling the curve head toward a curve no model computes. Now `qat_kd_targets()` + `build_qat_kd_teacher()` are module-level in `rwkv/train_rwkv.py` and mirror `_get_loss` branch for branch (inert when `RWKV_QAT_KD` is unset; the loop calls them). **`scratchpad/qatkd/smoke_qatkd.py` (CPU, real model and gen-5 chunk, the code the loop calls): at teacher == student the KD gradient is 2.9e-07 of the hard-loss gradient (it must vanish) vs 0.79 with the old formula; the stripped QAT-env teacher matches the plain model at 0.0e+00 and the unstripped one differs by 1.08.** **The self-consistency test is the reusable instrument: a distillation target is correct iff, with teacher == student, the KD gradient vanishes.** Any KD path in this repo can be checked that way in minutes of CPU.
+**CHAIN NOW FOUR DEEP: arm 2 eval (16064) -> cmixgraft dry+real (35108) -> QAT-KD dry+real (28684, `wait_cmixgraft_then_qatkd.cmd`) -> budget curve (29148, `scratchpad/w10b2/wait_qatkd_then_budget.cmd`, renamed from `wait_cmixgraft_then_budget.cmd` and re-pointed; it refuses only on the KD waiter's 110 = arm 2's eval failed).** All stub-tested (six paths) and foreground-tested. GPU booked to ~09-14.
+**⚠ OPS RULE, learned at 13:15 the same day: STOP A WAITER'S cmd.exe FIRST, THEN ITS CHILDREN.** I stopped the budget waiter's conhost and ping first; its dying cmd ran one more step with broken exit codes and took the `DONE_EXIT_100` refusal branch although no `DONE_EXIT_90` existed. It launched nothing -- but the launch branch was equally reachable, and would have put a dry run on the GPU beside a gate-critical run.
+
+**★★★ 2026-09-10 12:30 -- ARM 2's EVAL WOULD HAVE USED THE *START* CATALOGS; FIXED 19 h BEFORE PHASE C.** `run_w10qat.cmd` trains both catalogs (`RWKV_QAT_PQ_LEARN=1` + `RWKV_QAT_SHIFT_PQ_LEARN=1`), and its phase C inherited that env -- so it would have evaluated with `reference/pq_cb_{wkv,shift}_ws10_*.txt` while the weights were co-adapted to the LEARNED catalogs, which had already moved **43% (WKV) / 45% (shift)** in relative L2 by step 4000. **The learned centroids are module globals, NOT part of the checkpoint**: train_rwkv exports them to `<SAVE_FOLDER>/<prefix>_{wkv,shift}cb_<step>.txt` and nothing loads them back. `qtaxd_cblearn` -- the run that measured the recorded +0.002286/+0.003486 -- re-points its eval env at the exported files with learning off (`run_cblearn.cmd`, "EVAL ENV"); arm 2's runner was built from the PLAIN runner and lost that step. The number would have been neither the deploy number nor comparable to the recorded tax.
+**FIX, in this order:** stopped ONLY the runner cmd (pid 8224) -- the decay python kept running, verified by its log growing; appended a note (no marker) to `w10qat.log`; wrote **`run_w10qat_eval.cmd`** (generated by `mk_w10qat_eval.py`, env verbatim, then the learned-catalog re-point + learning OFF, then a **10-user PROBE that must LOAD `scratchpad/ws10/w10q_d_{wkv,shift}cb_21870.txt` with `learnable=False`** and sit in the sanity band vs arm 1 before the ~10 h eval runs); armed **`wait_decay_then_qateval.cmd`** (pid 16064), which fires when `decay_state.py` sees the trainer gone AND the step-21870 checkpoint and both catalogs present (a crash without them refuses). Both validated by EXECUTION: stubbed good/bad variants (the bad one, loading the start catalog, stops at `DONE_EXIT_72`), and the real waiter in the foreground past its first `goto`. `sanity_probe_gate.py` grew `--base` (default unchanged; reproduces the recorded tax exactly).
+**⚠ ANDREW'S "EVALUATE QAT RUNS QUANTIZED" RULE COULD NOT SEE THIS, and the lesson is its sharper form: quantization WAS on, with the wrong catalog. "Quantized" is not enough -- the eval must quantize with the catalog that SHIPS, so guard the loaded PATH, not the banner that says quantization is on.**
+**PREREG + verdict written before the number:** `scratchpad/w10qat/PREREG.md` (Q1 tax band ahead +0.0015..+0.0030; Q2 imm pays more; Q3 neither mode meets the stop criterion at deploy -- arm 1 + prior tax forecasts 0.2999 / 0.2656; Q4 probe engagement) and `verdict_w10qat.py`. **And it closes two of the QAT-retry routes on paper:** (a) "refit on the deploying model" is already inside arm 2 (the catalogs LEARN against its own loss); (b) "chunk structure at constant bits" is MOOT on the WKV side (already m=1 per head; coding heads jointly needs a 2^20+ catalog). **The zero-byte axis that remains is the SPLIT of the frozen bytes between WKV and shift** -- card = 110 WKV + 72 shift bits (checked against the arch: 2 card layers, 3 shift vectors), and m2b12 -> m2b8 on shift pays for b10 -> b12 on WKV at 4 bits under budget. Priceable only by a logloss A/B. **Screened the same day, held out by user on ws10's corpus: WKV b12 buys >=6.6% reconstruction (0.5587 -> 0.5219, thin corpus), shift m2b8 costs +11% (TS 0.48 -> 0.53, CS 0.40 -> 0.44), far from random (1.07) -- the route is ALIVE, not free, and worth one A/B only if arm 2 puts the cost in the codebook term.** Side finding: one catalog scores 0.36 on a user inside its fit and 0.56 on the same user held out, so WKV states are strongly user-specific.
+**cmixgraft's OPTIMIZER STATE WAS MISSING TOO, found by reading the load path before its dry run could hit it.** `expand_ckpt.py` wrote only weights; the decay loads `<ws>_<step>_optim.pth` unconditionally, and ws10's could not be copied because 12 restored `W_k`/`W_v` change group ((1,1) dummies on AdamW -> (80,80) on Muon), so `load_state_dict` refuses. **`scratchpad/cmixgraft/expand_optim.py`** maps ws10's state BY NAME through the real `get_optimizer` -- 391 params keep moments bit-for-bit, 30 grown start fresh -- and verifies it in a third process with a synthetic step. **CHAIN ARMED (pid 35108): arm 2 eval `DONE_EXIT_0` -> cmixgraft DRY RUN (refuses on any swallowed exception) -> cmixgraft**, stub-tested on its fail/hollow/clean paths. **(SUPERSEDED 13:25 -- the QAT-KD arm now sits between cmixgraft and the curve; see the 13:25 entry.) Then the budget curve (was pid 7004, `scratchpad/w10b2/wait_cmixgraft_then_budget.cmd`): polls the cmixgraft WAITER's log (not `cmixgraft.log`, which a refused dry run never creates), refuses only on its `DONE_EXIT_90` (= arm 2's eval failed), then BOTH dry runs before either real run, then w10b2, w10b5.** Stub-tested on four paths. GPU booked to ~17:00 on 09-12; a QAT-retry built sooner displaces the curve by stopping pid 7004 while it still loops in gate 0.
+**⚠ GENERAL RULE FROM BOTH: a branch that starts from a TRANSFORMED checkpoint must transform everything the resume path loads -- weights, optimizer state, and any exported side-car (catalogs) -- and each of those is a separate file that nothing checks for you.**
+
+**★★★★ 2026-09-10 03:53 -- ENDGAME ARM 1 IS IN: ahead 0.297577 / imm 0.262066 (n=2,499, size 0/2,499, nan_users 0, params 563,652). THE BUDGET PREMISE IS REFUTED ON AHEAD AND CONFIRMED ON IMM.** Logged as a `baseline` row (`research_log.jsonl`, `research_5k.md`, `research_5k_verbose.md` "ENDGAME ARM 1", `log.md` rebuilt). PREREG: `scratchpad/w10plain/PREREG.md`; verdict tool `verdict_w10plain.py`.
+
+| vs | ahead | imm |
+|---|---|---|
+| realcyc (1+1 ep) -- CLEAN, single variable, diffed | **+0.000506** | **+0.001526** |
+| the 2026-08-11 projection | +0.0042 | +0.0042 |
+| old 2.76M d=128 at ~12 ep (basis worth ~0.0001) | **-0.002954** | **+0.001520** |
+| stop criterion | 0.2950 -- **NOT met, 0.0026 short** | 0.2640 -- **MET, 0.0019 spare** |
+
+**Q1: 12% of the projected ahead gain, under the pre-registered `<+0.0015` line.** The projection was log-linear from ONE measured 3x step and the PREREG named this as the ordinary way such extrapolations fail. **But do not report this as "budget does nothing": imm's +0.001526 is the LARGEST single move in the gen-5 lineage**, ~10 accepted iterations' worth from one lever. Budget pays the rating head and not the curve head. Mechanism visible in the curves: ahead validation is flat from ~epoch 1 and **the decay moves it +0.0001, i.e. not at all**, while imm improves throughout.
+**★★ Q2 IS THE NEW RESULT AND IT IS ANDREW'S CALL: CAPACITY BINDS AT THE REAL BUDGET.** Every capacity reject in the record was measured at ~1.25 epochs, where the model could not use capacity. At 12 epochs the 4.95x reduction is **free on imm (we BEAT the big model by 0.0015) and costs ~0.003 on ahead**. Not clean (the d=128 model cannot forward 109 dims -- `teacher_114`), but the basis is worth ~0.0001 against a 0.003 gap. ⚠ **This collides with his 2026-09-10 preference: recovering it means growing the per-card state, the deploy budget he would rather not move.** So "stop making the model smaller" has a measured price for the first time.
+**⚠ ARM 1 IS FULL PRECISION -- TRAINED AND EVALUATED (Andrew asked 2026-09-10). Its 0.297577 / 0.262066 is NOT a deploy number.** Verified by grep, not memory: the only `RWKV_QAT_*` variable in `run_w10plain.cmd` or `run_w10plain_eval.cmd` is **`RWKV_QAT_COMPILE=1`, which despite its name is the torch.compile speed flag and has nothing to do with quantization**; there are no QAT banners anywhere in the eval logs. The same is true of `realcyc` and `gen4base`, so **the whole gen-5 lineage is plain and arm1-vs-realcyc is a clean plain-vs-plain comparison.** Arm 2 is the one carrying the QAT stack (`LOWRANK_SCOPE`, `PQ`, `SHIFT_PQ`, `NORM_BITS`, both LEARN flags) and its number will be the deploy one, higher by the tax. ⚠ The flag name is a live trap -- `RWKV_QAT_COMPILE` reads as a quantization flag in every runner and is not one; methodology (a)'s "quant-aware logloss" has been unsatisfiable on this trunk since the 2026-08-12 inert-env finding, so no gen-5 research number is quant-aware.
+
+**★ AND THERE IS ONE CAPACITY DIRECTION THAT COSTS NO DEPLOY BYTES, which matters because Andrew has just said he would rather not grow the state.** Gate #3 has always read "card AND note per-entity state UNCHANGED (**deck/preset/global MAY grow freely**)" -- those streams are per-DECK and per-USER, not per-card, so widening or deepening them does not touch the 9 B/card, 27 B/note contract. iter 49 tested exactly that (restoring the user/preset layer-0 channel mixers, +4.7% params) and returned a null -- **at 1.25 epochs, which is the budget Q2 just showed cannot expose a capacity limit.** So the coarse-stream ladder is UNTESTED at the real budget rather than closed.
+⚠ **It is not cheap AT FULL BUDGET: a capacity change alters the architecture, so it cannot branch off ws10's WS checkpoint and needs its own ~38 h WS** (more, since a wider model is slower). Andrew 2026-09-10: *"It would be nice to try to grow deck/preset/global, but 38 h is a pretty steep price."*
+**✓ SCREENED FIRST, CPU-ONLY, ~75 s per checkpoint: `scratchpad/capacity_screen/FINDINGS.md` + `stream_rank.py`.** Effective rank of each stream's final block output on realcyc (1.25 ep) vs arm 1 (12 ep) -- same architecture, same data, budget the only difference. **A WEAK POSITIVE, and it must not be sold as more: the variance TAIL broadened on every stream** (99%-variance dims 58->62 card, 43->48 note, 62->64 deck, 61->66 preset, 61->65 user; 90% dims up on four of five) so the coarse streams now need 64-66 of their 80 dims, **but the PARTICIPATION RATIO disagrees** and falls on deck (7.4->4.8) and user (10.0->9.2). The model concentrated its top directions while spreading its tail. Zero dead dims at either budget. => neither idle nor obviously starved; the lever is not killed and 38 h is not justified.
+**THE LADDER, and option B is the trap:** **(A) ~10.4 h** -- restore the six stripped `user_id`/`preset_id` channel mixers (iter 49's lever, +26,070 params) on a model WARM-STARTED from ws10 with each restored mixer's output projection **zero-initialised**, so the model is bit-identical to ws10 at step 0 (a channel mixer is `x + cmix(x)`) and the 2-epoch decay trains the new capacity; control = arm 1 exactly. **(B) ~23 h at a reduced 2-5 ep WS -- DO NOT RUN: a LARGER model needs MORE budget to saturate, so a reduced-budget arm under-trains exactly the side that is supposed to win, reintroducing the confound that made iters 49/60/61 uninterpretable.** **(C) ~48-60 h** at the full budget, only if A wins.
+**✓ OPTION A IS BUILT AND VERIFIED, 2026-09-10 -- `scratchpad/cmixgraft/` (NOT yet launched; arm 2 owns the GPU until ~17:30 on 09-11).** `expand_ckpt.py` writes **`scratchpad/ws10/w10g_ws_109350.pth`** = ws10's WS-final with the six user/preset channel mixers grown from their `d_model=1` dummy shapes (**563,652 -> 641,862 params, +78,210**), refusing unless exactly six mixers change shape and all six `W_v` are exactly zero. `smoke_graft.py` measures **0.000e+00** against arm 1 over 300 deploy predictions in two separate processes, with a **PERTURBED control at 1.132e-06** so the identity cannot pass vacuously. `mk_cmixgraft.py` generates the runner from **arm 1's own runner** by substitution, asserting in BOTH directions (no stale token survives; every substitution fires) -- and its direction-2 grep caught the `run_fixc_arm.cmd` failure shape on the first run, a `echo ===== w10plain START` banner that no substitution touched. Preflight PASS; the param guard (641862) is verified against arm 1's own log convention (563652).
+⚠ **A stripped channel mixer is NOT absent from the checkpoint** -- `rwkv_model.py:578-581` builds it from a `d_model=1` dummy config to keep checkpoint interchange working -- so the graft is a SHAPE replacement of 30 tensors, and the first version of `expand_ckpt.py` looked for missing keys, found none, and refused. Worth knowing before anyone writes another checkpoint transformer here.
+⚠ **OWED BEFORE LAUNCH: the DYNAMIC dry run.** This is a new phase shape -- the first branch to load a GRAFTED checkpoint whose architecture differs from ws10's -- which is exactly the trigger the dry-run rule names. It cannot run now: co-tenant GPU work is forbidden during a gate-critical run and arm 2 is one.
+**QUEUE ORDER AFTER ARM 2 (my call, stated so it can be overridden): `cmixgraft` (10.4 h) THEN the budget curve `w10b2`/`w10b5` (~19 h).** The curve is retrospective -- it says whether the endgame's ~4 days bought anything a 9 h branch would not have -- while the capacity probe is prospective and is the thing Andrew asked about. Both are built and preflight-PASS.
+⚠ **State A's asymmetry before running it: a WIN is decisive, a NULL is WEAK** -- two epochs is far less than twelve for brand-new parameters, so A bounds capacity's value from BELOW. A null must not be quoted as "capacity does not bind"; that is exactly the error iter 49 already caused once.
+
+**=> THE FORK THE PREREG NAMED IS NOW LIVE.** Architecture is closed (three screens), out-of-family structure adds nothing (FSRS-7 at a fitted weight of 0.02), and budget is now measured at +0.0005. **The ahead stop criterion is not reachable by any lever now known** -- and QAT still has ~0.0023 to add. imm is already past its criterion with room.
+**IMMEDIATE CONSEQUENCE FOR THE QUEUE: the budget-curve branches are now the highest-value ones, not a nicety.** If 10x buys +0.0005, `w10b2` (2.01 ep) and `w10b5` (5.03 ep) say whether ahead saturated at 2 epochs -- i.e. whether the endgame's ~4 days bought anything a 9 h branch would not have. They are BUILT and preflight-PASS. ⚠ They use `RWKV_DECAY_FROM_STEP`, which no run has exercised -- fire `mk_dryrun.py` on them first.
+
+**⚠⚠ 2026-09-10 04:00 -- ARM 2 LAUNCHED ITSELF AND WAS HOLLOW; KILLED AT 04:09 WITH 33 WASTED STEPS.** 255 of 288 batches raised `torch._inductor.exc.InductorError: RuntimeError: Compiler: cl is not found`, and `train_rwkv`'s per-batch except swallowed each one ("Exception caught. Nan from RWKV-7? Skipping batch"), so it stepped at 3.7 steps/min on ~11% of the data while every banner and the `[qat-assert] PASS` looked right. **The ordcut signature exactly: a banner proves construction, not execution.**
+**WHY IT IS NEW, and no earlier run could have found it:** `RWKV_QAT_COMPILE=1` has been in the standard env since 2026-07-30 and every plain run (ws10, arm 1) compiles to pure Triton, which needs no host compiler; the QAT graph graph-breaks differently and asks inductor for a C++ kernel. **No earlier QAT run hit it because `scratchpad/qat_tax/run_arm.cmd` never set `RWKV_QAT_COMPILE` at all** -- QAT + compile is a combination that had never run here. `cl.exe` is not on PATH on this box; vcvars64 exists.
+**FIX: `call vcvars64.bat` + a `where cl.exe` guard (DONE_EXIT_52) in `run_w10qat.cmd`, NOT `RWKV_QAT_COMPILE=0`** -- that would make arm 2 differ from arm 1 in two ways, and this A/B exists to isolate exactly one (compile is explicitly numerics-perturbing: "small trajectory perturbation acceptable", `train_rwkv.py:101`). Killed in the safe order, waiter cmd FIRST, so no marker could fire downstream; `wait_qat2.log` ends at "launching arm 2" and `w10qat.log` carries no terminal marker.
+**VERIFIED BY A DRY RUN, which is the trigger the rule already names (a new phase shape):** `mk_dryrun.py` regenerated the 0.05-epoch / 20-user copy from the FIXED runner -> `CL_OK`, **0 tracebacks**, real steps. 10 min of GPU against a multi-day branch.
+**⚠ AND THE DRY RUN CORRECTS ARM 2's BUDGET, which this file had wrong: the "~6.2 h decay" copied arm 1's PLAIN decay time.** QAT runs at ~0.33 steps/s on this trunk (measured on both qat_tax decays, 0.3276 / 0.3298) against arm 1's ~0.98, so **21,870 QAT steps is ~18-23 h, and arm 2 is ~28-33 h end to end** with its ~10 h quant-aware eval. Budget it as a day and a half, not sixteen hours.
+⚠ **The dry run's own post-warm-up rate is 0.250 steps/s, i.e. 24% BELOW the 0.33 the compile-free qat_tax decays held** -- so `RWKV_QAT_COMPILE=1` looks like a net LOSS under QAT (the QAT kernels graph-break the fused region, so dynamo pays guard overhead with little left to fuse). **Deliberately NOT acted on:** turning it off would add a second variable to the one A/B that exists to isolate QAT, and 6 h of GPU is far cheaper than an uninterpretable tax number. Worth a standalone A/B outside a gate-critical run -- it would speed up every future QAT run.
+**★ FREE FINDING FROM THE REFIT, and it answers a question the record had never asked: A PQ CATALOG DOES NOT SURVIVE A BUDGET CHANGE.** `run_fit_catalogs.cmd` scored the gen-5 pair on **ws10's** states: WKV **0.7596** (it scores 0.39 on realcyc's own states) against a random control of 0.9599, and shift **0.6614 TS / 0.6767 CS** against 0.9638 / 0.9682. Still working -- well inside the encode-to-zero bound, so this is not the q72u failure -- but badly degraded, and the refit recovers to **0.5587** (+26.4%), oracle 0.3126. **=> 10x the budget moves the state distribution enough to stale a catalog fitted on the same architecture and the same data.** Headers are byte-identical to the live pair, so deploy state size is unchanged.
+
+**★★ 2026-09-10 -- THE VALIDATION CURVES SAID SO FIRST, AND THAT IS NOW A REUSABLE INSTRUMENT.** Written before the eval finished and confirmed by it: val predicted ahead ~+0.0002 / imm ~+0.0019, the gate gave +0.000506 / +0.001526 -- both directions right, both within 0.0004. **So a decay branch's 10-user validation endpoint is a usable EARLY READ at zero GPU cost**, provided the reference run's endpoint on the SAME 10 users is read beside it. Not a substitute for the gate (row-weighted, 4 dp, 10 users). Tool: `scratchpad/ws10/plot_losses.py` -> `loss_curves.png`. The original entry follows. Plot + tool: `scratchpad/ws10/plot_losses.py` -> `loss_curves.png` (parses ws10's WS log and arm 1's decay log; zero GPU). Both runs validate on the SAME 10 users (5001-5010, 594,215 rows, `VALIDATE_USERS_START/END` in every toml), so realcyc's decay endpoint is a directly comparable reference:
+
+| | val ahead | val imm |
+|---|---|---|
+| realcyc, 1.25 epochs | 0.3212 | 0.2976 |
+| **ws10 + arm 1, 10+2 epochs** | **0.3210** | **0.2957** |
+| move | **-0.0002** | **-0.0019** |
+
+**The endgame premise is +0.0042 ahead** (the 2026-08-11 calibration's 3x step of +0.002, projected log-linearly). Validation says ~5% of that on ahead. On imm it says roughly half.
+**⚠ THIS IS A PREVIEW, NOT THE VERDICT, and the two differ in ways that can matter:** validation is 10 users ROW-weighted at 4 decimal places; the gate is 2,499 users BY-USER on the rectified metric. But a 20x gap on ahead is not a weighting artifact, so read arm 1's ahead number as likely to come in near realcyc's 0.298083.
+**WHAT THE SHAPE ALREADY SHOWS, and it is the mechanism:** ahead validation is flat from ~epoch 1 (0.3240 at 1 ep -> 0.3230 at 4 -> 0.3209 at WS end) and **the decay moves it by +0.0001, i.e. not at all** -- the stable phase had nothing left for the decay to convert. imm keeps improving throughout and the decay does move it (-0.0012). So the two heads are budget-limited to very different degrees, which no single "+0.0042" number can express.
+⚠ Do NOT read this as "the budget curve is settled" -- w10b2/w10b5 exist to measure the SHAPE and arm 1 is one endpoint. It does raise the prior that the curve saturates early on ahead.
+
+**★★★ ANDREW 2026-09-10: "We've already worked on reducing the QAT tax, but maybe we should try again."** Directive accepted; the tax is the right target and the arithmetic says so -- realcyc 0.2981 - 0.0042 (10x budget) + 0.0023 (tax) = 0.2962 against a 0.2950 stop criterion, so the tax is what keeps the criterion out of reach. **SEQUENCE IT AFTER ARM 2, which re-prices it:** the +0.002286 / +0.003486 on record was measured at the 1.25-epoch budget, and arm 2 minus arm 1 is the first single-variable measurement at 10 epochs. Optimising against a stale target is the mistake the q72u catalogs already cost us once.
+**DO NOT RE-RUN THESE -- all closed on MECHANISM, not on null results:** the rank-1-friendly regulariser (iter 47 moved the rank-1 floor 43% card / 75% note and the loss did not follow, so the tax is NOT in that term -- rank-2 states, softer or scheduled lambda all aim at the same empty term); 2-bit norm, per-stream norm ranges, learnable norm levels and per-stream catalogs (the LEARNED catalog already absorbs all four -- its centroids are not unit-norm, spread widened 2.43x, and card/note occupy DISJOINT regions with 0.78% shared mass); the teacher swap (iter 54, exact tie -- the tax does not live in the teacher); QAT from scratch (iter 40, +0.0118 -- it MUST warm-start); a longer QAT phase (closure saturates by ~0.37 epochs, so even 1.5 ep of decay is 4x what it needs).
+**WHAT IS LEFT, by elimination: the CODEBOOK and NORM terms, and the WKV half is ~14x the shift half.** The WKV bits ladder (8/10/12/14 = 0.4580/0.3776/0.3224/0.2844) is the obvious lever and it is NOT free: +2 bits is ~+1.25 B on the frozen 9 B/card budget (+14%), i.e. a DEPLOY CONTRACT change and therefore **Andrew's call**.
+**✓ ANSWERED 2026-09-10, and it is a CONDITIONAL grant, not a blank one -- Andrew: "I'd rather not increase card/note state size, but if that's the only way, alright."** So the budget MAY move, and it moves LAST. **Order: exhaust the zero-byte routes, prove they are exhausted, and only then spend bytes.** Two zero-byte routes are open and neither is on the CLOSED list: (a) **re-fit the catalogs on the model that actually deploys** -- `run_fit_catalogs.cmd` already does this for ws10, and the q72u and gen-5 incidents both show a stale catalog is worth more than any ladder rung; (b) **the chunk structure at CONSTANT total bits** -- on the shift side m2b12 beats m4b6 by 1.9x at identical bits, so the WKV side's m/b split is a free variable that the bits ladder (all at m=1) never varied. Spending bits is the fallback if both come back null.
+⚠ **And the price of ASKING is a full A/B, not a ladder read.** Reconstruction error cannot rank two working catalogs (2026-08-15), so a bits rung costs ~10 h decay + ~10 h quant-aware eval to price honestly. Budget one rung, not a sweep. ⚠ And that ladder is RECONSTRUCTION-only, which 2026-08-15 showed cannot even rank two working catalogs -- so it must be priced by a logloss A/B, never by reconstruction error. Ask him whether the state-size budget may move BEFORE building anything on it; if it may not, the remaining room is better centroids at fixed bits, and the only instrument that has ever moved that number is making the catalog LEARNABLE, which is already on.
+**★★ 2026-09-09 23:38 -- ARM 1 KILLED ITSELF AT `DONE_EXIT_28` WITH ITS DECAY COMPLETE, AND THE CAUSE IS THAT MY OWN FIX THAT MORNING WAS HALF A FIX.** The 6.2 h decay finished normally (`scratchpad/ws10/w10p_d_21870.pth`, 23:37, final val ahead 0.3210 / imm 0.2957) and the runner then failed its own artifact guard: `if not exist "%DIR%\w10p_d_21870.pth"` looked in `scratchpad\w10plain` while a **decay-only run writes into the SOURCE run's folder**, `scratchpad\ws10`. That is the SAME wrong-directory bug I caught mid-run at 10:12 and fixed only in `write_eval_toml.py`. **A fix that repairs one consumer of a wrong path and leaves the other is not a fix** -- and the LIVE RULES entry claiming the catch "covers every endgame branch uniformly" was wrong: all SIX remaining branches carried the guard identically and would each have burned a full decay before dying. Nothing was lost; ~15 min of GPU idle.
+**RECOVERY, in this order:** stopped the arm-2 waiter FIRST (a non-zero marker in a shared log is a live trigger), verified the checkpoint, **proved phase C's toml step by running it** (the fallback resolves `[ckpt-fallback] none in scratchpad/w10plain; decay.toml points at scratchpad/ws10, found 12` -> `w10p_d_21870.pth`), then wrote **`scratchpad/w10plain/run_w10plain_eval.cmd`** = phase C only, env copied verbatim, guard pointed at `ws10`, a FRESH log (`w10plain_eval.log`) because `w10plain.log` now carries a terminal marker. ASCII-only, CRLF, preflight PASS, and **validated by STUB EXECUTION** end to end (DECAY_OK -> EVAL_OK -> DONE_EXIT_0) before launching. Running since 23:41 (pid 20552); arm-2 waiter re-armed as **`wait_w10plain_then_qat_v2.cmd`** on the new log (pid 15352, exercised 340 s in the FOREGROUND past its first `goto` before detaching, per the LF/goto rule). Verdict ~02:40.
+**THE DURABLE FIX: all seven runners patched (backups `*.bak_before_ckptdir`) and `preflight_runner.py` grew the missing half of its own check** -- any `if not exist "...<decay prefix>_<step>.pth"` must resolve to the decay's SOURCE folder. Proven non-vacuous against the pre-fix backup (FAILS) and all seven fixed runners PASS. ⚠ The general lesson is the one the dry-run entry already argues: **the STATIC check I added that morning did not cover the guard, and the DYNAMIC dry run would have caught it in 10 minutes** -- these branches were exactly the structural novelty its own trigger names, and I did not fire it.
+**★ FEATURE AUDIT 2026-09-09 (Andrew's ask, CPU-only, beside arm 1): `scratchpad/feataudit/FINDINGS.md`.** Read the gen-5 LMDB BACK rather than the derivations, because a column can be derived correctly and then be dropped, mis-ordered or coded so its undefined case is a legal value. **Nothing is discarded**: every raw `-id` column is consumed, the only two absent from the input vector are `state` (Andrew's directive, and verified a NO-OP -- 108 runners incl. iter 53 already set `RWKV_ZERO_FEATURES=22`) and `parent_id` (it derives the deck depth); stored width 69+40=109 matches `w10_ws_109350`'s `features2card`; no leak. **And the `-id` build does NOT lose card metadata vs published** -- 32 users, `note_id_is_nan` 34.84% in BOTH, paired per-user difference +0.000 pp, i.e. the same ROWS; it is missing at the source (a deleted card keeps its revlog rows, loses its card row). ⚠ Consequence worth knowing: on ~35% of rows the deck and preset streams collapse to one synthetic entity, so two of five scopes carry nothing `user_id` does not. **Six coding warts, none an outright loss, all build-time so all needing a rebuild.** Sharpest: **`scaled_sibling_gap` is undefined on 97.4% of rows and writes exactly 0.0, which is INSIDE the defined range** and de-standardizes to "a sibling was reviewed 3.1 h ago" -- `scaled_deck_age_at_review` uses the same sentinel and is fine only because `deck_id_is_nan` flags it, and the sibling column never got its flag. Also: `note_id_is_nan` == `deck_id_is_nan` == `preset_id_is_nan` bit-identically on 100% of rows (one failed card join sets all three, so 2 dims are pure duplicates); `t_since_any_review`'s normalization constant predates its 2026-08-19 end-to-start change, leaving the column at mean -1.11 rather than 0 (affine, so the input FC absorbs it); `is_default_deck` is 100% zero; the decade/century cycles are near-duplicates (r 0.99 review-vs-first, `cyc36500_cos` std 0.011), which is part of why realcyc tied. **Nothing changed** -- fixing any of it costs a ~7 h rebuild and a re-base of the lineage arm 1 is the control for.
+**★★★ 2026-09-08 -- THE PHASE TURNED. ANDREW: "keep current model size and do as you suggested:
+train WS, then experiment with the decay stage."** He pushed back on a phase-5 recommendation built on
+seven consecutive training-side rejects and no architecture at all ("I'd be shocked if there is no
+low-hanging fruit"), and on the cost of 10+2 experiments ("it already takes hours, and 10+2 takes >a
+day"). The answer to both is ONE expensive WS run that every later experiment branches from.
+* **✓ ws10 IS DONE (2026-09-09 17:18): 109,350 steps, ONE attempt, no resume, zero tracebacks,
+  38 h wall clock at a steady 0.80 steps/s.** `w10_ws_109350.pth` is the shared branch point for
+  every decay experiment. **Arm 1 launched itself at 17:21** -- decay toml verified
+  (`LOAD_MODEL_NAME = w10_ws_109350`, `EPOCHS = 2.0`, **`VALIDATE_EVERY = 2000`**, gen-5 db) and
+  the param guard reads **563,652**, so the feature flags reached the fetch workers. Expect arm 1
+  ~02:30 on 09-10, then the catalog refit and arm 2, all automatic.
+* **★ THE REGULARISATION QUESTION IS SETTLED, at the pre-registered checkpoint: STILL FIT-LIMITED
+  AT THE FULL BUDGET.** The ahead train/val gap over the late two thirds runs +0.0055 -> +0.0070
+  (4 ep), +0.0065 -> +0.0076 (8 ep), **+0.0065 -> +0.0083 (10 ep)** while validation improves
+  throughout (0.3237 at 10k -> **0.3209** at the end). iter 65's re-screen condition is NOT met, so
+  SAM, wd and dropout stay OUT of the decay queue -- and that is now an answer rather than a trend.
+* (superseded) **RUNNING: `ws10`** (`scratchpad/ws10/`, detached, log `ws10.log`) = the endgame's SHARED 10-epoch
+  WS phase. Single variable vs realcyc: `EPOCHS` 1 -> 10, i.e. 109,350 steps. Measured **0.79-0.88
+  steps/s** including one validation + checkpoint per 1,000 steps -> **~38-40 h**, finishing ~18:00 on
+  2026-09-09. `VALIDATE_EVERY=1000` gives 109 resume points and the runner AUTO-RESUMES (make_resume
+  + `RWKV_RESUME_SKIP_GROUPS=1`, capped at 40 attempts), because the decay-checkpoint rule below
+  makes an unattended 40 h run the one real failure mode.
+* **CHAINED: `w10plain`** (`scratchpad/w10plain/`, waiter gates on ws10's `DONE_EXIT_0` line AND the
+  `w10_ws_109350.pth` artifact) = **ENDGAME ARM 1**, a 2-epoch decay off the shared checkpoint plus
+  the rectified VAL eval, ~10.6 h. It is the REFERENCE every later decay-only branch is gated against.
+* **THE CHAIN IS TWO DEEP AND UNATTENDED: ws10 -> arm 1 -> catalog refit -> arm 2** (waiters
+  34032 and 34040, both WMI-detached, both exercised in the FOREGROUND past their first `goto`
+  before detaching -- the LF/goto rule). Each gates on the previous job's SUCCESS line, never on a
+  bare terminal marker. **`run_fit_catalogs.cmd` sits between arm 1 and arm 2**: it converts the
+  ws10 WS-final to safetensors (seconds -- `export_weights_only.py`, NOT the ~25 rows/s trace
+  export), dumps a corpus with the Rust engine using the EXISTING `reference_realcyc` traces
+  (which are model-independent inputs), refits both catalogs, and then scores the realcyc-fitted
+  pair on ws10's states -- a free answer to a question the record has never asked, namely whether
+  a PQ catalog survives a budget change. It runs BETWEEN the two arms rather than beside arm 1 so
+  its k-means never competes with a training run's fetch workers; ~15 min of idle GPU buys zero
+  contention.
+* **ARM 2 IS BUILT AND ITS DESIGN QUESTION IS ANSWERED BY THE SHARED-WS SHAPE** (`scratchpad/w10qat/`,
+  generator + runner, preflight PASS, phase-0 refusal verified BY EXECUTION at rc 51). The old plan
+  asked whether arm 2 should be (A) a warm-started QAT fine-tune on arm 1's FINAL or (B) a second
+  full 10x with QAT throughout, and recommended A. Branching gives a third and better option: **the
+  SAME 2-epoch decay from the SAME WS checkpoint with the QAT env added and nothing else changed.**
+  It is how QAT is actually deployed here (decay-only, warm-started -- iter 40 says it MUST
+  warm-start), and it is a genuinely SINGLE-VARIABLE A/B, which neither A nor B can be: A adds ~2
+  epochs on top of arm 1, B changes the whole trajectory. **So arm 2 - arm 1 IS the QAT tax at the
+  10-epoch budget, with nothing to subtract.** Budget ~6.2 h decay + ~10 h QUANT-AWARE eval (not the
+  ~2.9 h a plain eval takes). Phase 0 REFUSES without `reference/pq_cb_{wkv,shift}_ws10_*.txt` --
+  see the catalog-staleness entry in the QAT section; fitting them from ws10's WS-final is ~10 min
+  of CPU and is a launch prerequisite, not a nicety.
+* **=> A DECAY-ONLY BRANCH COSTS ~10.4 h**, today's price, in the 10+2 regime.
+  **THE QUEUE, REVISED 2026-09-08 after the gap screen came back negative:**
+  1. **arm 1 `w10plain`** -- the plain 10+2 number and the control every branch is gated against.
+  2. **arm 2 `w10qat`** (BUILT) -- the QAT tax, now a single-variable A/B against arm 1.
+  3. **DECAY LENGTH, `mk_w10decay.py <epochs>`** (BUILT for 1.0 and 3.0, both preflight PASS) --
+     the queue's real lever. The 10+2 split was chosen on COST (6+6 = 89 h vs 10+2 = 53 h) and this
+     file already says the ~+0.0006 credited to a longer decay is "being SPENT, not disproven",
+     because iter 34's decay_ratio gain is confounded with a budget change. A shared WS checkpoint
+     turns that from a 43 h question into a 9 h one, with arm 1 as an exact control.
+     ⚠ It varies decay length at a FIXED 10-epoch WS, so total budget moves with it. That is the
+     endgame's operational question, NOT the fixed-total-budget WS:decay de-confound, which stays
+     Andrew's call. Do not report one as the other.
+  4. **BUDGET CURVE, `mk_w10budget.py <ws_step>`** (BUILT for WS 22,000 and 55,000 = 2.01 and 5.03
+     epochs, both preflight PASS) -- arm 1 tests the endgame's ENDPOINT, this tests its SHAPE.
+     "+0.0042 at 10x" is a log-linear extrapolation from ONE measured 3x step, and under WSD the
+     stable phase is at constant LR, so decaying from an intermediate checkpoint IS a
+     shorter-budget run: one expensive WS buys several budget points for the price of their
+     decays. Needs `RWKV_DECAY_FROM_STEP` (added to `write_decay_setup.py`, default unset = the
+     latest checkpoint, so every existing runner is byte-identical) and the runner GUARDS that the
+     pin was honoured -- an ignored pin silently reproduces arm 1 under a curve point's tag.
+     **Eval is 300 users (~20 min), coarse BY DESIGN**: the question is linear-or-saturating at a
+     scale of 0.002-0.004, well above a 300-user resolution, and the 200-user lesson forbids
+     settling sub-0.001 effects there. Arm 1's own 2,499-user jsonl already contains those 300
+     users, so its curve point is FREE. ⚠ A curve point is NOT a gate candidate; never log one as
+     an iteration.
+  5. decay SHAPE (iter 56 `linear`: sub-bar at 1.25 ep but real on imm at p=6e-12; a 2-epoch decay
+     gives the shape more room than a 0.25-epoch one did).
+  **SAM and the other regularisers are NOT in this queue** -- the gap screen below says iter 65's
+  re-screen condition is not met.
+* **★ THE REGULARISATION SCREEN IS RUNNING FOR FREE, AND SO FAR IT SAYS NO** (`scratchpad/ws10/
+  gap_trace.py`, reads ws10's own log; zero GPU). iter 65 deprioritised SAM/wd/dropout on the
+  finding that the model is FIT-limited at 1.25 epochs, with an explicit condition attached --
+  re-screen "on the 10x endgame's checkpoints, where a gap CAN exist". ws10 validates every 1,000
+  steps on 594,215 held-out rows, so the screen needs no run of its own. **Through 8.0 epochs the ahead train/val gap is FLAT** -- +0.0055 -> +0.0070 at 4 epochs and
+  +0.0065 -> +0.0076 at 8, both inside the noise of a 400-step train window, while validation
+  keeps creeping down (0.3237 at 10k -> 0.3230 at 44k -> 0.3224 at 88k). => regularisation stays
+  unmotivated at four fifths of the budget; re-run the screen at WS end, which is the
+  pre-registered checkpoint, before queueing any of those branches.
+* **⚠ AND A CAUTION ABOUT THE +0.0042 PREMISE, stated now so it is not a surprise later: the
+  STABLE-phase validation is nearly exhausted by epoch 1.** ahead val goes 0.3342 (step 1k) ->
+  0.3237 (10k) -> **0.3230 (44k)**, i.e. -0.0007 over three further epochs. That is EXPECTED under
+  WSD -- at constant peak LR the loss sits at an LR noise floor and the gain is converted by the
+  DECAY, so this is not evidence against the budget premise. But it does mean the premise is
+  UNCONFIRMED until arm 1's decay lands, and arm 1 is therefore the number that decides whether
+  phase 6 was worth its ~4 days.
+* ⚠ **A units trap the screen had to be fixed for: training `imm_loss` is the 4-way CROSS-ENTROPY
+  of the rating head, while validation `imm` is the BINARY logloss of 1-P(Again).** Different
+  quantities, which is the entire ~-0.24 "imm gap" a naive read shows. Only AHEAD is comparable
+  between the two logs.
+* ⚠ **Two things the shared checkpoint BAKES IN, named now because they are not discoverable later:**
+  wd and dropout act during WS, and `WARMUP_STEPS` stays 400 (0.37% of this run vs upstream's ~9%) so
+  that budget is the single variable. A branch cannot re-open either.
+
+**★★ THE ARCHITECTURE QUESTION IS ANSWERED, AND IT REDIRECTS THE PHASE
+(`scratchpad/arch_2026-09-07/FINDINGS.md`; ~2 h of CPU, zero GPU).** Four screens:
+1. the curve head's hidden is effectively **2.4-dimensional** and is a SUFFICIENT STATISTIC of its
+   own input -- adding the whole 80-d trunk output helps on **0 of 6 users**. A richer ahead head is
+   dead, and so is replacing the curve family.
+2. realcyc vs the pretrained d=128 model: **residual correlation 0.9957** across a 5x parameter change
+   AND a complete feature-layout change. The 2026-07-03 "family saturated" result extends.
+3. **THE OUT-OF-FAMILY CONTRAST (2026-09-08): FSRS-7 ADDS NOTHING.** Per-review predictions from
+   `srs-benchmark`'s own `script.process` (34-param dual-stability FSRS-7, fitted per user; plus
+   FSRS-6 and FSRS-7-`--default` as the version-bump and personalization controls), 340,601 rows on
+   4 VAL users. **Best blend weight with realcyc: 0.02, gain +0.00001** (0.00 on three of four
+   users); leave-one-user-out stacking is NEGATIVE. The d=128 partner takes **weight 0.53 for
+   +0.00086**. => the remaining ahead error is not a blind spot this family shares; what pays is
+   capacity and BUDGET, which is exactly what ws10 spends.
+   **★ METHOD, and it would have inverted the verdict: RESIDUAL CORRELATION OVERSTATES
+   DECORRELATION WHEN THE MODELS DIFFER IN QUALITY** -- FSRS-7's 0.9760 reads as structure and the
+   fitted weight says it is FSRS's own error. Price a disagreement with a FITTED blend weight.
+   ⚠ The join guard earned its keep: our dumps key on `review_th` (the row predicted FROM), FSRS on
+   the row PREDICTED, and a direct join gave label agreement **0.7726 against a chance rate of
+   0.745**. `scratchpad/fsrs7/label_map.py` rebuilds the map from the DATA, so the fix cost minutes
+   instead of 2.7 h of re-dumping.
+**=> DO NOT open a new architecture family on "there must be low-hanging fruit". Three independent
+screens now say the ahead residual is a FIT gap.** Levers that remain untested are trunk-side and
+cheap-to-fit rather than richer: cross-stream state fusion, extra rounds via layer reuse, multi-step
+delta on the coarse streams, a richer feature encoder.

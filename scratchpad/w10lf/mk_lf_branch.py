@@ -10,6 +10,11 @@ Modes:
                                    EVAL ON 300 USERS (5001-5300) -- a curve point, never a gate candidate
                                    (see scratchpad/w10plain/mk_w10budget.py for why 300 suffices).
   decay <epochs>                   tag lfd<ep>: decay <ep> epochs from w10lf_ws_109350, full VAL-half eval.
+  r1 <epochs>                      tag lfr1e<ep>: R1, the IMPUTED PROBE DURATION (RWKV_PROBE_IMPUTE_K=3,
+                                   rwkv/probe_impute.py) in the decay, its validation and the eval; decay
+                                   <ep> epochs (= L*, so the plain twin at L* is the control: 2 -> w10lf,
+                                   1 -> lfd1, 3 -> lfd3). Guards 58/59: the ON banner and the chunk-count
+                                   line must be in the decay log. PREREG scratchpad/r1/PREREG.md.
 
 BUILT FROM ARM 1's RUNNER (scratchpad/w10plain/run_w10plain.cmd) with exactly the substitutions
 mk_w10lf.py applies to w10lf's phases B and C: decay from scratchpad/w10lf w10lf_ws, the lever
@@ -21,6 +26,8 @@ decay's SOURCE folder (scratchpad/w10lf), where write_decay_setup puts the check
 
 ⚠ A decay-only branch writes its checkpoints into scratchpad/w10lf, not into its own folder.
 ⚠ STEPS uses the trainer's arithmetic, int(EPOCHS * 10935), not round() (the 2026-09-10 dry-run bug).
+⚠ RWKV_FINAL_LAYOUT=1 (2026-09-12) rides with the lever: w10lf's checkpoints have 103 inputs, so a
+branch without it cannot even load them. Asserted equal to w10lf's runner like the lever.
 
 Writes scratchpad/<tag>/run_<tag>.cmd and scratchpad/<tag>dry/run_<tag>dry.cmd
 Usage: python scratchpad/w10lf/mk_lf_branch.py budget 22000
@@ -103,6 +110,40 @@ EVAL_POSTCHECK = (
     ")\n"
     "copy /y scratchpad\\eval_shards\\shard_s0.log \"%%DIR%%\\eval_shard_%%STAMP%%.log\" >nul 2>&1\n" % T)
 
+R1K = "3"
+R1_LEVER = ("REM ---- THE LEVER (R1): the imputed probe duration -- query and probe rows take the shrinkage\n"
+            "REM median of this card's and this user's PAST durations (k=%s), in the decay, its\n"
+            "REM validation and the eval. rwkv/probe_impute.py; scratchpad/r1/PREREG.md ----\n"
+            "set RWKV_PROBE_IMPUTE_K=%s\n" % (R1K, R1K))
+
+
+def r1_guard(logname, code_on, code_ran, what):
+    return (
+        "REM R1 must have REACHED the fetch workers and RUN there: the ON banner prints at import in\n"
+        "REM every process, the chunk-count line only from apply_to_queries.\n"
+        'findstr /C:"ON: k=%s " "%%DIR%%\\%s" >nul\n'
+        "if not %%ERRORLEVEL%%==0 (\n"
+        '  echo %%TAG%% PROBE_IMPUTE_NOT_ON_%s %%DATE%% %%TIME%% >> "%%LOG%%"\n'
+        '  echo DONE_EXIT_%d %%DATE%% %%TIME%% >> "%%LOG%%"\n'
+        "  exit /b %d\n"
+        ")\n"
+        'findstr /C:"k=%s chunks 1 query rows" "%%DIR%%\\%s" >nul\n'
+        "if not %%ERRORLEVEL%%==0 (\n"
+        '  echo %%TAG%% PROBE_IMPUTE_NEVER_RAN_%s %%DATE%% %%TIME%% >> "%%LOG%%"\n'
+        '  echo DONE_EXIT_%d %%DATE%% %%TIME%% >> "%%LOG%%"\n'
+        "  exit /b %d\n"
+        ")\n" % (R1K, logname, what, code_on, code_on, R1K, logname, what, code_ran, code_ran))
+
+
+R1_EVAL_POSTCHECK = (
+    "REM Non-fatal post-check: the eval's shard log must carry the R1 ON banner too; the verdict script\n"
+    "REM REFUSES if the marker file exists (a missing banner = the eval scored 0.0 durations).\n"
+    'findstr /C:"ON: k=%s " scratchpad\\eval_shards\\shard_s0.log >nul 2>&1\n'
+    "if not %%ERRORLEVEL%%==0 (\n"
+    '  echo %%TAG%% EVAL_SHARD_LOG_HAS_NO_PROBE_IMPUTE_BANNER %%DATE%% %%TIME%% >> "%%LOG%%"\n'
+    '  echo probe-impute banner missing from the eval shard log > "%%DIR%%\\EVAL_BANNER_MISSING_R1.txt"\n'
+    ")\n" % R1K)
+
 PIN = ("REM ---- Branch from an INTERMEDIATE w10lf WS checkpoint. Under WSD the stable phase is at constant\n"
        "REM LR, so this IS a shorter-budget run. Default-unset elsewhere.\n"
        "set RWKV_DECAY_FROM_STEP=%WSSTEPS%\n\n")
@@ -136,6 +177,11 @@ def build(mode, arg, ep, dry):
         base = "lfb%d" % round(ws_step / GROUPS)
         what = ("BUDGET-CURVE point: a %g-epoch decay from w10lf_ws_%d (%.2f epochs of WS), 300-user eval"
                 % (ep, ws_step, ws_step / GROUPS))
+    elif mode == "r1":
+        ws_step = 109350
+        base = "lfr1e%g" % ep
+        what = ("R1, the IMPUTED PROBE DURATION (RWKV_PROBE_IMPUTE_K=%s): a %g-epoch decay from w10lf_ws_109350, "
+                "full VAL-half eval; CONTROL = the plain twin at %g epochs" % (R1K, ep, ep))
     else:
         ws_step = 109350
         base = "lfd%g" % ep
@@ -170,7 +216,9 @@ def build(mode, arg, ep, dry):
     if body.count(a) != 1:
         sys.exit("REFUSING: the KD_ALPHA anchor is not unique")
     body = body.replace(a, a + "\nREM ---- THE LEVER: the query-row clock-leak fix, in decay, validation and eval ----\n"
-                        "set RWKV_CLOCK_AT_PREV_ANSWER=%s\n" % T)
+                        "set RWKV_CLOCK_AT_PREV_ANSWER=%s\n"
+                        "REM ---- THE FINAL INPUT LAYOUT (w10lf's): 6 duplicate columns out, 103 inputs ----\n"
+                        "set RWKV_FINAL_LAYOUT=1\n" % T + (R1_LEVER if mode == "r1" else ""))
     if mode == "budget":
         a = 'if not exist "%DIR%" mkdir "%DIR%"'
         if body.count(a) != 1:
@@ -184,10 +232,16 @@ def build(mode, arg, ep, dry):
     if body.count(a) != 1:
         sys.exit("REFUSING: the KD-absent anchor is not unique")
     body = body.replace(a, guard("decay_%STAMP%.log", 56, 57, "DECAY") + a)
+    if mode == "r1":
+        # AFTER the checkpoint gate, so that gate stays within preflight's 40-line window of the training call
+        a = 'echo %TAG% DECAY_OK %TIME% >> "%LOG%"\n'
+        if body.count(a) != 1:
+            sys.exit("REFUSING: the DECAY_OK anchor is not unique")
+        body = body.replace(a, r1_guard("decay_%STAMP%.log", 58, 59, "DECAY") + a)
     a = 'echo %TAG% EVAL_OK %TIME% >> "%LOG%"\n'
     if body.count(a) != 1:
         sys.exit("REFUSING: the EVAL_OK anchor is not unique")
-    body = body.replace(a, a + EVAL_POSTCHECK)
+    body = body.replace(a, a + EVAL_POSTCHECK + (R1_EVAL_POSTCHECK if mode == "r1" else ""))
     return tag, header(tag, what, dry) + body, steps, ws_step
 
 
@@ -206,17 +260,20 @@ def check(tag, out, mode, steps, ws_step, dry):
     diff = {k: (v, e.get(k)) for k, v in e_a1.items() if e.get(k) != v}
     if diff:
         sys.exit(f"REFUSING ({tag}): env differs from arm 1: {diff}")
-    want_extra = {"RWKV_CLOCK_AT_PREV_ANSWER"} | ({"RWKV_DECAY_FROM_STEP"} if mode == "budget" else set())
+    want_extra = ({"RWKV_CLOCK_AT_PREV_ANSWER", "RWKV_FINAL_LAYOUT"} | ({"RWKV_DECAY_FROM_STEP"} if mode == "budget" else set())
+                  | ({"RWKV_PROBE_IMPUTE_K"} if mode == "r1" else set()))
     extra = set(e) - set(e_a1)
     if extra != want_extra:
         sys.exit(f"REFUSING ({tag}): extra env {sorted(extra)}, want {sorted(want_extra)}")
     lf_decay = {k: v for k, v in e_lf.items() if k != "RWKV_RESUME_SKIP_GROUPS"}
-    d2 = {k: (v, e.get(k)) for k, v in lf_decay.items() if k in e_a1 or k == "RWKV_CLOCK_AT_PREV_ANSWER"
+    d2 = {k: (v, e.get(k)) for k, v in lf_decay.items() if k in e_a1 or k in ("RWKV_CLOCK_AT_PREV_ANSWER", "RWKV_FINAL_LAYOUT")
           if e.get(k) != v}
     if d2:
         sys.exit(f"REFUSING ({tag}): env differs from w10lf's runner: {d2}")
     if e["RWKV_CLOCK_AT_PREV_ANSWER"] != T:
         sys.exit("REFUSING: the lever has the wrong value")
+    if e.get("RWKV_FINAL_LAYOUT") != "1" or e_lf.get("RWKV_FINAL_LAYOUT") != "1":
+        sys.exit(f"REFUSING ({tag}): the final layout is not on here AND in w10lf's runner")
     if code.index("set RWKV_CLOCK_AT_PREV_ANSWER=") > code.index("rwkv.train_rwkv"):
         sys.exit("REFUSING: the lever is set after training starts")
     for need in ("scratchpad/write_decay_setup.py scratchpad/w10lf w10lf_ws %s_d" % tag,
@@ -226,6 +283,12 @@ def check(tag, out, mode, steps, ws_step, dry):
             sys.exit(f"REFUSING ({tag}): missing {need!r}")
     if (mode == "budget") != ("set RWKV_DECAY_FROM_STEP=%WSSTEPS%" in code):
         sys.exit(f"REFUSING ({tag}): the WS-step pin is present iff budget mode")
+    r1_bits = ("set RWKV_PROBE_IMPUTE_K=%s\n" % R1K in code, 'findstr /C:"ON: k=%s " "%%DIR%%\\decay_%%STAMP%%.log"' % R1K in code,
+               'findstr /C:"k=%s chunks 1 query rows"' % R1K in code, "EVAL_BANNER_MISSING_R1.txt" in code)
+    if any(r1_bits) != (mode == "r1") or (mode == "r1" and not all(r1_bits)):
+        sys.exit(f"REFUSING ({tag}): the R1 lever, its two decay guards and its eval post-check must ALL be present iff r1 mode: {r1_bits}")
+    if mode == "r1" and code.index("set RWKV_PROBE_IMPUTE_K=") > code.index("rwkv.train_rwkv"):
+        sys.exit("REFUSING: the R1 lever is set after training starts")
     codes = re.findall(r"echo DONE_EXIT_(\d+) ", out)
     if len(codes) != len(set(codes)):
         sys.exit(f"REFUSING ({tag}): duplicate exit codes {sorted(int(c) for c in codes)}")
@@ -235,11 +298,14 @@ def check(tag, out, mode, steps, ws_step, dry):
 
 
 def main():
-    if len(sys.argv) < 3 or sys.argv[1] not in ("budget", "decay"):
+    if len(sys.argv) < 3 or sys.argv[1] not in ("budget", "decay", "r1"):
         raise SystemExit(__doc__)
     mode, arg = sys.argv[1], sys.argv[2]
     if mode == "budget":
         ep = float(sys.argv[3]) if len(sys.argv) > 3 else 2.0
+    elif mode == "r1":
+        ep = float(arg)
+        assert ep in (1.0, 2.0, 3.0), "R1 runs at L*, one of 1, 2, 3"
     else:
         ep = float(arg)
         assert 0.25 <= ep <= 6.0 and ep != 2.0, "decay epochs outside range, or 2.0 (that is w10lf itself)"

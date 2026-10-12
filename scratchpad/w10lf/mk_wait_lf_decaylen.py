@@ -22,7 +22,12 @@ import os
 
 B = chr(92)
 R = "C:" + B + "Users" + B + "Andrew" + B + "rwkv-anki-autoresearch"
-OUT = "scratchpad/lfd3/wait_lf_then_decaylen.cmd"
+import sys
+# 2026-09-13: optional argv[1] = the log to poll instead of the w10lf waiter's (the second-review ablation
+# waiter, scratchpad/ablate_cf/wait_fr.log, which forwards w10lf's marker verbatim); the output is then the
+# v2 file, and the banner names the new upstream. Same WLOG either way (link G polls it; "armed" lines only).
+PREV_OVERRIDE = sys.argv[1] if len(sys.argv) > 1 else ""
+OUT = "scratchpad/lfd3/wait_lf_then_decaylen_v2.cmd" if PREV_OVERRIDE else "scratchpad/lfd3/wait_lf_then_decaylen.cmd"
 
 DRY = r"""
 call %R%{B}scratchpad{B}{T}dry{B}run_{T}dry.cmd
@@ -111,6 +116,12 @@ os.chdir(R)
 d3 = DRY.replace("{T}", "lfd3").replace("{C1}", "164").replace("{C2}", "165").replace("{C3}", "166")
 d1 = DRY.replace("{T}", "lfd1").replace("{C1}", "167").replace("{C2}", "168").replace("{C3}", "169")
 out = T.replace("{DRY_LFD3}", d3).replace("{DRY_LFD1}", d1).replace("{R}", R).replace("{B}", B)
+if PREV_OVERRIDE:
+    old_prev = "set PREV=" + R + B + "scratchpad" + B + "w10lf" + B + "wait_lf2.log\n"
+    old_ban = "echo ===== leak-free decay-length waiter armed on the w10lf waiter %DATE% %TIME% ===== >> \"%WLOG%\"\n"
+    assert out.count(old_prev) == 1 and out.count(old_ban) == 1, (out.count(old_prev), out.count(old_ban))
+    out = out.replace(old_prev, "set PREV=" + PREV_OVERRIDE.replace("/", B) + "\n").replace(
+        old_ban, "echo ===== leak-free decay-length waiter v2 armed on the second-review ablation waiter %DATE% %TIME% ===== >> \"%WLOG%\"\n")
 assert "{" not in out and "}" not in out
 codes = [l.split()[1] for l in out.splitlines() if l.strip().startswith("echo DONE_EXIT_")]
 assert len(codes) == len(set(codes)), codes

@@ -12,13 +12,13 @@ REM
 REM 1. IT WAITS FOR featB TO FINISH, not for the eval db. The first version waited on the
 REM    eval-db build, and I assumed the train build queued after it would take 2.5 h. It took
 REM    50 min. So this eval and featA2 landed on the GPU together at 11,991 of 12,282 MiB and
-REM    featA2 managed 2 steps in 48 minutes -- the WDDM paging deadlock CLAUDE.md records as
+REM    featA2 managed 2 steps in 48 minutes -- the WDDM paging deadlock AGENTS.md records as
 REM    costing 2.7 h once before. Never gate a job on a GUESS about another job's duration;
 REM    gate it on that job's terminal marker.
 REM
 REM 2. IT DOES NOT DELETE THE RESULT JSONLS. eval_sharded SKIPS users already present, so a
 REM    relaunch only re-risks the remainder. 455 users were banked before the kill and deleting
-REM    them would throw away ~30 min of GPU for nothing. CLAUDE.md states this rule outright.
+REM    them would throw away ~30 min of GPU for nothing. AGENTS.md states this rule outright.
 REM
 REM Nothing is retrained. Same checkpoint, same users 5001-7500, same label filter, same fetch
 REM settings as featA's eval -- only the db and the output names differ.

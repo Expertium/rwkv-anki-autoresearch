@@ -17,7 +17,7 @@ known-correct answer that does not depend on believing the new code:
       must be IDENTICAL between the two placements (a placement change must not strand a
       parameter -- that would be a silent capacity change masquerading as a schedule change).
 
-Plus the scripted-compile check that CLAUDE.md requires: eval runs with JIT ON, so a smoke
+Plus the scripted-compile check that AGENTS.md requires: eval runs with JIT ON, so a smoke
 that only tests eager cannot certify the path that scores the model. Run as a subprocess per
 env combination, because old-style ScriptModule bakes the first construction's flags.
 

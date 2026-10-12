@@ -16,7 +16,7 @@ the in-chunk first occurrence, so it is ELIGIBLE as a probe target, yet it got n
 
 WHY IT WOULD BE NEW IN THE -id PIPELINE. `build_parquet_id.py` recomputes elapsed_days from the
 CORRECTED show-time, and the frame is sorted by review_time only afterwards, so the correction can
-REORDER two adjacent reviews of one card (CLAUDE.md records this as the origin of the NaN landmine).
+REORDER two adjacent reviews of one card (AGENTS.md records this as the origin of the NaN landmine).
 A reorder can leave the -1 on a row that is no longer first in time order -- or produce two.
 
 This script counts, per card, how many rows carry elapsed_days == -1, on BOTH datasets, and reports

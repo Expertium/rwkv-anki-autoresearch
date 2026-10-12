@@ -98,7 +98,7 @@ cannot see that failure. If it is ever wanted, clear every N steps rather than n
 4. **`aten::fill_` 7,227 calls / 34 ms** — a lot of zeroing for a 558k-param model; worth finding
    out what allocates-and-zeros that often.
 5. **QAT-JIT — RUN 2026-07-27. Numerics settled; the SPEEDUP IS NOT REAL. ⚠ corrects the
-   "~1.38x, worth ~1.5 days of the 10x run" claim in CLAUDE.md.**
+   "~1.38x, worth ~1.5 days of the 10x run" claim in AGENTS.md.**
    `scratchpad/qat_jit/` — 3 arms x 90 steps, warm-started from the iter-31 champion under the
    full q72u QAT env, with a NULL CONTROL (two runs at identical flags).
 

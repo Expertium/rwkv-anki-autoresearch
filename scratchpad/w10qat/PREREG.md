@@ -50,7 +50,7 @@ catalogs (2026-08-15); and the QAT phase is twice as long (2 vs 1 epoch) -- but 
 by ~0.37 epochs.
 
 * **tax ahead < +0.0015** -- the budget SHRINKS the tax: a better-trained model is more robust to
-  quantization, and the deploy picture is better than the arithmetic in CLAUDE.md assumed.
+  quantization, and the deploy picture is better than the arithmetic in AGENTS.md assumed.
 * **+0.0015 .. +0.0030** -- unchanged within tolerance; the 1.25-ep tax transfers, and the
   QAT-tax retry attacks the same terms it did then.
 * **tax ahead > +0.0030** -- the budget GROWS the tax, the QAT tax becomes the largest lever left,
