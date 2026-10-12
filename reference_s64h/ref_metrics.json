@@ -1,0 +1,36 @@
+{
+  "model": "s64hc10_d_10935.pth",
+  "arch_module": "scratchpad/shrink/architecture_s64h.py",
+  "mode": "RNN eval (dropout off), float32",
+  "seed_scheme": "torch.manual_seed(user_id) per user (id-encodings only)",
+  "users": [
+    107,
+    136,
+    156
+  ],
+  "per_user": [
+    {
+      "user": 107,
+      "size": 3465,
+      "imm_logloss": 0.216756,
+      "ahead_logloss": 0.286614
+    },
+    {
+      "user": 136,
+      "size": 3865,
+      "imm_logloss": 0.106275,
+      "ahead_logloss": 0.139024
+    },
+    {
+      "user": 156,
+      "size": 3690,
+      "imm_logloss": 0.269003,
+      "ahead_logloss": 0.283114
+    }
+  ],
+  "mean_imm_logloss": 0.197345,
+  "mean_ahead_logloss": 0.236251,
+  "tolerance": 0.0005,
+  "note": "Rust RNN port must match mean_*_logloss within +/-tolerance.",
+  "clock_at_prev_answer_s": 1800.0
+}
