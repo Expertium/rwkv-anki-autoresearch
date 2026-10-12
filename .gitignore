@@ -224,3 +224,27 @@ scratchpad/gpu_cold_last.txt
 scratchpad/eval_shards/shard_*.toml
 reference_s64h/rust_pred_*.json
 reference_s64h/weight_names.json
+# Local experiment artifacts and per-user derived data.
+*.pth
+*.log
+*.npz
+*.npy
+*.safetensors
+scratchpad/auc_check/
+scratchpad/rowtables/
+scratchpad/newcards/
+scratchpad/d128e10/
+scratchpad/d128e10dry/
+scratchpad/wtlr*/
+scratchpad/s64hpar/corpus_s64h/
+scratchpad/s64hrefine/ptq/dfl_rvq4*/
+scratchpad/ablate_cf/rows_ctl/
+scratchpad/ablate_cf/rows_abl/
+scratchpad/r2/rows_pbs64/
+scratchpad/pqcap/tmp/
+scratchpad/pqcap/golden_live.pt
+scratchpad/w10qat/corpus/
+scratchpad/wstune/old_rf10/
+scratchpad/wtlr2dry_v1_nowsonly/
+reference_s64h/rust_pred_*.json
+reference_s64h/weight_names.json
