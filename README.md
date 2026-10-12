@@ -1,10 +1,5 @@
 # rwkv-anki-autoresearch
 
-## I WILL NOT BE WORKING ON THIS PROJECT ANYMORE.
-Sadly, I am unable to continue working on improving RWKV. If anyone wants to, feel free to use this messy repo as a starting point for your own research.
-
----
-
 A small **RWKV-7 neural network for Anki spaced-repetition scheduling**, on the path to
 running **CPU-only, inference-only, quantized inside Anki**. See [`CLAUDE.md`](CLAUDE.md)
 for the full goal, roadmap, and baseline numbers.
