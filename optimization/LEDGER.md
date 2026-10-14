@@ -15,6 +15,7 @@ rows referenced.
 | # | change | ahead | imm | measured as |
 |---|---|---|---|---|
 | 1 | Our training recipe at the SAME d=128 arch (1.25 epochs, augmentation off, MAX 32768, peak LR 1e-3, warmup 200) | +0.0037 | +0.0043 | A0 vs the upstream weights |
+
 | 2 | Smaller model: 2.76 M -> 558 k params (4.95x), the width ladder | +0.0010 | +0.0005 | A18 vs A0 |
 | 3 | PAVA + GRU head (N=3) + Muon | -0.0004 | -0.0008 | iter 31 vs A18 |
 | 4 | Distillation from the d=128 teacher | -0.0006 | -0.0004 | iter 32 vs iter 31 (removed again in row 8) |
@@ -74,3 +75,14 @@ rectified metric (A18 unrectified vs rectified). (c) The gen-4/5 rows (11-14) ar
 set of reviews with n = 2,499 (user 6701 excluded), against a yardstick scored on the published set; row 11
 is that basis shift. Pending rows: the leak-free QAT arms and the b13 (the decay-length pair landed as row 14b; the card grafts lfcmf2 / lflora16 both came back NULL on 2026-09-16/17, so no row: the shipped base is unchanged)
 bits (row 15), phase-5 tuning of the QAT decay. (w10lf landed 2026-09-14 and completed row 14.)
+
+
+## Non-telescoping diagnostic (2026-10-14)
+
+`d128e10` tested the d=128 architecture at 10+2 epochs. On the `-id5` VAL half, 2,279 users scored: ahead 0.296280 / RMSE(bins) 0.057933; imm 0.261156 / RMSE(bins) 0.034402. There were 220 OOM-skipped users; 6701 was excluded by design. Do not add this as a telescoping delta: against published `base5k`, 1,955 of the 2,279 overlapping users have unequal scored-review counts because the label-filter databases differ. See `GPU_RUN_BOARD.md` for the full caveat and next-work order.
+
+
+
+## Training speed diagnostic (2026-10-14)
+
+Five-step CPU/CUDA profile of the `s64hc10` WS path, at steps 150-154, with `RWKV_EMPTY_CACHE_EVERY=1` and `RWKV_VRAM_CAP_GB=11`: GPU kernel time 840.75 ms/step (81.64% elementwise/reduce/copy/optimizer, 14.82% WKV recurrence, 3.44% GEMM). The CPU-side profiler reported 311.6 `cudaFree` calls/step at 190 ms, 412.4 `cudaStreamSynchronize` calls at 122 ms, and 16,818 CUDA launches at 120 ms. A representative 9.6 MB pageable batch transfer took 3.78 ms synchronous; separate pageable copies took 4.04 ms. This does not justify copy-stream staging. Keep `RWKV_EMPTY_CACHE_EVERY=1`; investigate the `cudaFree` profile separately before considering allocator changes. Full trace: `scratchpad/dispatch/profile_s64/profile.log`.

@@ -1048,7 +1048,7 @@ whether that still holds at +0.006/+0.0085 is exactly what cells 2 and 3 measure
 ## DEPLOY STATE BUDGET ON THE CURRENT TRUNK — bits/card, bits/note, and who actually has state
 (Andrew asked both questions 2026-08-12)
 
-**PER-ENTITY COST: card = 185 bits (23.1 B), note = 105 bits (13.1 B).**
+**CURRENT PER-ENTITY COST: card = 403 bits (50.4 B), note = 214 bits (26.8 B).** Andrew raised the maximum note-state budget to **400 bits** on 2026-10-14. The card-state budget remains **450 bits**. Earlier rungs below describe the starting point for the refinement runs, not the current deployed state.
 
 | stream | layers | WKV | shift | total |
 |---|---|---|---|---|
@@ -1111,15 +1111,13 @@ sizing argument that starts from collection counts targets the wrong users entir
 Churn is dataset-wide: **10% of users have MORE reviewed card_ids than collection rows** (p90 ratio
 2.50); reviewed-but-deleted cards median 569/user, mean 3,245, max 231,547.
 
-**Deploy footprint at 185 b/card + 105 b/note:**
+**Historical footprint at 185 b/card + 105 b/note (not the current recipe):**
 
 | | mean | median | p90 | p99 | max |
 |---|---|---|---|---|---|
 | KB/user | 284.9 | **146.1** | 718.8 | 1,765.4 | **5,678.6** |
 
-⚠ The max assumes state is NEVER pruned. In a real Anki deployment a deleted card's state would go
-with the card, so 5.68 MB is an upper bound and uid 8902's is largely historical. The honest planning
-numbers are the median (146 KB) and p99 (1.77 MB).
+This estimate predates the 403-bit card / 214-bit note recipe. The max assumes state is NEVER pruned. In a real Anki deployment a deleted card's state would go with the card, so 5.68 MB is an upper bound and uid 8902's is largely historical. Recompute the footprint before using it for the current recipe.
 
 ### ★ THE QAT WALL-CLOCK TAX AT d=80, MEASURED: 3.8x, not 1.7x and certainly not +13%
 Measured 2026-08-12 on the running qtaxc_m2b12 decay (60 steps in 180 s with the CPU otherwise

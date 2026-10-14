@@ -453,6 +453,22 @@ launch overhead against a measured 26%, and graphs lose. That inverts the plan's
 for the second time, and on the same principle each time: the number that justified them was never
 measured against the configuration we actually run.
 
+
+### Upstream cross-check: architecture-agnostic speedups (2026-10-13)
+
+Reviewed upstream main at `17ec8db29f2f9eaaed54137182efc86181aaa5e1`. The new commit mainly adds a GPU optimization idea ledger; it does not add a newly measured training speedup. Its 2026-10-12 RTX 5080 fixed-shape benchmark reports CUDA Graphs alone at 45,909 reviews/s for the default model. Graphs plus fused casts/copies reached 47,728 reviews/s, +12.6% over two controls. For Expertium, graphs plus packed GPU feature preparation reached 87,153 reviews/s, +28.7%. These are repeated-window results, not full-history results. The graph test captured one fixed shape; full histories need a bounded graph cache or shape buckets.
+
+**Architecture-agnostic options reviewed:**
+
+- **CUDA Graphs:** The forward/loss/backward capture is generic in principle. It is not ready here. Our batches change per-stream split shapes, custom WKV calls need capture checks, and `RWKV_EMPTY_CACHE_EVERY=1` is a measured 26% win that may conflict with stable graph memory. The upstream adapter targets one shape and rewrites its own model loss; do not port it directly.
+- **Copy-stream prefetch (upstream F04 follow-up):** A newer upstream system-side scout reports only 8.8 ms overlapped out of 2,102 ms of copies, about 4.5% of training time. It proposes double-buffered device storage and a dedicated copy stream for the next update. This is architecture-agnostic in principle, but needs stable buffer ownership, event ordering, and memory headroom. Consider it after the current queued runs, subject to a simple two-batch overlap smoke and full parity check.
+- **Persistent fused recurrence, GPU feature packing, and packed device-resident review streams:** These depend on specific model width, WKV dimensions, or feature data layout. They are excluded under Andrew's architecture-agnostic-only rule.
+- **Allocator options, PDL, WDDM flush policy, and L2 access windows:** The latest scout lists them as unmeasured proposals, not demonstrated wins. No code change is justified yet. The foreach parameter copies and gradient transfers are already implemented here. Upstream's fused AdamW and alternate RWKV tile sizes showed little complete-pipeline benefit.
+
+**Decision:** do not change the active runner. After d128e10 evaluation and the queued WS trials finish, first profile whether input copies or host dispatch are still material. Then test copy-stream prefetch if copies remain on the critical path. Consider graph capture only if the profile shows launch gaps and graph capture works with `empty_cache=1`. Every candidate must preserve training inputs, labels, update order, and model outputs where exactness is claimed. Measure wall time, peak reserved VRAM, skipped batches, and validation loss against a paired control. Keep `empty_cache=1` unless a paired result proves an overall speed gain without OOMs.
+
+Sources: upstream `docs/GPU_OPTIMIZATION_HISTORY.md`, `docs/IDEA_SCOUTING.md`, and `docs/GPU_OPTIMIZATIONS.md` at commit `17ec8db29f2f9eaaed54137182efc86181aaa5e1`.
+
 ## 2026-09-20 -- `RWKV_QAT_NO_MEMFILL` is BIT-IDENTICAL and NOT FASTER (measured on the rented 4090)
 
 The flag turns off `torch.utils.deterministic.fill_uninitialized_memory`, deterministic mode's NaN-fill of every

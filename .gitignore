@@ -230,6 +230,14 @@ reference_s64h/weight_names.json
 *.npz
 *.npy
 *.safetensors
+!reference/pq_cb_*.txt
+!reference/pq_cb_wkv_*.txt
+!reference/pq_cb_shift_*.txt
+reference/pq_cb_shift_c80_m5b12.txt
+reference/pq_cb_shift_s64h_m2b12.txt
+reference/pq_cb_shift_w10lf_m2b12.txt
+reference/pq_cb_wkv_w10lf_b13.txt
+reference/pq_cb_wkv_w10lf_rvq2b14.txt
 scratchpad/auc_check/
 scratchpad/rowtables/
 scratchpad/newcards/
@@ -248,3 +256,6 @@ scratchpad/wstune/old_rf10/
 scratchpad/wtlr2dry_v1_nowsonly/
 reference_s64h/rust_pred_*.json
 reference_s64h/weight_names.json
+
+scratchpad/context_heartbeat_state.json
+scratchpad/context_heartbeat.log

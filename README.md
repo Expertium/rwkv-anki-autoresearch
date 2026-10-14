@@ -2,7 +2,7 @@
 
 A small **RWKV-7 neural network for Anki spaced-repetition scheduling**, on the path to
 running **CPU-only, inference-only, quantized inside Anki**. See [`AGENTS.md`](AGENTS.md)
-for the project guidance, roadmap, and baseline numbers.
+for the active project rules and [`PROJECT_MAP.md`](PROJECT_MAP.md) for the repository layout.
 
 This repo vendors the RWKV model + data pipeline from
 [`open-spaced-repetition/srs-benchmark`](https://github.com/open-spaced-repetition/srs-benchmark)
