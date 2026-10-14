@@ -40,34 +40,34 @@ Andrew's concern is reasonable. The measured 1+1 to 10+1 and 1+1 to 10+2 changes
 
 | Parameters | Architecture | Training budget | Ahead LogLoss | Imm LogLoss | Result |
 |---:|---|---:|---:|---:|---|
-| 332,922 | d=64 | 1 WS + 1 decay epoch | 0.297939 | 0.264325 | `s64h` |
-| 332,922 | d=64 | 10 WS + 1 decay epoch | 0.296755 | 0.262865 | `s64hc10` |
-| 561,732 | d=80 | 1 WS + 1 decay epoch | 0.297649 | 0.263827 | `s80`, rented 4090 |
-| 561,732 | d=80 | 10 WS + 2 decay epochs | 0.296993 | 0.262388 | `w10lf` |
-| 2,575,766 | d=128 | 10 WS + 2 decay epochs | 0.296280 | 0.261156 | `d128e10`; 220 users outside this common cohort were OOM-skipped |
+| 332,922 | d=64 | 1 WS + 1 decay epoch | 0.2979 | 0.2643 | `s64h` |
+| 332,922 | d=64 | 10 WS + 1 decay epoch | 0.2968 | 0.2629 | `s64hc10` |
+| 561,732 | d=80 | 1 WS + 1 decay epoch | 0.2976 | 0.2638 | `s80`, rented 4090 |
+| 561,732 | d=80 | 10 WS + 2 decay epochs | 0.2970 | 0.2624 | `w10lf` |
+| 2,575,766 | d=128 | 10 WS + 2 decay epochs | 0.2963 | 0.2612 | `d128e10`; 220 users outside this common cohort were OOM-skipped |
 
 All means use these same 2,279 users. Every pair also has identical per-user equalized review counts. Positive gains below mean that the later or larger model scored lower.
 
 | Matched comparison | Ahead gain | Imm gain | Interpretation |
 |---|---:|---:|---|
-| d=64: 1+1 to 10+1 | +0.001184 | +0.001461 | At 333k parameters, the longer recipe helped. 74.6% improved ahead; 91.6% improved imm. |
-| d=80: 1+1 to 10+2 | +0.000656 | +0.001439 | Same-size recipe comparison. 69.6% improved ahead; 91.6% improved imm. The WS and decay both changed; the short run used another GPU. |
-| d=128 versus d=80, both 10+2 | +0.000713 | +0.001231 | The 4.59x larger model did better, but the d=128 run used half the maximum sequence length and twice as many optimizer steps per epoch. This is not a pure parameter effect. |
+| d=64: 1+1 to 10+1 | +0.0012 | +0.0015 | At 333k parameters, the longer recipe helped. 74.6% improved ahead; 91.6% improved imm. |
+| d=80: 1+1 to 10+2 | +0.0007 | +0.0014 | Same-size recipe comparison. 69.6% improved ahead; 91.6% improved imm. The WS and decay both changed; the short run used another GPU. |
+| d=128 versus d=80, both 10+2 | +0.0007 | +0.0012 | The 4.59x larger model did better, but the d=128 run used half the maximum sequence length and twice as many optimizer steps per epoch. This is not a pure parameter effect. |
 
 ### What this says about the current 333k model
 
-At 333k parameters, the measured 1+1 to 10+1 comparison improved LogLoss by **0.00118 ahead** and **0.00146 imm**. This is a strong user-paired gain. It measures a combined WS-and-decay recipe change, not the effect of WS epochs alone.
+At 333k parameters, the measured 1+1 to 10+1 comparison improved LogLoss by **0.0012 ahead** and **0.0015 imm**. This is a strong user-paired gain. It measures a combined WS-and-decay recipe change, not the effect of WS epochs alone.
 
-The 562k comparison shows a similar pattern: 1+1 to 10+2 improved by **0.00066 ahead** and **0.00144 imm**. These results support longer training as a useful path for full-precision models in this size range. But they do **not** show that 10 more epochs will produce another 0.0012–0.0015 gain. We have measured one budget jump at each size. The WS and decay budgets changed together. So **more training is viable for improving the 333k model, but the remaining benefit is unknown.**
+The 562k comparison shows a similar pattern: 1+1 to 10+2 improved by **0.0007 ahead** and **0.0014 imm**. These results support longer training as a useful path for full-precision models in this size range. But they do **not** show that 10 more epochs will produce another 0.0012–0.0015 gain. We have measured one budget jump at each size. The WS and decay budgets changed together. So **more training is viable for improving the 333k model, but the remaining benefit is unknown.**
 
-The 333k model has only been measured through 10+1. We have no evidence yet for 20+1, or for quantized training at the same 10+1 budget. The current quantized deploy score is a 10+1 plain run followed by a 1-epoch QAT decay; it is not the same model as a 10+2 QAT run. Longer plain training may improve the 333k model, but it is not yet proven to close the deploy-model gap. The active Muon-ratio trials test settings at 10+1. Use those results before funding a longer WS. On the common cohort, `s64hc10` is about +0.00291 ahead and +0.00113 imm above the old d=128 reference. Review-set alignment with the published reference still needs care.
+The 333k model has only been measured through 10+1. We have no evidence yet for 20+1, or for quantized training at the same 10+1 budget. The current quantized deploy score is a 10+1 plain run followed by a 1-epoch QAT decay; it is not the same model as a 10+2 QAT run. Longer plain training may improve the 333k model, but it is not yet proven to close the deploy-model gap. The active Muon-ratio trials test settings at 10+1. Use those results before funding a longer WS. On the common cohort, `s64hc10` is about +0.0029 ahead and +0.0011 imm above the old d=128 reference. Review-set alignment with the published reference still needs care.
 
-The d128e10 result does not say that parameters have little value: on 2,279 identical users, it improves over d=80 by 0.00071 ahead and 0.00123 imm. But it costs 4.59x the parameters, and its batch/step schedule differs. The 300-user 1+2 cells that would separate the size and epoch effects were not completed. So the data supports **a real but modest size benefit at 10+2**, not a clean estimate of benefit per parameter.
+The d128e10 result does not say that parameters have little value: on 2,279 identical users, it improves over d=80 by 0.0007 ahead and 0.0012 imm. But it costs 4.59x the parameters, and its batch/step schedule differs. The 300-user 1+2 cells that would separate the size and epoch effects were not completed. So the data supports **a real but modest size benefit at 10+2**, not a clean estimate of benefit per parameter.
 
 ## Current position
 
-The current quantized model is `s64hqr4b`. Its VAL-half scores are **0.299369 ahead** and
-**0.267496 imm**. The old d=128 reference scores **0.294612 ahead** and **0.263561 imm**.
+The current quantized model is `s64hqr4b`. Its VAL-half scores are **0.2994 ahead** and
+**0.2675 imm**. The old d=128 reference scores **0.2946 ahead** and **0.2636 imm**.
 The remaining gaps are about **0.0048 ahead** and **0.0039 imm**.
 
 The current card state uses 403 bits. The current note state uses 214 bits.
@@ -78,6 +78,6 @@ More WKV stages helped, but five stages did not reach the reference scores. The 
 range and the 2-bit norm both failed to improve QAT. The QAT catalog-LR and decay-LR tests also
 found the current LR is better than either tested change.
 
-The d=128, 10+2 scaling diagnostic (`d128e10`) completed with ahead LogLoss **0.296280** and imm LogLoss **0.261156** across 2,279 scored users. It used the `-id5` review filter. Its means are not directly comparable with the published `base5k` results: 1,955 of the 2,279 overlapping users have different scored-review counts. The baseline was not rebuilt on `label_filter_db_id_e2s`.
+The d=128, 10+2 scaling diagnostic (`d128e10`) completed with ahead LogLoss **0.2963** and imm LogLoss **0.2612** across 2,279 scored users. It used the `-id5` review filter. Its means are not directly comparable with the published `base5k` results: 1,955 of the 2,279 overlapping users have different scored-review counts. The baseline was not rebuilt on `label_filter_db_id_e2s`.
 
 The `wtmuon0p5` trial is running. The `wtmuon2` and `wtwarmup2000` trials follow it. Preserve `RWKV_EMPTY_CACHE_EVERY=1` and the 11 GiB VRAM cap. See `GPU_RUN_BOARD.md` for the current queue.
