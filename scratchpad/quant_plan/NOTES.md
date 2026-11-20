@@ -74,6 +74,14 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-20 23:15 - **Row 5 (`l1i4`, 512/1,536 bits) scored: +0.001050 ahead / +0.001682 imm** against
+  the 124-step control (0.334852/0.307894, ub95 +0.001164/+0.001841, p 2e-63/3.1e-75) = **2.1x/3.4x over**
+  the +0.0005 ceiling. Halving row 4's bits roughly doubles the tax, so the bits-vs-tax curve is steep at
+  the bottom. The run itself was clean (2 saves at 50/124; in-run validations 0.3850/0.3768 then
+  0.3773/0.3681; 160 groups; `[QAT-LOWRANK] rank1/fq7.0` + `QAT-SHIFT 7.0`, i.e. int4 confirmed;
+  peak_reserved 5.604 GB). `it36qatsmall` then moved on to `l1i4s2` (384/1,152 bits; smoke rc=0 at
+  23:14:57), then `l1i2` (256/768), then `l1i8` at 496 steps.
+
 * 2026-11-20 22:52 - **PUSHED TO GITHUB.** Commit `69121550` ("Document the card/note state-quantization
   arm, gated on the identical unquantized twin") is on `origin/main` (`git ls-remote` confirms it): 421
   files, 21,889 insertions - the arm's runners, `RESULTS.md`/`NOTES.md`, the board and research-log
