@@ -74,6 +74,16 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 00:14 - **Row 7 (`l1i2`, 256/768 bits, int2 factors + int2 shifts) = +0.003604 ahead /
+  +0.004932 imm** (0.337406/0.311143, ub95 +0.003871/+0.005296, p 9.7e-93/1.8e-93) = **7.2x/9.9x over**
+  the ceiling. That closes the bit ladder and the curve is convex: 1,024/3,072 -> +0.000503/+0.001009,
+  512/1,536 -> +0.001050/+0.001682, 384/1,152 -> +0.001445/+0.002280, 256/768 -> +0.003604/+0.004932.
+  So int2 factors are past the knee and rows 5-6 are the frontier of the axis-1 trade-off. The run was
+  clean (`rank1/fq1.0` int2 factors + shift qmax 1.0, 160 groups, in-run validations 0.3869/0.3790 then
+  0.3816/0.3721, peak reserved 5.604 GB). `it36qatsmall` then started its last point, `l1i8` at 496 steps
+  (smoke rc=0 at 00:12:32); the second chain's `l1i2`@496 guard (+0.0025) will therefore skip that
+  point, which is what it was written for.
+
 * 2026-11-21 00:00 - **Row 6 (`l1i4s2`, 384/1,152 bits) = +0.001445 ahead / +0.002280 imm** against the
   124-step control (0.335247/0.308491, ub95 +0.001592/+0.002464, p 3.0e-66/1.9e-88), i.e. 2.9x/4.6x over
   the ceiling. Taking the token shifts from int4 to int2 costs +0.000395/+0.000598 on its own, so the

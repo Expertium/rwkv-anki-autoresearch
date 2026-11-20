@@ -33,7 +33,7 @@
 - `optimization/GPU_RUN_BOARD.md` - active runs and queue. Read this first before scheduling experiments.
 - `scratchpad/adaptive_wd/NOTES.md` - adaptive-WD lineage, gates, and resume hazards; use the run board for live status.
 - `scratchpad/ta3/NOTES.md` - TA3 (Training-Time Testing) arm: pre-registered endpoints, gate history, epoch plan, monitoring, resume hazards.
-- `scratchpad/quant_plan/RESULTS.md` + `scratchpad/quant_plan/NOTES.md` - card/note state-quantization arm (anchor `iter36`): results table with bit/speed columns, the QAT-vs-PTQ tax decomposition, live status and the queued screening chains.
+- `scratchpad/quant_plan/RESULTS.md` + `scratchpad/quant_plan/NOTES.md` - card/note state-quantization arm (anchor `iter36`): results table with bit/speed columns, the QAT-vs-PTQ tax decomposition, live status and the queued screening chains. **Gate (Andrew, 2026-11-20): the anchor is the run that is identical EXCEPT for quantization**, so deltas are quoted against `qnj_it36ctl` (124-step decay) or `qnj_it36ctl496` (496-step decay), never against the iter36 champion. Screening chains take a lock file (`scratchpad/quant_plan/it36qatsmall*_chain.lock`); delete a stale lock by hand after an outage, and do not add a chain's own script to its busy pattern (the venv `python.exe` is a shim, so one chain shows two processes).
 - `optimization/PROPOSALS.md` - ranked research queue and proposal rules.
 - `optimization/research_5k.md`, `optimization/research_log.jsonl`, `optimization/LEDGER.md` - results and loss changes.
 - `optimization/DEPLOY_FUNCTIONS.md` - Anki deploy contract; `optimization/PROTOCOL.md` - experiment procedure.
