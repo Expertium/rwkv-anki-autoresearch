@@ -1,0 +1,8 @@
+{
+  "ahead": 0.3006089786666667,
+  "imm": 0.2720091453333333,
+  "n": 750,
+  "tag": "qbl_incumbent_a04",
+  "model": "scratchpad\\adaptive_wd\\adaptive_fullrun_92_20261105\\attempt_04_epoch_04_wd_0.01\\adaptive_173416.pth",
+  "users_file": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\roster750_seed20261119.json"
+}

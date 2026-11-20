@@ -1,0 +1,415 @@
+ 
+ 
+ 
+ 
+ 
+ Training-Time Testing 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+
+ 
+ 
+ 
+ All posts 
+ T raining- T ime T esting for Data-Constrained Pretraining
+
+ A meta-gradient through one trial step, computed inside every training step.
+
+ Xingyu Dang · Nov 12, 2026
+
+ arXiv paper and code repository coming soon.
+
+ 
+
+ 
+ 
+
+ 
+ 
+ TL;DR
+
+ Model size and training compute are growing fast, while the supply of pretraining text grows very slowly 1 . Data-constrained pretraining has therefore become an important topic 2 3 . SlowRun 4 turns it into a public benchmark: every entry trains on the same 100M tokens within a fixed time budget and is ranked by validation loss.
+
+ In this work we propose a data-constrained optimization method called Training-Time Testing (T³) . Inside every training step, we split the batch into halves A and Q and compute a meta-gradient through one trial step: take a trial step on A , use Q as a validation set to test the trial model, and send Q ’s gradient back to the original model as the meta-gradient. In practice we use the first-order approximation of the meta-gradient.
+
+ We added T³ to the tuned recipes of Kim et al. 3 and changed none of their hyperparameters. Validation loss drops by 0.012 to 0.015 nats per token at 300M, 600M and 1.4B parameters compared with their tuned baselines. On SlowRun 4 , adding it to the record scripts lowers the loss by 0.0111 on the one-hour track and 0.0119 on the 15-minute track, and T³ scripts hold the current records on both.
+
+ 
+
+ 
+ 
+ The step
+
+ Three lines added to a training step
+
+ A, Q = batch.chunk(2) g_A = grad(loss(A)) + u = unit(g_A[mlp]) + shift(mlp, -eta*u) g_Q = grad(loss(Q)) + shift(mlp, +eta*u) step((g_A + g_Q) / 2) 
+
+ +6%
+ step time at 300M
+
+ 
+ 
+ Pretraining
+
+ Tuned recipes at three model sizes
+
+ 
+
+ −0.0144
+ nats per token at 300M; 8 of 8 seeds improve
+
+ 
+ 
+ Why it works
+
+ Three alternatives that don’t help
+
+ 
+
+ −0.0101
+ 15-minute SlowRun; the three alternatives end above the baseline
+
+ 
+ 
+
+ By the 10th pass over a corpus, the model has seen every token in the batch 9 times. A step computed on those tokens lowers their loss whether the model learned something general or just fit those particular tokens a little tighter, and the next-token-prediction loss on those same tokens does not distinguish the two. T³ splits the batch into halves A and Q , takes a trial step on A , and uses Q ’s gradient at the new weights as feedback. This pulls the update toward weights where a step on one half also helps the other, so the model learns features that generalize beyond the tokens it trained on.
+
+ 
+ 
+ 
+
+ One T³ step. Blue is the half that takes the trial step, orange the half that tests it. 
+ 
+ 
+
+ 
+ The step
+
+ T³ trains for two losses at once: the loss on A at the current weights, and the loss on Q after a trial step on A .
+
+ 
+ 
+ Objective
+
+ J ( θ ) = 1 2 [ L A ( θ ) + L Q ( φ ) ] 
+
+ 
+
+ 
+ where
+
+ φ = θ − η u A , u A = P ∇ L A ( θ ) ‖ P ∇ L A ( θ ) ‖ 
+
+ 
+
+ φ is θ after a trial step with learning rate η downhill on A . P is a mask that selects which modules take part in the meta-gradient.
+
+ 
+
+ This is the objective of MAML (Model-Agnostic Meta-Learning) 5 , with A as its support set and Q as its query set, plus A ’s own loss. The update is the gradient of J . Because φ depends on θ , the chain rule sends Q ’s gradient at φ back through the trial step. That term is the meta-gradient:
+
+ 
+ 
+ Exact step
+
+ g ^ = 1 2 [ ∇ L A ( θ ) + ( ∂ φ ∂ θ ) ⊤ ∇ L Q ( φ ) ] 
+
+ 
+
+ 
+ where
+
+ ∂ φ ∂ θ = I − η ∂ u A ∂ θ 
+
+ 
+
+ The shaded factor is how φ moves when θ moves. It contains the second derivative of A ’s loss, because moving θ changes A ’s gradient and with it the direction of the trial step.
+
+ 
+
+ 
+ T³ steps on two toy loss surfaces
+
+ 
+ 
+
+ 
+ Pause 
+ Trial-step length η 0.80 
+ 
+ Exact First-order 
+ 
+ 
+
+ 
+ downhill on A , read at θ 
+ downhill on Q , read at φ 
+ Q ’s arrow in the other version 
+ the step T³ takes 
+ 
+
+ 
+
+ Figure 1. A drawing. The curves are contour lines of two loss surfaces over two weights, blue for half A and orange for half Q . From θ , the trial step goes a distance η downhill on A and lands on the dotted circle at φ . The strip underneath follows both losses along that step. A ’s loss falls because the trial step comes from A . Half Q tests that trial step. Figure 3 compares the exact and first-order steps in a language model. 
+ 
+ 
+
+ 
+ The first-order approximation
+
+ The shaded factor is expensive. It needs a second backward pass through A ’s gradient, and in our runs a step with it took about 3.5 times as long. First-order MAML 5 sets the factor to the identity, so Q ’s gradient at φ is carried back unchanged. This leaves an ordinary step that accumulates its batch in two halves, with the second gradient computed at the new weights:
+
+ 
+ 
+ Ordinary step
+
+ g ^ = 1 2 [ ∇ L A ( θ ) + ∇ L Q ( θ ) ] 
+
+ 
+
+ 
+ First-order step
+
+ g ^ = 1 2 [ ∇ L A ( θ ) + ∇ L Q ( φ ) ] 
+
+ 
+
+ 
+ where
+
+ φ = θ − η u A , u A = P ∇ L A ( θ ) ‖ P ∇ L A ( θ ) ‖ 
+
+ 
+
+ Hover or tap a line of the code below to find its term here.
+
+ 
+
+ 
+ One T³ step
+
+ A, Q = batch.chunk(2) # two halves of the same shuffled batch g_A = grad(loss(model, A)) # ∇L_A(θ) u = unit(g_A[mlp]) # u_A: norm 1 on the matrices the trial step moves shift(model, mlp, -eta * u) # θ → φ = θ − η·u_A (eta = 0.3) g_Q = grad(loss(model, Q)) # ∇L_Q(φ); no gradient through the shift shift(model, mlp, +eta * u) # back to θ opt.step((g_A + g_Q) / 2) # the recipe's own AdamW or Muon step 
+
+ Figure 2. In this example, the trial step has length 0.3 and moves the MLP matrices in the second half of the layers, mlp
+ in the code. The loss and backward pass are the baseline’s own, and the lines marked + are what T³ adds. 
+ 
+
+ Sometimes we want the trial step to move only some of the weights, and P is the mask that keeps them. The trial step is also normalized, which means φ is always a distance η from θ , however large the gradient is. In practice we use η = 0.3.
+
+ The rest of training is the baseline’s, including the optimizer and its schedule. The only extra work is a normalization, a shift and a restore, so T³ steps take 6% longer at 300M and 1.4B and 9% longer at 600M. A one-hour SlowRun 4 run takes 24 seconds more.
+
+ Nichol, Achiam and Schulman 6 expanded both updates in α to see what dropping the shaded factor loses:
+
+ 
+ 
+ Exact
+
+ g ^ ≈ 1 2 [ ∇ L A + ∇ L Q ] − α 2 ∇ ⟨ ∇ L A , ∇ L Q ⟩ 
+
+ 
+
+ 
+ First-order
+
+ g ^ ≈ 1 2 [ ∇ L A + ∇ L Q ] − α 4 ∇ ⟨ ∇ L A , ∇ L Q ⟩ 
+
+ 
+
+ The trial step is a plain gradient step of size α , and each update is averaged over which half takes it. All gradients at θ ; terms of order α 2 dropped.
+
+ 
+
+ Nichol et al. see this extra term as the part that generalizes. A small step on A lowers Q ’s loss by about α ⟨∇L A , ∇L Q ⟩, so a larger inner product means a step on one half also helps the other. They also found first-order MAML about as good as full MAML on few-shot benchmarks 5 6 .
+
+ We compared the two on the 300M recipe of Kim et al. 3 , at 4, 8, 16 and 24 passes over the data.
+
+ 
+ Final validation loss, exact step minus first-order step
+
+ 
+
+ Figure 3. 300M parameters on the fixed DCLM 7 pool, in nats per token; hover or tap a row for both losses. Each version retuned its own learning rate, weight decay and trial-step size. The gray band is ±0.006, the standard deviation of the 300M baseline across seeds. 
+ 
+
+ At 8, 16 and 24 passes the two end within 0.004 of each other, less than the seed standard deviation of the baseline. At 4 passes the exact step ends 0.011 lower. At the pass counts the tuned recipes use we cannot separate the two, and a first-order step takes only about 30% of the time of an exact step. Every result below uses the first-order step.
+
+ Compared with first-order MAML (FOMAML), T³ normalizes the trial step and applies it only to some of the weight matrices, such as the MLP matrices. It also keeps A ’s gradient: FOMAML updates with Q ’s gradient alone, and T³ averages the two. On the one-hour SlowRun 4 track, updating with Q ’s gradient alone, as plain FOMAML does, ended 0.021 above the baseline.
+
+ 
+
+ 
+ Results on tuned recipes
+
+ Kim et al. 3 tuned learning rate, weight decay and the number of passes jointly for each model size, on a fixed pool of 196.6M DCLM tokens 7 : 16 passes at 300M parameters, 8 at 600M and 1.4B. We took those recipes as they are and added the T³ step. The trial step’s learning rate is the one thing we chose. Each T³ run is paired with a baseline run that has the same seed, data order and evaluation.
+
+ SlowRun 4 fixes the data, 100M FineWeb tokens 8 , and a wall-clock limit, and ranks training scripts by validation loss. Its one-hour track trains a 1.4B model and its 15-minute track a model of about 300M. We added the T³ step to the record script of each track and changed nothing else.
+
+ 
+ Final validation loss, T³ against the same recipe without it
+
+ 
+ Setting T³ − baseline 95% interval Baseline T³ 
+ 
+ 
+ 300M, 16 passes −0.0144 −0.0166 to −0.0123 3.5397 3.5252 
+
+ 600M, 8 passes −0.0122 −0.0195 to −0.0049 3.4720 3.4597 
+
+ 1.4B, 8 passes −0.0151 −0.0229 to −0.0073 3.4334 3.4183 
+
+ SlowRun, one hour −0.0111 −0.0138 to −0.0085 3.2017 3.1906 
+
+ SlowRun, 15 minutes −0.0119 −0.0156 to −0.0082 3.3078 3.2959 
+
+ 
+ 
+
+ Table 1. Means over paired seeds, nats per token; each row uses 3 to 8 seeds. The interval is the 95% confidence interval of the paired difference. Every row adds the T³ step and nothing else. Top: fixed DCLM data, the recipes of Kim et al. 3 Bottom: SlowRun scores after each script’s checkpoint averaging, against the record script on the same seed. The trial step uses the settings of Figure 2 in the top rows, length 0.3 on all the matrices Muon updates at one hour, and length 0.5 on the MLP matrices at 15 minutes. 
+ 
+
+ Every setting improves by a little over 0.01 nats, and every interval lies below zero. At 300M, the baseline has a seed standard deviation of 0.006 and all eight pairs improve. Across the table, the one seed that got worse, at 1.4B, did so by 0.0059.
+
+ Both of our submissions are still the records on the SlowRun leaderboard as of November 9, 2026. The 15-minute record, 3.295, adds only the T³ step. The one-hour record, 3.183, also halves the recipe’s dropout, removes stochastic depth and puts the trial step’s length on a schedule. The table above reports the run that adds the T³ step alone.
+
+ In data-constrained pretraining, ensembling independently trained models is the strongest known way to spend more compute 3 , so we checked whether the gain holds in an ensemble. Most of it remains. Averaging the predictions of two, four or eight members, T³ ensembles end below baseline ensembles of the same seeds at every size and member count we ran: by 0.0087 at 300M and 0.0144 at 1.4B with eight members, and by 0.0137 at 600M with four.
+
+ 
+
+ 
+ Which tokens do the testing
+
+ A trial step followed by a second gradient could help as a kind of lookahead rather than by testing, since the second gradient is taken a little further along the descent path. To tell the two apart we ran variants of the 15-minute SlowRun 4 script, three seeds each:
+
+ 
+ Own tokens keeps the split, but each half tests its own trial step.
+
+ Later half of each sequence takes the trial step on the first half of every sequence and tests it on the second.
+
+ The other four keep the split and spoil the trial step: zero length, a random direction, the uphill direction, or the previous step’s direction.
+
+ 
+
+ 
+ Final loss against the record script, by what tests the trial step
+
+ 
+
+ Figure 4. 15-minute SlowRun track. Final validation loss after the script’s checkpoint averaging, minus the record script on the same seed, in nats per token. Bars are means over three seeds; hover or tap a row for each seed. The last row is the record script itself with half the batch, twice the steps and its learning rates scaled by 1/√2 . 
+ 
+
+ Testing each trial step on its own half ends 0.020 above the record script, on every seed. Testing on the other half ends 0.010 below. Testing on its own tokens does not start out worse. Figure 5 follows both tests after every epoch.
+
+ 
+ Loss against the record script after every epoch
+ Replay 
+
+ 
+
+ 
+ tested on its own tokens 
+ tested on the other half (T³) 
+ how far two runs taking the same update differ 
+ 
+
+ Figure 5. 15-minute SlowRun track. Validation loss of the current weights after each epoch, minus the record script on the same seed, in nats per token; lines are means over three seeds. Negative values mean lower loss than the record script. Figure 4 reports final loss after checkpoint averaging, so its numbers differ. Hover or tap for each epoch’s values. 
+ 
+
+ In the first epoch, before any token has repeated, testing on its own tokens lowers the loss as much as T³ does, by 0.158 against 0.124. From the second epoch the two separate. Testing on its own tokens falls behind the record script in the fifth epoch and ends 0.046 above it. So early on, testing on its own tokens works as a lookahead, and that help to optimization disappears once tokens repeat. The gain of T³ does not come from lookahead.
+
+ We also found that the test tokens can come from the same documents. Testing on the later half of each sequence ends at −0.0098, level with T³’s −0.0101.
+
+ The trial step also has to go downhill. A trial step of zero length computes the ordinary gradient and still ends 0.0025 above the record script, so we read differences of that size as run-to-run variation. Random, uphill and previous-step directions all end in that range, 0.002 to 0.004 above it.
+
+ Sharpness-aware minimization (SAM) 9 also takes a gradient at perturbed weights. It differs from T³ in three ways: it moves all the weights uphill, it takes the gradient on the same batch, and it updates with that gradient alone. On the 300M recipe of Table 1 (one seed), the best of seven perturbation sizes ends 0.0068 below the baseline, about one seed standard deviation, while T³ on the same seed ends 0.0246 below. A SAM step also takes 1.94 times as long.
+
+ Each gradient in a T³ step comes from half the batch, so a smaller batch could be what helps. We ran the record script with half the batch and twice as many steps, its learning rates scaled by 1/√2 . It ends 0.0054 above the unchanged record script, above it on all three seeds, and 0.0155 above T³.
+
+ 
+
+ 
+ Further discussion
+
+ 
+ One long pass. We find no reliable gain over a long pass in which no token repeats. On the modded-nanogpt track 10 , T³ with MuonW stays within 0.003 of the baseline at every run length from 0.21B to 1.7B tokens, which is within the run-to-run noise of that track.
+
+ 
+ Nexus 11 uses a closely related update in large-scale pretraining, taking normalized steps on K consecutive micro-batches and passing the total displacement to the optimizer. It differs from T³ in passing normalized steps rather than raw gradients and in moving all the weights, and in one-pass pretraining it reaches the same pretraining loss with better downstream accuracy .
+
+ 
+
+ 
+ Conclusion
+
+ T³ is a cheap meta-gradient step for data-constrained pretraining. Each step takes a trial step on half of the batch and tests it on the other half, and the first-order version adds 6 to 9% to step time. Added to tuned recipes with nothing else changed, it lowers validation loss by 0.012 to 0.015 nats per token at 300M, 600M and 1.4B parameters, and T³ scripts hold the current records on both SlowRun 4 tracks.
+
+ The gain comes from testing on tokens the trial step did not use. Testing on its own tokens works only as a lookahead and helps only until tokens start to repeat, and a smaller batch, an uphill trial step or SAM do not reproduce the gain.
+
+ 
+
+ 
+ References
+
+ 
+ 1 Villalobos et al. Will We Run Out of Data? Limits of LLM Scaling Based on Human-Generated Data . ICML 2024.
+
+ 2 Muennighoff et al. Scaling Data-Constrained Language Models . NeurIPS 2023.
+
+ 3 Kim, Kotha, Liang and Hashimoto. Pre-training under Infinite Compute . arXiv 2025.
+
+ 4 qlabs-eng. SlowRun: a fixed-data, fixed-time language-model pretraining benchmark . 2026.
+
+ 5 Finn, Abbeel and Levine. Model-Agnostic Meta-Learning for Fast Adaptation of Deep Networks . ICML 2017.
+
+ 6 Nichol, Achiam and Schulman. On First-Order Meta-Learning Algorithms . arXiv 2018.
+
+ 7 Li et al. DataComp-LM: In Search of the Next Generation of Training Sets for Language Models . arXiv 2024.
+
+ 8 Penedo et al. The FineWeb Datasets: Decanting the Web for the Finest Text Data at Scale . 2024.
+
+ 9 Foret et al. Sharpness-Aware Minimization for Efficiently Improving Generalization . ICLR 2021.
+
+ 10 Jordan et al. modded-nanogpt: Speedrunning the NanoGPT baseline . 2024.
+
+ 11 Chen, Zhang, Li, Dong, Shen and Zhu. Nexus: Same Pretraining Loss, Better Downstream Generalization via Common Minima . NeurIPS 2026.
+
+ 
+ 
+
+ 
+ Citation
+
+ @misc{dang2026t3,
+ title = {Training-Time Testing for Data-Constrained Pretraining},
+ author = {Dang, Xingyu},
+ year = {2026},
+ howpublished = {Blog post}
+}
+
+ Copy BibTeX 
+
+ Back to top 
+
+ 
+
+ 
+
+ 
+
+ 
+ 

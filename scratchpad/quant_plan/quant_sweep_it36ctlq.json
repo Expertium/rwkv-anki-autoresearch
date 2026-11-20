@@ -1,0 +1,48 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36ctl\\ctl_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "c2_nl1i8",
+      "tag": "qc2_nl1i8_it36ctlq",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int2",
+        "RWKV_QAT_LOWRANK_SCOPE": "note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int8"
+      },
+      "comment": "card full-matrix int2 + note rank-1 int8 (Andrew's choice for the QAT redo)",
+      "bits": {
+        "card": 2176,
+        "note": 3072
+      },
+      "rc": 0,
+      "secs": 872.671999999322,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0014235853333333325,
+          "ub95": 0.001586149365083616,
+          "p_worse": 6.85660435305609e-49,
+          "mean_cur": 0.335225396,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.002676190666666667,
+          "ub95": 0.0029278617320650365,
+          "p_worse": 1.4443240353291476e-73,
+          "mean_cur": 0.308887588,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

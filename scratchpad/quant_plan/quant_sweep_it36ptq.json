@@ -1,0 +1,153 @@
+{
+  "model": "pretrain\\rwkv\\opt_iter36\\rwkv_iter36_124.pth",
+  "ref": "qnj_it36_124",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l1i4",
+      "tag": "ql1i4_it36ptq",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int4,note:1:int4",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "rank-1 factors at int4, shifts int4 (mirrors the verified Rust config)",
+      "bits": {
+        "card": 512,
+        "note": 1536
+      },
+      "rc": 0,
+      "secs": 868.2809999994934,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0017187906666666676,
+          "ub95": 0.0019332643117794142,
+          "p_worse": 3.919062874340415e-37,
+          "mean_cur": 0.34453186133333336,
+          "mean_ref": 0.34281307066666666
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0014186399999999992,
+          "ub95": 0.0015793797068428938,
+          "p_worse": 1.9629737535150767e-57,
+          "mean_cur": 0.3156910213333333,
+          "mean_ref": 0.31427238133333335
+        }
+      }
+    },
+    {
+      "name": "cn2",
+      "tag": "qcn2_it36ptq",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int2,note:int2",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int2"
+      },
+      "comment": "the simplest scheme at the bar: both streams WKV + shifts at int2",
+      "bits": {
+        "card": 2176,
+        "note": 6528
+      },
+      "rc": 0,
+      "secs": 862.811999999918,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.004108161333333333,
+          "ub95": 0.004512974457618587,
+          "p_worse": 2.701785203294908e-59,
+          "mean_cur": 0.34692123199999997,
+          "mean_ref": 0.34281307066666666
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.005543889333333333,
+          "ub95": 0.00596320144232709,
+          "p_worse": 5.497383401941535e-91,
+          "mean_cur": 0.3198162706666667,
+          "mean_ref": 0.31427238133333335
+        }
+      }
+    },
+    {
+      "name": "l1i8",
+      "tag": "ql1i8_it36ptq",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"
+      },
+      "comment": "rank-1 factors at int8, shifts int8",
+      "bits": {
+        "card": 1024,
+        "note": 3072
+      },
+      "rc": 0,
+      "secs": 864.73399999924,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0018835706666666674,
+          "ub95": 0.0021583395951052823,
+          "p_worse": 2.8046394050904005e-31,
+          "mean_cur": 0.3446966413333333,
+          "mean_ref": 0.34281307066666666
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0010439466666666668,
+          "ub95": 0.001241645903337268,
+          "p_worse": 4.522450901656203e-27,
+          "mean_cur": 0.315316328,
+          "mean_ref": 0.31427238133333335
+        }
+      }
+    },
+    {
+      "name": "c2_nl1i8",
+      "tag": "qc2_nl1i8_it36ptq",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int2",
+        "RWKV_QAT_LOWRANK_SCOPE": "note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int8"
+      },
+      "comment": "card full-matrix int2 + note rank-1 int8 (Andrew's choice for the QAT redo)",
+      "bits": {
+        "card": 2176,
+        "note": 3072
+      },
+      "rc": 0,
+      "secs": 880.436999999918,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0020854453333333323,
+          "ub95": 0.002317981832260964,
+          "p_worse": 1.8816919390395512e-48,
+          "mean_cur": 0.344898516,
+          "mean_ref": 0.34281307066666666
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.002053947999999999,
+          "ub95": 0.002280055610686397,
+          "p_worse": 3.882931221874838e-59,
+          "mean_cur": 0.3163263293333334,
+          "mean_ref": 0.31427238133333335
+        }
+      }
+    }
+  ]
+}

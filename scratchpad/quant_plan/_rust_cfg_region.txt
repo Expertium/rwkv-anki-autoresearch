@@ -1,0 +1,105 @@
+e, not a formula error". It
+        // was a formula error.
+        //
+        // Zeroing input column j is exactly equivalent to zeroing feature j (y = Wx+b is linear in
+        // x), so it is done ONCE here on the weight rather than per-call on the features: free at
+        // runtime, and impossible to forget at one of the three call sites (model.rs x2, fast.rs).
+        // Input width, DERIVED rather than assumed -- 92 for the published layout, 114 under
+        // RWKV_ID_FEATURES=1. Read once here and stored on the model so every consumer agrees.
+        let feature_dim = get(&w, "features2card.0.weight")?.dims2()?.1;
+
+        if let Ok(spec) = std::env::var("RWKV_ZERO_FEATURES") {
+            let dims: Vec<usize> = spec
+                .split(',')
+                .filter_map(|t| t.trim().parse::<usize>().ok())
+                .collect();
+            if !dims.is_empty() {
+                let key = "features2card.0.weight";
+                let wt = get(&w, key)?;
+                let (out, n_in) = wt.dims2()?;
+                let mut buf = wt.to_vec2::<f32>()?;
+                for &d in &dims {
+                    if d >= n_in {
+                        return Err(anyhow!("RWKV_ZERO_FEATURES dim {d} >= input width {n_in}"));
+                    }
+                    for row in buf.iter_mut().take(out) {
+                        row[d] = 0.0;
+                    }
+                }
+                let flat: Vec<f32> = buf.into_iter().flatten().collect();
+                w.insert(key.to_string(), Tensor::from_vec(flat, (out, n_in), &dev)?);
+                eprintln!("[rwkv-infer] zeroed input features {dims:?} (RWKV_ZERO_FEATURES)");
+            }
+        }
+
+        // Curve-head width. Under the GRU head the stabilities S and decays d are PREDICTED per
+        // review, so there is no fixed basis grid at all: s_space stays None and any attempt to
+        // use the classic mixture errors instead of quietly evaluating a grid the model never saw.
+        // (num_curves must NOT come from w_linear here -- under a GRU head that is a (1,1) dummy
+        // and would silently make the mixture width 1. detect_arch has already rejected the
+        // ambiguous cases, so this match is exhaustive and safe.)
+        let (num_curves, s_space) = match arch.gru_curves {
+            Some(n) => (n, None),
+            None => {
+                // forgetting_curve s_space: length = num_curves, DERIVED from w_linear
+                // out-features (so the engine auto-adapts to head-width changes, e.g. 128->64).
+                let n = get(&w, "w_linear.weight")?.dim(0)?;
+                let s_max = 22.0f32;
+                let s_spread = 18.5f32;
+                let s_scale = (s_max - s_spread).exp();
+                let grid: Vec<f32> = (0..n)
+                    .map(|i| {
+                        let l = 18.5f32 * i as f32 / (n as f32 - 1.0);
+                        0.1 + (l.exp() - 1.0) * s_scale
+                    })
+                    .collect();
+                (n, Some(grid))
+            }
+        };
+        // interp point_space: length = num_points, grid identical formula, different consts.
+        // Empty when the ahead residual is stripped -- the curve is then the pure mixture and
+        // nothing may interpolate. `interp` rejects an empty grid rather than degenerating.
+        let (num_points, point_space) = if arch.ahead_residual {
+            let n = get(&w, "ahead_linear.weight")?.dim(0)?;
+            let max_e = 21.0f32;
+            let p_spread = 18.5f32;
+            let p_scale = (max_e - p_spread).exp();
+            let grid: Vec<f32> = (0..n)
+                .map(|i| {
+                    let l = 18.5f32 * i as f32 / (n as f32 - 1.0);
+                    0.5 + (l.exp() - 1.0) * p_scale
+                })
+                .collect();
+            (n, grid)
+        } else {
+            (0usize, Vec::new())
+        };
+        // STATE quantization (weights stay fp32). Two env vars build a per-stream qmax map:
+        //   RWKV_STATE_QUANT       = default level (int8=127, int4=7) for streams without an override
+        //   RWKV_STATE_QUANT_SCOPE = comma list selecting streams; each entry is "name" (use default
+        //                            level) or "name:int4"/"name:int8" (explicit) -> MIXED bits.
+        //                            ""/"all" = every stream at the default level (legacy).
+        // Rationale: card & note are the EXPENSIVE-at-deploy streams (many cards/notes) AND have SHORT
+        // recurrence (few reviews per card/note), so quantizing them is far milder than the long-
+        // recurrence user/global streams that sank the all-streams attempt. Quant SHRINKS state w/o
+        // cutting capacity (unlike layer-cutting, which costs imm -- see iter38).
+        let parse_level = |s: &str| -> Option<f64> {
+            match s {
+                "int8" => Some(127.0),
+                "int6" => Some(31.0),
+                "int5" => Some(15.0),
+                "int4" => Some(7.0),
+                "int3" => Some(3.0), // symmetric 3-bit = 7 levels {-3..3}*scale (rank-1 = 192 bits)
+                "int2" => Some(1.0), // symmetric 2-bit = ternary {-scale,0,+scale}; 0.27 KiB/card
+                _ => None,
+            }
+        };
+        // ? STREAM NAME -> MODULE INDEX. This MUST follow the checkpoint's own execution order, and
+        // since iter 41 the champion's is card->NOTE->DECK->preset->user (arch
+        // architecture_d80_lora4_cnd.py), not the historical card->deck->note->preset->user. The
+        // safetensors name modules positionally (`rwkv_modules.{N}`), so the order is not
+        // recoverable from the checkpoint -- it is a recipe fact and comes from the environment,
+        // like state_clamp_tau. Default = the historical order, so every pre-iter-41 invocation is
+        // unchanged.
+        // WHY THIS MATTERS: with the old hardcoded map, `card:1:int4,note:1:int4` on a _cnd
+        // checkpoint quantizes modules 0 and 2 = card and DECK. Wro

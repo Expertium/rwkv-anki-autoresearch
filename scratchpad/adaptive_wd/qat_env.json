@@ -1,0 +1,8 @@
+{
+  "RWKV_QAT_PQ": "1",
+  "RWKV_QAT_SHIFT_PQ": "1",
+  "RWKV_QAT_NORM": "1",
+  "RWKV_QAT_LORA": "1",
+  "RWKV_QAT_CLOCK_FIX": "1",
+  "RWKV_VRAM_CAP_GB": "11"
+}

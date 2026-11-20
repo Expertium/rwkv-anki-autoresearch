@@ -1310,3 +1310,156 @@ rating) -- run it once before building either.
 | 5c | **feat_loo** (~8 h) | leave-one-out: 19 arms, one per feature (sin/cos pairs together), 300 users each | Andrew 2026-09-03 ("ideally ablate everything") | featB | **DONE 09-04 22:22** -- t_since_any = the whole clock gain; sibling_gap / creation_to_first_review / creation-batch columns real (+0.0002..+0.0005); ten columns at a uniform ~+0.00008 ahead = the zero-any-column floor. No drop run queued (no accuracy to gain); `scratchpad/feat_loo/` |
 | 7 | teacher retrain | a d=128 teacher native to the final layout | infrastructure | -- | **CANCELLED 09-04 (Andrew: "Let's skip KD")** -- costed at ~4 GPU days for a useful teacher (`scratchpad/teacher_gen5/TIMING.md`) |
 
+
+## 2026-11-13 -- TA3 (Training-Time Testing): consulted, NOT queued; one feasibility blocker measured
+
+Andrew (2026-11-13): *"Another potential thing to try in the future (not right now):
+https://dangxingyu.github.io/blog/t3.html. Consult an advisor to decide whether this is
+promising for our RWKV."* Blog text saved to `scratchpad/t3_blog.txt`.
+
+**The method.** Dang, "Training-Time Testing for Data-Constrained Pretraining", blog 2026-11-12
+(arXiv paper and code "coming soon", so this is a single unreviewed source). Each step splits the
+batch into halves A and Q, takes a NORMALIZED trial step DOWNHILL on A (unit-norm direction of
+length eta = 0.3-0.5, applied to a masked subset of weights, e.g. the MLP matrices), takes the
+gradient on Q at the perturbed weights with no gradient through the shift, restores the weights,
+and hands (g_A + g_Q)/2 to the recipe's own optimizer. First-order MAML with A's own loss kept.
+Cost +6-9% step time. Reported: -0.012..-0.015 nats/token at 300M/600M/1.4B in multi-epoch
+data-constrained pretraining, both current SlowRun records. Ablations: no reliable gain when no
+token repeats; testing the trial step on its OWN half ends 0.020 ABOVE baseline (lookahead only);
+plain FOMAML ends 0.021 above; SAM on the same seed ends -0.0068 vs TA3's -0.0246 at 1.94x step
+time. Cite ref 11 (Nexus, NeurIPS 2026) reports the same pretraining loss with better downstream
+accuracy for a related normalized-step update.
+
+**Advisor verdict** (`openai/gpt-6.1-sol` through the advisor extension, 2026-11-13, 105k prompt
+tokens): *worth a small controlled test later, not a change to the active run or queue*;
+confidence moderate in relevance, low in whether it improves this model. Proposed order: finish
+the adaptive run and both fixed-WD controls -> the approved 3,000/3,000-bit QAT experiment ->
+codebook-LR -> then at most a bounded TA3 pilot, and only on Andrew's decision. It also warned: do
+not adopt eta = 0.3 blindly, keep TA3 out of the QAT stage, split only independent computational
+units, get the loss weighting right (equal user counts are not equal supervised review counts),
+use a recorded explicit matrix mask, restore parameters exactly, and run a three-arm pilot
+(baseline / same split with ZERO perturbation / same split with the perturbation), because a
+positive result from one trained model is not training-seed evidence.
+
+**Measured feasibility blocker (this repo, 2026-11-13).** A training batch here is a SINGLE user
+group: over attempt 9's 43,354 batches, 42,592 (98.2%) hold one group, 432 hold two, 151 three,
+68 four; the rest fewer than 1%. So "split the batch in half" cannot be done by user or group
+inside a batch. The only faithful variants are (a) a WITHIN-sequence split (first half of the
+chunk = A, second half = Q -- the blog's own "later half of each sequence" ablation, -0.0098 vs
+TA3's -0.0101, is level with its random split, so this is not automatically fatal) or (b)
+splitting across two consecutive optimizer steps, which changes effective batch size, step count
+and LR exposure and therefore needs its own control arm.
+
+**Regime check against our SAM precedent (research_5k.md row 65).** SAM was rejected here, but
+NOT because the surface was flat: the probe measured a sharpness gap of 0.0230 at rho = 0.05 and
+SAM reduced it to 0.0133 (-42%), as designed. The rejection note records the real reason -- over
+the last 300 decay steps SAM's train ahead loss was 0.31807 vs the control's 0.31773 and its
+10-user held-out ahead 0.3215 vs 0.3212, i.e. train and held-out moved TOGETHER: the flatter
+point was a WORSE FIT. At 1.25 epochs the model is fit-limited, so a regulariser that trades fit
+for flatness has no generalisation gap to spend. TA3 has to clear that same bar, and its own
+evidence says the gain needs heavy token repetition. Do not assume our regime qualifies just
+because the same user pool is reused.
+
+**Cheapest decisive pre-test before any implementation** (minutes, no training run): on a handful
+of real batches from the current checkpoint, measure Q's loss change after a normalized DOWNHILL
+A perturbation against three equal-norm controls (zero length, random direction, uphill
+direction), with the mask recorded and the bf16 child downcast applied. Only a Q-loss improvement
+that beats the zero-perturbation arm justifies a pilot; report the Q loss change itself, not
+gradient cosine similarity.
+
+### 2026-11-15 -- TA3 pre-test RESULT: the mechanism IS present in this data (positive)
+
+Andrew 2026-11-15: *"It seems this approach with adaptive WD isn't fruitful. Let's move on to T3."*
+Built `rwkv/ta3.py` (env-gated, inert when unset) + a trainer hook, and ran the measure-only
+probe (`RWKV_TA3_PROBE`) on the REAL training batch stream of an adaptive-style attempt, from
+the incumbent `adaptive_173416.pth`, scope `cmix` (30,016 params), A/Q split at the batch's time
+midpoint, dropout masks pinned so every control is paired, no optimizer step taken
+(`scratchpad/ta3_probe_20261115/`, 30 steps).
+
+| eta | mean dL_Q downhill | mean dL_Q random | mean dL_Q uphill | downhill<random | Wilcoxon p |
+|---:|---:|---:|---:|---:|---:|
+| 0.03 | -0.000309 | -0.000008 | +0.000295 | 27/30 | 1.0e-07 |
+| 0.10 | -0.000899 | -0.000008 | +0.001076 | 27/30 | 2.4e-07 |
+| 0.30 | -0.002125 | +0.000001 | +0.003768 | 27/30 | 2.6e-06 |
+| 1.00 | -0.000630 | +0.000003 | +0.018284 | 20/30 | 1.9e-01 |
+
+- `cos(g_A, g_Q)` over all parameters: mean **+0.39**, positive on 28/30 steps -> the two halves
+  are genuinely correlated, which is TA3's premise.
+- The equal-norm RANDOM control is ~0 (mean -8e-6..+3e-6, ~50% negative), so the measurement is
+  clean and paired; downhill beats both random and uphill at every eta <= 0.3.
+- The response is monotone in eta up to 0.3 and turns over at 1.0 (curvature dominates), so the
+  useful window is eta ~ 0.1-0.3. At eta=0.3 the per-element displacement is 0.00173, i.e. about
+  1.7x the optimizer's own lr (0.001) -- a sane scale, not a knife-edge.
+- Evidence boundary: this is a FIRST-ORDER, single-batch measurement with a positive control.
+  It says the direction exists; it does not show that adding the TA3 step to training beats the
+  plain recipe at equal epochs. Only a training run can.
+
+**Read the probe's controls with care:** an earlier revision of the probe passed the sign in two
+places and its "downhill" row was really the ascent (which inverts the whole reading). `_shift`
+now takes a descent scale, and that convention is documented in the module.
+
+Implementation note for a full arm: the A/Q split is a LOSSMASK change (`has_label`, column 4),
+so the fetched batch stream stays byte-identical between the TA3 arm and its control. Each TA3
+step does two half-batch forward/backward passes plus a shift/restore, and the gradient the
+optimizer sees is (n_A*g_A + n_Q*g_Q)/(n_A+n_Q), which is the gradient of the same full-batch row
+mean. A TA3 failure aborts the run (exit 44) instead of degrading into a plain step.
+
+### 2026-11-15 -- TA3 correctness gates: restore/optimizer PASS, gradient equality FAILS (must be fixed first)
+
+Advisor (openai/gpt-6.1-sol, consulted before the run at Andrew's instruction) verdict: *do not start the
+multi-day arm yet*; fix the correctness gates first. Implemented from that audit: the trial-step scope is now an
+explicit list of WEIGHT MATRICES (28 channel-mixer `.weight` tensors, 28,672 params; logged once), unknown scope
+names are rejected instead of defaulting, and every TA3 failure path (split, phase A, phase Q, the measure-only
+modes) aborts the run (exit 44) instead of falling into the trainer's generic skipped-batch handler.
+
+Gate run (`scratchpad/ta3_gradcheck_20261115/`, `RWKV_TA3_CHECK=4`, dropout OFF so the A/Q phases cannot differ
+by masks, no optimizer step taken, 13 steps reported before a bug in the check's own exit was found):
+
+| gate | result |
+|---|---|
+| master weights restored bit-exactly after the eta=0 and eta=0.3 phases | **PASS** (max abs drift 0.0) |
+| optimizer state untouched by the trial perturbation | **PASS** (checksum delta 0.0) |
+| eta = 0.3 changes the gradient (the step is not a no-op) | **PASS** (rel-L2 0.267 all / 0.235 scope) |
+| **eta = 0 reproduces the ordinary full-batch gradient** | **FAIL** (rel-L2 mean 0.078, range 0.027-0.176; cosine 0.9961) |
+
+Diagnosis: the objective is a sum of per-term row means, each normalised by ITS OWN mask count
+(`(curve_loss * ahead_wmask).sum() / ahead_wmask.sum()`, and likewise for the immediate/query rows and the
+auxiliary terms). A single per-phase scalar `(n_A*g_A + n_Q*g_Q)/(n_A+n_Q)` therefore cannot reproduce the
+full-batch gradient: the ahead and imm row counts do not split in the same ratio across the cut. The residual is
+mostly a SCALE error (cosine 0.996 with 8% L2), which would give the TA3 arm an effective LR that differs from its
+control by ~2-17% per step -- exactly the confound the gate exists to catch.
+
+Fix path: weight each MODE separately (ahead rows and imm rows get their own half/full count ratios, i.e. separate
+backwards per mode), guard that the auxiliary terms (ord/PAVA/rank1/KD) are off, and re-run the gate until the
+eta=0 rel-L2 is at float-noise level. Only then re-run the 0.04-epoch smoke and start the four-epoch arm.
+
+Also found and fixed in the same pass: the check mode's own stop condition referenced a function that had not been
+inserted, so the trainer raised AttributeError, the generic handler swallowed it as a "NaN batch", and the check
+kept probing instead of exiting. That is the advisor's fail-closed point demonstrated on live code.
+
+### 2026-11-15 (later) -- TA3 gradient gate: the eta=0 form CANNOT pass, because the plain path is not repeatable
+
+Fix attempt 1 (per-mode COUNT weights, one scalar per group): FAIL, rel-L2 0.027-0.122.
+Fix attempt 2 (mode-masked passes, so each backward is exactly one group over its own denominator,
+with exact per-group weights): still rel-L2 0.021-0.127 -- but the diagnostic that settles it is
+the REPEAT test: the *identical* plain forward+backward, run twice in the same process on the same
+batch and weights, differs by **0.7-10.9% relative L2 in the gradient** (loss values differ by
+1e-5..7e-4). Per step, the group-split difference (2.4-12.5%) is the same size as that repeat
+floor, and the eta=0.3 perturbation (18.7-51.1%) is clearly above it.
+
+Value-level proof that the DECOMPOSITION is right: with the six objective terms rebuilt from the
+stats, `loss_groups_value` equals `average_loss` to ~1e-7 at every probed step, so the objective
+really is the two row-mean groups and nothing else; the residual is numerics, not a missing term.
+(A diagnostic also cleared the rotation cache and restored the RNG before the repeat pass; that
+lowers the floor on two of four steps but does not remove it.)
+
+CONCLUSION: this training path is not reproducible at the percent level in bf16 -- consistent with
+the repo's own HISTORY note that the frozen compiled env is not run-to-run bit-reproducible. The
+advisor's "eta=0 must equal the ordinary gradient at float-noise level" is therefore unachievable
+here as literally stated. The gate is restated as a statistical one and PASSES in that form:
+per step, |g(eta=0) - g(plain)| <= |g(plain) run twice - g(plain)|, and |g(eta) - g(eta=0)| is
+several times that floor. Restore (0.0 drift) and optimizer-state (0.0 delta) gates PASS exactly.
+
+Open options if an exact gate is wanted: (a) run the check in fp32 -- the scripted model rejected
+`DTYPE=float32` on this path, so it needs a code-path fix; (b) chase the nondeterminism itself
+(RWKV_CUDA reduction/atomics, cublas workspace) as its own investigation.

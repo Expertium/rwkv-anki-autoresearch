@@ -1,0 +1,5 @@
+﻿requested_max_failed_epochs=7
+requested_max_successful_epochs=10
+resume_after_attempt_04=use_saved_adaptive_state_json
+old_controller_still_has_max_attempts=30
+stop_boundary=after_attempt_04_screen_evaluation_before_attempt_05

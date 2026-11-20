@@ -1,0 +1,15 @@
+# Fresh adaptive-training LMDB for the approved 92-input champion layout.
+# Use the adaptive experiment's -id source and matching end-to-start equalize filter.
+# Optional ID model features stay off: stored card features remain 24 wide (92 model inputs).
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_adaptive92"
+LMDB_SIZE = 400_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+USER_START = 1
+USER_END = 5000
+MAX_BATCH_SIZE = 16384
+PROCESSES = 2
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

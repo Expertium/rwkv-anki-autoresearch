@@ -117,6 +117,9 @@ def write_phase_toml(base, tag, file_ahead, file_imm, users, n_fetch):
         elif key == "NUM_FETCH_PROCESSES":
             line = f"NUM_FETCH_PROCESSES = {n_fetch}"
         text.append(line)
+    text = [line for line in text if line.split("#", 1)[0].split("=", 1)[0].strip() != "USERS_FILE"]
+    # Strip any inherited USERS_FILE from the base template before appending this phase's roster.
+    text = [line for line in text if line.split("#", 1)[0].split("=", 1)[0].strip() != "USERS_FILE"]
     text.append(f'USERS_FILE = "{users_file}"')
     toml_path = os.path.join(SHARD_DIR, f"shard_{tag}.toml")
     with open(toml_path, "w", encoding="utf-8") as fh:
@@ -160,6 +163,7 @@ def main():
     ap.add_argument("--exclude", default="", help="comma-separated user ids to leave out entirely "
                     "(2026-09-03: user 6701 needs more than the WDDM ceiling on the gen-4/5 dbs; the lineage pairs "
                     "on the intersection, so its VAL set is 2,499 users)")
+    ap.add_argument("--users-file", default="", help="JSON array of explicit user IDs; overrides USER_START..USER_END")
     args = ap.parse_args()
 
     os.chdir(ROOT)
@@ -177,7 +181,13 @@ def main():
         if os.path.exists(canon):
             sys.exit(f"{canon} already exists -- move it away first (merge refuses to clobber)")
 
-    users = list(range(u0, u1 + 1))
+    if args.users_file:
+        with open(args.users_file, encoding="utf-8") as fh:
+            users = sorted(set(map(int, json.load(fh))))
+        if not users or any(u < u0 or u > u1 for u in users):
+            sys.exit("--users-file must contain a non-empty unique subset inside USER_START..USER_END")
+    else:
+        users = list(range(u0, u1 + 1))
     print(f"sizing {len(users)} users from {db_path} ...")
     sizes = user_sizes(db_path, db_size, users)
     print(f"{len(sizes)} users present in db")

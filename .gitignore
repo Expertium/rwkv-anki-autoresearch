@@ -259,3 +259,18 @@ reference_s64h/weight_names.json
 
 scratchpad/context_heartbeat_state.json
 scratchpad/context_heartbeat.log
+
+# --- quant_plan arm (card/note state quantization), added 2026-11-20 ---
+# Per-user engine prediction dumps: ~31 MB for the 3-user grid x every config, and regenerable in
+# seconds by rust_grid.py / rust_speed.py. The runners and the json summaries ARE tracked.
+scratchpad/quant_plan/preds_*/
+scratchpad/quant_plan/rust_grid_preds/
+scratchpad/quant_plan/rust_speed_preds/
+# Stray shell-redirect artifacts at the repo root (0 bytes except $tmp, accidental) and the
+# weight-name dump that rewrite_pth_text_helper.py writes by default (derived; the tracked
+# equivalent is reference/weight_names.json).
+/$tmp
+/1
+/1][
+/105000]
+/model_weights.txt

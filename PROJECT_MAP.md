@@ -33,13 +33,14 @@ This map describes the maintained source tree and the main tracked artifacts. It
 | `architecture.py`, `config.py` | Model architecture and project-specific configuration. |
 | `model/` | Parallel and recurrent RWKV cores, SRS heads, PAVA, and CUDA/C++ kernels in `csrc/`. |
 | `train_rwkv.py`, `train_rwkv_config.toml` | Training entry point and default training configuration. |
-| `get_result.py`, `get_result_config*.toml` | CUDA evaluation and evaluation configurations. |
+| `get_result.py`, `get_result_config*.toml` | Reference CUDA evaluation and evaluation configurations. |
+| `optimization/fast_evaluate.py` | Experimental cross-user batched evaluator; use only after exact parity and full-VAL validation. |
 | `run_as_rnn.py`, `run_as_rnn_config*.toml` | Single-user recurrent inference and smoke configuration. |
 | `data_processing.py`, `data_fetcher.py`, `prepare_batch.py` | Convert review data into LMDB rows and batches. |
 | `find_equalize_test_reviews.py`, `find_equalize_*.toml` | Build the equalized evaluation label filter and related bins. |
 | `id_features.py`, `extra_features.py`, `deck_tree.py` | Optional timestamp, row-level, and deck-hierarchy feature builders. |
 | `clock_fix.py`, `probe_impute.py`, `self_feedback.py` | Optional input transformations and feedback paths. |
-| `muon.py`, `sam.py`, `fsrs_core.py`, `fsrs_stream.py` | Optimizer, training, and experimental model components. |
+| `muon.py`, `sam.py`, `ta3.py`, `fsrs_core.py`, `fsrs_stream.py` | Optimizer, training, and experimental model components. `ta3.py` is the env-gated Training-Time Testing arm (`RWKV_TA3=1`); see `scratchpad/ta3/NOTES.md`. |
 | `model/rwkv_ops.py`, `model/csrc/` | RWKV kernel wrapper and CUDA/C++ implementation. |
 | `data_processing_*`, `get_result_config*`, `run_as_rnn_config*` | Dataset-generation and evaluation configurations. Check each file before use; names include old lineages. |
 

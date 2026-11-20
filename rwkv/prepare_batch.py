@@ -424,7 +424,10 @@ def add_deck_levels(data: RWKVSample):
 
 
 def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
-            probe_density: float = 0.0, probe_equalize_only: bool = False) -> PreparedBatch:
+            probe_density: float = 0.0, probe_equalize_only: bool = False,
+            seed_per_sample: bool = False) -> PreparedBatch:
+    if seed_per_sample and seed is None:
+        raise ValueError("seed_per_sample requires an explicit seed")
     if seed is not None:
         torch.manual_seed(seed)
 
@@ -539,12 +542,13 @@ def prepare(data_list: list[RWKVSample], target_len=None, seed=None,
 
             return torch.cat(gather, dim=-1)
 
-        card_features_with_ids = [
-            add_encodings(
-                data.card_features, data.day_offsets, data.day_offsets_first, data.ids
+        card_features_with_ids = []
+        for data in data_list:
+            if seed_per_sample:
+                torch.manual_seed(seed)
+            card_features_with_ids.append(
+                add_encodings(data.card_features, data.day_offsets, data.day_offsets_first, data.ids)
             )
-            for data in data_list
-        ]
         start_tensor = torch.cat(
             [
                 torch.nn.functional.pad(

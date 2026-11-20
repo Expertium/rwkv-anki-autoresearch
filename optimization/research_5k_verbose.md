@@ -5207,3 +5207,30 @@ First WS-tuning knob (optimization/WS_TUNE_PLAN.md): PEAK_LR 1e-3 -> 5e-4 and RW
 
 ## 124 `wtlr2` -- WS peak LR x2 (2026-09-29)
 PEAK_LR 2e-3, RWKV_MUON_LR 0.005 in the 10-epoch WS (ran 09-26 .. 09-27, survived the epoch-3 kill check at +0.00042 / +0.00035), then the 1-epoch decay at its own LR bought on 09-29 (mk_decay_eval.py). The eval was stopped at 1,893 users when RAM hit 0 GB (this eval + the FSRS-rs session's benchmark) and resumed under RWKV_VRAM_CAP_GB=11, which OOM-skipped 8 giant users (6988, 7033, 7128, 7221, 7238, 7244, 7285, 7369). vs 104 on 2486 paired users: ahead -0.000236 (p_worse 5.8e-12), imm -0.000157 (p_worse 7.8e-32). With 123 the WS LR sits at its optimum at x1: both halvings and doublings cost ~0.0002 per mode after the decay. WS knob 1 closed; next WS knob is the Muon/AdamW ratio (wtmuon0p5 / wtmuon2), queued after d128e10, judged after their decays.
+
+
+## iter 125 `wtmuon0p5` -- Muon LR x0.5, AdamW unchanged (2026-10-16)
+The second WS-tuning knob at 10+1: set Muon's WS LR from 0.0025 to 0.00125 while AdamW stays fixed; the 1-epoch decay uses the same trial LR. Control = 104 `s64hc10`. WS completed with 0 skipped batches and 0 failed validations. Its last-five validation delta was -0.000780 ahead / -0.000160 imm, a screening value only. Decay completed at 22:36 on 2026-10-15. The normal full-VAL eval failed after the F: USB drive disconnected (Windows exit 0xC0000006), after 1,396 paired results and 24 OOM skips. F: was restored; phase C resumed at 09:57 on 2026-10-16 and completed at 11:41. Final output has 2,454 paired scored users and 45 OOM skips, exactly 2,499 rostered including the excluded-by-design user 6701. No NaN skips.
+
+Paired against 104 on 2,454 shared users; every shared user's equalized review count matches:
+
+| Mode | Candidate mean | Control mean | Improvement | p(better) | p(worse) |
+|---|---:|---:|---:|---:|---:|
+| Ahead | 0.297417 | 0.297364 | -0.000053 | 0.265 | 0.735 |
+| Imm | 0.264327 | 0.264327 | -0.000000 | 0.657 | 0.343 |
+
+Both modes are within the noise range. The 2026-09-24 either-mode gate rejects the trial: neither mode improves by at least 0.00005 at p<1e-4, and neither mode is significantly worse. This does not displace x1, the best measured Muon LR. The remaining x2 trial (`wtmuon2`) stays paused until fast evaluation is implemented. This full evaluation used the 11 GiB allocator cap and retained `RWKV_EMPTY_CACHE_EVERY=1`.
+
+
+
+## 125 `wtmuon0p5` -- Muon LR x0.5, AdamW unchanged (2026-10-16)
+The second WS-tuning knob at 10+1: set Muon's WS LR from 0.0025 to 0.00125 while AdamW stays fixed; the 1-epoch decay uses the same trial LR. Control = 104 `s64hc10`. WS completed with 0 skipped batches and 0 failed validations. Its last-five validation delta was -0.000780 ahead / -0.000160 imm, a screening value only. Decay completed at 22:36 on 2026-10-15. The normal full-VAL eval failed after the F: USB drive disconnected (Windows exit 0xC0000006), after 1,396 paired results and 24 OOM skips. F: was restored; phase C resumed at 09:57 on 2026-10-16 and completed at 11:41. Final output has 2,454 paired scored users and 45 OOM skips, exactly 2,499 rostered including the excluded-by-design user 6701. No NaN skips.
+
+Paired against 104 on 2,454 shared users; every shared user's equalized review count matches:
+
+| Mode | Candidate mean | Control mean | Improvement | p(better) | p(worse) |
+|---|---:|---:|---:|---:|---:|
+| Ahead | 0.297417 | 0.297364 | -0.000053 | 0.265 | 0.735 |
+| Imm | 0.264327 | 0.264327 | -0.000000 | 0.657 | 0.343 |
+
+Both modes are within the noise range. The 2026-09-24 either-mode gate rejects the trial: neither mode improves by at least 0.00005 at p<1e-4, and neither mode is significantly worse. This does not displace x1, the best measured Muon LR. The remaining x2 trial (`wtmuon2`) stays paused until fast evaluation is implemented. This full evaluation used the 11 GiB allocator cap and retained `RWKV_EMPTY_CACHE_EVERY=1`.

@@ -167,6 +167,7 @@ def one_pass(caps, last_empty):
 
 def main():
     caps, last_empty = {}, [0.0]
+    last_heartbeat = time.monotonic()
     if "--once" not in sys.argv:
         # singleton: the logon task and a hand-detached copy must not both run
         me, parent = os.getpid(), os.getppid()   # the .venv launcher stub is our parent and shows the same command line
@@ -192,6 +193,10 @@ def main():
                 if not psutil.pid_exists(pid):
                     del caps[pid]
             a = one_pass(caps, last_empty)
+            if time.monotonic() - last_heartbeat >= 60:
+                managed = sum(1 for value in caps.values() if value)
+                log("heartbeat: available %.1f GB; managed fetch workers %d; tracked %d" % (a, managed, len(caps)))
+                last_heartbeat = time.monotonic()
             if a < FLOOR_GB:
                 if low_since is None:
                     low_since = time.time()

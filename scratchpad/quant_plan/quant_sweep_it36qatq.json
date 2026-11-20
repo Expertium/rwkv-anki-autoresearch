@@ -1,0 +1,83 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36qat\\qat_124.pth",
+  "ref": "qnj_it36qat",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "c2_nl1i8",
+      "tag": "qc2_nl1i8_it36qatq",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int2",
+        "RWKV_QAT_LOWRANK_SCOPE": "note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int8"
+      },
+      "comment": "card full-matrix int2 + note rank-1 int8 (Andrew's choice for the QAT redo)",
+      "bits": {
+        "card": 2176,
+        "note": 3072
+      },
+      "rc": 0,
+      "secs": 876.5460000000894,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": -0.0010625133333333322,
+          "ub95": -0.0008588076491306556,
+          "p_worse": 1.0,
+          "mean_cur": 0.33503754933333335,
+          "mean_ref": 0.3361000626666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": -0.0005598826666666661,
+          "ub95": -0.0003599912305687834,
+          "p_worse": 0.9846859502362786,
+          "mean_cur": 0.307253028,
+          "mean_ref": 0.3078129106666667
+        }
+      }
+    },
+    {
+      "name": "cn2",
+      "tag": "qcn2_it36qatq",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int2,note:int2",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int2"
+      },
+      "comment": "the simplest scheme at the bar: both streams WKV + shifts at int2",
+      "bits": {
+        "card": 2176,
+        "note": 6528
+      },
+      "rc": 0,
+      "secs": 857.75,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0014592186666666663,
+          "ub95": 0.0017084534250292364,
+          "p_worse": 8.044855824357465e-21,
+          "mean_cur": 0.33755928133333335,
+          "mean_ref": 0.3361000626666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.004110810666666669,
+          "ub95": 0.004454646388459751,
+          "p_worse": 1.874863139078311e-83,
+          "mean_cur": 0.31192372133333335,
+          "mean_ref": 0.3078129106666667
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "grid": [
+    0.01,
+    0.02,
+    0.04,
+    0.08,
+    0.16,
+    0.32,
+    0.64
+  ],
+  "max_attempts": 30,
+  "attempted": 1,
+  "accepted_epochs": 1,
+  "users": [
+    5002
+  ],
+  "screen_excluded_multibatch_or_missing": [
+    5626,
+    6630,
+    6701,
+    6810
+  ],
+  "baseline": {
+    "ahead": 0.574813,
+    "imm": 0.398283,
+    "n": 1
+  },
+  "trials": [
+    {
+      "attempt": 1,
+      "epoch": 1,
+      "weight_decay": 0.01,
+      "val": {
+        "ahead": 0.391389,
+        "imm": 0.396931,
+        "users": 1
+      },
+      "trainer_val": {
+        "ahead": 0.3505,
+        "imm": 0.3172,
+        "n": 39780
+      },
+      "previous": {
+        "ahead": 0.574813,
+        "imm": 0.398283
+      },
+      "improved_both": true,
+      "checkpoint": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\adaptive_wd\\smoke_92_20261105\\attempt_01_epoch_01_wd_0.01\\adaptive_50.pth",
+      "train_log": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\adaptive_wd\\smoke_92_20261105\\attempt_01_epoch_01_wd_0.01\\train.log",
+      "decision": "accept"
+    }
+  ],
+  "incumbent": {
+    "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\adaptive_wd\\smoke_92_20261105\\attempt_01_epoch_01_wd_0.01\\adaptive_50.pth",
+    "optim": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\adaptive_wd\\smoke_92_20261105\\attempt_01_epoch_01_wd_0.01\\adaptive_optim_50.pth",
+    "score": {
+      "ahead": 0.391389,
+      "imm": 0.396931
+    },
+    "epochs": 1
+  }
+}

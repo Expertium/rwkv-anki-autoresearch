@@ -1,0 +1,52 @@
+d the
+    /// engine fed DECK's state into the note module (and vice versa) on any reordered arch: every
+    /// shape matched, so nothing failed, it just computed a different model. The Python deploy
+    /// mirror routes states by NAME for exactly this reason (the positional body it replaced had
+    /// the same bug); this is the Rust half of that fix.
+    stream_slot: [usize; 5],
+    /// Architecture features recovered from the weight shapes (stripped sublayers, curve-head
+    /// type, ahead residual, PAVA powers). See [`ArchFlags`] / `detect_arch`.
+    arch: ArchFlags,
+    /// (1,num_curves) fixed forgetting-curve time constants. `None` under a GRU head, which
+    /// predicts S per review instead of reading a grid.
+    s_space: Option<Tensor>,
+    point_space: Vec<f32>, // (num_points) interp grid; EMPTY when the ahead residual is stripped
+    // Per-stream STATE quant: module_idx -> qmax (127=int8, 7=int4). Empty = fp32 everywhere.
+    // Allows MIXED bits across streams (e.g. card int4 + note int8). See load() for env parsing.
+    state_quant_qmax: std::collections::HashMap<usize, f64>,
+    // Per-stream LOW-RANK card-state truncation: module_idx -> (rank, optional factor qmax). When set
+    // for a module, the per-step WKV state is replaced by its rank-r SVD truncation (and factors
+    // optionally quantized) INSTEAD of full-matrix quant -- the 0.15 KB card path (step 4). See load().
+    state_lowrank: std::collections::HashMap<usize, (usize, Option<f64>)>,
+    // RWKV_QUANT_SHIFTS=1: also quantize the (1-D, non-low-rankable) token-shift vectors of any
+    // COMPRESSED stream at its bit-width, so the deploy SIZE accounting is honest (shifts otherwise
+    // stay fp32, which alone blows the 0.15 KB card budget). Off by default -> past numbers reproduce.
+    quant_shifts: bool,
+    // RWKV_STATE_SHIFT_LEVEL=intN: override token-shift bit-width independently of the WKV factor level
+    // (only for already-compressed streams). None = shifts follow the WKV level. See CompressCfg doc.
+    shift_qmax_override: Option<f64>,
+    // RWKV_LOWRANK_PERCOL=1: quantize low-rank factors with a PER-COLUMN (per rank-component) scale
+    // instead of one shared scale -> makes int2 low-rank viable (the small-sigma column isn't crushed).
+    lowrank_percol: bool,
+    // RWKV_LOWRANK_HADAMARD=1 (#3): rotate low-rank factors by a Hadamard (QuIP#/QuaRot incoherence)
+    // matrix before quant and un-rotate after -> spreads energy across K so low-bit quantizes cleaner.
+    // Free (H fixed, no extra storage); needs K a power of 2 (else silently skipped). Stacks with percol.
+    lowrank_hadamard: bool,
+    // RWKV_LOWRANK_4LEVEL=1 (#4): use all 4 codes of a 2-bit field for int2 low-rank factors
+    // ({-1.5,-0.5,0.5,1.5}*scale) instead of ternary {-1,0,1}. Only affects the int2 level. Free.
+    lowrank_4level: bool,
+    // RWKV_LOWRANK_MIXED53=1: PACKED 5x3 mixed-resolution int2 -- col0 (dominant component) at 5 levels,
+    // col1 at ternary; 5*3=15<16 packs to 4 bits/pair = 256 bits at rank 2. Only affects the int2 level.
+    lowrank_mixed53: bool,
+    // RWKV_LOWRANK_COMPAND=<p>: companded factor quant with signed power-law shape p (<1 -> levels
+    // dense near zero, keeps small entries small). None = off (plain uniform int-N).
+    lowrank_compand: Option<f64>,
+    // RWKV_LOWRANK_VLEVEL=int3/int4/...: override the SECOND factor's (V) bit-width independently of U
+    // (the scope level). Enables asymmetric per-factor budgets, e.g. U=int4 V=int3 = 224 bits at rank 1.
+    lowrank_vqmax: Option<f64>,
+    // RWKV_LOWRANK_ALS=<n>: run n iterations of alternating-least-squares factor optimization (quantized
+    // U,V minimizing ||A - U V^T||_F) instead of post-hoc SVD-then-quantize. None = off. Frobenius is
+    // anti-correlated with log-loss here, so this is judged only by run_eval.
+    lowrank_als: Option<usize>,
+    // Plain-Rust f32 forward (no candle in the hot loop) -- the deployment speed path, transferred from
+    // the parent

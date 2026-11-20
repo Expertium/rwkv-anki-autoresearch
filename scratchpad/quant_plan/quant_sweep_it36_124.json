@@ -1,0 +1,44 @@
+{
+  "model": "pretrain\\rwkv\\opt_iter36\\rwkv_iter36_124.pth",
+  "ref": "qbl_incumbent_a04",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "nj",
+      "tag": "qnj_it36_124",
+      "env": {},
+      "comment": "unquantized control in the no-JIT path (the speed reference)",
+      "bits": {
+        "card": 34816,
+        "note": 104448
+      },
+      "rc": 0,
+      "secs": 1202.6560000004247,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.042204092000000006,
+          "ub95": 0.04457548499550857,
+          "p_worse": 3.5062919938464665e-122,
+          "mean_cur": 0.34281307066666666,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.042263235999999996,
+          "ub95": 0.044325502321366644,
+          "p_worse": 9.959468112085974e-125,
+          "mean_cur": 0.31427238133333335,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    }
+  ]
+}

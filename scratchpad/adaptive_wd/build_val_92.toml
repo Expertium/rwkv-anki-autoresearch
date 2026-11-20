@@ -1,0 +1,15 @@
+# Fresh adaptive-validation LMDB for the approved 92-input champion layout.
+# Use the same -id source and end-to-start equalize filter as the training split.
+# Optional ID model features stay off; the -id data path applies its interval correction.
+DEVICE = "cpu"
+DTYPE = "bfloat16"
+DATA_PATH = "../anki-revlogs-10k-id"
+LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_adaptive92"
+LMDB_SIZE = 250_000_000_000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40_000_000_000
+USER_START = 5001
+USER_END = 7500
+MAX_BATCH_SIZE = 2097152
+PROCESSES = 1
+RWKV_SUBMODULES = ["card_id", "note_id", "deck_id", "preset_id", "user_id"]

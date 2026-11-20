@@ -1,0 +1,8 @@
+{
+  "ahead": 0.20493066666666668,
+  "imm": 0.19299966666666668,
+  "n": 3,
+  "tag": "qbl_sanity3b",
+  "model": "scratchpad\\adaptive_wd\\adaptive_fullrun_92_20261105\\attempt_04_epoch_04_wd_0.01\\adaptive_173416.pth",
+  "users_file": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\roster750_seed20261119.json"
+}

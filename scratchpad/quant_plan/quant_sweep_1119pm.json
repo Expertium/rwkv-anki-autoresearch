@@ -1,0 +1,219 @@
+{
+  "model": "scratchpad\\adaptive_wd\\adaptive_fullrun_92_20261105\\attempt_04_epoch_04_wd_0.01\\adaptive_173416.pth",
+  "ref": "qbl_incumbent_a04",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "nj",
+      "tag": "qnj_1119pm",
+      "env": {},
+      "comment": "unquantized control in the no-JIT path (the speed reference)",
+      "bits": {
+        "card": 34816,
+        "note": 104448
+      },
+      "rc": 0,
+      "secs": 1916.8600000003353,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": -3.991999999999761e-06,
+          "ub95": -2.77768810611451e-06,
+          "p_worse": 0.9999999965417448,
+          "mean_cur": 0.3006049866666667,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": -4.906666666662444e-07,
+          "ub95": 4.876551732760854e-07,
+          "p_worse": 0.9774427295359861,
+          "mean_cur": 0.2720086546666666,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    },
+    {
+      "name": "l1i4",
+      "tag": "ql1i4_1119pm",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int4,note:1:int4",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "rank-1 factors at int4, shifts int4 (mirrors the verified Rust config)",
+      "bits": {
+        "card": 512,
+        "note": 1536
+      },
+      "rc": 0,
+      "secs": 2028.078000000678,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0009430000000000008,
+          "ub95": 0.0010150687938070208,
+          "p_worse": 2.1992743728425196e-89,
+          "mean_cur": 0.3015519786666666,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0013970000000000009,
+          "ub95": 0.0014808183955925573,
+          "p_worse": 5.562401766374996e-116,
+          "mean_cur": 0.27340614533333335,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    },
+    {
+      "name": "l1i4c",
+      "tag": "ql1i4c_1119pm",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int4",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4"
+      },
+      "comment": "attribution: card rank-1 int4 only, note untouched",
+      "bits": {
+        "card": 512,
+        "note": 104448
+      },
+      "rc": 0,
+      "secs": 2351.6409999998286,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0003709733333333343,
+          "ub95": 0.00040798219301922814,
+          "p_worse": 1.573016831737783e-66,
+          "mean_cur": 0.300979952,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0008426466666666672,
+          "ub95": 0.000901143234791193,
+          "p_worse": 8.351013651508744e-105,
+          "mean_cur": 0.272851792,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    },
+    {
+      "name": "l1i4n",
+      "tag": "ql1i4n_1119pm",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "note:1:int4",
+        "RWKV_QAT_SHIFT_SCOPE": "note:int4"
+      },
+      "comment": "attribution: note rank-1 int4 only, card untouched",
+      "bits": {
+        "card": 34816,
+        "note": 1536
+      },
+      "rc": 0,
+      "secs": 2705.9689999995753,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0004958693333333344,
+          "ub95": 0.0005442780150776344,
+          "p_worse": 1.7459991150871715e-64,
+          "mean_cur": 0.301104848,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0005084666666666675,
+          "ub95": 0.0005448579403977804,
+          "p_worse": 5.416839123699366e-99,
+          "mean_cur": 0.27251761199999996,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    },
+    {
+      "name": "cn2",
+      "tag": "qcn2_1119pm",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int2,note:int2",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int2"
+      },
+      "comment": "the simplest scheme at the bar: both streams WKV + shifts at int2",
+      "bits": {
+        "card": 2176,
+        "note": 6528
+      },
+      "rc": 0,
+      "secs": 2609.9690000005066,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.009785196000000003,
+          "ub95": 0.01042168402143044,
+          "p_worse": 3.615386034819971e-110,
+          "mean_cur": 0.3103941746666667,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.011579154666666666,
+          "ub95": 0.012156414087491664,
+          "p_worse": 7.865061105664455e-124,
+          "mean_cur": 0.2835883,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    },
+    {
+      "name": "l1i8",
+      "tag": "ql1i8_1119pm",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"
+      },
+      "comment": "rank-1 factors at int8, shifts int8",
+      "bits": {
+        "card": 1024,
+        "note": 3072
+      },
+      "rc": 0,
+      "secs": 1994.0149999996647,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0007936533333333343,
+          "ub95": 0.0008580706408038929,
+          "p_worse": 7.586645246815059e-82,
+          "mean_cur": 0.301402632,
+          "mean_ref": 0.3006089786666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0011319480000000007,
+          "ub95": 0.0012016051429090053,
+          "p_worse": 1.5905184001105183e-111,
+          "mean_cur": 0.2731410933333333,
+          "mean_ref": 0.27200914533333337
+        }
+      }
+    }
+  ]
+}

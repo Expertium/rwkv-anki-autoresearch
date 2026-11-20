@@ -25,6 +25,10 @@ from rwkv.prepare_batch import prepare_data_train_test
 from rwkv.model import rwkv_model as _rwkv_model_rc
 from rwkv.model.srs_model import SrsRWKV
 from rwkv import sam as _sam  # RWKV_SAM_RHO (2026-09-04); module-level flags, inert when unset
+from rwkv import ta3 as _ta3  # RWKV_TA3 (2026-11-15); module-level flags, inert when unset
+if _ta3.ON and _sam.SAM_ON:
+    raise RuntimeError("RWKV_TA3 and RWKV_SAM_RHO both do a second forward pass; "
+                       "run them as separate arms, never together.")
 from rwkv.architecture import *
 from rwkv.utils import (
     KeyValueAverage,
@@ -751,7 +755,7 @@ def main_loop(config, task_queue, batch_queue):
 
     if config.LOAD_MODEL:
         model_path = f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}.pth"
-        optim_path = f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}_optim.pth"
+        optim_path = getattr(config, "LOAD_OPTIM_PATH", "") or f"{config.LOAD_MODEL_FOLDER}/{config.LOAD_MODEL_NAME}_optim.pth"
         print("Loading model:", model_path)
         master_model.load_state_dict(torch.load(model_path, weights_only=True))
         # weights_only=False for the optim: some champion optim files (e.g. the decay champion
@@ -977,9 +981,18 @@ def main_loop(config, task_queue, batch_queue):
         print(f"[user-weight] ON: per-user loss weight = 1/N_u over {len(_user_row_totals)} users; "
               f"rows/user min {_tot[0]} med {_tot[len(_tot)//2]} max {_tot[-1]} "
               f"(imbalance {_tot[-1]/max(1,_tot[0]):.0f}x, now equalized)")
-    VALIDATION_USERS = list(
-        range(config.VALIDATE_USERS_START, config.VALIDATE_USERS_END + 1)
-    )
+    _val_users_file = getattr(config, "VALIDATE_USERS_FILE", "")
+    if _val_users_file:
+        with open(_val_users_file, encoding="utf-8") as _vf:
+            VALIDATION_USERS = sorted(set(map(int, json.load(_vf))))
+        assert VALIDATION_USERS and all(
+            config.VALIDATE_USERS_START <= _u <= config.VALIDATE_USERS_END
+            for _u in VALIDATION_USERS
+        ), "VALIDATE_USERS_FILE must contain a non-empty subset inside the configured VAL range"
+    else:
+        VALIDATION_USERS = list(
+            range(config.VALIDATE_USERS_START, config.VALIDATE_USERS_END + 1)
+        )
     all_db_keys = get_test_keys(
         config.VALIDATE_DATASET_LMDB_PATH,
         config.VALIDATE_DATASET_LMDB_SIZE,
@@ -1223,6 +1236,8 @@ def main_loop(config, task_queue, batch_queue):
 
         def _decay_factor(step, total_steps):
             x = min(max(step / total_steps, 0.0), 1.0)
+            if _shape == "constant":
+                return 1.0
             if _shape == "linear":
                 return 1.0 - x
             if _shape == "cosine":                      # the STANDARD one, same mass as linear
@@ -1473,21 +1488,82 @@ def main_loop(config, task_queue, batch_queue):
                         print(f"[kd-mix] step {step}: alpha={_km_alpha:.4f} (checksum OK)")
                 # RWKV_SAM_RHO: remember the RNG so the SAM second forward draws the SAME dropout masks
                 _sam_rng = _sam.save_rng() if _sam.sam_active(step) else None
-                stats = model.get_loss(prepared_batch, kd=kd_args, kd_mix=kd_mix_args)
-                if stats is None:
-                    raise Exception("Stats is none.")
-                if not torch.isfinite(stats.average_loss):  # NaN/inf safeguard: skip, don't backprop garbage
-                    raise Exception("non-finite training loss")
+                if _ta3.PROBE_ON or _ta3.CHECK_ON:
+                    # Measure-only modes. They never take an optimizer step, and a failure ABORTS
+                    # instead of falling through to training (a silent un-TA3'd step or a silent
+                    # training run is the failure mode this repo has paid for before).
+                    try:
+                        if _ta3.CHECK_ON:
+                            _ta3.check_step(
+                                model, master_model, optimizer, prepared_batch, step,
+                                kd_args, kd_mix_args,
+                                lambda: transfer_child_grad_to_master(master=master_model, child=model),
+                                lambda m, d: model.copy_downcast_(m, d), config.DTYPE,
+                            )
+                        else:
+                            _ta3.probe(
+                                model, master_model, prepared_batch, step, kd_args, kd_mix_args,
+                                lambda: transfer_child_grad_to_master(master=master_model, child=model),
+                                lambda m, d: model.copy_downcast_(m, d), config.DTYPE,
+                                out_path=os.path.join(config.SAVE_MODEL_FOLDER, "ta3_probe.jsonl"),
+                            )
+                    except SystemExit:
+                        raise
+                    except BaseException:
+                        traceback.print_exc()
+                        print("TA3 measure-only step failed -- ABORT.")
+                        sys.exit(44)
+                    if _ta3.CHECK_ON and _ta3.check_should_stop():
+                        print("[ta3-check] done; no optimizer step was taken.", flush=True)
+                        sys.exit(0)
+                    if _ta3.PROBE_ON and _ta3.probe_should_stop(step):
+                        _ta3.exit_after_probe(step)
+                    continue
+                if _ta3.ON:
+                    # TA3 owns the whole gradient for this step (rwkv/ta3.py `training_step`):
+                    # split the batch into A and Q by a loss-mask change (so the fetched data stream
+                    # stays byte-identical), take a normalised downhill trial step on A, take Q's
+                    # gradient at the perturbed weights, restore the weights exactly, and leave the
+                    # per-group weighted merge in the master grads. Clip/optimizer below are untouched.
+                    # A TA3 failure is a BUG, not a NaN batch: abort instead of degrading to a plain step.
+                    try:
+                        stats = _ta3.training_step(
+                            model, master_model, prepared_batch, kd_args, kd_mix_args,
+                            lambda: transfer_child_grad_to_master(master=master_model, child=model),
+                            lambda m, d: model.copy_downcast_(m, d), config.DTYPE,
+                        )
+                    except SystemExit:
+                        raise
+                    except BaseException:
+                        traceback.print_exc()
+                        print("TA3 step failed -- ABORT (a TA3 failure must not become a plain step).")
+                        sys.exit(44)
+                    if stats is None:
+                        raise Exception("Stats is none.")
+                    if not torch.isfinite(stats.average_loss):
+                        raise Exception("non-finite training loss")
+                    print(
+                        f"{epoch_i} {group_i} {step} [ta3], all: {stats.average_loss.item():3f}, "
+                        f"ahead: {stats.ahead_avg.item():.4f} ({stats.ahead_raw_avg.item():.4f}), "
+                        f"imm: {stats.imm_avg.item():.3f}"
+                    )
+                    log["train_nan"] = 0
+                else:
+                    stats = model.get_loss(prepared_batch, kd=kd_args, kd_mix=kd_mix_args)
+                    if stats is None:
+                        raise Exception("Stats is none.")
+                    if not torch.isfinite(stats.average_loss):  # NaN/inf safeguard: skip, don't backprop garbage
+                        raise Exception("non-finite training loss")
 
-                print(
-                    f"{epoch_i} {group_i} {step}, all: {stats.average_loss.item():3f}, ahead: {stats.ahead_avg.item():.4f} ({stats.ahead_raw_avg.item():.4f}), imm: {stats.imm_avg.item():.3f}"
-                )
-                log["train_nan"] = 0
-                if _wkv_cb_param is not None:
-                    from rwkv.model import rwkv_ops as _rwkv_ops_mod
-                    _rwkv_ops_mod.wkv_pq_grad_zero()
-                stats.average_loss.backward()
-                transfer_child_grad_to_master(master=master_model, child=model)
+                    print(
+                        f"{epoch_i} {group_i} {step}, all: {stats.average_loss.item():3f}, ahead: {stats.ahead_avg.item():.4f} ({stats.ahead_raw_avg.item():.4f}), imm: {stats.imm_avg.item():.3f}"
+                    )
+                    log["train_nan"] = 0
+                    if _wkv_cb_param is not None:
+                        from rwkv.model import rwkv_ops as _rwkv_ops_mod
+                        _rwkv_ops_mod.wkv_pq_grad_zero()
+                    stats.average_loss.backward()
+                    transfer_child_grad_to_master(master=master_model, child=model)
                 if _sam_rng is not None:
                     # RWKV_SAM_RHO: replace master's grads with the gradient at w + rho*g/||g||
                     # (same batch, same dropout masks; weights restored bit-exactly). `stats`, printed
