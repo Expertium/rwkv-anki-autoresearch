@@ -123,6 +123,15 @@ If the tax keeps rising at 992, this route is closed for good and only bit alloc
 
 ### fp32 twins (reference rows, needed to split "training drift" from "quantizer cost")
 
+**Caveat (2026-11-21 01:15): this split is a diagnostic, not a clean decomposition.** A twin is a
+checkpoint that was TRAINED with the quantizer in the loop and then evaluated with it removed, so it is a
+mismatched model, not a second fp32 model. The measured signs show that: the quantized eval is BETTER
+than its own twin on the ahead head (row 3 -0.001062, row 4 -0.001144) and near-neutral on the immediate
+head (row 3 -0.000560, row 4 +0.000192). So QAT does not merely add state error; it changes the operating
+point, and removing the quantizer afterwards moves the model away from where it was trained. Read the
+table as "how sensitive is this checkpoint to the presence of the quantizer", and use the TOTAL tax
+against row 0 (or row 0b at 496 steps) as the gate number.
+
 Each twin is the SAME QAT-trained checkpoint evaluated with quantization OFF, so the pair isolates the
 quantizer. These are not candidates.
 
