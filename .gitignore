@@ -274,3 +274,6 @@ scratchpad/quant_plan/rust_speed_preds/
 /1][
 /105000]
 /model_weights.txt
+
+# quant_plan chain lock files (a running chain holds one; delete by hand after an outage).
+scratchpad/quant_plan/*.lock

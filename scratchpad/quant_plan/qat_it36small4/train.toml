@@ -1,0 +1,48 @@
+# Start and end indices of the users used for training
+TRAIN_USERS_START = 1
+TRAIN_USERS_END = 100
+
+VALIDATE_USERS_START = 5002
+VALIDATE_USERS_END = 5004
+
+TRAIN_DATASET_LMDB_PATH = "F:/rwkv_lmdb/train_db_5k_h1_adaptive92"
+TRAIN_DATASET_LMDB_SIZE = 400000000000
+VALIDATE_DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_adaptive92"
+VALIDATE_DATASET_LMDB_SIZE = 250000000000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40000000000
+
+# Number of CPU processes for preprocessing the dataset
+NUM_FETCH_PROCESSES = 1
+
+# The maximum global length of a batch
+MAX_TRAIN_GLOBAL_LEN = 66000
+
+# Available modes are "WS" and "D" for the corresponding phases of the WSD learning rate scheduler.
+TRAIN_MODE = "D"
+# Set a step offset, useful for resuming WANDB runs
+STEP_OFFSET = 1
+
+# If TRAIN_MODE is "WS", warmup steps is used
+WARMUP_STEPS = 1
+EPOCHS = 2.0
+PEAK_LR = 0.001
+
+LOAD_MODEL = true
+LOAD_MODEL_FOLDER = "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\pretrain\\rwkv\\opt_iter36"
+LOAD_MODEL_NAME = "rwkv_iter36_558"
+SAVE_MODEL_FOLDER = "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36small4"
+SAVE_MODEL_PREFIX = "qat"
+# Device to train on. Use "cuda" for NVIDIA GPUs, or "cpu" for CPU-only setups (much slower).
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+USE_WANDB = false
+# Only relevant if USE_WANDB is set to true
+WANDB_PROJECT_NAME = "rwkv"
+WANDB_RESUME = false
+# Only relevant if WANDB_RESUME is set to true
+WANDB_RESUME_ID = ""
+VALIDATE_USERS_FILE = "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36small4\\validation_users.json"
+VALIDATE_EVERY = 500
+LOAD_OPTIM_PATH = "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\pretrain\\rwkv\\opt_iter36\\rwkv_iter36_optim_558.pth"

@@ -1,0 +1,44 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36ctl496\\ctl_496.pth",
+  "ref": "qnj_it36_124",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "nj",
+      "tag": "qnj_it36ctl496",
+      "env": {},
+      "comment": "unquantized control in the no-JIT path (the speed reference)",
+      "bits": {
+        "card": 34816,
+        "note": 104448
+      },
+      "rc": 0,
+      "secs": 1220.7969999999987,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": -0.021154313333333334,
+          "ub95": -0.019423583408721624,
+          "p_worse": 1.0,
+          "mean_cur": 0.3216587573333334,
+          "mean_ref": 0.34281307066666666
+        },
+        "imm": {
+          "n": 750,
+          "delta": -0.019658832000000005,
+          "ub95": -0.01820220287389093,
+          "p_worse": 1.0,
+          "mean_cur": 0.29461354933333334,
+          "mean_ref": 0.31427238133333335
+        }
+      }
+    }
+  ]
+}

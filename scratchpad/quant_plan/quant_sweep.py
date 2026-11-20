@@ -82,6 +82,15 @@ CANDIDATES = {
     "l1i4s2": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int4,note:1:int4",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int2"},
                "rank-1 factors at int4, shifts int2 (smaller card state)", None),
+    # Which side of the rank-1 split carries the tax? These two have the SAME state size
+    # (768 card / 2,304 note bits) with the bits moved from one side to the other, so the pair
+    # is an attribution test that costs no state. Added 2026-11-20 for the axis-1 curve.
+    "l1i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int8",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+               "rank-1 int8 factors + int4 shifts (768/2304 bits)", None),
+    "l1i4s8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int4,note:1:int4",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"},
+               "rank-1 int4 factors + int8 shifts (768/2304 bits)", None),
     "l1i4c": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int4", "RWKV_QAT_SHIFT_SCOPE": "card:int4"},
               "attribution: card rank-1 int4 only, note untouched", None),
     "l1i4n": ({"RWKV_QAT_LOWRANK_SCOPE": "note:1:int4", "RWKV_QAT_SHIFT_SCOPE": "note:int4"},

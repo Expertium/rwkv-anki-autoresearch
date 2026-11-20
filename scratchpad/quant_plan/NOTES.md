@@ -74,6 +74,27 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 00:00 - **Row 6 (`l1i4s2`, 384/1,152 bits) = +0.001445 ahead / +0.002280 imm** against the
+  124-step control (0.335247/0.308491, ub95 +0.001592/+0.002464, p 3.0e-66/1.9e-88), i.e. 2.9x/4.6x over
+  the ceiling. Taking the token shifts from int4 to int2 costs +0.000395/+0.000598 on its own, so the
+  SHIFT vectors are the expensive side of the rank-1 split. Both streams stay far under the bars (384 vs
+  2,176 and 1,152 vs 6,528). The run was clean: `rank1/fq7.0` factors + shift qmax 1.0 (int2), 160
+  groups, in-run validations 0.3842/0.3766 then 0.3768/0.3683, peak reserved 5.604 GB.
+
+* 2026-11-21 00:00 - **Two 768/2,304-bit attribution candidates added** to `quant_sweep.CANDIDATES`:
+  `l1i8s4` (int8 factors + int4 shifts) and `l1i4s8` (int4 factors + int8 shifts) - the same total size
+  with the bits moved between the two sides, so the pair separates factor error from shift error (roster
+  sweep rows 9-10). Added by `_add_mixed_candidates.py`; `bits_for` confirms 768/2,304 for both.
+
+* 2026-11-21 00:00 - **Second screening chain launched** (`it36qatsmall2_chain.py`, detached 23:47, lock
+  `it36qatsmall2_chain.lock`). It waits for `it36qatsmall_chain`'s end marker with zero matching
+  processes, then runs: `l1i4` at 496 steps vs `qnj_it36ctl496` (can the longer decay absorb row 5's
+  tax?), `l1i8s4`, `l1i4s8`, `l1i4s2` at 496 steps, and `l1i2` at 496 steps only if the 124-step `l1i2`
+  point is within +0.0025. Hazard fixed on launch: the venv `python.exe` is a shim that spawns the real
+  interpreter, so process counting cannot identify a single instance (it reported 2 for one chain) - the
+  chain therefore does NOT count itself in the busy pattern and uses the lock file as the only
+  double-launch guard. Delete the lock by hand after a machine outage.
+
 * 2026-11-20 23:15 - **Row 5 (`l1i4`, 512/1,536 bits) scored: +0.001050 ahead / +0.001682 imm** against
   the 124-step control (0.334852/0.307894, ub95 +0.001164/+0.001841, p 2e-63/3.1e-75) = **2.1x/3.4x over**
   the +0.0005 ceiling. Halving row 4's bits roughly doubles the tax, so the bits-vs-tax curve is steep at

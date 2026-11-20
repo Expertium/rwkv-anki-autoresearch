@@ -66,9 +66,15 @@ checkpoint) and comes from the deploy engine table below.
 | 3 | QAT card full-matrix int2 + note rank-1 int8 (Andrew's first pick) | 2,176 (272) | 3,072 (384) | 2,586 | 0.903x | 0.335038 | 0.307253 | +0.001236 | +0.001042 | **FAIL**, 2.5x/2.1x over, ub95 +0.001375/+0.001205 |
 | 4 | **QAT rank-1 int8 factors + int8 shifts, card and note - BEST SO FAR** | **1,024 (128)** | 3,072 (384) | 2,586 | 0.903x | **0.334305** | **0.307221** | **+0.000503** | **+0.001009** | **FAIL by a hair**: ahead is 0.0000035 over the ceiling (ub95 +0.000607), imm 2x over (ub95 +0.001122) |
 | 5 | QAT rank-1 int4 factors + int4 shifts, card and note (HALF of row 4's bits) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | 0.334852 | 0.307894 | +0.001050 | +0.001682 | **FAIL**, 2.1x/3.4x over, ub95 +0.001164/+0.001841, p 2e-63/3.1e-75 |
-| 6 | QAT rank-1 int4 factors + int2 shifts | 384 (48) | 1,152 (144) | *running* | *running* | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
-| 7 | QAT rank-1 int2 factors + int2 shifts (QUARTER of row 4) | 256 (32) | 768 (96) | *running* | *running* | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
+| 6 | QAT rank-1 int4 factors + int2 shifts | 384 (48) | 1,152 (144) | 2,586 | 0.903x | 0.335247 | 0.308491 | +0.001445 | +0.002280 | **FAIL**, 2.9x/4.6x over, ub95 +0.001592/+0.002464, p 3.0e-66/1.9e-88 |
+| 7 | QAT rank-1 int2 factors + int2 shifts (QUARTER of row 4) | 256 (32) | 768 (96) | 2,586 | 0.903x | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
 | 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | *running* | *running* | *running* | *running* | *running* - `it36qatsmall`; **d against row 0b**, not row 0 |
+| 9 | QAT rank-1 int8 factors + int4 shifts: SAME total bits as row 10, the bits moved to the factors | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
+| 10 | QAT rank-1 int4 factors + int8 shifts: SAME total bits as row 9, the bits moved to the shifts | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
+
+Rows 5-7, 9 and 10 all use the rank-1 path, whose engine speed was measured once (`l1i4` and `l1i8` both
+2,586 rev/s = 0.903x); the factor/shift bit widths do not change that path, so their speed cells are
+that measurement rather than a per-candidate run.
 
 **Status: nothing passes the +0.0005 bar yet.** Row 4 is the best point: ahead is essentially at the
 ceiling, the immediate head is twice over. Rows 3 and 1 are 2-3x over on both heads, and row 2 shows
@@ -76,8 +82,12 @@ that QAT does not rescue a naive full-matrix quantizer.
 
 **The bits-vs-tax curve (rows 5-7) is the axis-1 answer, and it is not free.** Halving row 4's bits
 (l1i8 -> l1i4: card 1,024 -> 512 bits, note 3,072 -> 1,536 bits) costs +0.000547 ahead and +0.000673
-imm, so the tax roughly doubles to +0.001050/+0.001682. Both streams are still far under their bars
-(card 512 vs 2,176; note 1,536 vs 6,528). Rows 6 and 7 push further down.
+imm, so the tax doubles to +0.001050/+0.001682. Taking the token-shift vectors from int4 to int2 as
+well (row 6, 384/1,152 bits) adds another +0.000395/+0.000598. Both streams stay far under their
+constraint-2 bars (card 512 or 384 vs 2,176; note 1,536 or 1,152 vs 6,528), so axis 1 is a trade-off
+curve rather than a hard limit - and the *shifts* look like the expensive side of the rank-1 split.
+Rows 9 and 10 test that directly: they hold the total at 768/2,304 bits and move the bits between the
+factors and the shifts.
 
 **Row 0b reorders the priorities.** Lengthening the decay from 124 to 496 steps at identical bits and
 identical quantization moves the loss about 25x more than the whole quantization tax does
