@@ -13,6 +13,12 @@ trained from `pretrain/rwkv/opt_iter36/rwkv_iter36_558.pth` with quantization OF
 different step budget use their own identical unquantized twin (e.g. `qnj_it36ctl496` for the
 496-step point), never a borrowed budget.
 
+**Row 0b: the 496-step fp32 control (scored 2026-11-20 22:46).** The same data, recipe and start
+checkpoint with `RWKV_MAX_STEPS=496` instead of 124 - tag `qnj_it36ctl496` - scores **0.321659
+ahead / 0.294614 imm**, i.e. 0.012143/0.011598 BETTER than row 0 (ub95 +0.012911/+0.012336,
+p 2.0e-108/1.1e-122). The decay length, not the quantizer, is what moves the loss at this scale,
+so row 8 is quoted against this twin and not against row 0.
+
 Two earlier framings are **withdrawn**: the comparison against the `iter36` champion
 (`rwkv_iter36_124.pth`, 0.342813/0.314272) mixes in a different training run and different data, so
 its 0.0085 "win" was not a quantization result and must not be quoted; and the comparison against the
@@ -47,13 +53,14 @@ per-step scale, which every scheme needs.
 
 ## Results (against the identical unquantized run)
 
-`d` columns are paired per-user means against **row 0**. A row passes only if BOTH heads are
-<= +0.0005. Speed is per config (it does not depend on the checkpoint) and comes from the deploy
-engine table below.
+`d` columns are paired per-user means against **row 0** (row 8 against its own twin, **row 0b**).
+A row passes only if BOTH heads are <= +0.0005. Speed is per config (it does not depend on the
+checkpoint) and comes from the deploy engine table below.
 
 | Iter | Method | card bits (B) | note bits (B) | speed: Rust rev/s | speed: x unquant | ahead LogLoss | imm LogLoss | d ahead | d imm | verdict |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|
 | 0 | **ANCHOR**: the identical 124-step decay, NO quantization (fp32 state) | 34,816 (4,352) | 104,448 (13,056) | 2,863 | 1.00x | 0.333802 | 0.306211 | - | - | reference, n=750, 0 OOM, 0 NaN |
+| 0b | **ANCHOR for row 8**: the identical 496-step decay, NO quantization (fp32 state), tag `qnj_it36ctl496` | 34,816 (4,352) | 104,448 (13,056) | 2,863 | 1.00x | 0.321659 | 0.294614 | - | - | reference for row 8 only; it is 0.012143/0.011598 BETTER than row 0, so its d columns are not comparable to rows 1-7 |
 | 1 | PTQ, no training: card full-matrix int2 + note rank-1 int8 applied to the anchor checkpoint | 2,176 (272) | 3,072 (384) | 2,586 | 0.903x | 0.335225 | 0.308888 | +0.001424 | +0.002676 | **FAIL**, 2.8x/5.4x over, ub95 +0.001586/+0.002928 |
 | 2 | QAT both streams full-matrix int2 (the naive at-the-bar scheme) | 2,176 (272) | 6,528 (816) | 2,628 | 0.918x | 0.337559 | 0.311924 | +0.003757 | +0.005712 | **FAIL**, 7.5x/11.4x over, ub95 +0.004026/+0.006157 |
 | 3 | QAT card full-matrix int2 + note rank-1 int8 (Andrew's first pick) | 2,176 (272) | 3,072 (384) | 2,586 | 0.903x | 0.335038 | 0.307253 | +0.001236 | +0.001042 | **FAIL**, 2.5x/2.1x over, ub95 +0.001375/+0.001205 |
@@ -61,12 +68,18 @@ engine table below.
 | 5 | QAT rank-1 int4 factors + int4 shifts, card and note (HALF of row 4) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
 | 6 | QAT rank-1 int4 factors + int2 shifts | 384 (48) | 1,152 (144) | *running* | *running* | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
 | 7 | QAT rank-1 int2 factors + int2 shifts (QUARTER of row 4) | 256 (32) | 768 (96) | *running* | *running* | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
-| 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | *running* | *running* | *running* | *running* | *running* - `it36qatsmall` |
+| 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | *running* | *running* | *running* | *running* | *running* - `it36qatsmall`; **d against row 0b**, not row 0 |
 
 **Status: nothing passes the +0.0005 bar yet.** Row 4 is the best point: ahead is essentially at the
 ceiling, the immediate head is twice over. Rows 3 and 1 are 2-3x over on both heads, and row 2 shows
-that QAT does not rescue a naive full-matrix quantizer. Rows 5-8 walk the bit ladder down (the axis
-Andrew ranks first) and test a longer QAT decay at row 4's bits.
+that QAT does not rescue a naive full-matrix quantizer. Rows 5-7 walk the bit ladder down (the axis
+Andrew ranks first); row 8 tests a longer QAT decay at row 4's bits.
+
+**Row 0b reorders the priorities.** Lengthening the decay from 124 to 496 steps at identical bits and
+identical quantization moves the loss about 25x more than the whole quantization tax does
+(0.0121/0.0116 vs 0.0005/0.0010). The remaining axis-2 work is therefore not "find a cleverer
+quantizer" but "give the decay enough steps to absorb the quantizer"; rows 5-7 stay valuable because
+smaller state is Andrew's first priority.
 
 ### fp32 twins (reference rows, needed to split "training drift" from "quantizer cost")
 
