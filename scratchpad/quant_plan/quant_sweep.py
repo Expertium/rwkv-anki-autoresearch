@@ -85,6 +85,12 @@ CANDIDATES = {
     # Which side of the rank-1 split carries the tax? These two have the SAME state size
     # (768 card / 2,304 note bits) with the bits moved from one side to the other, so the pair
     # is an attribution test that costs no state. Added 2026-11-20 for the axis-1 curve.
+    # Attribution for row 4 at its exact allocation: which stream owns which head? Card-only and
+    # note-only rank-1 int8, the other stream left in fp32. Added 2026-11-21.
+    "l1i8c": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int8", "RWKV_QAT_SHIFT_SCOPE": "card:int8"},
+              "attribution: card rank-1 int8 only, note untouched", None),
+    "l1i8n": ({"RWKV_QAT_LOWRANK_SCOPE": "note:1:int8", "RWKV_QAT_SHIFT_SCOPE": "note:int8"},
+              "attribution: note rank-1 int8 only, card untouched", None),
     "l1i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "rank-1 int8 factors + int4 shifts (768/2304 bits)", None),

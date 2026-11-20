@@ -68,7 +68,7 @@ checkpoint) and comes from the deploy engine table below.
 | 5 | QAT rank-1 int4 factors + int4 shifts, card and note (HALF of row 4's bits) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | 0.334852 | 0.307894 | +0.001050 | +0.001682 | **FAIL**, 2.1x/3.4x over, ub95 +0.001164/+0.001841, p 2e-63/3.1e-75 |
 | 6 | QAT rank-1 int4 factors + int2 shifts | 384 (48) | 1,152 (144) | 2,586 | 0.903x | 0.335247 | 0.308491 | +0.001445 | +0.002280 | **FAIL**, 2.9x/4.6x over, ub95 +0.001592/+0.002464, p 3.0e-66/1.9e-88 |
 | 7 | QAT rank-1 int2 factors + int2 shifts (QUARTER of row 4) | 256 (32) | 768 (96) | 2,586 | 0.903x | 0.337406 | 0.311143 | +0.003604 | +0.004932 | **FAIL**, 7.2x/9.9x over, ub95 +0.003871/+0.005296, p 9.7e-93/1.8e-93 |
-| 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | *running* | *running* | *running* | *running* | *running* - `it36qatsmall`; **d against row 0b**, not row 0 |
+| 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | 0.322791 | 0.296287 | +0.001132 | +0.001674 | **FAIL**, 2.3x/3.3x over, but **d is against its own 496-step twin (row 0b)**, ub95 +0.001254/+0.001796 |
 | 9 | QAT rank-1 int8 factors + int4 shifts: SAME total bits as row 10, the bits moved to the factors | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
 | 10 | QAT rank-1 int4 factors + int8 shifts: SAME total bits as row 9, the bits moved to the shifts | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
 
@@ -96,11 +96,14 @@ trade-off curve rather than a hard limit - and the *token shifts* look like the 
 rank-1 split (int4 -> int2 shifts alone cost +0.000395/+0.000598 at row 6). Rows 9 and 10 test that
 directly: they hold the total at 768/2,304 bits and move the bits between the factors and the shifts.
 
-**Row 0b reorders the priorities.** Lengthening the decay from 124 to 496 steps at identical bits and
-identical quantization moves the loss about 25x more than the whole quantization tax does
-(0.0121/0.0116 vs 0.0005/0.0010). The remaining axis-2 work is therefore not "find a cleverer
-quantizer" but "give the decay enough steps to absorb the quantizer"; rows 5-7 stay valuable because
-smaller state is Andrew's first priority.
+**Row 0b does NOT rescue the tax - the 496-step hypothesis is refuted.** The hope was that a longer
+decay would absorb the quantizer, since the decay length moves the loss about 25x more than the tax
+(0.0121/0.0116 vs 0.0005/0.0010). Row 8 tests it at row 4's exact bits: 496 steps of the same QAT
+recipe scores 0.322791/0.296287 against the 496-step fp32 twin = **+0.001132/+0.001674**, so the tax
+MORE than doubles (row 4's 124-step pair was +0.000503/+0.001009). The absolute model is much better
+(0.0115 ahead of row 4), but relatively it is worse: the fp32 twin improves faster than the quantized
+copy can follow. Compliance therefore has to be won at the champion's own decay length, not by adding
+training, and the useful axis-2 lever is the bit allocation itself.
 
 ### fp32 twins (reference rows, needed to split "training drift" from "quantizer cost")
 
@@ -253,9 +256,22 @@ Readings:
   **+0.000503/+0.001009** - the best point, one hair over the ceiling on ahead and 2x over on imm.
   Quantizer mismatch check: the same checkpoint evaluated with the `c2_nl1i8` quantizer gives
   0.335534/0.308766 (+0.001732/+0.002554), so the deploy must use the training-time quantizer.
-- **Rows 5-8, `it36qatsmall` (running)**: the bit ladder `l1i4` (512/1,536), `l1i4s2` (384/1,152),
-  `l1i2` (256/768), each 124-step QAT + one quantized eval against row 0; then `l1i8` at 496 steps
-  against its own 496-step fp32 twin (`ctl_496.pth`, evaluated as `qnj_it36ctl496`).
+- **Rows 5-8, `it36qatsmall` (finished 2026-11-21 00:51:55, rc=0)**: job 0 scored the 496-step fp32
+  control as `qnj_it36ctl496` (0.321659/0.294614 - row 0b, 0.012143/0.011598 BETTER than row 0); then
+  the 124-step bit ladder `l1i4` (512/1,536 bits) +0.001050/+0.001682, `l1i4s2` (384/1,152)
+  +0.001445/+0.002280, `l1i2` (256/768) +0.003604/+0.004932; then `l1i8` at 496 steps, which is
+  +0.001132/+0.001674 against its own 496-step twin and so refutes the longer-decay route. Each point
+  was a 0.04-epoch smoke, one QAT decay, and one quantized eval; every run printed its
+  `[QAT-LOWRANK]`/`[QAT-SHIFT]` banners, saw 160 groups, and reserved 5.6 GB at peak.
+- **Rows 9-10, `it36qatsmall2` (queued, took the GPU at 00:51:57)**: `l1i4` at 496 steps against
+  `qnj_it36ctl496` (the same decay-length question at the cheapest allocation), then the
+  768/2,304-bit attribution pair `l1i8s4` (int8 factors + int4 shifts) and `l1i4s8` (int4 factors +
+  int8 shifts), then `l1i4s2` at 496 steps. Its own guard skips `l1i2`@496, because the 124-step
+  `l1i2` point is +0.003604 and the threshold is +0.0025.
+- **`it36qatsmall3` (queued behind it)**: the per-stream attribution pair `l1i8c` (card rank-1 int8
+  only) and `l1i8n` (note rank-1 int8 only) on row 4's own checkpoint, which splits row 4's ahead/imm
+  tax into a card part and a note part. Attribution rows only - one stream stays fp32, so they cannot
+  meet constraint 2.
 - **Appendix A, `it36ptq`**: the four untrained schemes re-scored on the iter36 champion (a different
   run, kept for ranking only).
 - **Preliminary PTQ sweep on the adaptive-WD incumbent (`sweep_1119pm.log`)**: the first pass, which

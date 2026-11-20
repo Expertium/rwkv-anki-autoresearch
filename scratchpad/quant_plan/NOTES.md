@@ -74,6 +74,15 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 00:55 - **Row 8 REFUTES the longer-decay hypothesis.** `l1i8` at 496 steps (row 4's exact
+  bits) = 0.322791/0.296287 against its own 496-step fp32 twin (row 0b, 0.321659/0.294614) =
+  **+0.001132 ahead / +0.001674 imm** (ub95 +0.001254/+0.001796, p 8.7e-51/6.1e-88). The tax MORE than
+  doubles versus the 124-step pair (+0.000503/+0.001009), even though the absolute quantized model is
+  0.0115 ahead of row 4. The fp32 twin simply improves faster than a fixed-bit quantizer can follow, so
+  compliance has to be won at the champion's own decay length and the useful axis-2 lever is the bit
+  ALLOCATION, not more training. `it36qatsmall_chain` ENDED at 00:51:55 with all four of its points
+  scored (rows 5-8), and `it36qatsmall2_chain` picked up the GPU.
+
 * 2026-11-21 00:14 - **Row 7 (`l1i2`, 256/768 bits, int2 factors + int2 shifts) = +0.003604 ahead /
   +0.004932 imm** (0.337406/0.311143, ub95 +0.003871/+0.005296, p 9.7e-93/1.8e-93) = **7.2x/9.9x over**
   the ceiling. That closes the bit ladder and the curve is convex: 1,024/3,072 -> +0.000503/+0.001009,
