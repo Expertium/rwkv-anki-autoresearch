@@ -71,6 +71,8 @@ checkpoint) and comes from the deploy engine table below.
 | 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | 0.322791 | 0.296287 | +0.001132 | +0.001674 | **FAIL**, 2.3x/3.3x over, but **d is against its own 496-step twin (row 0b)**, ub95 +0.001254/+0.001796 |
 | 9 | QAT rank-1 int8 factors + int4 shifts: SAME total bits as row 10, the bits moved to the factors | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
 | 10 | QAT rank-1 int4 factors + int8 shifts: SAME total bits as row 9, the bits moved to the shifts | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
+| 11 | QAT rank-1 int8, 992-step decay (8x the champion's 124 steps; axis 2 under the relaxed rule) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall4`, vs `qnj_it36ctl992` |
+| 12 | QAT rank-1 int4, 992-step decay (only if 496 steps already beat 124 at these bits) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | conditional in `it36qatsmall4`, vs `qnj_it36ctl992` |
 
 Rows 5-7, 9 and 10 all use the rank-1 path, whose engine speed was measured once (`l1i4` and `l1i8` both
 2,586 rev/s = 0.903x); the factor/shift bit widths do not change that path, so their speed cells are
@@ -104,6 +106,20 @@ MORE than doubles (row 4's 124-step pair was +0.000503/+0.001009). The absolute 
 (0.0115 ahead of row 4), but relatively it is worse: the fp32 twin improves faster than the quantized
 copy can follow. Compliance therefore has to be won at the champion's own decay length, not by adding
 training, and the useful axis-2 lever is the bit allocation itself.
+
+**The decay-length rule was relaxed (Andrew, 2026-11-21 01:00), so the 992-step point is now legal.**
+The 496-step point was a *pre-registered* deviation from the champion's 124 steps; Andrew has opened the
+step budget: "instead of using 124 steps, you can use more steps. It will make results less apples-to-apples
+comparable, but if it ultimately ends up turning a failing recipe into a winning one, it's fine". A QAT
+point may therefore use any decay length. Two rules still hold. (a) Every point is scored against an fp32
+twin trained at the SAME length on the same data, because otherwise "longer training" and "quantization"
+cannot be separated - and longer training helps fp32 too (row 0b is 0.0121/0.0116 better than row 0). The
+twin is cheap: 992 steps is about 27 minutes. (b) The row states its decay length, so the deviation from
+the champion's 124 steps is visible. The tax rises from 124 to 496 steps (+0.000503/+0.001009 ->
++0.001132/+0.001674), so the open question is whether it turns over later. Rows 11-12 (`it36qatsmall4`,
+queued 2026-11-21 01:05) test 992 steps: the twin `qnj_it36ctl992`, then row 4's exact bits (`l1i8`) at
+992, then - only if 496 steps already beat 124 steps at the cheap 512/1,536-bit allocation - `l1i4` at 992.
+If the tax keeps rising at 992, this route is closed for good and only bit allocation is left.
 
 ### fp32 twins (reference rows, needed to split "training drift" from "quantizer cost")
 
@@ -271,7 +287,13 @@ Readings:
 - **`it36qatsmall3` (queued behind it)**: the per-stream attribution pair `l1i8c` (card rank-1 int8
   only) and `l1i8n` (note rank-1 int8 only) on row 4's own checkpoint, which splits row 4's ahead/imm
   tax into a card part and a note part. Attribution rows only - one stream stays fp32, so they cannot
-  meet constraint 2.
+  meet constraint 2. It then trains the mechanism diagnostic `cn8` (full-matrix int8, 8,704/26,112 bits,
+  4x over the bars, DIAGNOSTIC ONLY) with its own 124-step QAT decay.
+- **Rows 11-12, `it36qatsmall4` (queued 2026-11-21 01:05)**: the relaxed step-budget point. It trains
+  the 992-step fp32 twin (`qnj_it36ctl992`, `--no-quant`, scored against `qnj_it36_124` for context
+  only), then `l1i8` at 992 steps against that twin, then `l1i4` at 992 steps but only if the 496-step
+  `l1i4` ahead tax beat the 124-step one. 992 steps is 8x the champion's 124 and 2x the last measured
+  point, so it is the last sensible length on this curve.
 - **Appendix A, `it36ptq`**: the four untrained schemes re-scored on the iter36 champion (a different
   run, kept for ranking only).
 - **Preliminary PTQ sweep on the adaptive-WD incumbent (`sweep_1119pm.log`)**: the first pass, which

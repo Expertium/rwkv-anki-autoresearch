@@ -13,6 +13,12 @@ setup, the bit arithmetic, the roster, the harness notes and the live status.
 3. Log loss on **both** heads must not be higher than **current best + 0.0005**.
 4. PTQ or QAT are both allowed: quantize with no extra training, or take the best run's checkpoint
    and redo **only the one decay epoch** as QAT. Do **not** redo all 10 epochs.
+   * **(2026-11-21 01:00) The step budget is RELAXED.** Andrew: "instead of using 124 steps, you can
+     use more steps. It will make results less apples-to-apples comparable, but if it ultimately ends
+     up turning a failing recipe into a winning one, it's fine". So a QAT point may use any decay
+     length. The rule that survives is that a point is only comparable to an fp32 twin trained at the
+     SAME length on the same data, and that the row states its length. See RESULTS.md rows 11-12
+     (`it36qatsmall4`, 992 steps).
 5. Test on a **random 750-user subset** of the 2.5k eval set (VAL 5001-7500).
 6. **(2026-11-19, later)** *Inference speed must be no more than 25% slower than the unquantized
    model*: if unquantized predicts R users/s, quantized must be >= `0.75*R` (ideally the loss is
@@ -73,6 +79,19 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 `eval_sharded` refuses to overwrite an existing tag, so always use a fresh tag.
 
 ## Live status
+
+* 2026-11-21 01:05 - **Andrew relaxed the QAT step budget, and chain 4 (`it36qatsmall4`) is launched to
+  exploit it.** "instead of using 124 steps, you can use more steps ... if it ultimately ends up turning
+  a failing recipe into a winning one, it's fine". Chain 4 waits behind chain 3 and then: (1) trains and
+  evals the **992-step fp32 twin** (`it36ctl992`, `--no-quant`, tag `qnj_it36ctl992`, scored against
+  `qnj_it36_124` for context only); (2) `l1i8` at 992 steps (row 4's exact bits) against that twin;
+  (3) `l1i4` at 992 steps ONLY if the 496-step `l1i4` ahead tax beat the 124-step one. 992 = 8x the
+  champion's 124 and 2x the last measured point, so it is the last sensible length on this curve. The
+  twin is mandatory: longer training helps fp32 too (row 0b is 0.0121/0.0116 better than row 0), so a
+  point without its own same-length twin cannot separate "more training" from "quantization". Recorded
+  in RESULTS.md (rows 11-12 + the relaxation paragraph), NOTES requirement 4 and board amendment 9.
+  Launched detached 01:05:50, lock `it36qatsmall4_chain.lock` taken, first log line
+  `=== it36qatsmall4 chain start ===`.
 
 * 2026-11-21 01:00 - **Chain 3 relaunched with the mechanism diagnostic `cn8` added** (full-matrix int8
   both streams, 8,704/26,112 bits, 4x over the bars - DIAGNOSTIC ONLY, never a candidate). Row 4's
