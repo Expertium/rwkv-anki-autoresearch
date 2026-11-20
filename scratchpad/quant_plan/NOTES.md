@@ -74,6 +74,16 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 01:00 - **Chain 3 relaunched with the mechanism diagnostic `cn8` added** (full-matrix int8
+  both streams, 8,704/26,112 bits, 4x over the bars - DIAGNOSTIC ONLY, never a candidate). Row 4's
+  residual immediate-head error (+0.001009, 2x over the ceiling) is either the rank-1 STRUCTURE (the WKV
+  matrix is only approximately rank 1) or the 8-bit FACTOR PRECISION; `cn8` has no truncation at all, so
+  its tax separates the two and decides whether a finer level (int16 factors/shifts, or unquantized
+  factors) could help. It needs its own 124-step QAT decay because evaluating a checkpoint with a
+  quantizer it was not trained for costs ~+0.0012/+0.0015 and would swamp the signal. Chain 3 order:
+  `l1i8c`, `l1i8n` (the per-stream attribution pair on row 4's checkpoint), then `cn8`. Added to
+  `quant_sweep.CANDIDATES` by `_add_cn8_diag.py`; board amendment 8b records the relaunch.
+
 * 2026-11-21 00:55 - **Row 8 REFUTES the longer-decay hypothesis.** `l1i8` at 496 steps (row 4's exact
   bits) = 0.322791/0.296287 against its own 496-step fp32 twin (row 0b, 0.321659/0.294614) =
   **+0.001132 ahead / +0.001674 imm** (ub95 +0.001254/+0.001796, p 8.7e-51/6.1e-88). The tax MORE than

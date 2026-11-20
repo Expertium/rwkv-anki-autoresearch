@@ -14,8 +14,11 @@ equal, which is what suggested the note owns the imm head).
 
 They also tell us where a finer level would pay off. Within the rank-1 fast path the per-layer budget
 (2,176 bits) still has headroom over row 4's 1,024 bits, but the only ways to spend it are finer levels
-(int16, or unquantized factors) - a machinery change that needs Andrew's decision, so this chain stops
-after the attribution pair and reports.
+(int16, or unquantized factors) - a machinery change that needs Andrew's decision. So the chain adds one
+more, code-free mechanism test first: `cn8` = full-matrix int8 on both streams (8,704 / 26,112 bits,
+four times over the bars, DIAGNOSTIC ONLY) with its own 124-step QAT decay. With no rank truncation at
+all, its tax says whether the residual immediate-head error is the rank-1 structure or the 8-bit factor
+precision - and therefore whether a finer level can help at all.
 
 Relaunch-safe (a point whose result exists is skipped), lock-guarded, and it does not count itself as
 GPU work (the venv `python.exe` is a shim, so one chain shows two processes).
@@ -108,6 +111,34 @@ def eval_point(cand, stamp, ckpt):
                RUN / f"eval_{stamp}_launcher.log")
 
 
+def qat_point(cand, stamp):
+    """A diagnostic candidate needs its OWN QAT decay: evaluating a checkpoint trained with a different
+    quantizer costs ~+0.0012/+0.0015 (measured, NOTES 2026-11-20), which would swamp the diagnostic."""
+    if (RESULT / f"adw_q{cand}_{stamp}.jsonl").exists():
+        log(f"{cand}: result exists -- skipping the whole point")
+        return 0
+    base = [str(PY), "-u", str(RUN / "qat_decay.py"), "--candidate", cand,
+            "--train-users", "1", "100", "--max-train-len", "66000",
+            "--start-folder", "pretrain/rwkv/opt_iter36", "--start-name", "rwkv_iter36_558"]
+    rc = run(f"smoke {cand}",
+             base + ["--epochs", "0.04", "--max-steps", "6", "--tag", f"{stamp}smoke"],
+             RUN / f"{stamp}smoke_launcher.log")
+    if rc != 0:
+        log(f"smoke FAILED for {cand} -- skipping this point")
+        return rc
+    rc = run(f"qat {cand}",
+             base + ["--epochs", "2", "--max-steps", "124", "--prefix", "qat", "--tag", stamp],
+             RUN / f"{stamp}_launcher.log")
+    if rc != 0:
+        log(f"QAT FAILED for {cand} -- skipping this point")
+        return rc
+    ckpt = RUN / f"qat_{stamp}" / "qat_124.pth"
+    if not ckpt.exists():
+        log(f"checkpoint missing: {ckpt}")
+        return 1
+    return eval_point(cand, stamp, ckpt)
+
+
 def main():
     log("=== it36qatsmall3 chain start ===")
     if LOCK.exists():
@@ -127,6 +158,10 @@ def main():
         return 1
     eval_point("l1i8c", "it36attrc", ckpt)
     eval_point("l1i8n", "it36attrn", ckpt)
+
+    # The mechanism question: is the residual tax rank-1 truncation or factor precision? `cn8` has no
+    # truncation at all (8 bits per element, 4x over the bar), so it needs its own QAT decay.
+    qat_point("cn8", "it36cn8")
 
     log("=== it36qatsmall3 chain end ===")
     return 0

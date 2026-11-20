@@ -101,6 +101,10 @@ CANDIDATES = {
               "attribution: card rank-1 int4 only, note untouched", None),
     "l1i4n": ({"RWKV_QAT_LOWRANK_SCOPE": "note:1:int4", "RWKV_QAT_SHIFT_SCOPE": "note:int4"},
               "attribution: note rank-1 int4 only, card untouched", None),
+    # DIAGNOSTIC, far over the bar: no rank truncation at all, 8 bits per state element. It tells
+    # us whether the residual immediate-head tax is rank-1 truncation or factor precision.
+    "cn8": ({"RWKV_QAT_SCOPE": "card:int8,note:int8", "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"},
+            "DIAGNOSTIC, 4x over the bar: full-matrix int8 both streams (no rank truncation)", None),
     "cn3": ({"RWKV_QAT_SCOPE": "card:int3,note:int3", "RWKV_QAT_SHIFT_SCOPE": "card:int3,note:int3"},
             "DIAGNOSTIC, over the bar: full-matrix int3 both streams", None),
     "c3": ({"RWKV_QAT_SCOPE": "card:int3", "RWKV_QAT_SHIFT_SCOPE": "card:int3"},
