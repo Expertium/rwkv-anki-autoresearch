@@ -81,7 +81,7 @@ checkpoint) and comes from the deploy engine table below.
 | 14 | QAT rank-1 int4 factors + int2 shifts at a 496-step decay | 384 (48) | 1,152 (144) | 2,586 | 0.903x | 0.323603 | 0.297312 | +0.001944 | +0.002698 | **FAIL**, vs the 496-step twin, 3.9x/5.4x over |
 | 15 | **QAT card rank-2 int8 + note rank-1 int8 - THE FIRST PASSING RECIPE** | **1,536 (192)** | **3,072 (384)** | **2,324** | **0.812x** | **0.333848** | **0.306518** | **+0.000046** | **+0.000307** | **PASS**: ub95 +0.000112/+0.000369, both heads inside the ceiling, and the deploy engine runs it at 0.812x (>= 0.75x) |
 | 16 | **QAT card rank-3 int8 + note rank-1 int8 - the lowest tax of any row** | **2,048 (256)** | **3,072 (384)** | *see note* | *see note* | **0.333808** | **0.306388** | **+0.000006** | **+0.000176** | **PASS**: ub95 +0.000070/+0.000234; the ahead head is at zero and the immediate head is 3x inside the ceiling |
-| 17 | QAT card rank-2 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,280 (160) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
+| 17 | **QAT card rank-2 int8 factors + int4 shifts, note rank-1 int8 + int4 shifts - BEST on axis 1** | **1,280 (160)** | **2,304 (288)** | **2,290** | **0.800x** | **0.333853** | **0.306539** | **+0.000052** | **+0.000327** | **PASS**: ub95 +0.000118/+0.000390, the row-15 tax for 22% fewer bits (3,584 vs 4,608) |
 | 18 | QAT card rank-3 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,792 (224) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
 
 Rows 5-7, 9-11 and 13-14 all use the rank-1 path, whose engine speed was measured once (`l1i4` and
@@ -114,11 +114,11 @@ while rank-2 is the axis-1 choice (1,536 card bits, 512 fewer). Rows 17-18 (int4
 `it36notecut`/`it36rankprec`/`it36shrink` chains then search the (rank, precision, note-level) space
 for the smallest state that still passes.
 
-**Status: rows 15 and 16 PASS all six constraints** (row 15 is the axis-1 choice at 1,536 card bits,
-row 16 the axis-2 choice at 2,048 with a near-zero tax). Card 1,536 bits (2.83x
-smaller than naive int4, bar 2,176) and note 3,072 bits (2.13x smaller, bar 6,528); both heads inside the
-+0.0005 ceiling with their upper bounds too (+0.000046 ub95 +0.000112 ahead, +0.000307 ub95 +0.000369
-imm); the 750-user roster; and the deploy engine at 0.812x rev/s (>= 0.75x). It buys the immediate head
+**Status: rows 15-17 PASS all six constraints** (row 17 is the new axis-1 choice, 1,280 card / 2,304 note bits = 3,584,
+the row-15 tax for 22% fewer bits at 0.800x; row 15 the same recipe with int8 shifts, 4,608 total; row 16 the axis-2 choice at 2,048 with a near-zero tax). Card 1,280-1,536 bits (2.83x
+smaller than naive int4, bar 2,176) and note 2,304-3,072 bits (2.13x-2.83x smaller, bar 6,528); both heads inside the
++0.0005 ceiling with their upper bounds too (row 17 +0.000052 ub95 +0.000118 ahead, +0.000327 ub95 +0.000390
+imm; row 15 +0.000046/ub95 +0.000112 and +0.000307/ub95 +0.000369); the 750-user roster; and the deploy engine at 0.800x-0.812x rev/s (>= 0.75x). It buys the immediate head
 with RANK on the card, exactly what the `cn8` verdict predicted (see "the tax is RANK TRUNCATION"
 below). Row 9 stays the best axis-1 rank-1 point (768/2,304 bits at row 4's tax) for reference.
 

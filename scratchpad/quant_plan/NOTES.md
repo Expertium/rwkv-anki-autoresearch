@@ -80,6 +80,29 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 09:50 - **An hourly supervisor is now running (Andrew's request).** Windows Task Scheduler
+  task `RWKV-Quant-Autorun` (every hour at :05, `MultipleInstances=IgnoreNew`, 30-min limit, runs only
+  while Andrew is logged on) calls `scratchpad/quant_plan/autorun/run_autorun.cmd`, which takes a
+  single-instance lock and runs the goose recipe `quant_hourly.yaml` headless. Its contract is
+  `autorun/QUEUE.md`; `status_report.py` is its deterministic state dump; `AUTORUN_LOG.md` holds one
+  block per run; `RECORDED.txt` lists the sweep stamps already written into RESULTS.md. It may only
+  restart a LIVE chain whose log stalled >45 min on an idle GPU, run the one-time idle deploy
+  measurement (`rust_speed_idle_l2i8.json`), and record landed results. It never starts a new research
+  direction, never writes to git, and never runs a second GPU workload. Verified end to end twice: the
+  first run recorded row 17, the second (via `Start-ScheduledTask`) logged "nothing to do, GPU BUSY"
+  and exited 0. Before editing RESULTS.md / NOTES.md / the run board, check
+  `autorun_lock.py status` and re-read the file immediately before the change.
+
+* 2026-11-21 09:38 - **Row 17 (`l2i8s4`) PASSES: the int4 shifts are free at rank 2 too, so the axis-1
+  state drops to 3,584 bits.** QAT card rank-2 int8 factors + int4 shifts, note rank-1 int8 + int4
+  shifts: card 1,280 bits (160 B, 1.70x under the 2,176 bar), note 2,304 bits (288 B, 2.83x under the
+  6,528 bar). Loss 0.333853/0.306539 = **+0.000052 ahead (ub95 +0.000118) / +0.000327 imm (ub95
+  +0.000390)** against row 0, i.e. row 15's tax for 1,024 fewer bits (22% less state). Deploy engine
+  2,290 rev/s = **0.800x** (states/s 0.656x) against row 15's 0.812x; both above the 0.75x floor and both
+  measured while a decay was training (~3% pessimistic). Recorded as RESULTS.md row 17, stamped in
+  `autorun/RECORDED.txt` (sweep `quant_sweep_it36l2i8s4.json`). `it36rank` is now training `l3i8s4`
+  (row 18), started 09:31. Still owed: the idle-machine speed re-measurement of rows 15/17.
+
 * 2026-11-21 09:20 - **Row 16 (card rank-3 int8) is the lowest-tax row, and the rank ladder shows the
   knee.** `l3i8` (card rank-3 int8 + int8 shifts, note rank-1 int8; 2,048/3,072 bits) =
   0.333808/0.306388 = **+0.000006 ahead / +0.000176 imm** against row 0 (ub95 +0.000070/+0.000234). The

@@ -1,0 +1,93 @@
+# AUTORUN QUEUE - the hourly supervisor's contract
+
+Owner: Andrew. Runner: the hourly goose run of `quant_hourly.yaml` (Windows Task Scheduler task
+`RWKV-Quant-Autorun`), started by `run_autorun.cmd`. This file says exactly what that run MAY do.
+
+Read the `status_report.py` output first, then act only through the sections below, in order.
+
+If this file and the recipe disagree, this file wins. If anything is unclear, do nothing and log it.
+
+---
+
+## 1. NEVER restart, never touch
+
+These chains are dead on purpose. Their logs have no end marker. Leave their logs, lock files, output
+folders and checkpoints alone. Do not score them and do not resume them.
+
+- `it36qat496` - killed near step 250 in the 2026-11-20 ~10:28 machine outage; its checkpoint is not usable.
+- `it36qatl1i4` - launched from the post-decay checkpoint after the same outage; its folder is not usable.
+- `it36ptq` - finished its real work; only the end marker is missing.
+
+Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_plan/qat_l1i8e1/`.
+
+## 2. LIVE chains, and the restart rule
+
+A chain is LIVE only if its name is in this list:
+
+`it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`
+
+The chains sequence themselves through their own lock file and their `=== <name> chain end` marker.
+Normally you do nothing for them.
+
+Restart a LIVE chain ONLY when all four conditions hold:
+
+1. the status report says `GPU IDLE (no matching workload process)`;
+2. that chain's log has no `=== <name> chain end` line;
+3. that chain's log file has not changed for more than 45 minutes;
+4. host RAM free is at least 10 GiB.
+
+Then run these two commands and log the restart:
+
+    del "scratchpad\quant_plan\<name>_chain.lock"
+    powershell -NoProfile -File scratchpad\detach.ps1 -Command ".venv\Scripts\python.exe -u scratchpad\quant_plan\<name>_chain.py > scratchpad\quant_plan\<name>_launcher.log 2>&1"
+
+The chain skips any point whose merged result already exists, so a restart resumes cleanly. Restart at
+most one chain per run. Never restart a chain while any workload process is running.
+
+## 3. Idle-only deploy measurement (run at most once)
+
+Run this ONLY when the report says `GPU IDLE`, no LIVE chain is waiting, and section 5 is empty:
+
+    .venv\Scripts\python.exe scratchpad\quant_plan\rust_speed.py --weights scratchpad\quant_plan\rust_artifacts\it36l2i8_124.safetensors --configs plain,l1i8,l2i8,l2i8s4,l3i8s4 --users 107,136,156 --reps 2 --tag idle_l2i8
+
+It writes `scratchpad/quant_plan/rust_speed_idle_l2i8.json`. That file is the official constraint-6
+number: the 0.812x in RESULTS.md was measured while a decay was training, so it is about 3% too low.
+If `rust_speed_idle_l2i8.json` already exists, skip this section.
+
+## 4. Record landed results
+
+For every sweep result the report lists as `NOT RECORDED`:
+
+1. add one row to `scratchpad/quant_plan/RESULTS.md` in the existing table format (iteration number,
+   method description, card bits, note bits, speed, both log-loss values, both deltas, verdict);
+2. append the sweep stamp to `scratchpad/quant_plan/autorun/RECORDED.txt`;
+3. update the `**Status:**` line of RESULTS.md and add one bullet at the top of the
+   `## Live status` list in `scratchpad/quant_plan/NOTES.md`.
+
+Rules for the numbers: quote the paired deltas against the control tag the sweep used (the `ref`
+field, normally `qnj_it36ctl`), never against the iter36 champion. The gate is the row-0 anchor: the
+identical decay with no QAT and no quantization. A row passes only when `ub95 <= +0.0005` on BOTH heads.
+
+## 5. Pre-authorized launch items
+
+None right now. The five LIVE chains above are the whole authorized queue.
+
+When this list is empty and the GPU is idle, log `QUEUE EMPTY - needs Andrew's decision` and stop.
+Do NOT invent a new experiment, and do NOT extend an existing chain. Andrew adds an item here when he
+authorizes one. A real item is one raw, unindented line: the box marker, then the task, then `::`, then
+the exact command line, then `::`, then the proof of success. `status_report.py` counts only raw
+unindented box lines, so keep any example indented like this paragraph:
+
+        - [ ] <what to run> :: <exact command line> :: <what proves it worked>
+
+## 6. Forbidden, always
+
+- Starting a second GPU workload, or starting anything while a workload process runs.
+- Killing, restarting or modifying a run that is in progress.
+- Changing the deploy contract, a state budget, the quantization gate, or the bit bars.
+- Starting the 3,000/3,000-bit run (vetoed), or any new research direction.
+- Deleting, moving or rewriting data, checkpoints, logs, sweep JSONs or result files.
+- `git` writes of any kind: no `add`, no `commit`, no `push`, no pull request.
+- Editing a sibling repository, or anything outside `C:\Users\Andrew\rwkv-anki-autoresearch`.
+- Editing `quant_sweep.py`, `qat_decay.py`, `it36ladder_lib.py` or any `it36*_chain.py`.
+- Letting host RAM free fall below 10 GiB, or running with the RAM guard stale.

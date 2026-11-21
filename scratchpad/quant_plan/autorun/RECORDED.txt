@@ -1,0 +1,36 @@
+# Stamps of quant_sweep_*.json results that are ALREADY recorded in RESULTS.md.
+# The hourly supervisor adds a stamp here after it writes the matching row, so the next run does not
+# write a duplicate row. One stamp per line; the sweep file is scratchpad/quant_plan/quant_sweep_<stamp>.json.
+#
+# Every sweep that existed at 2026-11-21 09:38 is listed below. it36l2i8s4 landed at 09:30 and was
+# recorded by the 09:38 autorun (RESULTS.md row 17).
+1119pm
+it36_124
+it36_558
+it36attrc
+it36attrn
+it36cn8
+it36ctl
+it36ctl496
+it36ctl992
+it36ctlq
+it36l1i4496
+it36l1i4s2496
+it36l1i8496
+it36l1i8992
+it36l2i8
+it36l2i8s4
+it36l3i8
+it36ptq
+it36qat
+it36qatl1i8
+it36qatl1i8q
+it36qatq
+it36small2
+it36small4
+it36small4s8
+it36small8s4
+it36smalls2
+it44_248
+it45_496
+it46_248

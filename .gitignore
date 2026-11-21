@@ -277,3 +277,7 @@ scratchpad/quant_plan/rust_speed_preds/
 
 # quant_plan chain lock files (a running chain holds one; delete by hand after an outage).
 scratchpad/quant_plan/*.lock
+
+# The hourly supervisor's own single-instance lock (autorun/run_autorun.cmd holds it while it
+# runs; autorun/autorun_lock.py writes and deletes it).
+scratchpad/quant_plan/autorun/.autorun.lock
