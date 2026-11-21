@@ -49,6 +49,13 @@ CONFIGS = {
     "l1i4c": {"RWKV_STATE_LOWRANK_SCOPE": "card:1:int4", "RWKV_QUANT_SHIFTS": "1"},
     "l1i4n": {"RWKV_STATE_LOWRANK_SCOPE": "note:1:int4", "RWKV_QUANT_SHIFTS": "1"},
     "l2i4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int4,note:2:int4", "RWKV_QUANT_SHIFTS": "1"},
+    # card-only rank-2: the shape the loss winner actually uses (RESULTS row 15). Added 2026-11-21.
+    "l2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+             "RWKV_STATE_SHIFT_LEVEL": "int8"},
+    "l2i8s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    "l3i8s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:3:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "int4"},
     "l1i4h": {"RWKV_STATE_LOWRANK_SCOPE": "card:1:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
               "RWKV_LOWRANK_HADAMARD": "1"},
     "l1i4p": {"RWKV_STATE_LOWRANK_SCOPE": "card:1:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",

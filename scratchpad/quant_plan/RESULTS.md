@@ -79,7 +79,7 @@ checkpoint) and comes from the deploy engine table below.
 | 12 | QAT rank-1 int4 at a 992-step decay | 512 (64) | 1,536 (192) | 2,586 | 0.903x | *not run* | *not run* | - | - | chain 4's own guard: the 496-step `l1i4` tax (+0.001581) was worse than the 124-step one (+0.001050) |
 | 13 | QAT rank-1 int4 at a 496-step decay (same length as row 8, half the bits) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | 0.323240 | 0.296663 | +0.001581 | +0.002050 | **FAIL**, vs the 496-step twin (row 0b) |
 | 14 | QAT rank-1 int4 factors + int2 shifts at a 496-step decay | 384 (48) | 1,152 (144) | 2,586 | 0.903x | 0.323603 | 0.297312 | +0.001944 | +0.002698 | **FAIL**, vs the 496-step twin, 3.9x/5.4x over |
-| 15 | QAT card **rank-2** int8 + note rank-1 int8: the card's rank doubled inside its bar | 1,536 (192) | 3,072 (384) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
+| 15 | **QAT card rank-2 int8 + note rank-1 int8 - THE FIRST PASSING RECIPE** | **1,536 (192)** | **3,072 (384)** | **2,324** | **0.812x** | **0.333848** | **0.306518** | **+0.000046** | **+0.000307** | **PASS**: ub95 +0.000112/+0.000369, both heads inside the ceiling, and the deploy engine runs it at 0.812x (>= 0.75x) |
 | 16 | QAT card **rank-3** int8 + note rank-1 int8 | 2,048 (256) | 3,072 (384) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
 | 17 | QAT card rank-2 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,280 (160) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
 | 18 | QAT card rank-3 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,792 (224) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
@@ -88,16 +88,23 @@ Rows 5-7, 9-11 and 13-14 all use the rank-1 path, whose engine speed was measure
 `l1i8` both 2,586 rev/s = 0.903x); the factor/shift bit widths do not change that path, so their speed
 cells are that measurement rather than a per-candidate run.
 
-**Rows 15-18 have no deploy speed yet, and the deploy engine is the problem.** They change the CARD's
-rank, and the engine reconstructs the full 32x32 matrix every step for rank >= 2 instead of using a
-fused readout, so the engine's rank-2 measurement is 0.629x rev/s / 0.448x states/s - below the 0.75x
-floor. Their loss numbers are still the right first measurement (the torch eval path mirrors the
-engine's rounding), but they cannot be deployed until the engine gets a fused rank-r readout.
+**The rank-2 speed is fine on the CARD; the earlier 0.629x was a both-streams measurement.**
+`l2i4` (rank-2 on card AND note, all four note layers) is 0.629x rev/s / 0.448x states/s, which is what
+made rank >= 2 look undeployable. Row 15 puts rank 2 on the CARD only - 1 layer, and the cheap stream -
+and the deploy engine measures it at **2,323.6 rev/s = 0.812x** (states/s 0.660x, median per-user 0.803x),
+i.e. ABOVE the 0.75x floor. It was measured while a QAT decay was training, so it is about 3% pessimistic
+(`l1i8` reads 0.875x in that run against 0.903x on the idle machine); an idle-machine re-measurement is
+still owed. Row 17 (`l2i8s4`) 0.800x and row 18 (`l3i8s4`) 0.800x were measured in the same run. No engine
+change is needed: the deploy engine already parses `card:2:int8`, and the torch eval path mirrors its
+rounding (the 3-user deploy grid ranks rank-2 below rank-1 on the immediate head, as the 750-user eval
+does).
 
-**Status: nothing passes the +0.0005 bar yet, but the frontier moved twice.** Row 9 is now the best
-axis-1 point (768/2,304 bits - 25% smaller than row 4 - at the same tax), and the mechanism is settled
-(see "the tax is RANK TRUNCATION" below): precision is free at 8 bits, so the remaining +0.001009 on
-the immediate head must be bought with RANK, and the card stream is the one that needs it.
+**Status: row 15 PASSES all six constraints - it is the first passing recipe.** Card 1,536 bits (2.83x
+smaller than naive int4, bar 2,176) and note 3,072 bits (2.13x smaller, bar 6,528); both heads inside the
++0.0005 ceiling with their upper bounds too (+0.000046 ub95 +0.000112 ahead, +0.000307 ub95 +0.000369
+imm); the 750-user roster; and the deploy engine at 0.812x rev/s (>= 0.75x). It buys the immediate head
+with RANK on the card, exactly what the `cn8` verdict predicted (see "the tax is RANK TRUNCATION"
+below). Row 9 stays the best axis-1 rank-1 point (768/2,304 bits at row 4's tax) for reference.
 
 **The bits-vs-tax curve (rows 5-7) is the axis-1 answer, and it is not free.** Walking down from row 4:
 

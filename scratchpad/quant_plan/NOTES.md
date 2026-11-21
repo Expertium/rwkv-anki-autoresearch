@@ -80,6 +80,21 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 08:40 - **ROW 15 PASSES ALL SIX CONSTRAINTS - the first passing recipe.** `l2i8` = QAT card
+  **rank-2** int8 factors + int8 shifts, note rank-1 int8 (card 1,536 bits / 192 B, note 3,072 bits /
+  384 B - 2.83x and 2.13x smaller than naive int4). Loss on the 750-user roster: 0.333848/0.306518 =
+  **+0.000046 ahead (ub95 +0.000112) and +0.000307 imm (ub95 +0.000369)** against row 0 - both heads
+  inside the +0.0005 ceiling, upper bounds included. Deploy engine speed: 2,323.6 rev/s = **0.812x**
+  (states/s 0.660x, median per-user 0.803x) >= the 0.75x floor, measured while a QAT decay was training
+  (~3% pessimistic: `l1i8` read 0.875x in that run against 0.903x idle). The rank-2 drop is the mechanism
+  confirmed: rank-1 imm +0.001009 -> rank-2 +0.000307 (3.3x better). The old "rank >= 2 is undeployable"
+  conclusion came from `l2i4`, which put rank 2 on the NOTE as well (4 layers); card-only rank-2 is 0.812x
+  and needs NO engine change - the engine already parses `card:2:int8`. Artifacts: export
+  `rust_artifacts/it36l2i8_124.safetensors`, speed `rust_speed_rank2card.json`, 3-user deploy grid
+  `rust_grid_it36l2i8.json` (rank-2 ranks below rank-1 on the immediate head there too). Owed: the
+  idle-machine speed re-measurement, and Andrew's decision on whether this replaces the deployed
+  403/214-bit recipe. Rows 16-18 (rank-3, int4 shifts) are still running; `it36notecut` is queued.
+
 * 2026-11-21 08:00 - **The mechanism is SETTLED and the frontier moved: `cn8` says the tax is RANK
   TRUNCATION, and row 9 is a 25%-smaller state at the same tax.** Four chains finished overnight
   (`it36qatsmall2` 03:08:54, `it36qatsmall3` 04:33:14, `it36qatsmall4` 06:12:50, all rc=0).
