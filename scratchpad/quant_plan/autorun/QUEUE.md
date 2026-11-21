@@ -24,7 +24,8 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 
 A chain is LIVE only if its name is in this list:
 
-`it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`, `it36corrupt`
+`it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`, `it36corrupt`,
+`it36equalbits`
 
 `it36corrupt` (added 2026-11-21 22:50) is the corruption/finiteness check: it waits for `it36shrink`,
 then scores the 50 longest-history users of `corruption/corrupt50.json` for the four passing rows plus
@@ -36,7 +37,12 @@ GPU BUSY while it scores.
 
 ⚠ A chain queued BEHIND `it36corrupt` must add `probe_get_result.py|check_corruption.py` to its own
 BUSY_PAT, or it will start on top of the corruption run (the driver's command line matches no other
-chain's pattern).
+chain's pattern). `it36equalbits` (added 2026-11-21 23:25) is the first such chain and does exactly
+that: it waits for `=== it36corrupt chain end ===` with
+BUSY_PAT `qat_decay.py|quant_sweep.py|rwkv.train_rwkv|eval_sharded.py|rust_speed.py|rust_grid.py|rwkv-infer|probe_get_result|check_corruption`.
+It runs four 124-step decay points off row 0: `l3i4s4` (card rank-3 int4, 1,024/2,304), `l2i8s2`
+(card int2 shifts, 1,152/2,304), `n1i8s3` and `n2i4s3` (the equal 2,112 note bits: rank-1 int8 vs
+rank-2 int4 factors + int3 shifts).
 
 The chains sequence themselves through their own lock file and their `=== <name> chain end` marker.
 Normally you do nothing for them.

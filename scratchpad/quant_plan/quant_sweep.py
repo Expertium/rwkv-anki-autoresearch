@@ -97,6 +97,23 @@ CANDIDATES = {
     "n2i4s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:2:int4",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "note rank-2 int4 + int4 shifts, 2,304 note bits (vs row 17 note rank-1 int8)", None),
+    # The follow-ups of that equal-bits question on the two streams the ladder has NOT cut yet:
+    # the CARD's rank at int4 (l3i4s4) and the note's SHIFT precision (int3 as a half-step between
+    # the working int4 and the harmful int2 of rows 19-20). `n1i8s3` and `n2i4s3` are the same
+    # 2,112 note bits with rank-1 int8 vs rank-2 int4 factors, so they answer "rank or precision?"
+    # on the note the way rows 9/23 answered it on the card. Added 2026-11-21 23:20.
+    "l3i4s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int4,note:1:int8",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+               "card rank-3 int4 + int4 shifts, note rank-1 int8 + int4 (1,024/2,304 = 3,328)", None),
+    "l2i8s2": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int4"},
+               "card rank-2 int8 + int2 shifts, note rank-1 int8 + int4 (1,152/2,304 = 3,456)", None),
+    "n1i8s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
+               "note rank-1 int8 + int3 shifts, card rank-2 int8 + int4 (1,280/2,112 = 3,392)", None),
+    "n2i4s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:2:int4",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
+               "note rank-2 int4 + int3 shifts, same 2,112 note bits as n1i8s3 (1,280/2,112)", None),
     # Aggressive shrink combos: push the TOTAL below row 15's 4,608 bits.
     "l3i4s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int4,note:1:int4",
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
