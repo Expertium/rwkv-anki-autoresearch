@@ -71,10 +71,37 @@ If `rust_speed_idle_l2i8.json` already exists, skip this section.
 For every sweep result the report lists as `NOT RECORDED`:
 
 1. add one row to `scratchpad/quant_plan/RESULTS.md` in the existing table format (iteration number,
-   method description, card bits, note bits, speed, both log-loss values, both deltas, verdict);
+   method description, card bits, note bits, speed, both log-loss values, both deltas, verdict,
+   corruption). The main table has 12 columns since 2026-11-21 23:00 (Andrew's corruption gate):
+   write `pending` in the last cell when `it36corrupt` has not scored that row yet, and `-` when the row
+   fails the log-loss gate (not a deploy candidate, so it is never checked). Write `PASS` or `FAIL`
+   (with the reason) only from `corruption/corruption_corrupt_<tag>.json` - never from a guess. A row
+   with 11 cells breaks the table;
 2. append the sweep stamp to `scratchpad/quant_plan/autorun/RECORDED.txt`;
 3. update the `**Status:**` line of RESULTS.md and add one bullet at the top of the
    `## Live status` list in `scratchpad/quant_plan/NOTES.md`.
+
+Then PUSH RESULTS.md, because Andrew's standing instruction is that every update of RESULTS.md goes to
+GitHub (2026-11-21). Do it EXACTLY like this, in this order, and nothing else:
+
+    cd /d C:\Users\Andrew\rwkv-anki-autoresearch
+    git add scratchpad/quant_plan/RESULTS.md
+    git status --short --cached
+    git commit -m "Hourly supervisor: record landed sweep results in RESULTS.md"
+    git push origin main
+
+Rules for that push, all of them hard:
+
+- `git status --short --cached` must list ONLY `scratchpad/quant_plan/RESULTS.md` (plus, if you also
+  edited them in this same run, `scratchpad/quant_plan/NOTES.md` and
+  `optimization/GPU_RUN_BOARD.md`). If ANY other path is staged, run
+  `git reset` and log `PUSH ABORTED: unexpected staged files` - do not commit, do not push.
+- If any command fails (including `index.lock` errors, which mean another git process is running), log
+  the error and STOP. Never retry in a loop, never use `--force`, never `git add -A` or `git add .`,
+  never commit a checkpoint or a database, never change the branch.
+- Do not push anything else, ever. This is the only git operation the supervisor is allowed to do.
+
+**If RESULTS.md was NOT changed this run, do not run any git command at all.**
 
 Rules for the numbers: quote the paired deltas against the control tag the sweep used (the `ref`
 field, normally `qnj_it36ctl`), never against the iter36 champion. The gate is the row-0 anchor: the
@@ -99,7 +126,8 @@ unindented box lines, so keep any example indented like this paragraph:
 - Changing the deploy contract, a state budget, the quantization gate, or the bit bars.
 - Starting the 3,000/3,000-bit run (vetoed), or any new research direction.
 - Deleting, moving or rewriting data, checkpoints, logs, sweep JSONs or result files.
-- `git` writes of any kind: no `add`, no `commit`, no `push`, no pull request.
+- `git` writes of any kind: no `add`, no `commit`, no `push`, no pull request, EXCEPT the single
+  RESULTS.md-only commit-and-push described in section 4 and nothing else.
 - Editing a sibling repository, or anything outside `C:\Users\Andrew\rwkv-anki-autoresearch`.
 - Editing `quant_sweep.py`, `qat_decay.py`, `it36ladder_lib.py` or any `it36*_chain.py`.
 - Letting host RAM free fall below 10 GiB, or running with the RAM guard stale.
