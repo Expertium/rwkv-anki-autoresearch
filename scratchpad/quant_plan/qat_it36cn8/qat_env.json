@@ -1,0 +1,5 @@
+{
+  "RWKV_QAT_SCOPE": "card:int8,note:int8",
+  "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8",
+  "RWKV_NO_JIT": "1"
+}

@@ -1,0 +1,26 @@
+# Task #8: d=128 baseline (OLD 2.76M leaderboard model, UNQUANTIZED = the 5k-phase target) evaluated on
+# users 5001-10000 from the new test_db_5k. Requires the arch swap (scratchpad/architecture_old_d128.py
+# copied over rwkv/architecture.py) -- run via scratchpad/run_base5k_eval.cmd, which swaps + restores.
+# Checkpoint trained on 101-4999 -> 5001-10000 is fully held out.
+FILE_AHEAD = "adw_ql1i8_it36l1i8992"
+FILE_IMM = "adwP_ql1i8_it36l1i8992"
+
+MODEL_PATH = "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l1i8992\\qat_992.pth"
+DEVICE = "cuda"
+DTYPE = "bfloat16"
+
+DATASET_LMDB_PATH = "F:/rwkv_lmdb/test_db_5k_adaptive92"
+DATASET_LMDB_SIZE = 250000000000
+LABEL_FILTER_LMDB_PATH = "F:/rwkv_lmdb/label_filter_db_id_e2s"
+LABEL_FILTER_LMDB_SIZE = 40000000000
+
+RAW = false
+RAW_DB_PATH = "raw/result_db"
+RAW_DB_SIZE = 3_000_000_000
+
+USER_START = 5001
+USER_END = 7500
+
+# Modest: the LMDB build workers own most of the CPU while this runs (logloss is load-independent)
+NUM_FETCH_PROCESSES = 1
+USERS_FILE = "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\users_ql1i8_it36l1i8992.json"

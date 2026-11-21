@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36small8s4\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l1i8s4",
+      "tag": "ql1i8s4_it36small8s4",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "rank-1 int8 factors + int4 shifts (768/2304 bits)",
+      "bits": {
+        "card": 768,
+        "note": 2304
+      },
+      "rc": 0,
+      "secs": 1269.1560000000027,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0005160853333333323,
+          "ub95": 0.0006199230987106803,
+          "p_worse": 8.362046794611182e-31,
+          "mean_cur": 0.334317896,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.001029909333333333,
+          "ub95": 0.001144007615648546,
+          "p_worse": 8.860308586849712e-54,
+          "mean_cur": 0.30724130666666666,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

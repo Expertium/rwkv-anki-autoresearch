@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36qatl1i8\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l1i8c",
+      "tag": "ql1i8c_it36attrc",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int8"
+      },
+      "comment": "attribution: card rank-1 int8 only, note untouched",
+      "bits": {
+        "card": 1024,
+        "note": 104448
+      },
+      "rc": 0,
+      "secs": 1414.203999999998,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0012818813333333322,
+          "ub95": 0.001380599648271968,
+          "p_worse": 8.966933918785243e-76,
+          "mean_cur": 0.335083692,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0011415906666666664,
+          "ub95": 0.0012510893680717657,
+          "p_worse": 3.494255178623191e-65,
+          "mean_cur": 0.307352988,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

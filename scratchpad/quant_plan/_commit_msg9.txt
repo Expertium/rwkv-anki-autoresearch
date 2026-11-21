@@ -1,0 +1,34 @@
+Settle the mechanism: the state tax is rank truncation, and row 9 is 25% smaller at the same tax
+
+Four chains finished overnight; this records their results and queues the two follow-ups.
+
+Mechanism (`cn8`, full-matrix int8, no rank truncation, 8,704/26,112 bits,
+DIAGNOSTIC ONLY): +0.000033/+0.000022 against the fp32 control. An 8-bit
+state is lossless when it is not truncated, so the rank-1 family's
++0.000503/+0.001009 is TRUNCATION, not factor precision. A finer level
+cannot buy it back; the fix has to add rank.
+
+Per-stream attribution on row 4's own checkpoint: card-only
++0.001282/+0.001142 versus note-only +0.000373/+0.000258. The note is inside
+the ceiling on both heads by itself; the card owns the immediate head - so
+the card is where the rank goes, and its 2,176-bit bar has room for rank 2-3.
+
+Axis 1 (row 9, `l1i8s4`, int8 factors + int4 shifts, 768/2,304 bits):
++0.000516/+0.001030, i.e. row 4's tax for 25% fewer bits. The shift vectors
+drop int8 -> int4 for free and the bits belong in the factors (row 10, the
+reverse split, matches row 5 despite 50% more bits).
+
+Decay length is closed: the `l1i8` tax is +0.000503/+0.001009 at 124 steps,
++0.001132/+0.001674 at 496, +0.000874/+0.001675 at 992. The 992-step
+quantized run is nevertheless 0.0162/0.0159 BETTER than row 4 in absolute
+terms, so the absolute and relative readings now disagree.
+
+New: `it36rank_chain.py` (rows 15-18, card rank-2/3 inside the card bar) and
+`it36notecut_chain.py` (the note int4 pool cut plus the gated combinations,
+and it changes CANDIDATES keys `nr4`/`nr4s2` because `n4` already existed).
+Also records Andrew's gate clarification: fp32 + no QAT + no quantization
+versus QAT + quantized; the "twin" is an attribution tool only.
+
+🤖 Written by an AI agent (goose).
+
+Co-Authored-By: goose (AI agent) <noreply@aaif.dev>

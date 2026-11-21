@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36cn8\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "cn8",
+      "tag": "qcn8_it36cn8",
+      "env": {
+        "RWKV_QAT_SCOPE": "card:int8,note:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"
+      },
+      "comment": "DIAGNOSTIC, 4x over the bar: full-matrix int8 both streams (no rank truncation)",
+      "bits": {
+        "card": 8704,
+        "note": 26112
+      },
+      "rc": 0,
+      "secs": 1517.875,
+      "users": 750,
+      "bits_ok": false,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 3.2650666666665314e-05,
+          "ub95": 3.7631377565197476e-05,
+          "p_worse": 3.1315223484573595e-59,
+          "mean_cur": 0.33383446133333333,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 2.241466666666662e-05,
+          "ub95": 2.6120851655564594e-05,
+          "p_worse": 3.481594950511905e-29,
+          "mean_cur": 0.306233812,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

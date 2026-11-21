@@ -60,6 +60,39 @@ CANDIDATES = {
            "note only: WKV + shifts at int2", None),
     "cn2": ({"RWKV_QAT_SCOPE": "card:int2,note:int2", "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int2"},
             "the simplest scheme at the bar: both streams WKV + shifts at int2", None),
+    # Card rank-r. `cn8` (no truncation at all, 8 bits) has a ~zero tax (+0.000033/+0.000022 vs
+    # the fp32 control), so 8-bit precision of the full state is free and the rank-1 tax is
+    # TRUNCATION. The per-stream attribution says the card owns it (card-only +0.001142 imm vs
+    # note-only +0.000258), and the card's 2,176-bit bar has room for more ranks. The note stays
+    # rank-1 int8 in all four. Added 2026-11-21.
+    # The note pool is 2/3 of the total bits (3,072 of 4,096 at row 4) and the note's OWN rank-1
+    # int8 tax is +0.000373/+0.000258 - inside the ceiling by itself. So the note is where the
+    # bits can be cut. `n4` isolates the note's int4 tax on row 4's exact card config; the last two
+    # combine the likely card fix (more rank) with the note cut. Added 2026-11-21.
+    "nr4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int4",
+            "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int4"},
+           "note rank-1 int4 factors + int4 shifts, card at row 4's exact config (1,024/1,536 bits)", None),
+    "nr4s2": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int4",
+              "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int2"},
+             "note rank-1 int4 factors + int2 shifts (1,024/1,152 bits)", None),
+    "l2i8s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int4",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+                 "card rank-2 int8 + int4 shifts, note rank-1 int4 + int4 (1,280/1,536 bits)", None),
+    "l3i8s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int4",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+                 "card rank-3 int8 + int4 shifts, note rank-1 int4 + int4 (1,792/1,536 bits)", None),
+    "l2i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+              "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"},
+             "card rank-2 int8 factors + int8 shifts (1,536/3,072 bits)", None),
+    "l3i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
+              "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"},
+             "card rank-3 int8 factors + int8 shifts (2,048/3,072 bits)", None),
+    "l2i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+               "card rank-2 int8 factors + int4 shifts (1,280/2,304 bits)", None),
+    "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+               "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),
     "l1i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:1:int8,note:1:int8",
               "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"},
              "rank-1 factors at int8, shifts int8", None),

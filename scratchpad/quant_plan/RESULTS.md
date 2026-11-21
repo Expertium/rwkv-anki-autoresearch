@@ -53,7 +53,11 @@ per-step scale, which every scheme needs.
 
 ## Results (against the identical unquantized run)
 
-`d` columns are paired per-user means against **row 0** (row 8 against its own twin, **row 0b**).
+`d` columns are paired per-user means against **row 0** - the identical fp32 decay with quantization
+OFF (row 8 against its own twin, row 0b; rows 11 and 15-18 against their own same-length twins). **That
+is the gate as Andrew defined it (2026-11-21): fp32 + no QAT + no quantization versus QAT + quantized.**
+A quantizer-trained checkpoint evaluated with the quantizer OFF (the "twin") is an ATTRIBUTION tool
+only; it is never the comparison number.
 A row passes only if BOTH heads are <= +0.0005. Speed is per config (it does not depend on the
 checkpoint) and comes from the deploy engine table below.
 
@@ -69,18 +73,31 @@ checkpoint) and comes from the deploy engine table below.
 | 6 | QAT rank-1 int4 factors + int2 shifts | 384 (48) | 1,152 (144) | 2,586 | 0.903x | 0.335247 | 0.308491 | +0.001445 | +0.002280 | **FAIL**, 2.9x/4.6x over, ub95 +0.001592/+0.002464, p 3.0e-66/1.9e-88 |
 | 7 | QAT rank-1 int2 factors + int2 shifts (QUARTER of row 4) | 256 (32) | 768 (96) | 2,586 | 0.903x | 0.337406 | 0.311143 | +0.003604 | +0.004932 | **FAIL**, 7.2x/9.9x over, ub95 +0.003871/+0.005296, p 9.7e-93/1.8e-93 |
 | 8 | QAT rank-1 int8 at iter45's 496-step decay length (axis 2, same bits as row 4) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | 0.322791 | 0.296287 | +0.001132 | +0.001674 | **FAIL**, 2.3x/3.3x over, but **d is against its own 496-step twin (row 0b)**, ub95 +0.001254/+0.001796 |
-| 9 | QAT rank-1 int8 factors + int4 shifts: SAME total bits as row 10, the bits moved to the factors | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
-| 10 | QAT rank-1 int4 factors + int8 shifts: SAME total bits as row 9, the bits moved to the shifts | 768 (96) | 2,304 (288) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall2` |
-| 11 | QAT rank-1 int8, 992-step decay (8x the champion's 124 steps; axis 2 under the relaxed rule) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | `it36qatsmall4`, vs `qnj_it36ctl992` |
-| 12 | QAT rank-1 int4, 992-step decay (only if 496 steps already beat 124 at these bits) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | *queued* | *queued* | *queued* | *queued* | conditional in `it36qatsmall4`, vs `qnj_it36ctl992` |
+| 9 | **QAT rank-1 int8 factors + int4 shifts: the bits belong in the FACTORS - BEST on axis 1** | **768 (96)** | **2,304 (288)** | 2,586 | 0.903x | **0.334318** | **0.307241** | **+0.000516** | **+0.001030** | **FAIL by a hair**, but 25% fewer bits than row 4 at the SAME tax (ub95 +0.000620/+0.001144, p 8.4e-31/8.9e-54) |
+| 10 | QAT rank-1 int4 factors + int8 shifts: the same 768/2,304 bits moved to the SHIFTS | 768 (96) | 2,304 (288) | 2,586 | 0.903x | 0.334847 | 0.307873 | +0.001045 | +0.001661 | **FAIL**, 2.1x/3.3x over - so the factors need int8 and the shifts do not |
+| 11 | QAT rank-1 int8 at a 992-step decay (8x the champion's 124 steps, relaxed rule) | 1,024 (128) | 3,072 (384) | 2,586 | 0.903x | 0.318088 | 0.291307 | +0.000874 | +0.001675 | **FAIL**, vs its own 992-step twin `qnj_it36ctl992` |
+| 12 | QAT rank-1 int4 at a 992-step decay | 512 (64) | 1,536 (192) | 2,586 | 0.903x | *not run* | *not run* | - | - | chain 4's own guard: the 496-step `l1i4` tax (+0.001581) was worse than the 124-step one (+0.001050) |
+| 13 | QAT rank-1 int4 at a 496-step decay (same length as row 8, half the bits) | 512 (64) | 1,536 (192) | 2,586 | 0.903x | 0.323240 | 0.296663 | +0.001581 | +0.002050 | **FAIL**, vs the 496-step twin (row 0b) |
+| 14 | QAT rank-1 int4 factors + int2 shifts at a 496-step decay | 384 (48) | 1,152 (144) | 2,586 | 0.903x | 0.323603 | 0.297312 | +0.001944 | +0.002698 | **FAIL**, vs the 496-step twin, 3.9x/5.4x over |
+| 15 | QAT card **rank-2** int8 + note rank-1 int8: the card's rank doubled inside its bar | 1,536 (192) | 3,072 (384) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
+| 16 | QAT card **rank-3** int8 + note rank-1 int8 | 2,048 (256) | 3,072 (384) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
+| 17 | QAT card rank-2 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,280 (160) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
+| 18 | QAT card rank-3 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,792 (224) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
 
-Rows 5-7, 9 and 10 all use the rank-1 path, whose engine speed was measured once (`l1i4` and `l1i8` both
-2,586 rev/s = 0.903x); the factor/shift bit widths do not change that path, so their speed cells are
-that measurement rather than a per-candidate run.
+Rows 5-7, 9-11 and 13-14 all use the rank-1 path, whose engine speed was measured once (`l1i4` and
+`l1i8` both 2,586 rev/s = 0.903x); the factor/shift bit widths do not change that path, so their speed
+cells are that measurement rather than a per-candidate run.
 
-**Status: nothing passes the +0.0005 bar yet.** Row 4 is the best point: ahead is essentially at the
-ceiling, the immediate head is twice over. Rows 3 and 1 are 2-3x over on both heads, and row 2 shows
-that QAT does not rescue a naive full-matrix quantizer.
+**Rows 15-18 have no deploy speed yet, and the deploy engine is the problem.** They change the CARD's
+rank, and the engine reconstructs the full 32x32 matrix every step for rank >= 2 instead of using a
+fused readout, so the engine's rank-2 measurement is 0.629x rev/s / 0.448x states/s - below the 0.75x
+floor. Their loss numbers are still the right first measurement (the torch eval path mirrors the
+engine's rounding), but they cannot be deployed until the engine gets a fused rank-r readout.
+
+**Status: nothing passes the +0.0005 bar yet, but the frontier moved twice.** Row 9 is now the best
+axis-1 point (768/2,304 bits - 25% smaller than row 4 - at the same tax), and the mechanism is settled
+(see "the tax is RANK TRUNCATION" below): precision is free at 8 bits, so the remaining +0.001009 on
+the immediate head must be bought with RANK, and the card stream is the one that needs it.
 
 **The bits-vs-tax curve (rows 5-7) is the axis-1 answer, and it is not free.** Walking down from row 4:
 
@@ -94,32 +111,61 @@ that QAT does not rescue a naive full-matrix quantizer.
 The curve is convex: the first halving doubles the tax, and the last step blows it up (row 7 is
 7.2x/9.9x over the ceiling), so int2 factors are past the knee. Both streams are still far under their
 constraint-2 bars at rows 5-6 (card 512 or 384 vs 2,176; note 1,536 or 1,152 vs 6,528), so axis 1 is a
-trade-off curve rather than a hard limit - and the *token shifts* look like the expensive side of the
-rank-1 split (int4 -> int2 shifts alone cost +0.000395/+0.000598 at row 6). Rows 9 and 10 test that
-directly: they hold the total at 768/2,304 bits and move the bits between the factors and the shifts.
+trade-off curve rather than a hard limit.
 
-**Row 0b does NOT rescue the tax - the 496-step hypothesis is refuted.** The hope was that a longer
-decay would absorb the quantizer, since the decay length moves the loss about 25x more than the tax
-(0.0121/0.0116 vs 0.0005/0.0010). Row 8 tests it at row 4's exact bits: 496 steps of the same QAT
-recipe scores 0.322791/0.296287 against the 496-step fp32 twin = **+0.001132/+0.001674**, so the tax
-MORE than doubles (row 4's 124-step pair was +0.000503/+0.001009). The absolute model is much better
-(0.0115 ahead of row 4), but relatively it is worse: the fp32 twin improves faster than the quantized
-copy can follow. Compliance therefore has to be won at the champion's own decay length, not by adding
-training, and the useful axis-2 lever is the bit allocation itself.
+**Rows 9-10 answer the bit-split question, and the answer is counter-intuitive: the bits belong in the
+FACTORS, not the shifts.** Both rows spend 768/2,304 bits. Row 9 gives the factors int8 and the shifts
+int4 (+0.000516/+0.001030) and lands within +0.00002 of row 4, which spends 1,024/3,072 - i.e. the
+shift vectors can drop from int8 to int4 for FREE, saving 25% of the bits. Row 10 does the opposite
+(int4 factors, int8 shifts) and is as bad as row 5 (+0.001045/+0.001661), even though it has 50% MORE
+bits. The factors are rank-1's real content; the shifts ride along.
 
-**The decay-length rule was relaxed (Andrew, 2026-11-21 01:00), so the 992-step point is now legal.**
-The 496-step point was a *pre-registered* deviation from the champion's 124 steps; Andrew has opened the
-step budget: "instead of using 124 steps, you can use more steps. It will make results less apples-to-apples
-comparable, but if it ultimately ends up turning a failing recipe into a winning one, it's fine". A QAT
-point may therefore use any decay length. Two rules still hold. (a) Every point is scored against an fp32
-twin trained at the SAME length on the same data, because otherwise "longer training" and "quantization"
-cannot be separated - and longer training helps fp32 too (row 0b is 0.0121/0.0116 better than row 0). The
-twin is cheap: 992 steps is about 27 minutes. (b) The row states its decay length, so the deviation from
-the champion's 124 steps is visible. The tax rises from 124 to 496 steps (+0.000503/+0.001009 ->
-+0.001132/+0.001674), so the open question is whether it turns over later. Rows 11-12 (`it36qatsmall4`,
-queued 2026-11-21 01:05) test 992 steps: the twin `qnj_it36ctl992`, then row 4's exact bits (`l1i8`) at
-992, then - only if 496 steps already beat 124 steps at the cheap 512/1,536-bit allocation - `l1i4` at 992.
-If the tax keeps rising at 992, this route is closed for good and only bit allocation is left.
+**The tax is RANK TRUNCATION, not precision (settled 2026-11-21 04:33 by the `cn8` diagnostic).**
+
+`cn8` is full-matrix int8 on both streams - no rank truncation at all - and it is 4x over both bars
+(8,704 / 26,112 bits), so it is a DIAGNOSTIC, never a candidate. Its tax against row 0 is
+**+0.000033 / +0.000022**: an 8-bit state is essentially lossless when it is not truncated. The rank-1
+family's +0.000503/+0.001009 is therefore the rank-1 TRUNCATION, not the 8-bit factor precision, and no
+finer level can buy it back. The fix has to add RANK.
+
+Which stream should get the rank? The per-stream attribution pair ran on row 4's OWN checkpoint (its own
+quantizer, so there is no quantizer mismatch), each quantizing one stream and leaving the other in fp32:
+
+| run | card bits | note bits | ahead | imm | d ahead | d imm |
+|---|---:|---:|---:|---:|---:|---:|
+| row 4 `l1i8` (both streams rank-1 int8) | 1,024 | 3,072 | 0.334305 | 0.307221 | +0.000503 | +0.001009 |
+| `l1i8c`, CARD only | 1,024 | fp32 | 0.335084 | 0.307353 | +0.001282 | +0.001142 |
+| `l1i8n`, NOTE only | fp32 | 3,072 | 0.334175 | 0.306470 | +0.000373 | +0.000258 |
+
+The note stream at rank-1 int8 costs +0.000373/+0.000258 on its own - INSIDE the ceiling on both heads.
+The card stream carries the immediate-head tax by itself (+0.001142, which is even more than the two
+streams cost together, because each single-stream run has the other stream mismatched against its QAT
+training). So the rank must go to the CARD, and the card's 2,176-bit bar has room: 1,024 bits at rank-1
+int8 + int8 shifts, 1,536 at rank-2, 2,048 at rank-3 (128 bits under the bar), 2,176 exactly at rank-4
+int8 + int2 shifts. Rows 15-18 measure that (running, 2026-11-21 07:45).
+
+Second consequence: the note pool (3,072 of row 4's 4,096 bits) is where the BITS are while the card is
+where the TAX is, so a note cut is worth measuring as well - rank-1 int4 (1,536 bits) or rank-1 int4
+factors + int2 shifts (1,152). `it36notecut` runs that (`nr4`, `nr4s2`) and then the combined
+`l2i8s4n4` / `l3i8s4n4` points, gated on the rank ladder actually helping.
+
+**The decay-length axis is CLOSED (2026-11-21 06:12), and it is closed in the awkward direction.**
+Three lengths of the same `l1i8` recipe now have their own same-length fp32 twin:
+
+| decay | quantized | fp32 twin | d ahead | d imm |
+|---|---|---|---|---|
+| 124 (row 4) | 0.334305 / 0.307221 | 0.333802 / 0.306211 | +0.000503 | +0.001009 |
+| 496 (row 8) | 0.322791 / 0.296287 | 0.321659 / 0.294614 | +0.001132 | +0.001674 |
+| 992 (row 11) | 0.318088 / 0.291307 | 0.317213 / 0.289632 | +0.000874 | +0.001675 |
+
+The tax does not fall at any length, and it roughly doubles past 124 steps on the immediate head. Andrew
+relaxed the step budget (2026-11-21 01:00: "instead of using 124 steps, you can use more steps ... if it
+ultimately ends up turning a failing recipe into a winning one, it's fine"), and this is the answer: the
+longer decays do not turn a failing recipe into a winning one. What they DO give is a much better model
+in ABSOLUTE terms - the 992-step quantized run is 0.0162/0.0159 BETTER than row 4 on both heads, because
+the fp32 twin itself improves by 0.016589/0.016579 between 124 and 992 steps. So for the rest of this arm the
+length is held at the champion's 124 steps (comparable, and the cheapest), and `l1i4` at 992 was correctly
+skipped by chain 4's own guard (the 496-step `l1i4` tax was already worse than the 124-step one).
 
 ### fp32 twins (reference rows, needed to split "training drift" from "quantizer cost")
 
@@ -190,6 +236,22 @@ only meaningful *within* this table.
 
 Reading: the two streams are close to additive (0.000943/0.001397 when both are quantized). Card
 hurts the immediate head most; note hurts the ahead head slightly more.
+
+**The same attribution on row 4's own checkpoint, QAT-trained for BOTH streams (2026-11-21 03:32),
+i.e. with the row 0 gate and no quantizer mismatch on the quantized stream:**
+
+| Run | Method | card bits (B) | note bits (B) | ahead LogLoss | imm LogLoss | d ahead | d imm |
+|---|---|---:|---:|---:|---:|---:|---:|
+| d3 | `l1i8c`: rank-1 int8 on the CARD stream only, note fp32 | 1,024 (128) | 104,448 (13,056) | 0.335084 | 0.307353 | +0.001282 | +0.001142 |
+| d4 | `l1i8n`: rank-1 int8 on the NOTE stream only, card fp32 | 34,816 (4,352) | 3,072 (384) | 0.334175 | 0.306470 | +0.000373 | +0.000258 |
+
+This pair is the one that decides where the rank goes (see "the tax is RANK TRUNCATION" above):
+the note is inside the ceiling on both heads by itself and the card owns the immediate-head tax.
+
+**Mechanism diagnostic (2026-11-21 04:33):** `cn8`, full-matrix int8 on both streams with NO rank
+truncation, 8,704/26,112 bits, 4x over both bars - DIAGNOSTIC ONLY, never a candidate. It scores
+0.333834/0.306234 = **+0.000033/+0.000022** against row 0, so 8-bit precision of the FULL state is
+free and the rank-1 tax is truncation.
 
 ## Rust deploy grid (the deploy engine itself, 3-user ranking tool)
 
@@ -288,11 +350,27 @@ Readings:
   +0.001132/+0.001674 against its own 496-step twin and so refutes the longer-decay route. Each point
   was a 0.04-epoch smoke, one QAT decay, and one quantized eval; every run printed its
   `[QAT-LOWRANK]`/`[QAT-SHIFT]` banners, saw 160 groups, and reserved 5.6 GB at peak.
-- **Rows 9-10, `it36qatsmall2` (queued, took the GPU at 00:51:57)**: `l1i4` at 496 steps against
-  `qnj_it36ctl496` (the same decay-length question at the cheapest allocation), then the
-  768/2,304-bit attribution pair `l1i8s4` (int8 factors + int4 shifts) and `l1i4s8` (int4 factors +
-  int8 shifts), then `l1i4s2` at 496 steps. Its own guard skips `l1i2`@496, because the 124-step
-  `l1i2` point is +0.003604 and the threshold is +0.0025.
+- **Rows 9-10 plus the 496-step ladder, `it36qatsmall2` (finished 2026-11-21 03:08:54, rc=0)**:
+  `l1i4` at 496 steps = +0.001581/+0.002050 against `qnj_it36ctl496` (worse than `l1i8`@496, as
+  expected at half the bits); the 768/2,304-bit split pair `l1i8s4` = +0.000516/+0.001030 (row 9,
+  the new axis-1 best - the int8 factors keep the tax while the int4 shifts save 25% of the bits)
+  and `l1i4s8` = +0.001045/+0.001661 (row 10); then `l1i4s2` at 496 steps = +0.001944/+0.002698.
+  Its own guard correctly skipped `l1i2`@496.
+- **`it36qatsmall3` (finished 2026-11-21 04:33:14, rc=0)**: the per-stream attribution pair on row
+  4's own checkpoint (`l1i8c` +0.001282/+0.001142, `l1i8n` +0.000373/+0.000258) and the `cn8`
+  mechanism diagnostic with its own 124-step QAT decay (+0.000033/+0.000022 - the decisive result).
+- **Rows 11-12, `it36qatsmall4` (finished 2026-11-21 06:12:50, rc=0)**: the 992-step fp32 twin
+  `qnj_it36ctl992` = 0.317213/0.289632, i.e. 0.016589/0.016579 better than row 0 (that gain is the
+  extra training alone) and 0.025600/0.024640 better than the iter36 champion `qnj_it36_124`; then
+  `l1i8` at 992 = +0.000874/+0.001675 against that twin, and `l1i4`@992 skipped by the guard.
+- **Rows 15-18, `it36rank` (launched 2026-11-21 07:45, RUNNING)**: the card rank ladder - `l2i8`
+  (card rank-2 int8, 1,536/3,072), `l3i8` (card rank-3 int8, 2,048/3,072), `l2i8s4` (1,280/2,304)
+  and `l3i8s4` (1,792/2,304). This is the direct test of the `cn8` verdict: if the rank-1 tax is
+  truncation, buying rank inside the card's bar is what removes it.
+- **`it36notecut` (queued behind `it36rank` at 2026-11-21 07:48)**: the note pool cut - `nr4` (note
+  rank-1 int4 factors + int4 shifts, 1,024/1,536), `nr4s2` (1,024/1,152), then, only if the best
+  card-rank imm delta is under +0.00070, the combined `l2i8s4n4` (1,280/1,536) and `l3i8s4n4`
+  (1,792/1,536).
 - **`it36qatsmall3` (queued behind it)**: the per-stream attribution pair `l1i8c` (card rank-1 int8
   only) and `l1i8n` (note rank-1 int8 only) on row 4's own checkpoint, which splits row 4's ahead/imm
   tax into a card part and a note part. Attribution rows only - one stream stays fp32, so they cannot

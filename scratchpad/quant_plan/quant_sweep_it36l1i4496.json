@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l1i4496\\qat_496.pth",
+  "ref": "qnj_it36ctl496",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l1i4",
+      "tag": "ql1i4_it36l1i4496",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:1:int4,note:1:int4",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "rank-1 factors at int4, shifts int4 (mirrors the verified Rust config)",
+      "bits": {
+        "card": 512,
+        "note": 1536
+      },
+      "rc": 0,
+      "secs": 1322.0469999999987,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0015810080000000007,
+          "ub95": 0.0017293277529315757,
+          "p_worse": 7.383801518284559e-65,
+          "mean_cur": 0.3232397653333333,
+          "mean_ref": 0.3216587573333334
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0020495373333333337,
+          "ub95": 0.002204834944913937,
+          "p_worse": 3.669542709018129e-92,
+          "mean_cur": 0.2966630866666667,
+          "mean_ref": 0.29461354933333334
+        }
+      }
+    }
+  ]
+}

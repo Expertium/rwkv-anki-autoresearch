@@ -80,6 +80,33 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 08:00 - **The mechanism is SETTLED and the frontier moved: `cn8` says the tax is RANK
+  TRUNCATION, and row 9 is a 25%-smaller state at the same tax.** Four chains finished overnight
+  (`it36qatsmall2` 03:08:54, `it36qatsmall3` 04:33:14, `it36qatsmall4` 06:12:50, all rc=0).
+  (1) `cn8` (full-matrix int8, NO rank truncation, 8,704/26,112 bits, 4x over the bars, DIAGNOSTIC
+  ONLY) = **+0.000033/+0.000022** against row 0: an 8-bit state is essentially lossless when it is not
+  truncated, so the rank-1 tax is TRUNCATION and a finer level cannot buy it back.
+  (2) The per-stream attribution on row 4's own checkpoint: `l1i8c` (card only) +0.001282/+0.001142 vs
+  `l1i8n` (note only) +0.000373/+0.000258 - the NOTE stream is inside the ceiling on both heads by
+  itself, the CARD stream owns the immediate-head tax.
+  (3) Row 9 `l1i8s4` (int8 factors + int4 shifts, 768/2,304 bits) = +0.000516/+0.001030, within +0.00002
+  of row 4 while spending 25% FEWER bits: the shift vectors can drop int8 -> int4 for free, and the bits
+  belong in the FACTORS (row 10, the reverse split, is as bad as row 5 with 50% more bits).
+  (4) The decay-length axis is CLOSED: `l1i8`'s tax is +0.000503/+0.001009 at 124 steps,
+  +0.001132/+0.001674 at 496, +0.000874/+0.001675 at 992 - it never falls, so a longer decay does not
+  turn the failing recipe into a winning one. It DOES give a much better model in ABSOLUTE terms: the
+  992-step fp32 twin is 0.317213/0.289632 (0.016589/0.016579 better than row 0) and its quantized copy
+  is 0.0162/0.0159 better than row 4. The absolute and relative readings now disagree - record both.
+  Running: `it36rank` (card rank-2/3 inside the 2,176-bit bar, rows 15-18, launched 07:45) and
+  `it36notecut` behind it. **Blocker: rank >= 2 has no fused deploy path, so the engine measures
+  0.629x rev/s / 0.448x states/s - it cannot be deployed until a fused rank-r readout exists, which
+  needs Andrew's approval.**
+
+* 2026-11-21 07:45 - **Gate clarified by Andrew (binding): "fp32, no QAT, without quantization vs QAT,
+  with quantization".** A QAT-trained checkpoint evaluated with quantization OFF (the "twin") is an
+  attribution tool only, never the comparison number; equal decay steps on both sides are ideal, a
+  mismatched number is acceptable but not ideal.
+
 * 2026-11-21 01:05 - **Andrew relaxed the QAT step budget, and chain 4 (`it36qatsmall4`) is launched to
   exploit it.** "instead of using 124 steps, you can use more steps ... if it ultimately ends up turning
   a failing recipe into a winning one, it's fine". Chain 4 waits behind chain 3 and then: (1) trains and
