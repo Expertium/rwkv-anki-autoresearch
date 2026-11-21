@@ -363,3 +363,21 @@ deployed" conclusion came from `l2i4`, which put rank 2 on the NOTE as well (4 l
 3-user deploy grid `rust_grid_it36l2i8.json`. OWED: an idle-machine speed re-measurement, and Andrew's
 decision on whether this recipe replaces the deployed 403/214-bit one. STILL RUNNING: rows 16-18 (card
 rank-3, int4 shifts) and `it36notecut` behind them. GPU at amendment time: `it36rank`'s `l3i8` QAT decay.
+
+Row 11 amendment 12 (2026-11-21 09:25, Moscow). **Row 16 (card rank-3 int8) is the lowest-tax row, and the
+card rank ladder shows the knee.** `l3i8` = card rank-3 int8 + int8 shifts, note rank-1 int8
+(2,048/3,072 bits) scores 0.333808/0.306388 = **+0.000006 ahead / +0.000176 imm** against row 0 (ub95
++0.000070/+0.000234). Immediate-head tax by card rank: rank-1 +0.001009, rank-2 +0.000307, rank-3
++0.000176 - so rank-3 is the axis-2 choice (near-zero tax, and it frees ~+0.0003 of the immediate-head
+budget for a smaller note pool) and rank-2 (row 15) is the axis-1 choice with 512 fewer card bits.
+Andrew asked for more gains on 2026-11-21 09:12 with the priority order 1) smaller state, 2) lower log
+loss, 3) speed, and to queue lots of runs, so three new chains were launched at 09:15 behind the two
+already running: `it36rankprec` (equal-bits rank-vs-precision probes - card rank-2 int4 at 768 bits vs
+row 9's rank-1 int8, rank-4 int4 at 1,280 vs row 17's rank-2 int8, rank-7 int4 at 2,048 vs row 16's
+rank-3 int8, note rank-2 int4 at 2,304 vs row 17's note rank-1 int8), `it36longdecay` (rank-2 at 496 and
+992 steps against their own same-length fp32 twins, the absolute-loss axis), and `it36shrink` (four
+combinations under row 15's 4,608 bits: 2,560 / 2,624 / 2,688 / 2,944). Eight new candidates were added
+to `quant_sweep.CANDIDATES` (39 total). Queue depth ~13 points, roughly 8 h of GPU work. Andrew also
+noted the deployed recipe is no longer his to change - another developer owns it and is running int4
+cards + int8 notes - so this arm is an exploration for him, and the deployed 403/214-bit recipe is not
+ours to touch.
