@@ -24,7 +24,19 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 
 A chain is LIVE only if its name is in this list:
 
-`it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`
+`it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`, `it36corrupt`
+
+`it36corrupt` (added 2026-11-21 22:50) is the corruption/finiteness check: it waits for `it36shrink`,
+then scores the 50 longest-history users of `corruption/corrupt50.json` for the four passing rows plus
+the quantization-OFF control. It writes `corruption/corruption_corrupt_<name>.json` per point and logs a
+heartbeat every 5 minutes while a point runs (a point can take an hour, and the old silent `run()` would
+have looked like a dead chain). Its driver (`corruption/check_corruption.py` +
+`corruption/probe_get_result.py`) is now in `status_report.py`'s WORKLOAD pattern, so the report says
+GPU BUSY while it scores.
+
+⚠ A chain queued BEHIND `it36corrupt` must add `probe_get_result.py|check_corruption.py` to its own
+BUSY_PAT, or it will start on top of the corruption run (the driver's command line matches no other
+chain's pattern).
 
 The chains sequence themselves through their own lock file and their `=== <name> chain end` marker.
 Normally you do nothing for them.
@@ -70,7 +82,7 @@ identical decay with no QAT and no quantization. A row passes only when `ub95 <=
 
 ## 5. Pre-authorized launch items
 
-None right now. The five LIVE chains above are the whole authorized queue.
+None right now. The six LIVE chains above are the whole authorized queue.
 
 When this list is empty and the GPU is idle, log `QUEUE EMPTY - needs Andrew's decision` and stop.
 Do NOT invent a new experiment, and do NOT extend an existing chain. Andrew adds an item here when he

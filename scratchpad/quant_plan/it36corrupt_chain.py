@@ -50,6 +50,7 @@ BUSY_PAT = ("qat_decay.py|quant_sweep.py|rwkv.train_rwkv|eval_sharded.py|"
             "rust_speed.py|rust_grid.py|rwkv-infer")
 WAIT_MAX_MIN = 900
 IDLE_PROCEED_MIN = 12
+HEARTBEAT_MIN = 5
 
 POINTS = [
     ("l2i8s4", "RESULTS row 17, axis-1 best"),
@@ -101,12 +102,34 @@ def wait_for_prev_chain():
 
 
 def run(tag, cmd, logfile):
+    """Run one point, logging a heartbeat every HEARTBEAT_MIN so a long eval cannot look stalled.
+
+    The supervisor's restart rule keys on "log unchanged > 45 min" plus "GPU idle"; a point that
+    scores 50 long-history users for an hour writes NOTHING to this log while it runs, so without the
+    heartbeat a healthy point would look like a dead chain and could be restarted on top of itself.
+    """
     log(f"START {tag}: {' '.join(cmd)}")
     t0 = time.time()
+    hb = time.time()
     with logfile.open("a", encoding="utf-8") as fh:
         fh.write(f"\n=== {tag} {' '.join(cmd)} ===\n")
         fh.flush()
-        rc = subprocess.run(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT).returncode
+        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT)
+        while True:
+            try:
+                rc = p.wait(timeout=60)
+                break
+            except subprocess.TimeoutExpired:
+                pass
+            if time.time() - hb >= HEARTBEAT_MIN * 60:
+                hb = time.time()
+                tail = ""
+                try:
+                    tail = logfile.read_text(encoding="utf-8", errors="replace").strip(
+                        ).splitlines()[-1][:120]
+                except Exception:
+                    pass
+                log(f"  ... {tag} running {(time.time() - t0) / 60:.0f} min; last child line: {tail}")
     log(f"DONE  {tag}: rc={rc} in {(time.time() - t0) / 60:.1f} min")
     return rc
 

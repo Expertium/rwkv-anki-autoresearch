@@ -24,7 +24,12 @@ RECORDED = HERE / "RECORDED.txt"
 QUEUE = HERE / "QUEUE.md"
 LOCK = HERE / ".autorun.lock"
 
-WORKLOAD = "qat_decay|quant_sweep|eval_sharded|train_rwkv|rwkv-infer|rust_speed|rust_grid|eval_baseline"
+# `probe_get_result|check_corruption` (2026-11-21): the corruption check runs a normal get_result
+# eval under a different entry point, so without these two the status report would call the GPU IDLE
+# while the it36corrupt chain is scoring, and the hourly supervisor could then restart that same
+# chain on top of itself.
+WORKLOAD = ("qat_decay|quant_sweep|eval_sharded|train_rwkv|rwkv-infer|rust_speed|rust_grid|"
+            "eval_baseline|probe_get_result|check_corruption")
 RAM_FLOOR_GB = 10.0
 LOCK_STALE_MIN = 90
 CHAIN_STALL_MIN = 45
