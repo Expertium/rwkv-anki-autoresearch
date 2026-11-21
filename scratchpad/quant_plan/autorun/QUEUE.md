@@ -25,7 +25,7 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 A chain is LIVE only if its name is in this list:
 
 `it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`, `it36corrupt`,
-`it36equalbits`
+`it36equalbits`, `it36combo`, `it36corrupt2`
 
 `it36corrupt` (added 2026-11-21 22:50) is the corruption/finiteness check: it waits for `it36shrink`,
 then scores the 50 longest-history users of `corruption/corrupt50.json` for the four passing rows plus
@@ -85,7 +85,17 @@ For every sweep result the report lists as `NOT RECORDED`:
    with 11 cells breaks the table;
 2. append the sweep stamp to `scratchpad/quant_plan/autorun/RECORDED.txt`;
 3. update the `**Status:**` line of RESULTS.md and add one bullet at the top of the
-   `## Live status` list in `scratchpad/quant_plan/NOTES.md`.
+   `## Live status` list in `scratchpad/quant_plan/NOTES.md`. Name the candidate tag inside the new
+   row's Method cell (e.g. `l3i4s4`): the corruption filler below finds a row by its tag when the row
+   is not in its built-in map;
+4. fill the `corruption` column from any corruption verdicts that exist now, by running exactly this
+   (it rewrites ONLY the last cell of each row it can identify, and refuses a row that does not have
+   12 cells; add `--dry-run` first if you want to see what it would do):
+
+       .venv\Scripts\python.exe scratchpad\quant_plan\corruption\record_corruption.py
+
+   A verdict that has no row yet is reported and skipped - write the row first, then run it again.
+   Never hand-edit a corruption cell.
 
 Then PUSH RESULTS.md, because Andrew's standing instruction is that every update of RESULTS.md goes to
 GitHub (2026-11-21). Do it EXACTLY like this, in this order, and nothing else:
@@ -115,7 +125,11 @@ identical decay with no QAT and no quantization. A row passes only when `ub95 <=
 
 ## 5. Pre-authorized launch items
 
-None right now. The six LIVE chains above are the whole authorized queue.
+None right now. The nine LIVE chains above are the whole authorized queue.
+They run in this order (each waits for the previous chain's end marker): `it36rankprec` (running),
+`it36longdecay`, `it36shrink`, `it36corrupt`, `it36equalbits` (chain 11, the equal-bits follow-ups),
+`it36combo` (chain 13, the cheap card under the cheap note), `it36corrupt2` (chain 12, the corruption
+sweep for the rows chains 11 and 13 create - it skips any row that fails the log-loss gate).
 
 When this list is empty and the GPU is idle, log `QUEUE EMPTY - needs Andrew's decision` and stop.
 Do NOT invent a new experiment, and do NOT extend an existing chain. Andrew adds an item here when he

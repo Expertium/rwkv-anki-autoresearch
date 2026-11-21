@@ -114,6 +114,21 @@ CANDIDATES = {
     "n2i4s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:2:int4",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
                "note rank-2 int4 + int3 shifts, same 2,112 note bits as n1i8s3 (1,280/2,112)", None),
+    # Chain 13: the two axes crossed. Chain 11 cuts the CARD (rank-3 int4 reaches 1,024 bits, rank-2
+    # int4 768) and the shrink chain cuts the NOTE (rank-1 int3 factors 1,344, int3 shifts 2,112), but
+    # each is measured with the other stream held at row 17's level. These three points put the cheap
+    # card UNDER the cheap note, which is the only way the total reaches 2,368-3,136 instead of 3,584.
+    # They are informative whatever chain 11 returns: a failure says the two cuts do not compose, which
+    # is the answer the frontier needs. Added 2026-11-21 23:35.
+    "l3i4s4n8s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int4,note:1:int8",
+                     "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
+                    "card rank-3 int4 + int4 shifts, note rank-1 int8 + int3 shifts (1,024/2,112 = 3,136)", None),
+    "l3i4s4n3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int4,note:1:int3",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+                 "card rank-3 int4 + int4 shifts, note rank-1 int3 factors + int4 shifts (1,024/1,344 = 2,368)", None),
+    "l2i4s4n8s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int4,note:1:int8",
+                    "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
+                   "card rank-2 int4 + int4 shifts, note rank-1 int8 + int3 shifts (768/2,112 = 2,880)", None),
     # Aggressive shrink combos: push the TOTAL below row 15's 4,608 bits.
     "l3i4s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int4,note:1:int4",
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},

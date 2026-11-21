@@ -56,6 +56,17 @@ CONFIGS = {
     "l3i8": (RUN / "qat_it36l3i8" / "qat_124.pth", "l3i8", "RESULTS row 16"),
     "l2i8s4": (RUN / "qat_it36l2i8s4" / "qat_124.pth", "l2i8s4", "RESULTS row 17 (axis-1 best)"),
     "l3i8s4": (RUN / "qat_it36l3i8s4" / "qat_124.pth", "l3i8s4", "RESULTS row 18"),
+    # Rows that pass the log-loss gate after 2026-11-21 23:00. The corruption check only ever runs on
+    # a deploy candidate, so the chain guards each of these on its own sweep verdict (ub95 <= +0.0005
+    # on both heads) before spending GPU time here.
+    "l2i4s4": (RUN / "qat_it36l2i4s4" / "qat_124.pth", "l2i4s4", "RESULTS row 23"),
+    "l3i4s4": (RUN / "qat_it36l3i4s4" / "qat_124.pth", "l3i4s4", "chain 11 point 1"),
+    "l2i8s2": (RUN / "qat_it36l2i8s2" / "qat_124.pth", "l2i8s2", "chain 11 point 2"),
+    "n1i8s3": (RUN / "qat_it36n1i8s3" / "qat_124.pth", "n1i8s3", "chain 11 point 3"),
+    "n2i4s3": (RUN / "qat_it36n2i4s3" / "qat_124.pth", "n2i4s3", "chain 11 point 4"),
+    "l3i4s4n8s3": (RUN / "qat_it36l3i4s4n8s3" / "qat_124.pth", "l3i4s4n8s3", "chain 13 point 1"),
+    "l3i4s4n3": (RUN / "qat_it36l3i4s4n3" / "qat_124.pth", "l3i4s4n3", "chain 13 point 2"),
+    "l2i4s4n8s3": (RUN / "qat_it36l2i4s4n8s3" / "qat_124.pth", "l2i4s4n8s3", "chain 13 point 3"),
 }
 
 
@@ -155,12 +166,15 @@ def run_one(name, users, device="cuda", limit=0, dry=False, log_suffix=""):
         problems.append(f"non-finite: state_bad={verdict['state_bad']} p_bad={verdict['p_bad']}")
     status = "FAIL" if (verdict["state_bad"] or verdict["p_bad"]
                         or sk.get("nanskip")) else ("PASS" if not problems else "INCOMPLETE")
+    note_txt = ("state observed on the Python QAT path" if state_expected else
+                "no quantized stream in this config: the state path is the plain CUDA kernel, so only "
+                "p(recall) is observable here (the run is the attribution control)")
     rec = {
         "name": name, "tag": tag, "row": note, "model": str(model), "candidate": cand,
         "env": {k: str(v) for k, v in env_extra.items()}, "rc": rc, "secs": secs,
         "users_requested": len(users), "users_scored": n_ll, "mean_logloss": means,
         "skips": sk, "log": str(log), "probe_dir": str(probe_dir), "status": status,
-        "problems": problems,
+        "problems": problems, "state_observed": bool(state_expected), "state_note": note_txt,
         "state_calls": verdict["state_calls"], "state_bad": verdict["state_bad"],
         "p_bad": verdict["p_bad"], "p_calls": verdict["p_calls"],
         "pass": verdict["pass"], "offenders": verdict["offenders"],
