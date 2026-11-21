@@ -154,3 +154,14 @@ unindented box lines, so keep any example indented like this paragraph:
 - Editing a sibling repository, or anything outside `C:\Users\Andrew\rwkv-anki-autoresearch`.
 - Editing `quant_sweep.py`, `qat_decay.py`, `it36ladder_lib.py` or any `it36*_chain.py`.
 - Letting host RAM free fall below 10 GiB, or running with the RAM guard stale.
+
+## 7. If a corruption verdict is FAIL
+
+Andrew's gate (2026-11-21 23:05): a non-finite card/note state value, or a non-finite `p(recall)`, makes
+the recipe undeployable. The fix (a state-growth penalty plus a max cap, or a re-normalization) and the
+advisor consult that Andrew asked for are the interactive session's job, not yours.
+
+So: record the verdict exactly as section 4 says, then log
+`NEEDS ANDREW: corruption FAIL for <tag> - state-growth fix + advisor consult required` and STOP.
+Do NOT change the quantizer or any other source file, do NOT restart the chain that produced the
+verdict, do NOT start anything, and do NOT describe the row as passing anywhere.
