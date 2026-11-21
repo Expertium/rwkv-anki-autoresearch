@@ -74,6 +74,25 @@ def find_row(lines, tag):
     return hits[0] if len(hits) == 1 else None
 
 
+def gate_failed(stamp):
+    """True only when the sweep verdict exists and is a clear FAIL of the log-loss gate."""
+    p = RUN / f"quant_sweep_{stamp}.json"
+    if not p.exists():
+        return False
+    try:
+        rows = json.loads(p.read_text(encoding="utf-8")).get("rows") or []
+    except ValueError:
+        return False
+    if not rows:
+        return False
+    g = rows[0].get("gate") or {}
+    a = (g.get("ahead") or {}).get("ub95")
+    i = (g.get("imm") or {}).get("ub95")
+    if a is None or i is None:
+        return False
+    return not (a <= 0.0005 and i <= 0.0005)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -105,6 +124,26 @@ def main():
         lines[idx] = "|".join(cells).rstrip("\r") + cr
         changed += 1
         print(f"{tag:12s} {rec.get('status', '?'):10s} -> row {idx + 1}: {new[:100]}")
+    # Second pass: a row whose own sweep FAILS the log-loss gate is not a deploy candidate, so its
+    # corruption cell must not stay `pending` forever. Only a clear FAIL flips it, and only a cell
+    # that is still exactly `pending` is touched.
+    for path in sorted(glob.glob(str(RUN / "quant_sweep_*.json"))):
+        stamp = Path(path).stem[len("quant_sweep_"):]
+        name = stamp[len("it36"):] if stamp.startswith("it36") else stamp
+        if not gate_failed(stamp):
+            continue
+        idx = find_row(lines, name)
+        if idx is None:
+            continue
+        cells = lines[idx].split("|")
+        if len(cells) != N_CELLS + 2 or cells[-2].strip() != "pending":
+            continue
+        cr = "\r" if lines[idx].endswith("\r") else ""
+        cells[-2] = " - "
+        lines[idx] = "|".join(cells).rstrip("\r") + cr
+        changed += 1
+        print(f"{stamp:14s} gate FAIL   -> row {idx + 1}: corruption cell 'pending' -> '-' "
+              f"(not a deploy candidate)")
     if changed and not args.dry_run:
         RESULTS.write_bytes("\n".join(lines).encode("utf-8"))
         print(f"\nwrote {RESULTS} ({changed} cell(s) updated)")

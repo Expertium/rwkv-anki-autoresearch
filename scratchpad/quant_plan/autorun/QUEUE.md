@@ -95,7 +95,10 @@ For every sweep result the report lists as `NOT RECORDED`:
        .venv\Scripts\python.exe scratchpad\quant_plan\corruption\record_corruption.py
 
    A verdict that has no row yet is reported and skipped - write the row first, then run it again.
-   Never hand-edit a corruption cell.
+   Never hand-edit a corruption cell. The same run also flips a cell that is still exactly `pending`
+   to `-` when that row's own sweep verdict FAILS the log-loss gate (such a row is never a deploy
+   candidate, so it is never checked): if you wrote `pending` for a row that then failed, this fixes
+   it in the same command.
 
 Then PUSH RESULTS.md, because Andrew's standing instruction is that every update of RESULTS.md goes to
 GitHub (2026-11-21). Do it EXACTLY like this, in this order, and nothing else:
