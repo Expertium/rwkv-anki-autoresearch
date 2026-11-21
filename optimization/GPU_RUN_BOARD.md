@@ -381,3 +381,22 @@ to `quant_sweep.CANDIDATES` (39 total). Queue depth ~13 points, roughly 8 h of G
 noted the deployed recipe is no longer his to change - another developer owns it and is running int4
 cards + int8 notes - so this arm is an exploration for him, and the deployed 403/214-bit recipe is not
 ours to touch.
+
+Row 11 amendment 13 (2026-11-21 13:05, Moscow). **GPU IDLE SINCE 12:25: the three 09:15 chains are in a
+circular wait and need Andrew.** `it36notecut` ended normally at 12:25 after scoring `l3i8s4n4`. Since
+then `it36rankprec`, `it36longdecay` and `it36shrink` have all been parked in `wait_for_prev`: each one's
+`BUSY_PAT` lists the OTHER two chain scripts, so each sees the other two's two processes and logs
+`matching processes=4` forever. `it36rankprec` is the only one whose predecessor has ended (it36notecut),
+so it would start immediately if it did not count its two successors as busy. No chain can break the tie
+by itself, and the waiter gives up after `WAIT_MAX_MIN=900`, i.e. at about 2026-11-22 00:15. The deploy
+measurement owed by section 3 of `autorun/QUEUE.md` cannot run while these chains are waiting, so the
+0.812x/0.800x numbers are still the pessimistic same-time measurements. The hourly supervisor is not
+authorized to kill or restart a chain whose log is fresh, so it recorded RESULTS.md row 22 and stopped.
+Fix options for Andrew (needs a decision, because it means editing chain files): (a) drop the other
+chain script names from each `BUSY_PAT` and keep only real workload processes
+(`quant_sweep.py|rwkv.train_rwkv|rust_speed.py|rust_grid.py`), which makes the end-marker check the only
+sequencer, or (b) launch the three chains one after another instead of at once. Results landed this hour:
+row 22 `l3i8s4n4` (card rank-3 int8 + int4 shifts, note rank-1 int4 + int4 shifts, 1,792/1,536 bits) =
++0.000297 ahead / +0.000525 imm, FAIL by 0.000025 on the immediate head - an int4 note blocks the imm
+head on the rank-1 (row 19), rank-2 (row 21) and rank-3 (row 22) card alike, so 2,304 note bits stay the
+cheapest passing note.

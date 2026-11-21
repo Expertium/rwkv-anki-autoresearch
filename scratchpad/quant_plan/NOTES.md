@@ -80,6 +80,27 @@ four feature-layout flags (`RWKV_ID_FEATURES`, `RWKV_REAL_CYCLES`, `RWKV_FINAL_L
 
 ## Live status
 
+* 2026-11-21 13:05 - **Row 22 `l3i8s4n4` FAILS by 0.000025: the int4 note blocks the imm head on every card.** Card held at row 18's config (rank-3 int8 + int4 shifts, 1,792 bits), note cut to rank-1 int4 factors + int4 shifts (1,536 bits). It scored 0.334099/0.306737 = **+0.000297 ahead / +0.000525 imm** against `qnj_it36ctl` (ub95 +0.000366/+0.000594, p 1.6e-17/1.2e-51): ahead is 0.6x inside the ceiling, imm is 1.05x over it. Against row 18 the 768-bit note cut costs about +0.000278/+0.000315 (difference of deltas, not a paired test), matching the row-21 estimate, so a note below 2,304 bits is not reachable at this rank ladder. Recorded as RESULTS.md row 22 and stamped in `autorun/RECORDED.txt`. **Supervisor note: `it36rankprec`, `it36longdecay` and `it36shrink` are in a circular wait** - each chain's busy pattern lists the other two, so each logs `matching processes=4` and none can start (GPU idle since 12:25). Their waiter gives up after 900 min, at about 00:15 on 2026-11-22. No restart is authorized (their logs are fresh, and a restart would recreate the same wait), so this needs Andrew.
+
+* 2026-11-21 12:05 - **Rows 20-21 FAIL: the note pool cannot go below int4, and the combined cut is 0.00014 from passing.** `nr4s2` (note rank-1 int4 factors + int2 shifts, 1,024/1,152 bits) scored 0.334648/0.307968 = **+0.000846/+0.001756** (ub95 +0.000955/+0.001892, p 2.7e-51/8.9e-87), i.e. +0.000124/+0.000408 WORSE than row 19 for 384 bits saved, so int2 shifts are harmful on the note (row 20). `l2i8s4n4` (card rank-2 int8 + int4 shifts, note rank-1 int4 + int4 shifts, 1,280/1,536 bits = 2,816 total) scored 0.334130/0.306850 = **+0.000328/+0.000638** - the ahead head 0.65x INSIDE the ceiling and the imm head 1.3x over, the closest any note cut has come (row 21); against row 17 the 768-bit note cut costs about +0.000276/+0.000311, so row 17 note (2,304 bits) is still the cheapest note that passes. Recorded as RESULTS.md rows 20-21 and stamped in `autorun/RECORDED.txt`. `it36notecut` is scoring its last pre-registered point `l3i8s4n4` (1,792/1,536); eval started 11:58 and was running at this check-in.
+
+* 2026-11-21 11:05 - **Row 19 `nr4` FAILS: the note pool cannot drop to int4 while the card keeps its
+  rank gain.** The note cut (note rank-1 int4 factors + int4 shifts, 1,536 bits; card held at row 4's
+  exact rank-1 int8 config) scored 0.334524/0.307559 = **+0.000722 ahead / +0.001348 imm** against
+  `qnj_it36ctl` (ub95 +0.000821/+0.001465), about +0.0002/+0.0003 worse than row 4 - so the cheap note
+  gives back the card's immediate-head gain instead of adding to it. Recorded as RESULTS.md row 19 and
+  stamped in `autorun/RECORDED.txt` (sweep `quant_sweep_it36nr4.json`). `it36notecut` is still running
+  and was scoring `nr4s2` (note rank-1 int4 + int2 shifts, 1,152 bits) at 10:48; the combined
+  `l2i8s4n4`/`l3i8s4n4` points remain gated on its own rule.
+
+* 2026-11-21 10:05 - **Row 18 `l3i8s4` lands and PASSES** (`it36rank`, rc=0, 26.9 min sweep):
+  card rank-3 int8 + int4 shifts, note rank-1 int8 + int4 shifts, 1,792/2,304 bits = 4,096 total,
+  scored 0.333821/0.306422 = +0.000019 ahead / +0.000210 imm against `qnj_it36ctl` (ub95
+  +0.000082/+0.000268), deploy engine 2,290 rev/s = 0.800x. It is the lowest-tax point of the card
+  rank ladder (row 16's tax at 256 fewer card bits, because the int4 shifts are free), so the ladder
+  now has two passing cost points: row 17 (1,280 card, 3,584 total, +0.000052/+0.000327) and row 18
+  (1,792 card, 4,096 total, +0.000019/+0.000210). `it36rank` ended 10:05:24; `it36notecut` takes the
+  lock next.
 * 2026-11-21 09:50 - **An hourly supervisor is now running (Andrew's request).** Windows Task Scheduler
   task `RWKV-Quant-Autorun` (every hour at :05, `MultipleInstances=IgnoreNew`, 30-min limit, runs only
   while Andrew is logged on) calls `scratchpad/quant_plan/autorun/run_autorun.cmd`, which takes a

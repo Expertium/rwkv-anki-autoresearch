@@ -82,11 +82,15 @@ checkpoint) and comes from the deploy engine table below.
 | 15 | **QAT card rank-2 int8 + note rank-1 int8 - THE FIRST PASSING RECIPE** | **1,536 (192)** | **3,072 (384)** | **2,324** | **0.812x** | **0.333848** | **0.306518** | **+0.000046** | **+0.000307** | **PASS**: ub95 +0.000112/+0.000369, both heads inside the ceiling, and the deploy engine runs it at 0.812x (>= 0.75x) |
 | 16 | **QAT card rank-3 int8 + note rank-1 int8 - the lowest tax of any row** | **2,048 (256)** | **3,072 (384)** | *see note* | *see note* | **0.333808** | **0.306388** | **+0.000006** | **+0.000176** | **PASS**: ub95 +0.000070/+0.000234; the ahead head is at zero and the immediate head is 3x inside the ceiling |
 | 17 | **QAT card rank-2 int8 factors + int4 shifts, note rank-1 int8 + int4 shifts - BEST on axis 1** | **1,280 (160)** | **2,304 (288)** | **2,290** | **0.800x** | **0.333853** | **0.306539** | **+0.000052** | **+0.000327** | **PASS**: ub95 +0.000118/+0.000390, the row-15 tax for 22% fewer bits (3,584 vs 4,608) |
-| 18 | QAT card rank-3 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,792 (224) | 2,304 (288) | *see note* | *see note* | *running* | *running* | *running* | *running* | `it36rank`, vs row 0 |
+| 18 | QAT card rank-3 int8 + int4 shifts, note rank-1 int8 + int4 shifts | 1,792 (224) | 2,304 (288) | 2,290 | 0.800x | 0.333821 | 0.306422 | +0.000019 | +0.000210 | **PASS**: ub95 +0.000082/+0.000268, 256 fewer card bits than row 16 at the same int4 shifts (vs row 0) |
+| 19 | QAT card at row 4's exact config (rank-1 int8 + int8 shifts), note rank-1 int4 factors + int4 shifts - the note-pool cut | 1,024 (128) | 1,536 (192) | 2,586 | 0.903x | 0.334524 | 0.307559 | +0.000722 | +0.001348 | **FAIL**, 1.4x/2.7x over, ub95 +0.000821/+0.001465: cutting the note from int8 to int4 costs about +0.00022 ahead / +0.00034 imm on top of row 4 (difference of deltas, not a paired test) |
+| 20 | QAT card at row 4's exact config (rank-1 int8 + int8 shifts), note rank-1 int4 factors + **int2** shifts - the note-pool cut, second step | 1,024 (128) | 1,152 (144) | 2,586 | 0.903x | 0.334648 | 0.307968 | +0.000846 | +0.001756 | **FAIL**, 1.7x/3.5x over, ub95 +0.000955/+0.001892, p 2.7e-51/8.9e-87: the note int2 shifts cost another +0.000124 ahead / +0.000408 imm over row 19 for only 384 bits saved |
+| 21 | QAT card rank-2 int8 + int4 shifts, note rank-1 int4 factors + int4 shifts - the combined cut | 1,280 (160) | 1,536 (192) | 2,290 | 0.800x | 0.334130 | 0.306850 | +0.000328 | +0.000638 | **FAIL by 0.00014**: ahead is 0.65x of the ceiling (ub95 +0.000397), imm is 1.3x over (ub95 +0.000711); the note cut in l2i8s4n4 costs about +0.000276 ahead / +0.000311 imm on top of row 17 at 768 fewer note bits |
+| 22 | QAT card rank-3 int8 + int4 shifts (row 18's card), note rank-1 int4 factors + int4 shifts - the note cut on the low-tax card | 1,792 (224) | 1,536 (192) | 2,290 | 0.800x | 0.334099 | 0.306737 | +0.000297 | +0.000525 | **FAIL by 0.000025**: the immediate head is 1.05x over the ceiling (ub95 +0.000594) while ahead sits at 0.6x of it (ub95 +0.000366), so the int4 note is the blocker; against row 18 the 768-bit note cut costs about +0.000278 ahead / +0.000315 imm (difference of deltas, not a paired test) |
 
-Rows 5-7, 9-11 and 13-14 all use the rank-1 path, whose engine speed was measured once (`l1i4` and
+Rows 5-7, 9-11, 13-14, 19 and 20 all use the rank-1 path, whose engine speed was measured once (`l1i4` and
 `l1i8` both 2,586 rev/s = 0.903x); the factor/shift bit widths do not change that path, so their speed
-cells are that measurement rather than a per-candidate run.
+cells are that measurement rather than a per-candidate run. Row 21 uses row 17's exact card config (`l2i8s4`, 2,290 rev/s = 0.800x); only its note factor width differs (int4 vs int8), which does not change the path. Row 22 uses row 18's card config (`l3i8s4`, 2,290 rev/s = 0.800x); its note is the faster rank-1 path, so the card sets the number.
 
 **The rank-2 speed is fine on the CARD; the earlier 0.629x was a both-streams measurement.**
 `l2i4` (rank-2 on card AND note, all four note layers) is 0.629x rev/s / 0.448x states/s, which is what
@@ -114,13 +118,22 @@ while rank-2 is the axis-1 choice (1,536 card bits, 512 fewer). Rows 17-18 (int4
 `it36notecut`/`it36rankprec`/`it36shrink` chains then search the (rank, precision, note-level) space
 for the smallest state that still passes.
 
-**Status: rows 15-17 PASS all six constraints** (row 17 is the new axis-1 choice, 1,280 card / 2,304 note bits = 3,584,
+**Status: rows 15-18 PASS all six constraints; rows 19-22, the note-pool cuts, all FAIL** (row 18 is the lowest-tax point of the ladder, 1,792 card / 2,304 note bits = 4,096, +0.000019/+0.000210, ub95 +0.000082/+0.000268 at 0.800x; row 17 is the new axis-1 choice, 1,280 card / 2,304 note bits = 3,584,
 the row-15 tax for 22% fewer bits at 0.800x; row 15 the same recipe with int8 shifts, 4,608 total; row 16 the axis-2 choice at 2,048 with a near-zero tax). Card 1,280-1,536 bits (2.83x
 smaller than naive int4, bar 2,176) and note 2,304-3,072 bits (2.13x-2.83x smaller, bar 6,528); both heads inside the
 +0.0005 ceiling with their upper bounds too (row 17 +0.000052 ub95 +0.000118 ahead, +0.000327 ub95 +0.000390
 imm; row 15 +0.000046/ub95 +0.000112 and +0.000307/ub95 +0.000369); the 750-user roster; and the deploy engine at 0.800x-0.812x rev/s (>= 0.75x). It buys the immediate head
 with RANK on the card, exactly what the `cn8` verdict predicted (see "the tax is RANK TRUNCATION"
-below). Row 9 stays the best axis-1 rank-1 point (768/2,304 bits at row 4's tax) for reference.
+below). Row 9 stays the best axis-1 rank-1 point (768/2,304 bits at row 4's tax) for reference. Row 22 (`l3i8s4n4`, the note cut on row 18's card) is 0.000025 from passing on the imm head, so an int4 note is not enough: 2,304 note bits (rows 17-18) remain the cheapest passing note.
+
+**Row 19 (`nr4`, the note-pool cut) FAILS**: card held at row 4's config, note dropped to rank-1 int4
+factors + int4 shifts (1,024/1,536 bits) scores 0.334524/0.307559 = **+0.000722/+0.001348**, so the
+note cannot pay the rank-1 int4 price the card's ladder just removed from it - the imm head goes
+0.0003 further over the ceiling than row 4 instead of closing. The passing note is the int8 one of
+rows 15-18 (2,304 bits with int4 shifts). The chain's next point (`nr4s2`, note 1,152 bits) and the
+combined `l2i8s4n4`/`l3i8s4n4` points stay pre-registered; read them against this row.
+
+**Rows 20-21 land, and the combined cut is 0.00014 from passing.** `nr4s2` (row 20) drops the note shifts to int2 and takes the tax UP, not down: +0.000846/+0.001756, i.e. +0.000124/+0.000408 worse than row 19 for 384 bits saved, so the note needs int4 shifts and row 19 is the floor of the rank-1 int4 note pool (1,536 bits). `l2i8s4n4` (row 21) is the informative one: it keeps the note at row 19 int4 config and puts rank 2 back on the card, recovering +0.000394/+0.000710 relative to row 19 to land at +0.000328/+0.000638 - the ahead head is now 0.65x of the ceiling and the imm head 1.3x over, the closest any note cut has come. Against row 17 (same 1,280 card bits, note 2,304) the 768-bit note cut costs about +0.000276/+0.000311, so the note is worth roughly +0.0003 of imm tax per 768 bits, and row 17 note at 2,304 bits remains the cheapest note that passes. `l3i8s4n4` (rank-3 card at the same int4 note, 1,792/1,536 bits) is scoring now (started 11:58) and is the last pre-registered point of this chain.
 
 **The bits-vs-tax curve (rows 5-7) is the axis-1 answer, and it is not free.** Walking down from row 4:
 
@@ -386,7 +399,7 @@ Readings:
   `qnj_it36ctl992` = 0.317213/0.289632, i.e. 0.016589/0.016579 better than row 0 (that gain is the
   extra training alone) and 0.025600/0.024640 better than the iter36 champion `qnj_it36_124`; then
   `l1i8` at 992 = +0.000874/+0.001675 against that twin, and `l1i4`@992 skipped by the guard.
-- **Rows 15-18, `it36rank` (launched 2026-11-21 07:45, RUNNING)**: the card rank ladder - `l2i8`
+- **Rows 15-18, `it36rank` (launched 2026-11-21 07:45, finished 2026-11-21 10:05:24, rc=0)**: the card rank ladder - `l2i8`
   (card rank-2 int8, 1,536/3,072), `l3i8` (card rank-3 int8, 2,048/3,072), `l2i8s4` (1,280/2,304)
   and `l3i8s4` (1,792/2,304). This is the direct test of the `cn8` verdict: if the rank-1 tax is
   truncation, buying rank inside the card's bar is what removes it.

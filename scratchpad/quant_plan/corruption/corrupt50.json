@@ -1,0 +1,962 @@
+{
+  "pool": [
+    5001,
+    7500
+  ],
+  "metric": "mean reviews per card",
+  "max_section_rows": 200000,
+  "users": [
+    7213,
+    7250,
+    6251,
+    5486,
+    5098,
+    5939,
+    5052,
+    6026,
+    6528,
+    7018,
+    5732,
+    5261,
+    7091,
+    7341,
+    7325,
+    6960,
+    7023,
+    7039,
+    6734,
+    7443,
+    5681,
+    6188,
+    6893,
+    5920,
+    6080,
+    5138,
+    7481,
+    7117,
+    7044,
+    6444,
+    6326,
+    7200,
+    5025,
+    5538,
+    5242,
+    5975,
+    6082,
+    5311,
+    7319,
+    6287,
+    7095,
+    5176,
+    6296,
+    6999,
+    5391,
+    5501,
+    6065,
+    5125,
+    5116,
+    6825
+  ],
+  "selected": [
+    {
+      "user": 7213,
+      "reviews": 82016,
+      "cards": 1566,
+      "mean": 52.372924648786714,
+      "max": 335,
+      "section_rows": 162466
+    },
+    {
+      "user": 7250,
+      "reviews": 95597,
+      "cards": 1879,
+      "mean": 50.87653006918574,
+      "max": 172,
+      "section_rows": 189315
+    },
+    {
+      "user": 6251,
+      "reviews": 16307,
+      "cards": 353,
+      "mean": 46.195467422096314,
+      "max": 193,
+      "section_rows": 32261
+    },
+    {
+      "user": 5486,
+      "reviews": 96030,
+      "cards": 2270,
+      "mean": 42.30396475770925,
+      "max": 281,
+      "section_rows": 189790
+    },
+    {
+      "user": 5098,
+      "reviews": 29166,
+      "cards": 897,
+      "mean": 32.51505016722408,
+      "max": 122,
+      "section_rows": 57435
+    },
+    {
+      "user": 5939,
+      "reviews": 91707,
+      "cards": 2894,
+      "mean": 31.68866620594333,
+      "max": 140,
+      "section_rows": 180520
+    },
+    {
+      "user": 5052,
+      "reviews": 94910,
+      "cards": 3016,
+      "mean": 31.468832891246684,
+      "max": 135,
+      "section_rows": 186804
+    },
+    {
+      "user": 6026,
+      "reviews": 47654,
+      "cards": 1532,
+      "mean": 31.10574412532637,
+      "max": 151,
+      "section_rows": 93776
+    },
+    {
+      "user": 6528,
+      "reviews": 54573,
+      "cards": 1779,
+      "mean": 30.676222596964585,
+      "max": 127,
+      "section_rows": 107367
+    },
+    {
+      "user": 7018,
+      "reviews": 71983,
+      "cards": 2414,
+      "mean": 29.81897265948633,
+      "max": 108,
+      "section_rows": 141552
+    },
+    {
+      "user": 5732,
+      "reviews": 66396,
+      "cards": 2238,
+      "mean": 29.66756032171582,
+      "max": 1409,
+      "section_rows": 130554
+    },
+    {
+      "user": 5261,
+      "reviews": 13303,
+      "cards": 455,
+      "mean": 29.237362637362637,
+      "max": 83,
+      "section_rows": 26151
+    },
+    {
+      "user": 7091,
+      "reviews": 10034,
+      "cards": 352,
+      "mean": 28.505681818181817,
+      "max": 106,
+      "section_rows": 19716
+    },
+    {
+      "user": 7341,
+      "reviews": 38871,
+      "cards": 1416,
+      "mean": 27.451271186440678,
+      "max": 187,
+      "section_rows": 76326
+    },
+    {
+      "user": 7325,
+      "reviews": 5951,
+      "cards": 224,
+      "mean": 26.566964285714285,
+      "max": 104,
+      "section_rows": 11678
+    },
+    {
+      "user": 6960,
+      "reviews": 29865,
+      "cards": 1126,
+      "mean": 26.52309058614565,
+      "max": 224,
+      "section_rows": 58604
+    },
+    {
+      "user": 7023,
+      "reviews": 23641,
+      "cards": 894,
+      "mean": 26.44407158836689,
+      "max": 96,
+      "section_rows": 46388
+    },
+    {
+      "user": 7039,
+      "reviews": 37724,
+      "cards": 1427,
+      "mean": 26.435879467414157,
+      "max": 95,
+      "section_rows": 74021
+    },
+    {
+      "user": 6734,
+      "reviews": 70106,
+      "cards": 2682,
+      "mean": 26.13944817300522,
+      "max": 308,
+      "section_rows": 137530
+    },
+    {
+      "user": 7443,
+      "reviews": 15831,
+      "cards": 611,
+      "mean": 25.90998363338789,
+      "max": 122,
+      "section_rows": 31051
+    },
+    {
+      "user": 5681,
+      "reviews": 30145,
+      "cards": 1172,
+      "mean": 25.72098976109215,
+      "max": 62,
+      "section_rows": 59118
+    },
+    {
+      "user": 6188,
+      "reviews": 63729,
+      "cards": 2501,
+      "mean": 25.48140743702519,
+      "max": 83,
+      "section_rows": 124957
+    },
+    {
+      "user": 6893,
+      "reviews": 38867,
+      "cards": 1537,
+      "mean": 25.287573194534808,
+      "max": 209,
+      "section_rows": 76197
+    },
+    {
+      "user": 5920,
+      "reviews": 50655,
+      "cards": 2035,
+      "mean": 24.89189189189189,
+      "max": 162,
+      "section_rows": 99275
+    },
+    {
+      "user": 6080,
+      "reviews": 51062,
+      "cards": 2078,
+      "mean": 24.572666025024063,
+      "max": 1107,
+      "section_rows": 100046
+    },
+    {
+      "user": 5138,
+      "reviews": 78623,
+      "cards": 3249,
+      "mean": 24.199138196368114,
+      "max": 211,
+      "section_rows": 153997
+    },
+    {
+      "user": 7481,
+      "reviews": 25363,
+      "cards": 1061,
+      "mean": 23.904806786050894,
+      "max": 106,
+      "section_rows": 49665
+    },
+    {
+      "user": 7117,
+      "reviews": 14882,
+      "cards": 627,
+      "mean": 23.73524720893142,
+      "max": 243,
+      "section_rows": 29137
+    },
+    {
+      "user": 7044,
+      "reviews": 96732,
+      "cards": 4097,
+      "mean": 23.610446668293875,
+      "max": 85,
+      "section_rows": 189367
+    },
+    {
+      "user": 6444,
+      "reviews": 23681,
+      "cards": 1010,
+      "mean": 23.446534653465346,
+      "max": 300,
+      "section_rows": 46352
+    },
+    {
+      "user": 6326,
+      "reviews": 6179,
+      "cards": 265,
+      "mean": 23.316981132075473,
+      "max": 99,
+      "section_rows": 12093
+    },
+    {
+      "user": 7200,
+      "reviews": 71435,
+      "cards": 3102,
+      "mean": 23.028691166989038,
+      "max": 158,
+      "section_rows": 139768
+    },
+    {
+      "user": 5025,
+      "reviews": 16257,
+      "cards": 711,
+      "mean": 22.864978902953588,
+      "max": 57,
+      "section_rows": 31803
+    },
+    {
+      "user": 5538,
+      "reviews": 60771,
+      "cards": 2693,
+      "mean": 22.566282955811364,
+      "max": 102,
+      "section_rows": 118849
+    },
+    {
+      "user": 5242,
+      "reviews": 42780,
+      "cards": 1930,
+      "mean": 22.16580310880829,
+      "max": 46,
+      "section_rows": 83630
+    },
+    {
+      "user": 5975,
+      "reviews": 78122,
+      "cards": 3538,
+      "mean": 22.080836630864894,
+      "max": 128,
+      "section_rows": 152706
+    },
+    {
+      "user": 6082,
+      "reviews": 96457,
+      "cards": 4422,
+      "mean": 21.812980551786524,
+      "max": 100,
+      "section_rows": 188492
+    },
+    {
+      "user": 5311,
+      "reviews": 43829,
+      "cards": 2024,
+      "mean": 21.654644268774703,
+      "max": 156,
+      "section_rows": 85634
+    },
+    {
+      "user": 7319,
+      "reviews": 14975,
+      "cards": 693,
+      "mean": 21.60894660894661,
+      "max": 97,
+      "section_rows": 29257
+    },
+    {
+      "user": 6287,
+      "reviews": 81494,
+      "cards": 3779,
+      "mean": 21.564964276263563,
+      "max": 153,
+      "section_rows": 159209
+    },
+    {
+      "user": 7095,
+      "reviews": 9237,
+      "cards": 429,
+      "mean": 21.53146853146853,
+      "max": 64,
+      "section_rows": 18045
+    },
+    {
+      "user": 5176,
+      "reviews": 24876,
+      "cards": 1156,
+      "mean": 21.519031141868513,
+      "max": 86,
+      "section_rows": 48596
+    },
+    {
+      "user": 6296,
+      "reviews": 70666,
+      "cards": 3337,
+      "mean": 21.17650584357207,
+      "max": 68,
+      "section_rows": 137995
+    },
+    {
+      "user": 6999,
+      "reviews": 87479,
+      "cards": 4145,
+      "mean": 21.104704463208684,
+      "max": 102,
+      "section_rows": 170813
+    },
+    {
+      "user": 5391,
+      "reviews": 7247,
+      "cards": 344,
+      "mean": 21.066860465116278,
+      "max": 69,
+      "section_rows": 14150
+    },
+    {
+      "user": 5501,
+      "reviews": 8966,
+      "cards": 430,
+      "mean": 20.851162790697675,
+      "max": 76,
+      "section_rows": 17502
+    },
+    {
+      "user": 6065,
+      "reviews": 8463,
+      "cards": 406,
+      "mean": 20.844827586206897,
+      "max": 88,
+      "section_rows": 16520
+    },
+    {
+      "user": 5125,
+      "reviews": 82755,
+      "cards": 3997,
+      "mean": 20.704278208656493,
+      "max": 185,
+      "section_rows": 161513
+    },
+    {
+      "user": 5116,
+      "reviews": 53339,
+      "cards": 2629,
+      "mean": 20.288702928870293,
+      "max": 105,
+      "section_rows": 104049
+    },
+    {
+      "user": 6825,
+      "reviews": 19096,
+      "cards": 943,
+      "mean": 20.250265111346767,
+      "max": 145,
+      "section_rows": 37249
+    }
+  ],
+  "excluded_too_big": [
+    {
+      "user": 5626,
+      "reviews": 2731307,
+      "cards": 13372,
+      "mean": 204.2556835177984,
+      "max": 890,
+      "section_rows": 5449242
+    },
+    {
+      "user": 6895,
+      "reviews": 429094,
+      "cards": 6758,
+      "mean": 63.49422906185262,
+      "max": 1128,
+      "section_rows": 851430
+    },
+    {
+      "user": 6323,
+      "reviews": 343044,
+      "cards": 5410,
+      "mean": 63.40924214417745,
+      "max": 1057,
+      "section_rows": 680678
+    },
+    {
+      "user": 5677,
+      "reviews": 132218,
+      "cards": 2475,
+      "mean": 53.42141414141414,
+      "max": 778,
+      "section_rows": 261961
+    },
+    {
+      "user": 6401,
+      "reviews": 312528,
+      "cards": 5902,
+      "mean": 52.952897322941375,
+      "max": 224,
+      "section_rows": 619154
+    },
+    {
+      "user": 6601,
+      "reviews": 160545,
+      "cards": 3033,
+      "mean": 52.932739861523245,
+      "max": 129,
+      "section_rows": 318057
+    },
+    {
+      "user": 6197,
+      "reviews": 401374,
+      "cards": 7740,
+      "mean": 51.857105943152455,
+      "max": 384,
+      "section_rows": 795008
+    },
+    {
+      "user": 5637,
+      "reviews": 113039,
+      "cards": 2308,
+      "mean": 48.977036395147316,
+      "max": 290,
+      "section_rows": 223770
+    },
+    {
+      "user": 7488,
+      "reviews": 166061,
+      "cards": 3426,
+      "mean": 48.47081144191477,
+      "max": 242,
+      "section_rows": 328696
+    },
+    {
+      "user": 6810,
+      "reviews": 3910718,
+      "cards": 82122,
+      "mean": 47.620832420057965,
+      "max": 2775,
+      "section_rows": 7739314
+    },
+    {
+      "user": 6630,
+      "reviews": 1072459,
+      "cards": 23496,
+      "mean": 45.64432243786177,
+      "max": 1340,
+      "section_rows": 2121422
+    },
+    {
+      "user": 6104,
+      "reviews": 644634,
+      "cards": 14503,
+      "mean": 44.44832103702682,
+      "max": 524,
+      "section_rows": 1274765
+    },
+    {
+      "user": 6614,
+      "reviews": 177240,
+      "cards": 4694,
+      "mean": 37.75884107371112,
+      "max": 756,
+      "section_rows": 349786
+    },
+    {
+      "user": 7343,
+      "reviews": 186803,
+      "cards": 5086,
+      "mean": 36.72886354699174,
+      "max": 225,
+      "section_rows": 368520
+    },
+    {
+      "user": 5216,
+      "reviews": 106286,
+      "cards": 2906,
+      "mean": 36.57467309015829,
+      "max": 148,
+      "section_rows": 209666
+    },
+    {
+      "user": 7244,
+      "reviews": 557817,
+      "cards": 15647,
+      "mean": 35.650092669521314,
+      "max": 105,
+      "section_rows": 1099987
+    },
+    {
+      "user": 5846,
+      "reviews": 281558,
+      "cards": 8096,
+      "mean": 34.7774209486166,
+      "max": 158,
+      "section_rows": 555020
+    },
+    {
+      "user": 6835,
+      "reviews": 105407,
+      "cards": 3048,
+      "mean": 34.58234908136483,
+      "max": 225,
+      "section_rows": 207766
+    },
+    {
+      "user": 5395,
+      "reviews": 275102,
+      "cards": 8322,
+      "mean": 33.05719778899303,
+      "max": 205,
+      "section_rows": 541882
+    },
+    {
+      "user": 5848,
+      "reviews": 160792,
+      "cards": 4944,
+      "mean": 32.52265372168285,
+      "max": 294,
+      "section_rows": 316640
+    },
+    {
+      "user": 5945,
+      "reviews": 359302,
+      "cards": 11141,
+      "mean": 32.250426353110136,
+      "max": 410,
+      "section_rows": 707463
+    },
+    {
+      "user": 5641,
+      "reviews": 379943,
+      "cards": 12077,
+      "mean": 31.460048025171815,
+      "max": 277,
+      "section_rows": 747809
+    },
+    {
+      "user": 5198,
+      "reviews": 371202,
+      "cards": 11819,
+      "mean": 31.407225653608595,
+      "max": 324,
+      "section_rows": 730585
+    },
+    {
+      "user": 7118,
+      "reviews": 260787,
+      "cards": 8304,
+      "mean": 31.40498554913295,
+      "max": 176,
+      "section_rows": 513270
+    },
+    {
+      "user": 6551,
+      "reviews": 182202,
+      "cards": 6093,
+      "mean": 29.903495814869522,
+      "max": 109,
+      "section_rows": 358311
+    },
+    {
+      "user": 6701,
+      "reviews": 2400424,
+      "cards": 80730,
+      "mean": 29.733977455716587,
+      "max": 313,
+      "section_rows": 4720118
+    },
+    {
+      "user": 7170,
+      "reviews": 120380,
+      "cards": 4227,
+      "mean": 28.478826590962857,
+      "max": 104,
+      "section_rows": 236533
+    },
+    {
+      "user": 5869,
+      "reviews": 306995,
+      "cards": 11232,
+      "mean": 27.332175925925927,
+      "max": 129,
+      "section_rows": 602758
+    },
+    {
+      "user": 5507,
+      "reviews": 428171,
+      "cards": 15671,
+      "mean": 27.32250654074405,
+      "max": 143,
+      "section_rows": 840671
+    },
+    {
+      "user": 6146,
+      "reviews": 118668,
+      "cards": 4383,
+      "mean": 27.07460643394935,
+      "max": 230,
+      "section_rows": 232953
+    },
+    {
+      "user": 6750,
+      "reviews": 167098,
+      "cards": 6296,
+      "mean": 26.540343074968234,
+      "max": 202,
+      "section_rows": 327900
+    },
+    {
+      "user": 7103,
+      "reviews": 291758,
+      "cards": 11136,
+      "mean": 26.199533045977013,
+      "max": 144,
+      "section_rows": 572380
+    },
+    {
+      "user": 5859,
+      "reviews": 1023175,
+      "cards": 39060,
+      "mean": 26.194956477214543,
+      "max": 306,
+      "section_rows": 2007290
+    },
+    {
+      "user": 7376,
+      "reviews": 140537,
+      "cards": 5366,
+      "mean": 26.190272083488633,
+      "max": 119,
+      "section_rows": 275708
+    },
+    {
+      "user": 6536,
+      "reviews": 143904,
+      "cards": 5793,
+      "mean": 24.841015018125322,
+      "max": 48,
+      "section_rows": 282015
+    },
+    {
+      "user": 6093,
+      "reviews": 328222,
+      "cards": 13254,
+      "mean": 24.76399577486042,
+      "max": 264,
+      "section_rows": 643190
+    },
+    {
+      "user": 6077,
+      "reviews": 104324,
+      "cards": 4217,
+      "mean": 24.738913919848233,
+      "max": 237,
+      "section_rows": 204431
+    },
+    {
+      "user": 6365,
+      "reviews": 143409,
+      "cards": 5801,
+      "mean": 24.721427340113774,
+      "max": 157,
+      "section_rows": 281017
+    },
+    {
+      "user": 6738,
+      "reviews": 213552,
+      "cards": 8649,
+      "mean": 24.69094693028096,
+      "max": 98,
+      "section_rows": 418455
+    },
+    {
+      "user": 6442,
+      "reviews": 333064,
+      "cards": 13580,
+      "mean": 24.526067746686305,
+      "max": 235,
+      "section_rows": 652548
+    },
+    {
+      "user": 6714,
+      "reviews": 867684,
+      "cards": 35561,
+      "mean": 24.39987626894632,
+      "max": 158,
+      "section_rows": 1699807
+    },
+    {
+      "user": 7155,
+      "reviews": 343539,
+      "cards": 14085,
+      "mean": 24.39041533546326,
+      "max": 98,
+      "section_rows": 672993
+    },
+    {
+      "user": 6817,
+      "reviews": 291371,
+      "cards": 12239,
+      "mean": 23.806765258599558,
+      "max": 117,
+      "section_rows": 570503
+    },
+    {
+      "user": 5340,
+      "reviews": 147304,
+      "cards": 6311,
+      "mean": 23.340833465377912,
+      "max": 135,
+      "section_rows": 288297
+    },
+    {
+      "user": 5512,
+      "reviews": 107496,
+      "cards": 4642,
+      "mean": 23.157259801809566,
+      "max": 137,
+      "section_rows": 210350
+    },
+    {
+      "user": 5694,
+      "reviews": 217496,
+      "cards": 9560,
+      "mean": 22.75062761506276,
+      "max": 202,
+      "section_rows": 425432
+    },
+    {
+      "user": 5478,
+      "reviews": 284361,
+      "cards": 12639,
+      "mean": 22.49869451697128,
+      "max": 77,
+      "section_rows": 556083
+    },
+    {
+      "user": 7176,
+      "reviews": 104378,
+      "cards": 4713,
+      "mean": 22.146827922766814,
+      "max": 180,
+      "section_rows": 204043
+    },
+    {
+      "user": 5992,
+      "reviews": 140613,
+      "cards": 6353,
+      "mean": 22.133322839603338,
+      "max": 210,
+      "section_rows": 274873
+    },
+    {
+      "user": 6252,
+      "reviews": 149396,
+      "cards": 6896,
+      "mean": 21.66415313225058,
+      "max": 171,
+      "section_rows": 291896
+    },
+    {
+      "user": 6681,
+      "reviews": 195193,
+      "cards": 9022,
+      "mean": 21.635225005542008,
+      "max": 164,
+      "section_rows": 381364
+    },
+    {
+      "user": 6526,
+      "reviews": 231086,
+      "cards": 10767,
+      "mean": 21.46243150366862,
+      "max": 208,
+      "section_rows": 451405
+    },
+    {
+      "user": 7071,
+      "reviews": 207053,
+      "cards": 9727,
+      "mean": 21.286419245399404,
+      "max": 142,
+      "section_rows": 404379
+    },
+    {
+      "user": 7202,
+      "reviews": 179472,
+      "cards": 8482,
+      "mean": 21.159160575336006,
+      "max": 192,
+      "section_rows": 350462
+    },
+    {
+      "user": 5166,
+      "reviews": 231961,
+      "cards": 11062,
+      "mean": 20.96917374796601,
+      "max": 398,
+      "section_rows": 452860
+    },
+    {
+      "user": 5961,
+      "reviews": 163853,
+      "cards": 7830,
+      "mean": 20.92630906768838,
+      "max": 103,
+      "section_rows": 319876
+    },
+    {
+      "user": 6034,
+      "reviews": 149290,
+      "cards": 7175,
+      "mean": 20.80696864111498,
+      "max": 182,
+      "section_rows": 291405
+    },
+    {
+      "user": 5400,
+      "reviews": 125354,
+      "cards": 6036,
+      "mean": 20.767726971504306,
+      "max": 153,
+      "section_rows": 244672
+    },
+    {
+      "user": 7083,
+      "reviews": 123697,
+      "cards": 5998,
+      "mean": 20.623041013671223,
+      "max": 83,
+      "section_rows": 241396
+    },
+    {
+      "user": 5795,
+      "reviews": 176046,
+      "cards": 8586,
+      "mean": 20.503843466107618,
+      "max": 86,
+      "section_rows": 343506
+    },
+    {
+      "user": 7066,
+      "reviews": 115143,
+      "cards": 5617,
+      "mean": 20.499020829624353,
+      "max": 285,
+      "section_rows": 224669
+    },
+    {
+      "user": 7283,
+      "reviews": 188529,
+      "cards": 9208,
+      "mean": 20.4744787141616,
+      "max": 224,
+      "section_rows": 367850
+    }
+  ],
+  "missing_in_db": [],
+  "note": "ranked by mean reviews per card over users 5001-7500; users whose section exceeds MAX_ROWS are listed in excluded_too_big and replaced by the next-ranked user"
+}
