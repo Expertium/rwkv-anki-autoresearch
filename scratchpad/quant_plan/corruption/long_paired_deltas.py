@@ -33,6 +33,8 @@ GROUPS = {
     "l2i8s4v4": "vlevel3",
     "l2i8s4v3": "vlevel3",
     "l2i8s4v2": "vlevel3",
+    "l2i8s4ef": "ef3",
+    "l2i4s4n4ef": "ef3",
     "plain": "fast_wide3",
 }
 

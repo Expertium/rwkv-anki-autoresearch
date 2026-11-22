@@ -128,6 +128,16 @@ CONFIGS = {
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_VLEVEL": "int3"},
     "l2i8s4v2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_VLEVEL": "int2"},
+    # ERROR FEEDBACK (2026-11-22): `e` = the previous step's compression error is added back
+    # BEFORE re-compressing. The engine documents it as cancelling the compounding DC bias of
+    # factor quantization, and it has never been measured in this lineage. The buffer is REAL
+    # state (per stream per layer, rank-1 pair at int4 = 256 b/layer), which bits_for now counts.
+    "l2i8s4ef": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_EF": "1",
+                 "RWKV_EF_ERANK": "1", "RWKV_EF_ELEVEL": "int4"},
+    "l2i4s4n4ef": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
+                   "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_EF": "1",
+                   "RWKV_EF_ERANK": "1", "RWKV_EF_ELEVEL": "int4"},
 
 }
 
@@ -169,6 +179,11 @@ def bits_for(env):
     # bits instead of 2*r*32*U. Without this the reported bit counts would be the symmetric
     # ones, which is exactly the kind of mis-count that made `l2i8s4` read 1,536 instead of 1,280.
     vbits = QBITS.get(str(env.get("RWKV_LOWRANK_VLEVEL", "")).strip())
+    # RWKV_LOWRANK_EF carries a real per-entity error buffer; counting it is what keeps EF honest.
+    _ef_on = str(env.get("RWKV_LOWRANK_EF", "")) in ("1", "true")
+    _ef_rank = int(env.get("RWKV_EF_ERANK", "1") or "1") if _ef_on else 0
+    _ef_bits = QBITS.get(str(env.get("RWKV_EF_ELEVEL", "int4")).strip(), 4) if _ef_on else 0
+    ef_bits = 2 * _ef_rank * 32 * _ef_bits
     out = {}
     for s, n in LAYERS.items():
         # the shifts follow the WKV level when no shift override is given
@@ -184,6 +199,8 @@ def bits_for(env):
                 out[s] = n * (r * 32 * qb + r * 32 * vbits + 64 * sb)
         else:
             out[s] = n * (1024 * full.get(s, 32) + 64 * sb)
+        if ef_bits and s in low:
+            out[s] += n * ef_bits
     return out
 
 def run(weights, trace_dir, users, name, preds_root):
