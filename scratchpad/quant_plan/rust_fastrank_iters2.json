@@ -1,0 +1,136 @@
+{
+  "weights": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\rust_artifacts\\it36l2i8n2i8_124.safetensors",
+  "users": [
+    107,
+    136,
+    156
+  ],
+  "configs": [
+    "l2i8n2i8"
+  ],
+  "iters": [
+    2,
+    4
+  ],
+  "modes": [
+    "ref",
+    "check",
+    "fast"
+  ],
+  "runs": {
+    "l2i8n2i8_it2_ref": {
+      "rc": 0,
+      "fast": null,
+      "tail": "ead=basis ahead_residual=true pava=no clamp=off sched=sequential | stripped cmix=[none] vlora=[none]\n[rwkv-infer] stream order from the weights' metadata: card,deck,note,preset,user\n[speed] user 107: R/s (query pass, retrievability) 6035.2   states/s (state pass, review_features) 2651.6\n[speed] user 136: R/s (query pass, retrievability) 5435.9   states/s (state pass, review_features) 2448.8\n[speed] user 156: R/s (query pass, retrievability) 5545.4   states/s (state pass, review_features) 2459.2\n",
+      "preds": 3
+    },
+    "l2i8n2i8_it2_check": {
+      "rc": 0,
+      "fast": {
+        "mode": "fast+check",
+        "iters": 2,
+        "calls": 64132,
+        "fallbacks": 2065,
+        "max_rel_frobenius": 0.2574,
+        "rel_buckets": [
+          61339,
+          256,
+          415,
+          57,
+          0
+        ]
+      },
+      "tail": "ata: card,deck,note,preset,user\n[speed] user 107: R/s (query pass, retrievability) 6029.6   states/s (state pass, review_features) 2393.5\n[speed] user 136: R/s (query pass, retrievability) 5888.4   states/s (state pass, review_features) 2378.2\n[speed] user 156: R/s (query pass, retrievability) 5853.6   states/s (state pass, review_features) 2345.9\n[fastrank] mode=fast+check iters=2 rank>=2 calls=64132 reference fallbacks=2065 max_relFrobenius_vs_reference=2.574e-1 rel_buckets=61339/256/415/57/0\n",
+      "preds": 3
+    },
+    "l2i8n2i8_it2_fast": {
+      "rc": 0,
+      "fast": {
+        "mode": "fast",
+        "iters": 2,
+        "calls": 64132,
+        "fallbacks": 2085,
+        "max_rel_frobenius": 0.0,
+        "rel_buckets": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "tail": "e weights' metadata: card,deck,note,preset,user\n[speed] user 107: R/s (query pass, retrievability) 6061.3   states/s (state pass, review_features) 4352.0\n[speed] user 136: R/s (query pass, retrievability) 5983.1   states/s (state pass, review_features) 4230.2\n[speed] user 156: R/s (query pass, retrievability) 6034.8   states/s (state pass, review_features) 4256.5\n[fastrank] mode=fast iters=2 rank>=2 calls=64132 reference fallbacks=2085 max_relFrobenius_vs_reference=0.000e0 rel_buckets=0/0/0/0/0\n",
+      "preds": 3
+    },
+    "l2i8n2i8_it4_ref": {
+      "rc": 0,
+      "fast": null,
+      "tail": "ead=basis ahead_residual=true pava=no clamp=off sched=sequential | stripped cmix=[none] vlora=[none]\n[rwkv-infer] stream order from the weights' metadata: card,deck,note,preset,user\n[speed] user 107: R/s (query pass, retrievability) 6008.3   states/s (state pass, review_features) 2640.7\n[speed] user 136: R/s (query pass, retrievability) 5842.1   states/s (state pass, review_features) 2612.1\n[speed] user 156: R/s (query pass, retrievability) 5966.1   states/s (state pass, review_features) 2635.8\n",
+      "preds": 3
+    },
+    "l2i8n2i8_it4_check": {
+      "rc": 0,
+      "fast": {
+        "mode": "fast+check",
+        "iters": 4,
+        "calls": 64132,
+        "fallbacks": 2049,
+        "max_rel_frobenius": 0.3696,
+        "rel_buckets": [
+          60634,
+          493,
+          783,
+          173,
+          0
+        ]
+      },
+      "tail": "ta: card,deck,note,preset,user\n[speed] user 107: R/s (query pass, retrievability) 5950.5   states/s (state pass, review_features) 2329.8\n[speed] user 136: R/s (query pass, retrievability) 5730.6   states/s (state pass, review_features) 2280.7\n[speed] user 156: R/s (query pass, retrievability) 5943.6   states/s (state pass, review_features) 2344.5\n[fastrank] mode=fast+check iters=4 rank>=2 calls=64132 reference fallbacks=2049 max_relFrobenius_vs_reference=3.696e-1 rel_buckets=60634/493/783/173/0\n",
+      "preds": 3
+    },
+    "l2i8n2i8_it4_fast": {
+      "rc": 0,
+      "fast": {
+        "mode": "fast",
+        "iters": 4,
+        "calls": 64132,
+        "fallbacks": 2082,
+        "max_rel_frobenius": 0.0,
+        "rel_buckets": [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      "tail": "e weights' metadata: card,deck,note,preset,user\n[speed] user 107: R/s (query pass, retrievability) 6078.7   states/s (state pass, review_features) 4227.2\n[speed] user 136: R/s (query pass, retrievability) 5855.2   states/s (state pass, review_features) 4030.3\n[speed] user 156: R/s (query pass, retrievability) 5962.2   states/s (state pass, review_features) 4096.3\n[fastrank] mode=fast iters=4 rank>=2 calls=64132 reference fallbacks=2082 max_relFrobenius_vs_reference=0.000e0 rel_buckets=0/0/0/0/0\n",
+      "preds": 3
+    }
+  },
+  "compare": {
+    "l2i8n2i8_it2_check": {
+      "files": 3,
+      "text_identical": true,
+      "max_abs_diff": 0.0,
+      "worst": null
+    },
+    "l2i8n2i8_it2_fast": {
+      "files": 3,
+      "text_identical": false,
+      "max_abs_diff": 0.08133130999999999,
+      "worst": "rust_pred_107.json:pred_imm"
+    },
+    "l2i8n2i8_it4_check": {
+      "files": 3,
+      "text_identical": true,
+      "max_abs_diff": 0.0,
+      "worst": null
+    },
+    "l2i8n2i8_it4_fast": {
+      "files": 3,
+      "text_identical": false,
+      "max_abs_diff": 0.057973729999999946,
+      "worst": "rust_pred_107.json:pred_imm"
+    }
+  }
+}

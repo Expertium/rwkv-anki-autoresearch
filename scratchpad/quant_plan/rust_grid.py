@@ -75,7 +75,10 @@ CONFIGS = {
     # bit-budget change (bits_for ignores it). Without it a rank>=2 NOTE measures 0.618x rev/s (FAIL on
     # the 0.75x floor); with it, 0.803x for l2i8n2i8 and 0.791x for l3i8n2i8, at a deploy log-loss cost
     # of imm +0.000051 / ahead +0.000000 on users 107/136/156 (rust_fastrank_check.json,
-    # rust_score.json, rust_speed_fastrank_{on,off}.json). Do NOT set it for a Python<->Rust PARITY run:
+    # rust_score.json, rust_speed_fastrank_{on,off}.json). ITERS defaults to 2 and 4 was measured WORSE
+    # (rust_fastrank_iters2.json), so the default is the deploy choice. NOTE the flag is IN this dict:
+    # to measure the REFERENCE solver, remove it (an inherited RWKV_LOWRANK_FAST cannot override it).
+    # Do NOT set it for a Python<->Rust PARITY run:
     # the fast factors are not bit-identical to the reference truncation by construction.
     "l2i8n2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},

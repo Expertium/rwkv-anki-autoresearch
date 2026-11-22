@@ -59,6 +59,13 @@ def run(weights, trace_dir, users, cfg, iters, mode, preds_dir):
         env["RWKV_LOWRANK_FAST_CHECK"] = "1"
     elif mode == "fast":
         env["RWKV_LOWRANK_FAST"] = "1"
+    elif mode == "ref":
+        # The deploy config CARRIES RWKV_LOWRANK_FAST=1 (rust_grid.CONFIGS), so the reference mode must
+        # REMOVE it again -- otherwise "ref" silently measures the fast path and every comparison below
+        # becomes a comparison of the fast path with itself (this happened once; the numbers were
+        # internally consistent and therefore invisible without the counters).
+        env.pop("RWKV_LOWRANK_FAST", None)
+        env.pop("RWKV_LOWRANK_FAST_CHECK", None)
     r = subprocess.run([str(rg.ENGINE)] + [str(u) for u in users], cwd=ROOT, env=env,
                        capture_output=True, text=True)
     text = r.stdout + r.stderr
