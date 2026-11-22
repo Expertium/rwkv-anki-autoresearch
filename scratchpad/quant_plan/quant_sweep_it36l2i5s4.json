@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i5s4\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i5s4",
+      "tag": "ql2i5s4_it36l2i5s4",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int5,note:1:int5",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "row 17 layout at int5 factors (896/1,728 = 2,624 bits)",
+      "bits": {
+        "card": 896,
+        "note": 1728
+      },
+      "rc": 0,
+      "secs": 1119.2969999999914,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.00028541999999999874,
+          "ub95": 0.00035023360992241003,
+          "p_worse": 6.875825183261268e-19,
+          "mean_cur": 0.3340872306666667,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0005663039999999996,
+          "ub95": 0.0006432005766297834,
+          "p_worse": 2.336081378900866e-41,
+          "mean_cur": 0.3067777013333333,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}
