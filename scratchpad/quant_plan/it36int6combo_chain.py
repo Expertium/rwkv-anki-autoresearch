@@ -47,13 +47,18 @@ WAIT_MAX_MIN = 2400
 IDLE_PROCEED_MIN = 12
 GATE_UB95 = 0.0005
 
-# (candidate, sweep stamp, decay steps, fp32 twin) - the QAT point
+# (candidate, sweep stamp, decay steps, fp32 twin, gate stamp) - the QAT points. A non-None gate stamp
+# means "run this point only if that stamp's OWN sweep passed the log-loss gate": point 2 is the same
+# card with the note's int2 SHIFT bit instead of int3 (2,944 bits), which is only worth a run if the
+# 3,136-bit point it undercuts has already passed.
 QAT_POINTS = [
-    ("l2i6s4n1i8s3", "it36l2i6s4n1i8s3", 124, "qnj_it36ctl"),
+    ("l2i6s4n1i8s3", "it36l2i6s4n1i8s3", 124, "qnj_it36ctl", None),
+    ("l2i6s4n1i8s2", "it36l2i6s4n1i8s2", 124, "qnj_it36ctl", "it36l2i6s4n1i8s3"),
 ]
 # (corruption config name, the sweep stamp that owns the gate, what the row is)
 COR_POINTS = [
     ("l2i6s4n1i8s3", "it36l2i6s4n1i8s3", "chain 21 point 1 (int6 card + note int3 shifts, 3,136 bits)"),
+    ("l2i6s4n1i8s2", "it36l2i6s4n1i8s2", "chain 21 point 2 (int6 card + note int2 shifts, 2,944 bits)"),
 ]
 
 sys.path.insert(0, str(RUN))
@@ -125,7 +130,14 @@ def main():
         log("=== it36int6combo chain end (without running anything) ===")
         return 1
 
-    for cand, stamp, steps, ref in QAT_POINTS:
+    for cand, stamp, steps, ref, gate in QAT_POINTS:
+        if gate is not None:
+            ok = gate_passed(gate)
+            if ok is not True:
+                log(f"point {cand}: gate {gate} is {ok} (True=pass, False=fail, None=no verdict) -- "
+                    f"skipping this point")
+                continue
+            log(f"point {cand}: gate {gate} PASSES -- running the smaller rung")
         epochs = max(2, round(steps / 62))
         log(f"point {cand}@{steps} -> tag {stamp}, ref {ref}, epochs {epochs}")
         rc = lib.qat_point(log, cand, stamp, steps, ref, epochs)

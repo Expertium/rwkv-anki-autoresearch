@@ -174,6 +174,10 @@ CONFIGS = {
     "l2i6s4n1i8s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int8",
                      "RWKV_QUANT_SHIFTS": "1",
                      "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    # The next rung down: the note's int2 SHIFT bit for 192 fewer bits (2,944 total).
+    "l2i6s4n1i8s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int8",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int2"},
 
     # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
     # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),

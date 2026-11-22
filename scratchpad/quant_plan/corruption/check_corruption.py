@@ -83,6 +83,8 @@ CONFIGS = {
                  "chain 19 point 2 (fixed-basis note m=6, 672 bits below row 17)"),
     "l2i6s4n1i8s3": (RUN / "qat_it36l2i6s4n1i8s3" / "qat_124.pth", "l2i6s4n1i8s3",
                      "chain 21 point 1 (int6 card + note int3 shifts, 3,136 bits)"),
+    "l2i6s4n1i8s2": (RUN / "qat_it36l2i6s4n1i8s2" / "qat_124.pth", "l2i6s4n1i8s2",
+                     "chain 21 point 2 (int6 card + note int2 shifts, 2,944 bits)"),
 }
 
 

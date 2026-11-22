@@ -319,6 +319,11 @@ CANDIDATES = {
                      "card rank-2 int6 + int4 shifts and note rank-1 int8 + int3 shifts "
                      "(1,024/2,112 = 3,136 = 256 BELOW row 35, the smallest passing row)",
                      (1024, 2112)),
+    "l2i6s4n1i8s2": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int8",
+                      "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int2"},
+                     "card rank-2 int6 + int4 shifts and note rank-1 int8 + int2 shifts "
+                     "(1,024/1,920 = 2,944 = 448 BELOW row 35) - gated second point of chain 21",
+                     (1024, 1920)),
     "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),
