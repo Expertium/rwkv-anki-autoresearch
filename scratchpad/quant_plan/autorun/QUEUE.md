@@ -36,6 +36,9 @@ every other sweep result, including all of the overnight ones and the 496/992-st
 new sweeps would spend GPU time on rows that are not deploy candidates. `it36corrupt` is the chain that
 checks the rows that do pass.
 
+**If the status report marks a PAUSED chain as `STALLED?`, that is expected and it is NOT an instruction
+to act** - a paused chain has no end marker and its log stopped when it was killed. Leave it alone.
+
 The finished chains `it36rank`, `it36notecut`, `it36rankprec` and `it36longdecay` are the same as
 before: their logs carry an end marker, so the restart rule below never fires for them.
 
@@ -87,8 +90,7 @@ Run this ONLY when the report says `GPU IDLE`, no LIVE chain is waiting, and sec
 
     .venv\Scripts\python.exe scratchpad\quant_plan\rust_speed.py --weights scratchpad\quant_plan\rust_artifacts\it36l2i8_124.safetensors --configs plain,l1i8,l2i8,l2i8s4,l3i8s4 --users 107,136,156 --reps 2 --tag idle_l2i8
 
-It writes `scratchpad/quant_plan/rust_speed_idle_l2i8.json`. That file is the official constraint-6
-number: the 0.812x in RESULTS.md was measured while a decay was training, so it is about 3% too low.
+It writes `scratchpad/quant_plan/rust_speed_idle_l2i8.json`. **DONE 2026-11-22 11:47** (this section is closed and the file exists, so skip it): `plain` 2,915.1 rev/s, `l1i8` 0.902x, `l2i8` / `l2i8s4` / `l3i8s4` all 2,357.8 rev/s = 0.809x, every config above the 0.75x floor. That file is the official constraint-6 number: the 0.812x/0.800x cells of RESULTS.md rows 15-18, measured while a decay was training, are accurate to about 1% - not the 3% pessimistic that RESULTS.md feared.
 If `rust_speed_idle_l2i8.json` already exists, skip this section.
 
 ## 4. Record landed results
