@@ -953,3 +953,22 @@ Better on one user out of 7 on ahead and none on imm - a consistent sign, not an
 This closes the corruption column: rows 15, 16, 17, 18, 29, 30, 31, 32 and 35 all PASS, every other row is a gate FAIL that is never checked, and no cell says `pending` any more. Row 35 is therefore the smallest recipe that satisfies ALL SIX constraints - the loss ceiling on both heads, both bit bars, the 0.75x speed floor (0.789x) and finiteness at 3,392 bits - and it is the number to beat.
 
 `it36corrupt2` then logged `=== it36corrupt2 chain end ===` at 23:26:01: its first three points are gate Fails (rows 23, 33, 34), rows 39-43 fail too, and its last four are `it36noterank2` rows already recorded. `it36e1` took the GPU at 23:29:46 with `l2i8s4pf`, its fused-off QAT control, followed by the two lambda brackets `l2i8s4e1a`/`l2i8s4e1b`.
+
+
+## Amendment 28 (2026-11-23 00:05): the sub-3,136 corner is priced - int5 is worse than int6, the note's int2 shift rung is a dead end, 2,752 bits is the only survivor
+
+One CPU-only screen (`rust_grid.py --tag it36wide5`, row-17 deploy weights, the 7 held-out long histories, paired vs `l2i8s4`, 2,000 bootstrap resamples; `rust_wide_screen_it36wide5.json`) priced five rungs at once:
+
+| config | card/note bits | ahead | imm |
+|---|---|---|---|
+| `l2i6s4n1i8s3` (chain 21) | 1,024/2,112 | +0.000174 [+0.000083, +0.000287] better 0/7 | +0.000219 [-0.000069, +0.000509] better 1/7 |
+| `l2i6s4n1i6s3` (chain 22) | 1,024/1,728 | +0.000343 [+0.000229, +0.000492] better 0/7 | +0.000435 [+0.000188, +0.000722] better 1/7 |
+| `l2i5s4n1i8s3` | 896/2,112 | +0.000404 [+0.000058, +0.000830] better 1/7 | +0.000803 [+0.000082, +0.001753] better 1/7 |
+| `l2i6s4n1i6s2` | 1,024/1,536 | +0.000104 [-0.000576, +0.000755] better 3/7 | +0.001641 [+0.000406, +0.003225] better 1/7 |
+| `l2i5s4n1i8s2` | 896/1,920 | +0.000162 [-0.000816, +0.001090] better 2/7 | +0.002081 [+0.000707, +0.003632] better 1/7 |
+
+**(1) The int5 card is worse than int6.** At the same 2,112-bit note the int5 card costs +0.000404/+0.000803 against int6's +0.000174/+0.000219: about +0.000230/+0.000580 for the last 128 card bits, roughly 3x the price of any other card bit measured so far. The 2-user PTQ probe that called int5 free (`rust_grid_int6_probe.json`) does not hold on long histories. The 3,008 rung is therefore not worth a GPU run.
+
+**(2) The note's int2 SHIFT rung is a dead end for the immediate head.** At int6 factors it costs +0.001641 against +0.000435 (+0.0012), and at int8 factors +0.002081 against +0.000803 (+0.0013), for 192 fewer note bits each time. Chain 21's gated 2,944-bit second point depends on that rung, so it is a long shot by construction.
+
+**(3) 2,752 bits is the only survivor, and it is marginal.** `l2i6s4n1i6s3` = card rank-2 int6 and the note at rank-1 int6 with int3 shifts reads +0.000343 [+0.000229, +0.000492] ahead and +0.000435 [+0.000188, +0.000722] imm. The point estimate is inside the +0.0005 ceiling on both heads and 640 bits below row 35, but the imm upper bound is above the ceiling, while chain 21's 3,136 point reads +0.000219 [-0.000069, +0.000509] and sits AT it. So chain 21 runs first and chain 22 (`it36int6note`, created 23:58:57, waiting behind chain 21) carries the size claim. Both are PTQ prices against weights trained for the rank-1-int8 note, so neither can see what QAT recovers - which is what the 750-user runs answer.
