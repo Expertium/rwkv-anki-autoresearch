@@ -214,6 +214,20 @@ CONFIGS = {
     "l2i6s4n1i4s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int4",
                      "RWKV_QUANT_SHIFTS": "1",
                      "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    # THE SHIFT-WIDTH RUNGS BELOW ROW 45 (2026-11-23). Row 45 is card rank-2 int6 + int4 shifts
+    # (1,024) and note rank-1 int6 + int4 shifts (1,920). Every FACTOR cut below int6 costs 6x more
+    # per bit, but the SHIFT cut is nearly free where it has been measured (row 35: the note's int4 ->
+    # int3 cost +0.000011/+0.000037 for 192 bits). These price the card's shift ladder and the
+    # both-streams cut.
+    "l2i6s3n1i6s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int3,note:int4"},
+    "l2i6s3n1i6s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int3,note:int3"},
+    "l2i6s2n1i6s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int2,note:int3"},
 
     # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
     # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),

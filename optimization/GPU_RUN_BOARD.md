@@ -1004,3 +1004,17 @@ A second CPU-only deploy screen (`rust_grid.py --tag it36wide6`, row-17 deploy w
 The note's factor ladder has a KNEE at int6. The int8 -> int6 cut costs +0.000170/+0.000216 for 384 bits (`it36wide5`), but int6 -> int5 costs +0.000605/+0.000747 for 192 bits - about 6x more per bit - and int4 is 4x further out again. Note also that the int5 rung was bought at exactly the size of the closed int2-shift rung (2,560 bits): it is BETTER on the immediate head than that rung (+0.001182 against +0.001642) but 9x worse on ahead (+0.000948 against +0.000104), and both miss the imm ceiling any way round - so neither way of buying 2,560 bits works. Every rung below 2,752 is now measured and closed: 2,752 is the floor of this (rank, factor width, shift width) design space, and the only route further down is removing deploy TAX at a fixed size - which is what the E1 tail-energy penalty tests in chains 23 and 24.
 
 Screen artifacts: `rust_grid_it36wide6.json` (absolutes), `rust_wide_screen_it36wide6.json` (paired deltas + bootstrap), `rust_grid_it36wide6_stdout.log`. The screen ran beside chain 17 (CPU only, no GPU work) and was killed before the chain-17 hand-off, as every grid must be.
+
+
+## Amendment 32 (2026-11-23 02:00): chain 17 closes the int6 factor ladder - 2,944 PASSES, 2,624 and 2,304 FAIL; the next knob is SHIFT width
+
+`it36int6` ran three points on row 17's layout, cutting the factor widths from int8 -> 6 and then below:
+
+    row  config      card/note bits   d ahead   d imm    verdict
+    45   l2i6s4      1,024/1,920      +0.000125  +0.000381  PASS (ub95 +0.000189/+0.000446)
+    46   l2i5s4        896/1,728      +0.000285  +0.000566  FAIL (imm 1.13x)
+    47   l2i4s4n4      768/1,536      +0.000588  +0.001015  FAIL (1.34x/2.25x)
+
+So int6 is a knee on both streams: the 640 bits from int8 take +0.000073/+0.000054, the next 320 bits (card int6 -> int5) take +0.000160/+0.000184, and int4 breaks both heads. This matches the CPU deploy screen run beside the chain (`it36wide6`: the note's int6 -> int5 step costs +0.000605/+0.000747 for 192 bits), so two independent methods agree on the knee. QAT does recover part of the PTQ price, which is why these rungs need GPU runs rather than screens alone.
+
+Consequence: 2,944 bits (row 45) is the axis-1 frontier, and the one measured-cheap knob left is SHIFT width (row 35: the note's int4 -> int3 step cost +0.000011/+0.000037 for 192 bits). A CPU screen (`rust_grid.py --tag it36wide7`) is pricing the card's shift ladder (`l2i6s3n1i6s4` = 2,880 with only the card's shifts cut, `l2i6s3n1i6s3` = 2,688 with both streams' shifts at int3) before any further GPU time goes into it. Chain 18 (`it36int6card`) started as soon as the row-45 finiteness check released the GPU.

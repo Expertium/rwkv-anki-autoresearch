@@ -27,6 +27,12 @@
 ## Git and external services
 - Do not commit, push, or open a pull request unless Andrew asks. Never push large data or checkpoint files.
 - For external posts on Andrew's behalf, disclose that an AI agent wrote the content. Never call the agent Claude unless Andrew asks.
+- **Uncommitted worktree deletion set (first seen 2026-11-23 02:00):** ~2,158 tracked files under
+  `scratchpad/` (old arms: `ab_*`, `arch_*`, `baseline_gru|lstm/`, `bench/`, `bughunt/`, `budgetcal/`,
+  `workload/`, `ws10/`, ...) are deleted in the worktree but still in `HEAD`. No file under
+  `quant_plan/`, `corruption/`, `rwkv/`, `rust/` or `optimization/` is affected, so the science is
+  intact. Do NOT commit those deletions - `git add -A` is unsafe in this checkout - and do not restore
+  them either (the deletion looks deliberate). Stage explicit paths on every commit.
 
 ## Current references (check these before acting)
 - `PROJECT_MAP.md` - folders and key files. Update it when the tracked project structure changes.
@@ -63,14 +69,17 @@
 - **The "3,000/3,000-bit run" is VETOED.** `scratchpad/quant_plan/autorun/QUEUE.md` section 6 forbids it
   by name, and the deploy bars are card <= 2,176 / note <= 6,528 bits. Any task-planning note that asks
   for a 3000/3000-bit run is stale: do not act on it, and do not change a state budget without Andrew.
-- **Axis-1 frontier (2026-11-22 23:00):** the smallest PASSING row is 35 `n1i8s3` = 1,280/2,112 =
-  **3,392 bits**. 3,136 was reached by row 41 (`l3i4s4n8s3`, FAIL by 0.000016 on imm) and is re-tested by
-  chain 21's `l2i6s4n1i8s3` (pre-priced +0.000164/+0.000205). A NOTE INT3-FACTOR cut is the expensive
-  half (row 42 `l3i4s4n3`: 2,368 bits, +0.000856/+0.001343 - the note's FACTOR width is the binding
-  constraint a third time), so the sub-3,136 corner is bought with the CARD's factor width and the
-  note's SHIFT width. Three untested rungs are now registered in `scratchpad/quant_plan/rust_grid.py`
-  `CONFIGS`: `l2i5s4n1i8s3` (896/2,112 = 3,008), `l2i4s4n1i8s3` (768/2,112 = 2,880),
-  `l2i5s4n1i8s2` (896/1,920 = 2,816).
+- **Axis-1 frontier (2026-11-23 02:00):** the smallest PASSING row is **45 `l2i6s4` = 1,024/1,920 =
+  **2,944 bits** (ub95 +0.000189/+0.000446, corruption PASS 158,986 state obs / 0 non-finite), i.e.
+  row 17's layout with BOTH factor widths cut int8 -> int6. That cut costs only +0.000073/+0.000054 on
+  top of row 17 for 640 bits. **int6 is a KNEE on both streams**: the next steps cost 6x more per bit
+  (row 46 `l2i5s4` 2,624: +0.000160/+0.000184, FAIL imm 1.13x; row 47 `l2i4s4n4` 2,304: FAIL
+  1.34x/2.25x), and the independent CPU screen agrees (`it36wide6`: the note's int6 -> int5 step
+  costs +0.000605/+0.000747 for 192 bits). Every FACTOR rung below 2,944 is closed, so **the only
+  measured-cheap knob left is SHIFT width** (row 35: the note's int4 -> int3 step cost
+  +0.000011/+0.000037 for 192 bits) - priced in `rust_grid.py` `CONFIGS` as `l2i6s3n1i6s4` (2,880),
+  `l2i6s3n1i6s3` (2,688) and `l2i6s2n1i6s3` (2,624). Chain 22's 2,752 point (`l2i6s4n1i6s3`) is the
+  other live sub-3,136 claim (PTQ +0.000343/+0.000435).
 - **Deploy screening:** `scratchpad/quant_plan/corruption/wide_screen.py` turns any number of
   `rust_grid.py` grids into per-user PAIRED deltas against a base config (2000-resample bootstrap,
   seed 20261119). Its `tags` list takes several grids, so a screen can be run in batches under
