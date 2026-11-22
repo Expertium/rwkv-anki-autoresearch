@@ -59,6 +59,10 @@ POINTS = [
     ("l2i8s4n3", "it36l2i8s4n3", "shrink point 2 (note rank-1 int3 factors)"),
     ("l2i8s2n4", "it36l2i8s2n4", "shrink point 3 (card int2 shifts + note int4)"),
     ("l3i8s4n4s2", "it36l3i8s4n4s2", "shrink point 4 (note int4 + int2 shifts)"),
+    ("l2i8n2i8", "it36l2i8n2i8", "chain 14 point 1 (note rank-2 int8 + int4 shifts)"),
+    ("l3i8n2i8", "it36l3i8n2i8", "chain 14 point 2 (rank-3 card + note rank-2 int8)"),
+    ("l2i8n2i8s8", "it36l2i8n2i8s8", "chain 14 point 3 (note rank-2 int8 + int8 shifts)"),
+    ("l2i8n3i8", "it36l2i8n3i8", "chain 14 point 4 (note rank-3 int8)"),
 ]
 
 

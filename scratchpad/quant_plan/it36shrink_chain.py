@@ -19,7 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import it36ladder_lib as lib  # noqa: E402
 
-BUSY_PAT = ("qat_decay.py|quant_sweep.py|rwkv.train_rwkv|eval_sharded.py|rust_speed.py|rust_grid.py|rwkv-infer")
+BUSY_PAT = ("qat_decay.py|quant_sweep.py|rwkv.train_rwkv|eval_sharded.py|rust_speed.py|rust_grid.py|"
+            "rwkv-infer|probe_get_result|check_corruption")
 
 POINTS = [
     ("l3i4s4n4", "it36l3i4s4n4", 124, "qnj_it36ctl"),
@@ -29,5 +30,5 @@ POINTS = [
 ]
 
 if __name__ == "__main__":
-    sys.exit(lib.chain_main("it36shrink", "it36corrupt_chain.log",
-                            "=== it36corrupt chain end ===", POINTS, BUSY_PAT))
+    sys.exit(lib.chain_main("it36shrink", "it36noterank2_chain.log",
+                        "=== it36noterank2 chain end ===", POINTS, BUSY_PAT))
