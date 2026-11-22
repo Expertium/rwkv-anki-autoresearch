@@ -4,7 +4,10 @@ import os
 import torch
 from typing import Optional
 
-from rwkv.model.rwkv_ops import RWKV7_WKV, RWKV7_WKV_Stateful, reference_rwkv7, quant_aware_rwkv7
+from rwkv.model.rwkv_ops import (
+    RWKV7_WKV, RWKV7_WKV_Stateful, reference_rwkv7, quant_aware_rwkv7,
+    _TAIL_REG,
+)
 
 """
 IMPORTANT: the CUDA WKV kernel supports any head dim K = d_model // n_heads that DIVIDES 32 (K-aware
@@ -800,6 +803,14 @@ class RWKV7TimeMixer(ModuleType):
         # for the QAT-lowrank torch.linalg.svd, which "SILENTLY broke TorchScript -> would crash
         # plain WS/eval". Found 2026-08-15 by constructing the model with JIT enabled.
         self.rank1_reg = _RANK1_REG
+        # Tail-energy penalty (RWKV_QAT_TAIL_PENALTY, 2026-11-22): the QAT state path needs the
+        # STREAM name so the penalty can be attributed per stream (card vs note), and an empty tag
+        # means "not training", so an eval pass accumulates nothing and adds no loss term.
+        _tail_stream = config.stream_name
+        if _tail_stream.endswith("_id"):
+            _tail_stream = _tail_stream[:-3]
+        self.tail_tag = _tail_stream
+        self.tail_reg = _TAIL_REG
         self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
         # State-norm clamp (2026-07-18, A3-instability fix; see windowed_clamped_wkv).
@@ -1094,6 +1105,7 @@ class RWKV7TimeMixer(ModuleType):
             out_BTHK = quant_aware_rwkv7(
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
                 self.state_qmax, self.state_lowrank_rank, self.state_lowrank_fqmax,
+                tail_tag=(self.tail_tag if (self.training and self.tail_reg > 0.0) else ""),
             )
             if self.rank1_reg > 0.0 and self.state_lowrank_rank > 0 and self.training:
                 accum_rank1_penalty(k_BTHK, v_BTHK, skip_BT)

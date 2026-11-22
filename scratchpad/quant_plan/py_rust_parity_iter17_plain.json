@@ -1,0 +1,46 @@
+{
+ "weights": "scratchpad\\row17_l2i8s4_bundle\\weights\\deploy_iter17_l2i8s4.safetensors",
+ "trace_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\trace_iter17_parity",
+ "config": "plain",
+ "env": {},
+ "users": {
+  "107": {
+   "n_eq": 3465,
+   "n_common": 3465,
+   "imm": {
+    "n": 3465,
+    "ll_rust": 0.27150683057685493,
+    "ll_py": 0.27150683172380297,
+    "d_ll": -1.1469480365455809e-09,
+    "max_dpred": 4.151310730171609e-07
+   },
+   "ahead": {
+    "n": 3465,
+    "ll_rust": 0.3306965017131241,
+    "ll_py": 0.3306964908001519,
+    "d_ll": 1.0912972192578252e-08,
+    "max_dpred": 5.406477058267356e-07
+   }
+  },
+  "136": {
+   "n_eq": 3865,
+   "n_common": 3865,
+   "imm": {
+    "n": 3865,
+    "ll_rust": 0.12250759988296969,
+    "ll_py": 0.12250759897888612,
+    "d_ll": 9.040835718954199e-10,
+    "max_dpred": 1.900299072543632e-07
+   },
+   "ahead": {
+    "n": 3865,
+    "ll_rust": 0.15700110067778944,
+    "ll_py": 0.15700110063512793,
+    "d_ll": 4.266151321097311e-11,
+    "max_dpred": 5.613525390080198e-07
+   }
+  }
+ },
+ "tolerance": 0.0005,
+ "verdict": "PASS"
+}

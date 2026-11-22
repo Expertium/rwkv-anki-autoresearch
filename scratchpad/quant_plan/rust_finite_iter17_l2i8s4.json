@@ -1,0 +1,90 @@
+{
+ "tag": "iter17_l2i8s4",
+ "weights": "scratchpad\\row17_l2i8s4_bundle\\weights\\deploy_iter17_l2i8s4.safetensors",
+ "users": [
+  107,
+  136
+ ],
+ "trace_dir": "scratchpad\\quant_plan\\trace_iter17_parity",
+ "strict": true,
+ "configs": {
+  "plain": {
+   "status": "PASS",
+   "rc": 0,
+   "per_user": {
+    "107": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "state_maxabs": 0.0,
+     "vec_maxabs": 0.0
+    },
+    "136": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 10032,
+     "p_bad": 0,
+     "state_maxabs": 0.0,
+     "vec_maxabs": 0.0
+    }
+   },
+   "totals": {
+    "total_p_bad": 0,
+    "planted": 0,
+    "non_finite_total": 0
+   },
+   "offending_keys": [],
+   "tail": "_raw_bad=0 vec_quant_bad=0 p_vals=9444 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0\n[speed] user 136: R/s (query pass, retrievability) 3761.0   states/s (state pass, review_features) 3793.8\n[finite] user=136 compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=10032 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0 planted=0 -> non_finite_total=0\n"
+  },
+  "l2i8s4": {
+   "status": "PASS",
+   "rc": 0,
+   "per_user": {
+    "107": {
+     "compressions": 20916,
+     "state_vals": 21417984,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1338624,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "state_maxabs": 0.2153233,
+     "vec_maxabs": 4.89704
+    },
+    "136": {
+     "compressions": 21540,
+     "state_vals": 22056960,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1378560,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 10032,
+     "p_bad": 0,
+     "state_maxabs": 0.1305318,
+     "vec_maxabs": 5.1538
+    }
+   },
+   "totals": {
+    "total_p_bad": 0,
+    "planted": 0,
+    "non_finite_total": 0
+   },
+   "offending_keys": [],
+   "tail": "t_bad=0 p_vals=9444 p_bad=0 state_maxabs=2.153233e-1 vec_maxabs=4.897040e0\n[speed] user 136: R/s (query pass, retrievability) 3867.7   states/s (state pass, review_features) 2593.6\n[finite] user=136 compressions=21540 state_vals=22056960 state_raw_bad=0 state_quant_bad=0 vec_vals=1378560 vec_raw_bad=0 vec_quant_bad=0 p_vals=10032 p_bad=0 state_maxabs=1.305318e-1 vec_maxabs=5.153800e0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0 planted=0 -> non_finite_total=0\n"
+  }
+ }
+}

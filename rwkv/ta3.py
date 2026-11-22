@@ -284,6 +284,8 @@ def _assert_no_reweighting(model, batch):
         problems.append("RWKV_ORD_LAMBDA")
     if float(getattr(model, "rank1_reg_lambda", 0.0) or 0.0) != 0.0:
         problems.append("RWKV_QAT_RANK1_REG")
+    if float(getattr(model, "tail_reg_lambda", 0.0) or 0.0) != 0.0:
+        problems.append("RWKV_QAT_TAIL_PENALTY")
     if float(getattr(model, "pava_lambda", 0.0) or 0.0) != 0.0:
         problems.append("RWKV_PAVA")
     if batch.user_weight is not None:

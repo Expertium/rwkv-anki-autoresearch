@@ -1,0 +1,46 @@
+{
+ "weights": "scratchpad\\row17_l2i8s4_bundle\\weights\\deploy_iter17_l2i8s4.safetensors",
+ "trace_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\trace_corrupt50",
+ "config": "plain",
+ "env": {},
+ "users": {
+  "5098": {
+   "n_eq": 23455,
+   "n_common": 23455,
+   "imm": {
+    "n": 23455,
+    "ll_rust": 0.1996699778399673,
+    "ll_py": 0.19966997872926068,
+    "d_ll": -8.892933889281807e-10,
+    "max_dpred": 3.4689178463054304e-07
+   },
+   "ahead": {
+    "n": 23455,
+    "ll_rust": 0.20497534328710443,
+    "ll_py": 0.2049753438313228,
+    "d_ll": -5.442183648174392e-10,
+    "max_dpred": 6.789943705065582e-07
+   }
+  },
+  "6251": {
+   "n_eq": 12915,
+   "n_common": 12915,
+   "imm": {
+    "n": 12915,
+    "ll_rust": 0.4909596273284006,
+    "ll_py": 0.49095963063915626,
+    "d_ll": -3.310755669616583e-09,
+    "max_dpred": 4.902389526550976e-07
+   },
+   "ahead": {
+    "n": 12915,
+    "ll_rust": 0.5348392485341141,
+    "ll_py": 0.5348392588717247,
+    "d_ll": -1.0337610545363418e-08,
+    "max_dpred": 8.52365754977491e-07
+   }
+  }
+ },
+ "tolerance": 0.0005,
+ "verdict": "PASS"
+}

@@ -180,7 +180,15 @@ def main():
         "RWKV_E2S_PUBLISHED": "0",
     })
     if not args.no_quant:
-        env["RWKV_QAT_FUSED"] = "1"
+        # The fused kernel is the default for QAT runs. A CANDIDATE may ask for the Python per-step
+        # loop instead (RWKV_QAT_FUSED=0), which is bit-parity with the fused kernels: the
+        # tail-energy penalty needs it, because the fused rank-1 kernel truncates inside the kernel
+        # where the pre-truncation state is invisible. Only a candidate can do this -- a stray value
+        # in the parent shell must not silently slow every run down.
+        env["RWKV_QAT_FUSED"] = str(env_extra.get("RWKV_QAT_FUSED", "1"))
+        if env["RWKV_QAT_FUSED"] != "1":
+            print(f"[qat_decay] RWKV_QAT_FUSED={env['RWKV_QAT_FUSED']} requested by candidate "
+                  f"{args.candidate}: the Python per-step QAT loop (bit-parity twin)")
     if args.max_steps:
         env["RWKV_MAX_STEPS"] = str(args.max_steps)
         print(f"step cap: RWKV_MAX_STEPS={args.max_steps} (total_steps and the LR anneal use it)")

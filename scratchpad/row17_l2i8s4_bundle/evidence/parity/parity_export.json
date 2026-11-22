@@ -1,0 +1,21 @@
+{
+ "ckpt": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8s4\\qat_124.pth",
+ "users": [
+  107
+ ],
+ "rows": [
+  {
+   "user": 107,
+   "secs": 206.4,
+   "n_reviews": 5229,
+   "n_eq": 3465,
+   "py_imm_logloss": 0.271507,
+   "py_ahead_logloss": 0.330696
+  }
+ ],
+ "qat": {
+  "lowrank_scope": "card:2:int8,note:1:int8",
+  "shift_scope": "card:int4,note:int4",
+  "fused": "0"
+ }
+}

@@ -1,0 +1,50 @@
+{
+ "weights": "scratchpad\\row17_l2i8s4_bundle\\weights\\deploy_iter17_l2i8s4.safetensors",
+ "trace_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\trace_corrupt50",
+ "config": "l2i8s4",
+ "env": {
+  "RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+  "RWKV_QUANT_SHIFTS": "1",
+  "RWKV_STATE_SHIFT_LEVEL": "int4"
+ },
+ "users": {
+  "5098": {
+   "n_eq": 23455,
+   "n_common": 23455,
+   "imm": {
+    "n": 23455,
+    "ll_rust": 0.19571972016805705,
+    "ll_py": 0.19966997872926068,
+    "d_ll": -0.003950258561203623,
+    "max_dpred": 0.15521114935379027
+   },
+   "ahead": {
+    "n": 23455,
+    "ll_rust": 0.20168082576870333,
+    "ll_py": 0.2049753438313228,
+    "d_ll": -0.0032945180626194615,
+    "max_dpred": 0.09940081639747222
+   }
+  },
+  "6251": {
+   "n_eq": 12915,
+   "n_common": 12915,
+   "imm": {
+    "n": 12915,
+    "ll_rust": 0.49796855853006183,
+    "ll_py": 0.49095963063915626,
+    "d_ll": 0.00700892789090557,
+    "max_dpred": 0.17086365444793705
+   },
+   "ahead": {
+    "n": 12915,
+    "ll_rust": 0.5353323281851569,
+    "ll_py": 0.5348392588717247,
+    "d_ll": 0.0004930693134321817,
+    "max_dpred": 0.14779707350755622
+   }
+  }
+ },
+ "tolerance": 0.0005,
+ "verdict": "FAIL"
+}

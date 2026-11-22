@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Any, Optional
 
 import torch
 from torch import Tensor
@@ -338,14 +338,90 @@ def _fake_quant_factor(f: Tensor, qmax: float) -> Tensor:
     return torch.round(f / scale).clamp(-qmax, qmax) * scale
 
 
-def fake_lowrank_state(s_BHKK: Tensor, rank: int, factor_qmax: float) -> Tensor:
+# ---- TAIL-ENERGY PENALTY (RWKV_QAT_TAIL_PENALTY=<lambda>, 2026-11-22) ---------------------------
+# WHY. The deploy tax of a rank-truncated card/note state is RANK TRUNCATION, not precision: `cn8`
+# (full-matrix int8, NO truncation) is 4x over the bit bars and scores +0.000033/+0.000022, while the
+# rank-r rows carry the whole tax. So the state's SPECTRUM, not its precision, is the binding
+# constraint, and the model can be trained to put its energy in the directions that survive the
+# truncation. This term is exactly the quantity the truncation throws away:
+#     tail = sum_{i > r} sigma_i^2 / sum_i sigma_i^2        (per (B,H), the state's own spectrum)
+# It costs ZERO state bits and ZERO deploy speed: it changes only what the weights learn.
+#
+# WHERE THE SPECTRUM COMES FROM. `fake_lowrank_state` already computes the full SVD of the state to
+# build the rank-r factors, so the tail energy is free there. It is computed with a SEPARATE
+# `torch.linalg.svdvals` OUTSIDE the `no_grad` block that builds the factors: the penalty must carry
+# gradient back to the weights, while the reconstruction must stay a pure STE (its forward value is
+# unchanged, so a run with the lever on produces the same NUMBERS as one with it off -- only the loss
+# has an extra term).
+#
+# COVERAGE. Only streams that are actually rank-truncated (lowrank_rank > 0) accumulate, and only
+# while training: the call site passes an empty stream tag in eval, so a validation pass adds no term.
+# The rank-1 FUSED kernel truncates INSIDE the kernel, where the pre-truncation state is not visible,
+# so `quant_aware_rwkv7` REFUSES that branch with the lever on and says to set RWKV_QAT_FUSED=0 (the
+# documented bit-parity Python twin) -- otherwise the penalty would silently skip exactly the streams
+# it exists to fix. RWKV_QAT_FUSED=0 is bit-parity with the fused kernels, so an E1 row stays
+# comparable with the rows trained fused.
+# Default unset = 0.0 = completely inert (no accumulation, no loss term, byte-identical).
+_TAIL_REG = float(os.environ.get("RWKV_QAT_TAIL_PENALTY", "0") or 0)
+_TAIL_ACC: dict = {}
+
+
+@torch.jit.ignore
+def accum_tail_penalty(s_BHKK: Tensor, rank: int, tag: str) -> None:
+    """Accumulate one stream's truncated tail energy per (B,H).
+
+    `tag` is the stream name (card/note/...) and doubles as the training flag: the call site passes an
+    empty tag outside training, so eval passes accumulate nothing and add no loss term.
+    """
+    s = s_BHKK.reshape(-1, s_BHKK.shape[-2], s_BHKK.shape[-1]).float()
+    sv = torch.linalg.svdvals(s)  # differentiable; only the singular values are needed
+    e = sv.square()  # (BH, K)
+    tot = e.sum(dim=-1)
+    tail = e[:, rank:].sum(dim=-1)
+    _TAIL_ACC.setdefault(tag, []).append((tail / (tot + 1e-12)).mean())
+
+
+@torch.jit.ignore
+def take_tail_penalty() -> Optional[Tensor]:
+    """Mean of the accumulated per-stream tail energies, and CLEAR them.
+
+    Returns None when the lever is off or nothing accumulated, so the caller adds no term at all (the
+    default path stays byte-identical).
+
+    ⚠️ THE RETURN ANNOTATION IS LOAD-BEARING -- do not remove it. An unannotated
+    `@torch.jit.ignore` function is typed by TorchScript as returning a plain `Tensor`; returning None
+    then hands the scripted caller an UNDEFINED tensor and `is not None` refines to True. See the twin
+    note on `take_rank1_penalty` for the exact failure it caused on 2026-08-15.
+    """
+    if not _TAIL_ACC:
+        return None
+    parts = []
+    shown = []
+    for tag in sorted(_TAIL_ACC):
+        vals = _TAIL_ACC[tag]
+        m = torch.stack(vals).mean()
+        parts.append(m)
+        shown.append(f"{tag}={float(m.detach()):.6f}(n={len(vals)})")
+    _TAIL_ACC.clear()
+    print(f"[tail-penalty] lambda={_TAIL_REG} " + " ".join(shown), flush=True)
+    return torch.stack(parts).mean()
+
+
+def fake_lowrank_state(s_BHKK: Tensor, rank: int, factor_qmax: float, tag: str = "") -> Tensor:
     """STE rank-r truncation of the WKV state (optionally with int-N quantized factors), the QAT
     analog of the Rust deploy `lowrank_roundtrip`. forward = rank-r reconstruction A_r =
     (U_r sqrt S)(V_r sqrt S)^T (factors optionally quantized), backward = identity. The rank-r
-    reconstruction is sign-convention-invariant, so it matches the Rust nalgebra SVD."""
+    reconstruction is sign-convention-invariant, so it matches the Rust nalgebra SVD.
+
+    `tag` names the stream (card/note/...) and doubles as the training flag for the
+    tail-energy penalty (RWKV_QAT_TAIL_PENALTY): an empty tag means eval, so nothing is
+    accumulated and no loss term is added. The penalty is computed OUTSIDE the no_grad block
+    below, because it has to carry gradient; the reconstruction stays a pure STE."""
     if rank <= 0:
         return s_BHKK
     s_BHKK = _sanitize_state(s_BHKK)  # NaN/inf safeguard: keep SVD input finite (non-finite -> NaN factors)
+    if _TAIL_REG > 0.0 and tag:
+        accum_tail_penalty(s_BHKK, rank, tag)
     B, H, K, _ = s_BHKK.shape
     with torch.no_grad():
         s = s_BHKK.reshape(B * H, K, K).float()
@@ -561,6 +637,7 @@ def quant_aware_rwkv7(
     state_qmax: float,
     lowrank_rank: int = 0,
     lowrank_fqmax: float = float("inf"),
+    tail_tag: str = "",
 ) -> Tensor:
     """Per-step reference WKV with the recurrent state round-tripped each step (quant-aware training).
     If lowrank_rank>0 the state is rank-r truncated (+ optional int-N factor quant) instead of full
@@ -578,6 +655,14 @@ def quant_aware_rwkv7(
     # Fused RANK-1 int-N low-rank path (matches the deploy rank-1 compression). Only rank==1 is fused;
     # higher ranks (needing deflation/SVD) fall through to the Python loop below.
     if _fused and lowrank_rank == 1 and lowrank_fqmax != float("inf"):
+        if _TAIL_REG > 0.0 and tail_tag:
+            raise RuntimeError(
+                f"RWKV_QAT_TAIL_PENALTY={_TAIL_REG} is set but the {tail_tag!r} stream's rank-1 "
+                "truncation would run in the FUSED kernel, where the pre-truncation state is "
+                "not visible, so the tail penalty would silently skip it. Set "
+                "RWKV_QAT_FUSED=0 for tail-penalty runs: that is the documented bit-parity "
+                "Python twin of the fused kernels, so the numbers stay comparable."
+            )
         maybe_upload_pq_codebook()  # if RWKV_QAT_PQ set, switches qat_lr_rank1 to codebook-encode the factors
         args = [t.float().contiguous() for t in (r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK)]
         out_BTHK = RWKV7_WKV_QAT_LR.apply(*args, skip_BT.contiguous(), float(lowrank_fqmax))
@@ -603,7 +688,8 @@ def quant_aware_rwkv7(
             state_BHKK,
         )
         if lowrank_rank > 0:  # rank-r truncation (+ factor quant) -- the low-rank deploy analog
-            next_state_BHKK = fake_lowrank_state(next_state_BHKK, lowrank_rank, lowrank_fqmax)
+            next_state_BHKK = fake_lowrank_state(
+                next_state_BHKK, lowrank_rank, lowrank_fqmax, tail_tag)
         else:
             next_state_BHKK = fake_quant_state(next_state_BHKK, state_qmax)  # quant before next step
         skip_B111 = skip_BT111[:, t]

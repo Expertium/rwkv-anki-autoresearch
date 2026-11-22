@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8n2i8s8\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i8n2i8s8",
+      "tag": "ql2i8n2i8s8_it36l2i8n2i8s8",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:2:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int8"
+      },
+      "comment": "note rank-2 int8 with int8 shifts: is the note's SHIFT precision free at rank 2? (1,280/4,608)",
+      "bits": {
+        "card": 1280,
+        "note": 4608
+      },
+      "rc": 0,
+      "secs": 3319.4070000000065,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": -0.00011850533333333395,
+          "ub95": -8.784221154037374e-05,
+          "p_worse": 0.9999999999545001,
+          "mean_cur": 0.3336833053333333,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 8.35826666666664e-05,
+          "ub95": 0.00010769708423893378,
+          "p_worse": 7.196749810959894e-11,
+          "mean_cur": 0.30629498,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

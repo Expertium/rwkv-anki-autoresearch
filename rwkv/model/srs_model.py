@@ -5,6 +5,8 @@ import numpy as np
 from rwkv.config import RWKV_SUBMODULES
 from rwkv.data_processing import CARD_FEATURE_COLUMNS, RWKVSample, STATISTICS
 from rwkv.model.rwkv_model import RWKV7, take_rank1_penalty
+from rwkv.model.rwkv_ops import take_tail_penalty
+from rwkv.model.rwkv_ops import _TAIL_REG as _TAIL_REG_LAMBDA
 from rwkv.model.rwkv_model import _RANK1_REG as _RANK1_REG_LAMBDA
 import torch
 from typing import NamedTuple, Optional, Tuple
@@ -870,6 +872,8 @@ class SrsRWKV(ModuleType):
             # at all, so a null result cannot be blamed on a bad initialisation.
             # module-level global -> instance attribute, so the scripted forward can see it
             self.rank1_reg_lambda = _RANK1_REG_LAMBDA
+            # module-level global -> instance attribute, same TorchScript reason as above
+            self.tail_reg_lambda = _TAIL_REG_LAMBDA
             # RWKV_ORD_LAMBDA (2026-09-04, ADOPTED slot: CORAL / Frank & Hall ordinal cutpoints, ONE
             # cut): on real rows `label_rating` is the NEXT review's button and nothing consumes it
             # (p_loss is masked to query rows). Add, on SUCCESSFUL ahead rows with t >= 1 d, a BCE
@@ -1898,6 +1902,12 @@ class SrsRWKV(ModuleType):
         _r1 = take_rank1_penalty()
         if _r1 is not None:
             loss_avg = loss_avg + self.rank1_reg_lambda * _r1
+        # RWKV_QAT_TAIL_PENALTY (2026-11-22): the truncated tail energy of the rank-truncated
+        # streams' own states, accumulated per stream during their forward. Drains to None when
+        # the lever is off or nothing accumulated, so the default path adds no term.
+        _tl = take_tail_penalty()
+        if _tl is not None:
+            loss_avg = loss_avg + self.tail_reg_lambda * _tl
         # KD (RWKV_QAT_KD, task22): distill from the un-quantized fp32 champion during QAT. Anchors the
         # base against drift while the net learns quant robustness. kd = (teacher_p_logits,
         # teacher_curve_probs, lambda), computed in train_rwkv under no_grad. Soft-label CE on the 4-way

@@ -1,0 +1,45 @@
+[QAT-LOWRANK] set: card_id=rank2/fq127.0, note_id=rank1/fq127.0
+[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
+[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation seed set separately)
+[augmentation] training fetch seed = 1234 (FIXED (disabled, run-to-run variance ~0))
+[vram-cap] RWKV_VRAM_CAP_GB=11 -> allocator capped at 11.00 GiB of 11.99 GiB (fraction 0.9172)
+Loading model: C:\Users\Andrew\rwkv-anki-autoresearch\pretrain\rwkv\opt_iter36/rwkv_iter36_558.pth
+[wd] reset optimizer per-group weight_decay to intended [0.01, 0.01, 0.01, 0.01, 0.0] after loading champion optim
+[lr] reset optimizer lr/initial_lr to intended [0.001, 0.001, 0.001, 0.001, 0.001] after loading champion optim
+Trainable parameters: 192800
+Number of groups: 160
+[bench] cap 6 steps, warmup 30 excluded from timing
+
+[(73, 49153, 57344, 13345), (92, 16385, 24576, 13330), (34, 131073, 139264, 13313), (25, 1, 8192, 13286)]
+Got: 2.4092s
+0 0 1, all: 1.407033, ahead: 0.4269 (0.4342), imm: 0.976
+
+[(98, 65537, 73728, 15972), (73, 163841, 172032, 15961), (39, 40961, 49152, 15959), (21, 49153, 57344, 15957)]
+Got: 0.2104s
+0 1 2, all: 1.196645, ahead: 0.3086 (0.3093), imm: 0.887
+
+[(62, 73729, 81920, 13820), (53, 1, 8192, 13790), (9, 1, 8192, 13778), (17, 1, 8192, 13772)]
+Got: 1.3275s
+0 2 3, all: 1.093055, ahead: 0.3977 (0.4025), imm: 0.693
+
+[(98, 98305, 106496, 15866), (17, 131073, 139264, 15857), (78, 65537, 73728, 15857), (12, 24577, 32768, 15850)]
+Got: 1.0244s
+0 3 4, all: 1.364114, ahead: 0.4326 (0.4367), imm: 0.929
+
+[(38, 1, 8192, 15487), (14, 1, 8192, 15483), (63, 32769, 40960, 15482), (85, 8193, 16384, 15480)]
+Got: 0.7083s
+0 4 5, all: 1.787142, ahead: 0.6019 (0.6254), imm: 1.173
+
+[(38, 40961, 49152, 15924), (21, 8193, 16384, 15923), (80, 57345, 65536, 15921), (84, 24577, 32768, 15914)]
+Got: 0.7058s
+0 5 6, all: 1.380779, ahead: 0.4816 (0.4685), imm: 0.905
+MODEL SAVED.
+Elapsed: 15.004833459854126
+Steps per second: 0.3998711492568829
+loss_n per second: 10764.464692803745
+5002 ahead_loss: 0.393 (0.386), imm_loss: 0.380, imm_n: 227995
+5004 ahead_loss: 0.358 (0.356), imm_loss: 0.364, imm_n: 71705
+Mean ahead validation loss: 0.3843 (0.3791), imm: 0.3758, validation n: 299700
+Killed processes.
+[QAT-LOWRANK] set: card_id=rank2/fq127.0, note_id=rank1/fq127.0
+[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
