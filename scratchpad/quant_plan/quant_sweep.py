@@ -205,6 +205,34 @@ CANDIDATES = {
                    "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
                    "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0"},
                   "row 17 + tail-energy penalty lambda=10.0 (~25% of the loss) (1,280/2,304)", None),
+    # ---- E1, second attempt: the SAME penalty with a step subsample (RWKV_QAT_TAIL_STRIDE) -------
+    # `e1a`/`e1b` above are kept as the record: both raised CUDA OOM at 10.34 GiB of the 11.00 GiB
+    # cap BEFORE their first training step (2026-11-23 00:18/00:19), because the penalty's
+    # differentiable `svdvals` runs once per TIMESTEP per truncated layer and every one of those
+    # graphs stays alive until backward, so its memory grows with the training window. The control
+    # `l2i8s4pf` (same layout, penalty off) trains 6 steps in 21.4 s in the same 10.34 GiB, so the
+    # penalty's own graph is the whole difference.
+    # The module now accumulates on ONE step in `RWKV_QAT_TAIL_STRIDE` per stream (default 8). The
+    # mean over the sampled steps is an unbiased estimate of the mean tail over the window, at
+    # 1/stride of the graph memory - a smoke first proved the counting (scratchpad/_test_e1_stride.py)
+    # and the real trainer path (corruption/e1_cpu_smoke.py with E1SMOKE_STRIDE).
+    # Lambda still follows the measured-tail bracket (mean tail ~0.0245 over the four quantized
+    # layers, so 1.0 ~ 2.4% of the ~1.02 loss, 3.0 ~ 7%, 10.0 ~ 25%).
+    "l2i8s4e1c": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "1.0",
+                   "RWKV_QAT_TAIL_STRIDE": "8"},
+                  "row 17 + tail-energy penalty lambda=1.0, stride 8 (~2.4% of the loss) (1,280/2,304)", None),
+    "l2i8s4e1d": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "3.0",
+                   "RWKV_QAT_TAIL_STRIDE": "8"},
+                  "row 17 + tail-energy penalty lambda=3.0, stride 8 (~7% of the loss) (1,280/2,304)", None),
+    "l2i8s4e1e": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0",
+                   "RWKV_QAT_TAIL_STRIDE": "8"},
+                  "row 17 + tail-energy penalty lambda=10.0, stride 8 (~25% of the loss) (1,280/2,304)", None),
     # ---- E1 applied to the two NEAR-MISS shrink layouts (chain 16, gated on chain 15 result) ----
     # Row 21's layout (`l2i8s4n4`: card rank-2 int8 + int4 shifts, note rank-1 int4 + int4, 2,816
     # bits) failed the log-loss gate by 0.00014 on imm (+0.000328/+0.000638). Row 22's layout

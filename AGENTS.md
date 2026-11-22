@@ -79,3 +79,28 @@
   the user list before trusting such a number. The already-tested factor-precision knobs are Hadamard
   (hurts), per-column (`RWKV_LOWRANK_PERCOL`, neutral), ALS (neutral to slightly better), 4-level,
   mixed53, compand, VLEVEL (asymmetric U/V) and EF (error feedback, chains 15/16).
+- **E1 tail-energy penalty, and its VRAM fix (2026-11-23).** The penalty (`RWKV_QAT_TAIL_PENALTY`,
+  `rwkv/model/rwkv_ops.py:accum_tail_penalty`) adds `lambda * mean over streams of the tail fraction`
+  to the training loss: zero state bits, zero deploy cost, the only zero-bit axis-2 lever. The first
+  two points (`l2i8s4e1a` lambda=1.0, `l2i8s4e1b` lambda=10.0, chain 15) **OOM'd at 10.34 GiB of the
+  11.00 GiB cap before their first step** - NOT a broken penalty, because it ran clean on CPU
+  (`corruption/e1_cpu_smoke.py`), but a memory one: a differentiable `svdvals` per TIMESTEP per
+  truncated layer keeps every step's graph alive until backward, so the cost scales with the training
+  WINDOW. Row 44 (`l2i8s4pf`, the same layout with the penalty OFF, trained on the fused-off Python
+  loop) is the control and PASSES at +0.000050/+0.000325, within 2e-6 of row 17's fused run - so
+  `RWKV_QAT_FUSED=0` is bit-parity and an E1 delta cannot be blamed on the fused/Python difference.
+  The fix is `RWKV_QAT_TAIL_STRIDE` (default **8**): accumulate on one step in 8 **per stream tag**, an
+  unbiased sample of the mean tail at 1/stride of the graph memory. `stride<=1` is the old every-step
+  behaviour and still OOMs. The counter is per TAG, so a 3-layer stream is not sampled 3x as often as a
+  1-layer one (a global counter gave only a 2x reduction - the trap this avoids). Verified by
+  `scratchpad/_test_e1_stride.py` (4 -> 2 of 8, 8 -> 1 of 8, 1 -> 8 of 8) and by the real trainer on
+  CPU (`e1_cpu_smoke.py`, `E1SMOKE_LAMBDA` / `E1SMOKE_STRIDE`), which logs
+  `[tail-penalty] lambda=1.0 stride=8 card=0.002546(n=7) note=0.011098(n=19)`. Chain 23
+  (`it36e1b`) re-tests lambda = 1.0 / 3.0 / 10.0 at stride 8, ungated (three points on one curve), each
+  with its own corruption check. **The default path is byte-identical when the lever is unset** - read
+  `_TAIL_REG` is read once at import - so editing this module never disturbs a running chain.
+- **The 496-step decay is NOT an axis-2 lever.** Rows 8/13/14/27 already show it: a longer decay makes
+  the fp32 twin BETTER (row 0b is 0.0121/0.0116 below row 0) while the quantized model improves less,
+  so the RELATIVE tax GROWS (+0.000715/+0.000793 for `l2i8` at 496 vs +0.0003-ish at 124). Do not
+  queue another 496-step point as a fix for the tax; Andrew's "more than 124 steps" permission is for
+  turning a failing recipe into a winning one, not for this.

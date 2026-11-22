@@ -11,26 +11,20 @@ Number of groups: 629
 [bench] cap 3 steps, warmup 30 excluded from timing
 
 [(43, 32769, 40960, 13950)]
-Got: 0.8622s
-[tail-penalty] lambda=1.0 card=0.002918(n=23) note=0.038505(n=102)
-0 0 1, all: 0.857803, ahead: 0.3954 (0.3948), imm: 0.442
+Got: 1.4703s
+[tail-penalty] lambda=1.0 stride=8 card=0.002291(n=2) note=0.036421(n=12)
+0 0 1, all: 0.856448, ahead: 0.3954 (0.3948), imm: 0.442
 
 [(73, 245761, 253952, 15029)]
 Got: 0.0040s
-[tail-penalty] lambda=1.0 card=0.001662(n=189) note=0.007219(n=570)
-0 1 2, all: 1.087890, ahead: 0.3442 (0.3481), imm: 0.737
+[tail-penalty] lambda=1.0 stride=8 card=0.001048(n=24) note=0.007242(n=72)
+0 1 2, all: 1.087644, ahead: 0.3442 (0.3481), imm: 0.737
 
 [(41, 49153, 57344, 15320)]
 Got: 0.0040s
-[tail-penalty] lambda=1.0 card=0.002475(n=52) note=0.012885(n=156)
-0 2 3, all: 0.826018, ahead: 0.1721 (0.1684), imm: 0.648
+[tail-penalty] lambda=1.0 stride=8 card=0.002546(n=7) note=0.011098(n=19)
+0 2 3, all: 0.825205, ahead: 0.1721 (0.1685), imm: 0.648
 MODEL SAVED.
-Elapsed: 688.0370497703552
-Steps per second: 0.004360230311727114
-loss_n per second: 28.36039135757706
-5002 ahead_loss: 0.391 (0.386), imm_loss: 0.380, imm_n: 227995
-5004 ahead_loss: 0.364 (0.363), imm_loss: 0.375, imm_n: 71705
-Mean ahead validation loss: 0.3843 (0.3804), imm: 0.3786, validation n: 299700
-Killed processes.
-[QAT-LOWRANK] set: card_id=rank2/fq127.0, note_id=rank1/fq127.0
-[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
+Elapsed: 615.6867740154266
+Steps per second: 0.004872607511826837
+loss_n per second: 31.69306345942569

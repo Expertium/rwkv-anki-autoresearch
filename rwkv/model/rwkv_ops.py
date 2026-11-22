@@ -450,7 +450,15 @@ def fake_fixedbasis_state(s_BHKK: Tensor, m: int, qmax: float, stream: str = "",
 # comparable with the rows trained fused.
 # Default unset = 0.0 = completely inert (no accumulation, no loss term, byte-identical).
 _TAIL_REG = float(os.environ.get("RWKV_QAT_TAIL_PENALTY", "0") or 0)
+# MEMORY GUARD (2026-11-23). The penalty needs gradient, so it runs a differentiable svdvals per
+# timestep per rank-truncated layer; every one of those graphs stays alive until backward and the
+# memory therefore grows with the training window, which OOM'd an 11 GiB cap at 10.34 GiB (both
+# lambda smokes, 2026-11-23). Accumulate on ONE step in RWKV_QAT_TAIL_STRIDE per stream instead:
+# the mean over the sampled steps is an unbiased estimate of the mean tail over the window at
+# 1/stride of the memory. stride <= 1 = every step (the pre-guard behaviour, still OOMs).
+_TAIL_STRIDE = int(os.environ.get("RWKV_QAT_TAIL_STRIDE", "8") or 8)
 _TAIL_ACC: dict = {}
+_TAIL_STEP: dict = {}
 
 
 @torch.jit.ignore
@@ -459,7 +467,16 @@ def accum_tail_penalty(s_BHKK: Tensor, rank: int, tag: str) -> None:
 
     `tag` is the stream name (card/note/...) and doubles as the training flag: the call site passes an
     empty tag outside training, so eval passes accumulate nothing and add no loss term.
+
+    Only one step in RWKV_QAT_TAIL_STRIDE is sampled, per `tag`, to bound the graph memory (see the
+    note on _TAIL_STRIDE above). The counter is per tag, so a 3-layer stream is not sampled three
+    times as often as a 1-layer stream.
     """
+    if _TAIL_STRIDE > 1:
+        _n = _TAIL_STEP.get(tag, 0) + 1
+        _TAIL_STEP[tag] = _n
+        if _n % _TAIL_STRIDE:
+            return
     s = s_BHKK.reshape(-1, s_BHKK.shape[-2], s_BHKK.shape[-1]).float()
     sv = torch.linalg.svdvals(s)  # differentiable; only the singular values are needed
     e = sv.square()  # (BH, K)
@@ -490,7 +507,7 @@ def take_tail_penalty() -> Optional[Tensor]:
         parts.append(m)
         shown.append(f"{tag}={float(m.detach()):.6f}(n={len(vals)})")
     _TAIL_ACC.clear()
-    print(f"[tail-penalty] lambda={_TAIL_REG} " + " ".join(shown), flush=True)
+    print(f"[tail-penalty] lambda={_TAIL_REG} stride={_TAIL_STRIDE} " + " ".join(shown), flush=True)
     return torch.stack(parts).mean()
 
 

@@ -81,7 +81,10 @@ def main() -> int:
         "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
         "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
         "RWKV_QAT_FUSED": "0",
-        "RWKV_QAT_TAIL_PENALTY": "1.0",
+        "RWKV_QAT_TAIL_PENALTY": os.environ.get("E1SMOKE_LAMBDA", "1.0"),
+        # E1SMOKE_STRIDE: the step subsample that keeps the penalty's graph inside the VRAM cap
+        # (default 8 = the module's own default). 1 = the pre-guard, every-step behaviour.
+        "RWKV_QAT_TAIL_STRIDE": os.environ.get("E1SMOKE_STRIDE", "8"),
     })
     env.pop("RWKV_VRAM_CAP_GB", None)          # cuda-only
     print(f"running: {PY} -u -m rwkv.train_rwkv --config {TOML}")

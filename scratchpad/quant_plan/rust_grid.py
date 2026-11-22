@@ -205,6 +205,15 @@ CONFIGS = {
     "l2i6s4n1i6s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
                      "RWKV_QUANT_SHIFTS": "1",
                      "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int2"},
+    # THE NOTE-FACTOR RUNGS UNDER THE int6 CARD (2026-11-23). `it36wide5` showed the note's
+    # int8 -> int6 FACTOR cut is cheap (+0.000170/+0.000216 for 384 bits) while its int2 SHIFT rung is
+    # a dead end (+0.0012-0.0014 imm). These buy bits with the note's FACTOR width instead.
+    "l2i6s4n1i5s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int5",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    "l2i6s4n1i4s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int4",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
 
     # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
     # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),
