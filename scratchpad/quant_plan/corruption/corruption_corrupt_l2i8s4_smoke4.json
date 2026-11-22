@@ -1,0 +1,218 @@
+{
+  "name": "l2i8s4",
+  "tag": "corrupt_l2i8s4_smoke4",
+  "row": "RESULTS row 17 (axis-1 best)",
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8s4\\qat_124.pth",
+  "candidate": "l2i8s4",
+  "env": {
+    "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+    "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+  },
+  "rc": 0,
+  "secs": 31.343999999997322,
+  "users_requested": 1,
+  "users_scored": 1,
+  "mean_logloss": {
+    "ahead": 0.376283,
+    "imm": 0.351302
+  },
+  "skips": {},
+  "log": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\run_corrupt_l2i8s4_smoke4.log",
+  "probe_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\probe_out\\corrupt_l2i8s4_smoke4",
+  "status": "PASS",
+  "problems": [],
+  "state_observed": true,
+  "state_note": "state observed on the Python QAT path",
+  "state_calls": 1672,
+  "state_bad": 0,
+  "p_bad": 0,
+  "p_calls": 3,
+  "pass": true,
+  "offenders": {},
+  "totals": {
+    "lowrank_raw": {
+      "calls": 828,
+      "elems": 189923328,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.3543730676174164,
+      "first": null,
+      "calls_by": {}
+    },
+    "lowrank_quant": {
+      "calls": 828,
+      "elems": 189923328,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.35556310415267944,
+      "first": null,
+      "calls_by": {}
+    },
+    "shift_in": {
+      "calls": 8,
+      "elems": 11870208,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 5.231348991394043,
+      "first": null,
+      "calls_by": {}
+    },
+    "shift_out": {
+      "calls": 8,
+      "elems": 11870208,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 5.231348991394043,
+      "first": null,
+      "calls_by": {}
+    },
+    "p_curve": {
+      "calls": 1,
+      "elems": 11678,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.9985272884368896,
+      "first": null,
+      "calls_by": {}
+    },
+    "p_imm": {
+      "calls": 1,
+      "elems": 11678,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.9925252199172974,
+      "first": null,
+      "calls_by": {}
+    },
+    "p_imm_all": {
+      "calls": 1,
+      "elems": 46712,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.9742689728736877,
+      "first": null,
+      "calls_by": {}
+    },
+    "loss_scalar": {
+      "calls": 2,
+      "elems": 11679,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 8.591104507446289,
+      "first": null,
+      "calls_by": {}
+    },
+    "stats_other": {
+      "calls": 4,
+      "elems": 4,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.9265136122703552,
+      "first": null,
+      "calls_by": {}
+    }
+  },
+  "per_user": {
+    "7325": {
+      "lowrank_raw": {
+        "calls": 828,
+        "elems": 189923328,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.3543730676174164,
+        "first": null,
+        "calls_by": {}
+      },
+      "lowrank_quant": {
+        "calls": 828,
+        "elems": 189923328,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.35556310415267944,
+        "first": null,
+        "calls_by": {}
+      },
+      "shift_in": {
+        "calls": 8,
+        "elems": 11870208,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 5.231348991394043,
+        "first": null,
+        "calls_by": {}
+      },
+      "shift_out": {
+        "calls": 8,
+        "elems": 11870208,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 5.231348991394043,
+        "first": null,
+        "calls_by": {}
+      },
+      "p_curve": {
+        "calls": 1,
+        "elems": 11678,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.9985272884368896,
+        "first": null,
+        "calls_by": {}
+      },
+      "p_imm": {
+        "calls": 1,
+        "elems": 11678,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.9925252199172974,
+        "first": null,
+        "calls_by": {}
+      },
+      "p_imm_all": {
+        "calls": 1,
+        "elems": 46712,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.9742689728736877,
+        "first": null,
+        "calls_by": {}
+      },
+      "loss_scalar": {
+        "calls": 2,
+        "elems": 11679,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 8.591104507446289,
+        "first": null,
+        "calls_by": {}
+      },
+      "stats_other": {
+        "calls": 4,
+        "elems": 4,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.9265136122703552,
+        "first": null,
+        "calls_by": {}
+      }
+    }
+  }
+}

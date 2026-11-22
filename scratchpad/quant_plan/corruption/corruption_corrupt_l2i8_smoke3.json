@@ -1,0 +1,216 @@
+{
+  "name": "l2i8",
+  "tag": "corrupt_l2i8_smoke3",
+  "row": "RESULTS row 15",
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8\\qat_124.pth",
+  "candidate": "l2i8",
+  "env": {
+    "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+    "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"
+  },
+  "rc": 0,
+  "secs": 45.95299999999406,
+  "users_requested": 1,
+  "users_scored": 1,
+  "mean_logloss": {
+    "ahead": 0.376291,
+    "imm": 0.351194
+  },
+  "skips": {},
+  "log": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\run_corrupt_l2i8_smoke3.log",
+  "probe_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\probe_out\\corrupt_l2i8_smoke3",
+  "status": "PASS",
+  "problems": [],
+  "state_calls": 1672,
+  "state_bad": 0,
+  "p_bad": 0,
+  "p_calls": 3,
+  "pass": true,
+  "offenders": {},
+  "totals": {
+    "lowrank_raw": {
+      "calls": 828,
+      "elems": 189923328,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.3449782431125641,
+      "first": null,
+      "calls_by": {}
+    },
+    "lowrank_quant": {
+      "calls": 828,
+      "elems": 189923328,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.34633466601371765,
+      "first": null,
+      "calls_by": {}
+    },
+    "shift_in": {
+      "calls": 8,
+      "elems": 11870208,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 5.231470584869385,
+      "first": null,
+      "calls_by": {}
+    },
+    "shift_out": {
+      "calls": 8,
+      "elems": 11870208,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 5.231470584869385,
+      "first": null,
+      "calls_by": {}
+    },
+    "p_curve": {
+      "calls": 1,
+      "elems": 11678,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.998556911945343,
+      "first": null,
+      "calls_by": {}
+    },
+    "p_imm": {
+      "calls": 1,
+      "elems": 11678,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.9925366044044495,
+      "first": null,
+      "calls_by": {}
+    },
+    "p_imm_all": {
+      "calls": 1,
+      "elems": 46712,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.9742274880409241,
+      "first": null,
+      "calls_by": {}
+    },
+    "loss_scalar": {
+      "calls": 2,
+      "elems": 11679,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 8.589719772338867,
+      "first": null,
+      "calls_by": {}
+    },
+    "stats_other": {
+      "calls": 4,
+      "elems": 4,
+      "nan": 0,
+      "posinf": 0,
+      "neginf": 0,
+      "maxabs": 0.926726758480072,
+      "first": null,
+      "calls_by": {}
+    }
+  },
+  "per_user": {
+    "7325": {
+      "lowrank_raw": {
+        "calls": 828,
+        "elems": 189923328,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.3449782431125641,
+        "first": null,
+        "calls_by": {}
+      },
+      "lowrank_quant": {
+        "calls": 828,
+        "elems": 189923328,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.34633466601371765,
+        "first": null,
+        "calls_by": {}
+      },
+      "shift_in": {
+        "calls": 8,
+        "elems": 11870208,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 5.231470584869385,
+        "first": null,
+        "calls_by": {}
+      },
+      "shift_out": {
+        "calls": 8,
+        "elems": 11870208,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 5.231470584869385,
+        "first": null,
+        "calls_by": {}
+      },
+      "p_curve": {
+        "calls": 1,
+        "elems": 11678,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.998556911945343,
+        "first": null,
+        "calls_by": {}
+      },
+      "p_imm": {
+        "calls": 1,
+        "elems": 11678,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.9925366044044495,
+        "first": null,
+        "calls_by": {}
+      },
+      "p_imm_all": {
+        "calls": 1,
+        "elems": 46712,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.9742274880409241,
+        "first": null,
+        "calls_by": {}
+      },
+      "loss_scalar": {
+        "calls": 2,
+        "elems": 11679,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 8.589719772338867,
+        "first": null,
+        "calls_by": {}
+      },
+      "stats_other": {
+        "calls": 4,
+        "elems": 4,
+        "nan": 0,
+        "posinf": 0,
+        "neginf": 0,
+        "maxabs": 0.926726758480072,
+        "first": null,
+        "calls_by": {}
+      }
+    }
+  }
+}

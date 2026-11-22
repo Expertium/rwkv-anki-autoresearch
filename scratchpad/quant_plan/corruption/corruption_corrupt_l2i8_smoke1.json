@@ -1,0 +1,29 @@
+{
+  "name": "l2i8",
+  "tag": "corrupt_l2i8_smoke1",
+  "row": "RESULTS row 15",
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8\\qat_124.pth",
+  "candidate": "l2i8",
+  "env": {
+    "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+    "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"
+  },
+  "rc": 1,
+  "secs": 2.437000000005355,
+  "users_requested": 1,
+  "users_scored": 0,
+  "mean_logloss": {
+    "ahead": null,
+    "imm": null
+  },
+  "skips": {},
+  "log": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\run_corrupt_l2i8_smoke1.log",
+  "probe_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\probe_out\\corrupt_l2i8_smoke1",
+  "state_calls": 0,
+  "state_bad": 0,
+  "p_bad": 0,
+  "pass": true,
+  "offenders": {},
+  "totals": {},
+  "per_user": {}
+}
