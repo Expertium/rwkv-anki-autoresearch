@@ -49,3 +49,6 @@ it36l2i8n2i8
 it36l3i8n2i8
 it36l2i8n2i8s8
 it36l2i8n3i8
+it36l3i4s4
+it36l2i8s2
+it36n1i8s3
