@@ -990,3 +990,17 @@ One CPU-only screen (`rust_grid.py --tag it36wide5`, row-17 deploy weights, the 
 **(2) E1 is testable again.** The OOM that killed chain 15's two penalty points was memory, not mathematics: `accum_tail_penalty` ran a DIFFERENTIABLE `svdvals` once per TIMESTEP per rank-truncated layer and every one of those graphs stayed alive until backward, so the cost scaled with the training window. `rwkv/model/rwkv_ops.py` now samples ONE step in `RWKV_QAT_TAIL_STRIDE` (default 8) PER STREAM TAG, an unbiased estimate of the mean tail at 1/stride of the graph memory. Verified twice before queueing: `scratchpad/_test_e1_stride.py` (stride 4 -> 2 of 8 calls, 8 -> 1 of 8, 1 -> 8 of 8, counter per tag) and the real trainer on CPU (`corruption/e1_cpu_smoke.py` with `E1SMOKE_STRIDE=8`, logging `[tail-penalty] lambda=1.0 stride=8 card=0.002546(n=7) note=0.011098(n=19)`). The lever is still inert when `RWKV_QAT_TAIL_PENALTY` is unset, so nothing running is affected.
 
 **(3) Chains.** `it36int6` (17) is running its second point (`l2i5s4`, 2,624 bits) with `l2i4s4n4` after it; the waiters are `it36int6card`, `it36fixedbasis`, `it36int6combo` (21), `it36int6note` (22) and the new `it36e1b` (23: E1 lambda 1.0/3.0/10.0 at stride 8, self-diagnosing because a point whose smoke OOMs is skipped).
+
+
+## Amendment 31 (2026-11-23 01:20): the note's int5 factor rung costs 6x more per bit - the sub-2,752 corner is closed, so the next gain must come from lower TAX
+
+A second CPU-only deploy screen (`rust_grid.py --tag it36wide6`, row-17 deploy weights, the same 7 held-out long histories, paired against `l2i8s4`, 2,000-resample bootstrap, seed 20261119) priced the note's FACTOR width below int6, at the int6 card:
+
+    config            card/note bits   d ahead                  d imm
+    l2i6s4n1i6s3      1,024/1,728      +0.000343 [+0.000229,+0.000492]  +0.000435 [+0.000188,+0.000722]   (chain 22's point, unchanged)
+    l2i6s4n1i5s3      1,024/1,536      +0.000948 [+0.000528,+0.001399]  +0.001182 [+0.000663,+0.001756]
+    l2i6s4n1i4s3      1,024/1,344      +0.002327 [+0.000675,+0.004053]  +0.002925 [+0.001377,+0.004729]
+
+The note's factor ladder has a KNEE at int6. The int8 -> int6 cut costs +0.000170/+0.000216 for 384 bits (`it36wide5`), but int6 -> int5 costs +0.000605/+0.000747 for 192 bits - about 6x more per bit - and int4 is 4x further out again. Note also that the int5 rung was bought at exactly the size of the closed int2-shift rung (2,560 bits): it is BETTER on the immediate head than that rung (+0.001182 against +0.001642) but 9x worse on ahead (+0.000948 against +0.000104), and both miss the imm ceiling any way round - so neither way of buying 2,560 bits works. Every rung below 2,752 is now measured and closed: 2,752 is the floor of this (rank, factor width, shift width) design space, and the only route further down is removing deploy TAX at a fixed size - which is what the E1 tail-energy penalty tests in chains 23 and 24.
+
+Screen artifacts: `rust_grid_it36wide6.json` (absolutes), `rust_wide_screen_it36wide6.json` (paired deltas + bootstrap), `rust_grid_it36wide6_stdout.log`. The screen ran beside chain 17 (CPU only, no GPU work) and was killed before the chain-17 hand-off, as every grid must be.

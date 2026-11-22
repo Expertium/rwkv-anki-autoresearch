@@ -233,6 +233,25 @@ CANDIDATES = {
                    "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0",
                    "RWKV_QAT_TAIL_STRIDE": "8"},
                   "row 17 + tail-energy penalty lambda=10.0, stride 8 (~25% of the loss) (1,280/2,304)", None),
+    # ---- E1 x THE FRONTIER LAYOUT (chain 24, gated on chain 23's own deltas) ------------------------
+    # These are row 45's scope exactly (card rank-2 int6 + int4 shifts, note rank-1 int6 + int4 shifts,
+    # 1,024/1,920 = 2,944 bits) with the E1 penalty on. Row 45 PASSES but its immediate head is at
+    # 0.89x of the ceiling, so any tax the penalty removes is directly spendable there.
+    "l2i6s4e1c": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "1.0",
+                   "RWKV_QAT_TAIL_STRIDE": "8"},
+                  "row 45 (2,944 bits) + tail-energy penalty lambda=1.0, stride 8", None),
+    "l2i6s4e1d": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "3.0",
+                   "RWKV_QAT_TAIL_STRIDE": "8"},
+                  "row 45 (2,944 bits) + tail-energy penalty lambda=3.0, stride 8", None),
+    "l2i6s4e1e": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0",
+                   "RWKV_QAT_TAIL_STRIDE": "8"},
+                  "row 45 (2,944 bits) + tail-energy penalty lambda=10.0, stride 8", None),
     # ---- E1 applied to the two NEAR-MISS shrink layouts (chain 16, gated on chain 15 result) ----
     # Row 21's layout (`l2i8s4n4`: card rank-2 int8 + int4 shifts, note rank-1 int4 + int4, 2,816
     # bits) failed the log-loss gate by 0.00014 on imm (+0.000328/+0.000638). Row 22's layout

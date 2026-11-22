@@ -96,6 +96,15 @@ CONFIGS = {
                "chain 17 point 2 (int5 card factors + int6 note factors, 2,624 bits)"),
     "l2i4s4n4": (RUN / "qat_it36l2i4s4n4" / "qat_124.pth", "l2i4s4n4",
                  "chain 17 point 3 (int4 card factors + int4 note factors, 2,304 bits)"),
+    # CHAIN 24: the E1 tail penalty on row 45's frontier layout (2,944 bits). Registered now because
+    # chain 24 picks the lambda whose deploy deltas beat the penalty-free control and runs the
+    # matching combination; a passing combination then needs its own finiteness check like any row.
+    "l2i6s4e1c": (RUN / "qat_it36l2i6s4e1c" / "qat_124.pth", "l2i6s4",
+                  "chain 24 (E1 lambda=1.0 on row 45's 2,944-bit layout)"),
+    "l2i6s4e1d": (RUN / "qat_it36l2i6s4e1d" / "qat_124.pth", "l2i6s4",
+                  "chain 24 (E1 lambda=3.0 on row 45's 2,944-bit layout)"),
+    "l2i6s4e1e": (RUN / "qat_it36l2i6s4e1e" / "qat_124.pth", "l2i6s4",
+                  "chain 24 (E1 lambda=10.0 on row 45's 2,944-bit layout)"),
     # E1 TAIL-ENERGY PENALTY, chain 23 (2026-11-23). Row 17's layout trained on the fused-off Python
     # QAT loop with `lambda * mean tail fraction` added to the loss. The deploy env is unchanged
     # (`l2i8s4pf`'s), so the check measures the same state path as row 44's layout; what changes is
