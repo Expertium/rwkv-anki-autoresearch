@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i4s4n4\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i4s4n4",
+      "tag": "ql2i4s4n4_it36l2i4s4n4",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int4,note:1:int4",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "row 17 layout at int4 factors, the bottom rung (768/1,536 = 2,304 bits)",
+      "bits": {
+        "card": 768,
+        "note": 1536
+      },
+      "rc": 0,
+      "secs": 1401.359999999986,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0005877639999999992,
+          "ub95": 0.0006717065191351213,
+          "p_worse": 3.215534636596786e-37,
+          "mean_cur": 0.33438957466666663,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.0010153373333333334,
+          "ub95": 0.0011262885494383184,
+          "p_worse": 1.3535956311997873e-71,
+          "mean_cur": 0.30722673466666667,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

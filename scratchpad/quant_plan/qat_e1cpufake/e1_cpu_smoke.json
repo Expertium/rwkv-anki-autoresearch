@@ -3,9 +3,9 @@
  "model_saved": true,
  "tail_penalty_lines": 3,
  "first_lines": [
-  "[tail-penalty] lambda=1.0 card=0.002918(n=23) note=0.038505(n=102)",
-  "[tail-penalty] lambda=1.0 card=0.001662(n=189) note=0.007219(n=570)",
-  "[tail-penalty] lambda=1.0 card=0.002475(n=52) note=0.012885(n=156)"
+  "[tail-penalty] lambda=1.0 stride=8 card=0.002291(n=2) note=0.036421(n=12)",
+  "[tail-penalty] lambda=1.0 stride=8 card=0.001048(n=24) note=0.007242(n=72)",
+  "[tail-penalty] lambda=1.0 stride=8 card=0.002546(n=7) note=0.011098(n=19)"
  ],
  "pass": true
 }

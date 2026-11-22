@@ -28,3 +28,9 @@ MODEL SAVED.
 Elapsed: 615.6867740154266
 Steps per second: 0.004872607511826837
 loss_n per second: 31.69306345942569
+5002 ahead_loss: 0.391 (0.386), imm_loss: 0.380, imm_n: 227995
+5004 ahead_loss: 0.364 (0.363), imm_loss: 0.375, imm_n: 71705
+Mean ahead validation loss: 0.3843 (0.3804), imm: 0.3786, validation n: 299700
+Killed processes.
+[QAT-LOWRANK] set: card_id=rank2/fq127.0, note_id=rank1/fq127.0
+[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
