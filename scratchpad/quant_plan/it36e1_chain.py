@@ -46,6 +46,11 @@ POINTS = [
     ("l2i8s4e1b", "it36l2i8s4e1b", 124, "qnj_it36ctl"),
 ]
 
+# The queue ahead of this chain is 11 sweep points plus a 16-point corruption chain, so the wait is
+# long: the shared 900 min (15 h) default could expire. 40 h is still bounded, and the chain takes its
+# own lock, so a stray second copy exits by itself.
+lib.WAIT_MAX_MIN = 2400
+
 if __name__ == "__main__":
     sys.exit(lib.chain_main("it36e1", "it36corrupt2_chain.log",
                             "=== it36corrupt2 chain end ===", POINTS, BUSY_PAT))

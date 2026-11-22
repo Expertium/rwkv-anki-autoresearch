@@ -546,3 +546,55 @@ Artifacts: `rust_fastrank_check.py`, `rust_fastrank_check.json`, `rust_speed_fas
 any Python<->Rust parity run, because the fast factors are an approximation, not a bit-identical
 truncation. RESULTS.md row 29 (`l2i8n2i8`) is now a loss-gate AND speed pass, so it is a deploy candidate
 once `it36corrupt2` clears it.
+
+## Amendment 14 (2026-11-22 15:35): row 31 is loss-only, E1 is queued and waiting, the iter-17 bundle is zipped and re-verified
+
+**RESULTS row 31 (`l2i8n2i8s8`, card rank-2 int8 + int4 shifts, note rank-2 int8 + int8 shifts,
+1,280/4,608 = 5,888 bits) is LOSS-ONLY.** ahead 0.333683 (delta -0.0001185, ub95 -8.7842e-05,
+p 0.99999999995) and imm 0.306295 (delta +0.0000836, ub95 +0.0001077, p 7.1967e-11) both PASS the
+log-loss gate, but the DEPLOY ENGINE cannot express the recipe: `RWKV_STATE_SHIFT_LEVEL` takes ONE bare
+level, and a per-stream string such as `card:int4,note:int8` is silently dropped by `parse_level`
+(`rust/rwkv-infer/src/model.rs` matches only `intN`), after which the shifts fall back to the WKV FACTOR
+level. Verified by three engine runs on user 107: `card:int4,note:int8` gave predictions IDENTICAL to
+`int8` (max abs diff 0.0) and 0.087 away from `int4`. 768 extra note bits over row 29 buy 0.000019 of
+imm, so int8 note shifts are not free either.
+
+**The 20-minute wedge monitor worked.** The `l2i8n3i8` 0.04-epoch smoke wedged at 14:57:17: all four
+workload processes sat at 0.00 s CPU for 20 min, GPU 1,701 MiB at 2%, and the System log had no disk
+events in the preceding 2 h. At 15:17:18 `it36ladder_lib` killed the tree (`rc=-9`) and the retry passed
+in 1.6 min, so the decay started 15:18:52. Second wedge of the day (the first is the 02:33 F: I/O error)
+and the first one the monitor caught by itself. Four processes from the 14:51 `l2i8n2i8s8` eval are STILL
+alive at 0 CPU and 4-55 MB (pids 22560, 33820, 34852, 33020): the shard parents returned rc=0 while their
+children lingered. They did not block the retry, so they are left alone as debris.
+
+**Chain 15 `it36e1` (E1) is launched and WAITING behind `it36corrupt2`** (lock taken 15:22:07;
+`WAIT_MAX_MIN` raised to 2,400 min inside its own script, because the queue ahead is 11 sweep points plus
+a 16-point corruption chain and the shared 900-min default could expire). E1 is the advisor's
+first-ranked lever: `lambda * mean over streams of the truncated tail energy` added to the TRAINING loss -
+zero state bits, zero deploy cost. Measured tails of row 17's own states
+(`corruption/tail_energy_l2i8s4.json`, 5,388 raw states, users 7213/7044/6960): the card at rank 2 keeps
+0.99381 of the state energy (tail 0.62%), the note at rank 1 keeps 0.96943 (tail 3.06%). Three points, all
+scored against `qnj_it36ctl` exactly like row 17: `l2i8s4pf` (the fused-off control, which separates
+"fused off" from "penalty on"), `l2i8s4e1a` (lambda 1.0 = ~2.4% of the ~1.02 loss) and `l2i8s4e1b`
+(lambda 10.0 = ~25%). E1 must run on the Python per-step QAT loop (`RWKV_QAT_FUSED=0`, the bit-parity
+twin of the fused kernels, because the fused rank-1 kernel truncates inside the kernel), which is slower
+per step, so the three points cost about 4 h. Decision rule recorded in the chain docstring: if neither
+lambda moves the tax, E1 is closed; if `e1b` moves it without wrecking the loss, lambda is refined.
+
+**The iter-17 bundle is zipped and re-verified from the zip alone.** `scratchpad/row17_l2i8s4_bundle.zip`
+(12,610,091 bytes, 180 entries) and the folder hold 177 files / 44.04 MB; `MANIFEST.md` verifies 177/177
+SHA-256 against the folder with no extra files. `verify.cmd` was extracted into the repo root and run: the
+`cargo build --release` finished in 1m18s, the deploy tax printed +0.000335 / +0.000316 (identical to every
+earlier measurement), the strict finiteness check passed on 43,474,944 state values, 4a/4b printed
+`PARITY: PASS` to at most 8.5e-07 per review on 3,465/3,865/12,915/23,455-review histories, 4c printed the
+expected FAIL (the trace's own Python reference is UNQUANTIZED), and the speed step measured 0.804x rev/s
+(median per-user 0.801x). Two defects in `verify.cmd` were found by that run and fixed: it named user 156,
+whose trace the bundle does not ship (the current label DB puts review 1142 of that user in the equalize
+set and the exporter aborts on it), and step 4c - which fails by design - was wired as fatal.
+
+**The Rust finiteness check is being pointed at the real 50-user roster.** `corruption/check_corruption.py`
+already covers this in Python (row 17: 50/50 users, 158,986 state calls, 0 non-finite, 285.8 s), but the
+DEPLOY engine's own check had only ever run on the 3-user parity trace. `corruption/export_corrupt50_traces.py`
+is exporting the 50 longest-history users (5 shards x 10 users; 10 of 50 done at 15:30) so that
+`rust_finite.py --strict` can run on the same users the Python gate used, at the same untruncated history
+lengths.
