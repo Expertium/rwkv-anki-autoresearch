@@ -324,6 +324,13 @@ CANDIDATES = {
                      "card rank-2 int6 + int4 shifts and note rank-1 int8 + int2 shifts "
                      "(1,024/1,920 = 2,944 = 448 BELOW row 35) - gated second point of chain 21",
                      (1024, 1920)),
+    "l2i6s4n1i6s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                      "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
+                     "card rank-2 int6 + int4 shifts and note rank-1 int6 + int3 shifts "
+                     "(1,024/1,728 = 2,752 = 640 BELOW row 35, and the only sub-3,136 rung whose "
+                     "7-user deploy screen sits inside the +0.0005 ceiling on BOTH heads: "
+                     "+0.000343/+0.000435)",
+                     (1024, 1728)),
     "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),
