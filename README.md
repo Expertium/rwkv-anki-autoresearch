@@ -9,4 +9,4 @@ This repo uses the RWKV model + data pipeline from
 (the current top leaderboard entry) and nothing else — the FSRS/LSTM/DASH/… models and
 the benchmark harness were intentionally left out.
 
-This repo is mostly inactive, work is continued in [https://github.com/JSchoreels/anki-rwkv](https://github.com/JSchoreels/anki-rwkv).
+This repo is ***VERY*** messy and mostly inactive, work is continued in [https://github.com/JSchoreels/anki-rwkv](https://github.com/JSchoreels/anki-rwkv).
