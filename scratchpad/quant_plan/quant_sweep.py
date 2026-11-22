@@ -171,6 +171,33 @@ CANDIDATES = {
     "l2i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-2 int8 factors + int4 shifts (1,280/2,304 bits)", None),
+    # ---- E1: the tail-energy penalty (RWKV_QAT_TAIL_PENALTY), zero state bits, zero deploy cost --
+    # The gate's tax is RANK TRUNCATION (`cn8`, full-matrix int8, is +0.000033/+0.000022), and the
+    # measured tail of row 17's own states (corruption/tail_energy_l2i8s4.json: 5,388 raw states on
+    # the eval path, users 7213/7044/6960) is: the card at rank 2 keeps 0.99381 of the state energy
+    # (tail 0.62%), the note at rank 1 keeps 0.96943 (tail 3.06%). The deploy path stores a rank-r
+    # matrix, so a state whose energy is EXACTLY rank-r loses nothing to the truncation; the tail is
+    # precisely the information the deploy path throws away, and the QAT LOSS CANNOT SEE IT, because
+    # the straight-through estimator passes gradient through the truncation as if it were identity.
+    # The penalty adds `lambda * mean over streams of the tail fraction` to the training loss. It is
+    # a RATIO, so it is scale-invariant: shrinking the whole state does not reduce it, only a
+    # steeper spectrum does. Lambda is bracketed by the measured tail (mean ~0.0245 over the four
+    # quantized layers): 1.0 is ~2.4% of the ~1.02 training loss, 10.0 is ~25%.
+    # RWKV_QAT_FUSED=0 is REQUIRED (the fused rank-1 kernel truncates inside the kernel), and it is
+    # also the documented bit-parity twin of the fused kernels, so `l2i8s4pf` separates "fused off"
+    # from "penalty on" - without it a small E1 delta could be misattributed. Added 2026-11-22.
+    "l2i8s4pf": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_QAT_FUSED": "0"},
+                 "row 17's recipe on the Python per-step QAT loop, NO penalty - the E1 control (1,280/2,304)", None),
+    "l2i8s4e1a": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "1.0"},
+                  "row 17 + tail-energy penalty lambda=1.0 (~2.4% of the loss) (1,280/2,304)", None),
+    "l2i8s4e1b": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0"},
+                  "row 17 + tail-energy penalty lambda=10.0 (~25% of the loss) (1,280/2,304)", None),
     "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),

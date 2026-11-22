@@ -13,7 +13,13 @@ cargo build --release --manifest-path rust/rwkv-infer/Cargo.toml      # first bu
 python -m pip install numpy scikit-learn                             # only for the scoring scripts
 ```
 
-`verify.cmd` in the bundle root runs sections 2, 3 and 4 in one go.
+`verify.cmd` in the bundle root runs sections 2, 3 and 4 in one go, plus two informational
+steps (4c and 5). It was run end-to-end on a FRESH EXTRACT of this bundle on 2026-11-22 (Windows 10, cargo
+1.95.0, a shared machine): `cargo build --release` finished in **1m18s**, section 2 printed the same
+**+0.000335 / +0.000316**, section 3 passed in strict mode on **43,474,944 state values**, sections 4a
+and 4b printed **PARITY: PASS**, 4c printed `PARITY: FAIL` as documented, and section 5 measured
+**0.804x** rev/s (median per-user 0.801x). So the recipe in this folder is reproducible from the folder
+alone; no step needs a file that is not in the zip.
 
 ## 1. The shipped deploy weights ARE the shipped `.pth`
 

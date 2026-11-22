@@ -303,3 +303,4 @@ scratchpad/quant_plan/rust_fastrank_preds_live*/
 scratchpad/quant_plan/corruption/_*.txt
 # --- Rust finiteness check on the corruption roster (2026-11-22) ---
 scratchpad/quant_plan/trace_corrupt50/
+scratchpad/row17_l2i8s4_bundle.zip

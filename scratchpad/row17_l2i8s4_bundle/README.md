@@ -7,7 +7,7 @@ rank-2 / rank-1 int8 factors plus int4 token-shift vectors, 3,584 bits per user 
 * `README.md` (this file) - what the recipe is, the numbers, the mechanism, the layout.
 * `verification.md` - the exact commands that reproduce every number in this file.
 * `MANIFEST.md` - every file with its size and SHA-256.
-* `verify.cmd` - builds the Rust engine and runs the two fastest checks (Windows).
+* `verify.cmd` - builds the Rust engine and runs the five checks of `verification.md` (Windows).
 
 Nothing here needs the training data. The Rust engine runs on the included traces alone.
 
