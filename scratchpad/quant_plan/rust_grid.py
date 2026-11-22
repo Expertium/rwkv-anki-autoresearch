@@ -138,6 +138,11 @@ CONFIGS = {
     "l2i4s4n4ef": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
                    "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_EF": "1",
                    "RWKV_EF_ERANK": "1", "RWKV_EF_ELEVEL": "int4"},
+    # The same layout with the ERROR BUFFER at int2 instead of int4: 384 fewer state bits, so
+    # 2,816 total - 768 below row 17 and exactly row 21's size, the layout that failed by 0.00014.
+    "l2i4s4n4ef2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
+                    "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_EF": "1",
+                    "RWKV_EF_ERANK": "1", "RWKV_EF_ELEVEL": "int2"},
 
 }
 

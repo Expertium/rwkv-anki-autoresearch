@@ -789,3 +789,67 @@ future recipe wants the -0.0025 imm at more bits.
 per-user paired deltas with sign counts and bootstrap intervals, and it is what turned a
 three-user-looking win into a measured non-result. Deploy-side probes should go through it rather than
 quoting a 2-3 user mean.
+
+## Amendment 19 (2026-11-22 19:35): the corruption column closes for rows 29-32 - the four note-rank candidates all pass on the 50 longest histories
+
+Rows 29-32 passed the loss gate but had no corruption verdict, so none of them was deployable. The
+verdicts are now in, from `corruption/check_corruption.py` on the **50 longest-mean-review users** with
+their histories **NOT truncated** (`corruption/corrupt50.json`, 2,349,827 reviews / 4,609,289 section
+rows, 62 too-big users excluded and backfilled):
+
+| row | config | card/note bits | total | state calls | p(recall) tensors | non-finite | time |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 29 | `l2i8n2i8` | 1,280/3,840 | 5,120 | 158,986 | 150 | **0** | 5.2 min |
+| 30 | `l3i8n2i8` | 1,792/3,840 | 5,632 | 158,986 | 150 | **0** | 5.3 min |
+| 31 | `l2i8n2i8s8` | 1,280/4,608 | 5,888 | 158,986 | 150 | **0** | 5 min |
+| 32 | `l2i8n3i8` | 1,280/5,376 | 6,656 | 158,986 | 150 | **0** | 5 min |
+
+All four: **PASS**, 50/50 users scored, no NaN-guard skips, zero non-finite state values, zero
+non-finite p(recall). The observation count is IDENTICAL to row 17's (158,986 state calls, 150
+p(recall) tensors), which is the control that the probe really was exercised: a PASS with fewer
+observations would be INCOMPLETE, not a pass. So the note's rank ladder is clean at the history lengths
+that matter, not just on the short parity traces.
+
+**The scheduling problem this exposed, and the tool that fixes it.** Every `it36*_chain.py` waiter
+decides "the GPU is free" by counting matching processes (`it36ladder_lib.running`) and a chain hands
+off from one point to the next with NO idle gap, so a job that is not part of a chain cannot wait for a
+free GPU without racing a handoff - the race is exactly what stranded the queue on 2026-11-22 16:42
+(a `rust_grid` run matched BUSY_PAT and `it36shrink` sat for 10+ min with the GPU at 1%). Meanwhile
+Andrew's instruction is that a corruption check must NOT be left pending once a row passes.
+`corruption/gpu_hold.py` resolves it: a CPU-only, self-expiring process whose command line carries a
+BUSY_PAT token (`--tag rust_grid.py`), so it holds the queue "busy" for a bounded window while the
+checks run back to back inside it, and it cannot create a second GPU workload because it only sleeps.
+The four checks above ran in one such window (19:10-19:33), started the moment the active chain logged
+its end marker. The hold ALWAYS exits after `--secs`, so a crash cannot wedge the queue.
+
+**Still open on the Rust side.** The Python/eval-path gate is now clean for rows 15-18 and 29-32. The
+deploy engine has its OWN non-finiteness guard (`RWKV_FINITE_CHECK`, `--strict`), and it has still only
+seen the 3-user parity trace. `corruption/export_corrupt50_traces.py` is producing the 50 long-history
+traces for that check (`trace_corrupt50/`, 39/50 complete at 19:35); `corruption/corrupt50_finite_run.py`
+runs it over every complete trace once the export finishes.
+
+## Amendment 20 (2026-11-22 19:45): int6/int5 priced on 21 long histories - chain 17's expectation is on record
+
+Chain 17 (`it36int6`) was queued on a 2-user short-trace PTQ probe that read int6 as free. Its own
+calibration test had already invalidated that probe (it reproduced a known note tax at 54% and got a
+known card tax's sign wrong), and Amendment 18's method lesson said to route deploy-side probes through
+`corruption/wide_screen.py`. That has now been done, on the longest histories available:
+
+| config | bits card/note | total | ahead delta [95%] | imm delta [95%] | better on |
+| --- | --- | --- | --- | --- | --- |
+| `l2i6s4` | 1,024/1,920 | 2,944 | +0.000442 [+0.000232, +0.000701] | +0.000726 [+0.000420, +0.001100] | 2/21 (both heads) |
+| `l2i5s4` | 896/1,728 | 2,624 | +0.001458 [+0.000826, +0.002251] | +0.002189 [+0.001389, +0.003065] | 1/21 (both heads) |
+
+21 users, per-user PAIRED deltas against `l2i8s4` inside each batch, 2,000 bootstrap resamples
+(`rust_wide_screen_fast_wide3_int6long_it36int6wide_b4.json`). The sign is consistent on 19-20 of 21
+users, so the means are not carried by an outlier. The 3-user read of the same two rungs
+(+0.000345/+0.001551 imm) understated int6 by 2.1x.
+
+**What it means for chain 17.** PTQ is not QAT, and QAT recovers roughly half of a PTQ tax on this
+sample - but row 17's own QAT imm tax is +0.000327 with ub95 +0.000390 against the +0.0005 ceiling, so
+`l2i6s4` would have to win back almost the whole +0.0007 PTQ gap to pass. The chain still runs, because
+a 750-user roster is cheaper than a wrong assumption and the measured answer is the deliverable, but the
+expectation is now on record: **int6 is at best a coin flip, `l2i5s4` and `l2i4s4n4` are expected to
+fail.** The 2,304-bit bottom rung was not measured: `l2i4s4n4` is a `quant_sweep` candidate name that
+does not exist in `rust_grid`'s CONFIGS, so that batch ended in a KeyError after the four configs above
+were complete; with int5 at +0.0022 imm it was not re-run.
