@@ -95,6 +95,15 @@ CONFIGS = {
     "l2i8n3i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:3:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
 
+    # MIXED factor precision (2026-11-22): chain 17 coarsens BOTH streams at once (`card:2:int6,note:1:int6`),
+    # so it cannot say WHERE the int6 tax comes from. These hold one stream at int8 and coarsen the other,
+    # at row 17's layout: card int6 + note int8 = 1,024 + 2,304 = 3,328 (256 BELOW row 17), and card int8
+    # + note int6 = 1,280 + 1,920 = 3,200 (384 BELOW row 17). Attribution screens, not candidates.
+    "l2i6c": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+              "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    "l2i6n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int6", "RWKV_QUANT_SHIFTS": "1",
+              "RWKV_STATE_SHIFT_LEVEL": "int4"},
+
     # THE int6/int5 FACTOR RUNGS (2026-11-22). Every rung below row 17 that has been tested so
     # far used int4 factors (rows 19-26); int6 and int5 were NEVER tried, although the ENGINE has
     # always supported them (parse_level, model.rs:2104) and only the Python QAT path lacks the

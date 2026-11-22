@@ -853,3 +853,29 @@ expectation is now on record: **int6 is at best a coin flip, `l2i5s4` and `l2i4s
 fail.** The 2,304-bit bottom rung was not measured: `l2i4s4n4` is a `quant_sweep` candidate name that
 does not exist in `rust_grid`'s CONFIGS, so that batch ended in a KeyError after the four configs above
 were complete; with int5 at +0.0022 imm it was not re-run.
+
+## Amendment 21 (2026-11-22 20:10): the deploy engine's own finiteness guard clears 40 long histories
+
+Andrew's blowup gate was clean in PYTHON first (rows 15-18 and 29-32, `check_corruption.py` on the
+50 longest-mean-history users). The DEPLOY engine has its own guard (`RWKV_FINITE_CHECK` with
+`--strict`, which exits 3 on any non-finite value) and it had only ever seen the 3-user parity trace,
+so the implementation that actually ships had never been exercised at the history lengths the gate is
+about. `corruption/export_corrupt50_traces.py` reached the driver's minimum of 40 complete traces, and
+`corruption/corrupt50_finite_run.py --tag corrupt50` ran over all of them inside the active chain's
+point window (CPU-only engine, so no GPU contention).
+
+| config | compressions | state values | shift-vector values | p(recall) values | non-finite |
+| --- | --- | --- | --- | --- | --- |
+| `plain` | 0 (nothing quantized) | 0 | 0 | 3,459,629 | **0** |
+| `l2i8s4` (row 17) | 7,053,440 | 7,222,722,560 | 451,420,160 | 3,459,629 | **0** |
+
+`rc=0` for both configs over all 40 users: zero bad values in every per-user record, on the RAW and
+the QUANTIZED side of every state compression and on every shift vector, plus zero planted failures
+(the guard's own self-test). Largest |state| 0.553, largest |shift vector|
+5.380 - i.e. the states are small and stay small; nothing is near an overflow.
+
+On histories of up to 95,597 reviews this is about 45,000x the Python gate's 158,986 state calls on the
+same roster, so the two implementations agree where it matters. Note: the engine's `[finite] TOTAL`
+line reports zeros because its cumulative counter does not aggregate across users - the per-user
+records are the numbers above. The last 10 traces were still exporting; re-run with
+`--tag corrupt50_rest` when they land.
