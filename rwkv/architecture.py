@@ -148,7 +148,13 @@ if _lora_env:
 # wholesale, discarding every mutation while the banner still printed. Every track-2 run therefore ran
 # with the QAT env SILENTLY INERT. Unlike the capacity hooks above (which the override legitimately
 # owns), QAT scope is an orthogonal deploy-simulation overlay that must survive the override.
-_QMAX = {"int8": 127.0, "int4": 7.0, "int3": 3.0, "int2": 1.0, "fp32": float("inf")}
+# int6/int5 are NEW here (2026-11-22). They have always existed in the Rust deploy engine
+# (`parse_level`, model.rs:2104) and in rust_grid.QBITS, but not in the training path, so no QAT
+# run could train for them. Additive only: no existing recipe names them. Motive is axis 1 -- the
+# factor-precision rungs BELOW int8 at row 17's exact layout, e.g. card:2:int6 + note:1:int6 =
+# 1,024/1,920 bits, which is 640 bits under row 17's 1,280/2,304.
+_QMAX = {"int8": 127.0, "int6": 31.0, "int5": 15.0, "int4": 7.0, "int3": 3.0, "int2": 1.0,
+         "fp32": float("inf")}
 _QAT_NAME = {"card": "card_id", "deck": "deck_id", "note": "note_id",
              "preset": "preset_id", "user": "user_id"}
 

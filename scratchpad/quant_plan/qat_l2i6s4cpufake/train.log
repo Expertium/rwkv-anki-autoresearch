@@ -1,0 +1,18 @@
+[QAT-LOWRANK] set: card_id=rank2/fq31.0, note_id=rank1/fq31.0
+[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
+Running on cpu. Training without CUDA is supported but will be significantly slower.
+[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation seed set separately)
+[augmentation] training fetch seed = 1234 (FIXED (disabled, run-to-run variance ~0))
+Loading model: C:\Users\Andrew\rwkv-anki-autoresearch\pretrain\rwkv\opt_iter36/rwkv_iter36_558.pth
+[wd] reset optimizer per-group weight_decay to intended [0.01, 0.01, 0.01, 0.01, 0.0] after loading champion optim
+[lr] reset optimizer lr/initial_lr to intended [0.001, 0.001, 0.001, 0.001, 0.001] after loading champion optim
+Trainable parameters: 192800
+Number of groups: 629
+[bench] cap 3 steps, warmup 30 excluded from timing
+
+[(43, 32769, 40960, 13950)]
+Got: 1.0022s
+0 0 1, all: 0.837127, ahead: 0.3954 (0.3949), imm: 0.442
+
+[(73, 245761, 253952, 15029)]
+Got: 0.0060s

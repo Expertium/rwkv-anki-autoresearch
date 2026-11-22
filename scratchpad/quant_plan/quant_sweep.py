@@ -48,8 +48,14 @@ STATE_FLOATS_PER_LAYER = 32 * 32 + 2 * 32  # 1088
 # Constraint 2: "int4" = plain fp32 -> int4 of the whole state; the bar is half of that.
 INT4_BITS = {s: LAYERS[s] * STATE_FLOATS_PER_LAYER * 4 for s in LAYERS}
 BAR_BITS = {s: INT4_BITS[s] // 2 for s in LAYERS}
-_QMAX = {"int8": 127.0, "int4": 7.0, "int3": 3.0, "int2": 1.0, "fp32": float("inf")}
-_QBITS = {"int8": 8, "int4": 4, "int3": 3, "int2": 2, "fp32": 32}
+# int6/int5 are NEW here (2026-11-22). They have always existed in the Rust deploy engine
+# (`parse_level`, model.rs:2104) and in rust_grid.QBITS, but not in the training path, so no QAT
+# run could train for them. Additive only: no existing recipe names them. Motive is axis 1 -- the
+# factor-precision rungs BELOW int8 at row 17's exact layout, e.g. card:2:int6 + note:1:int6 =
+# 1,024/1,920 bits, which is 640 bits under row 17's 1,280/2,304.
+_QMAX = {"int8": 127.0, "int6": 31.0, "int5": 15.0, "int4": 7.0, "int3": 3.0, "int2": 1.0,
+         "fp32": float("inf")}
+_QBITS = {"int8": 8, "int6": 6, "int5": 5, "int4": 4, "int3": 3, "int2": 2, "fp32": 32}
 
 # name -> (env overrides, comment, bits override). Every candidate also gets RWKV_NO_JIT=1.
 CANDIDATES = {
@@ -198,6 +204,50 @@ CANDIDATES = {
                    "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
                    "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0"},
                   "row 17 + tail-energy penalty lambda=10.0 (~25% of the loss) (1,280/2,304)", None),
+    # ---- E1 applied to the two NEAR-MISS shrink layouts (chain 16, gated on chain 15 result) ----
+    # Row 21's layout (`l2i8s4n4`: card rank-2 int8 + int4 shifts, note rank-1 int4 + int4, 2,816
+    # bits) failed the log-loss gate by 0.00014 on imm (+0.000328/+0.000638). Row 22's layout
+    # (`l3i8s4n4`: card rank-3 int8 + the same int4 note, 3,328 bits) failed by only 0.000025
+    # (+0.000297/+0.000525). Row 17 is 3,584 bits, so these save 768 and 256 bits.
+    # Both failures are the note's rank-1 int4 tax, and the note's rank-1 int8 tax alone is
+    # +0.000258 imm, so a penalty that removes part of the note's truncation tax could flip them.
+    "l2i8s4n4e1a": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int4",
+                     "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                     "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "1.0"},
+                    "row 21's layout + tail penalty lambda=1.0 (1,280/1,536 = 2,816)", None),
+    "l2i8s4n4e1b": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int4",
+                     "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                     "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0"},
+                    "row 21's layout + tail penalty lambda=10.0 (1,280/1,536 = 2,816)", None),
+    "l3i8s4n4e1a": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int4",
+                     "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                     "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "1.0"},
+                    "row 22's layout + tail penalty lambda=1.0 (1,792/1,536 = 3,328)", None),
+    "l3i8s4n4e1b": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int4",
+                     "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                     "RWKV_QAT_FUSED": "0", "RWKV_QAT_TAIL_PENALTY": "10.0"},
+                    "row 22's layout + tail penalty lambda=10.0 (1,792/1,536 = 3,328)", None),
+    # THE int6/int5 FACTOR RUNGS (2026-11-22) -- axis 1. Row 17's EXACT layout (card rank 2, note
+    # rank 1, int4 shifts), with only the FACTOR PRECISION changed, so each point isolates it.
+    # Every earlier rung below row 17 used int4 factors; int6/int5 were never runnable at all
+    # because _QMAX lacked the keys (patched above). Bits:
+    #   l2i6s4   card 2x2x32x6 + 64x4 = 1,024  note 3x(2x1x32x6 + 64x4) = 1,920  = 2,944
+    #   l2i5s4   card 2x2x32x5 + 64x4 =   896  note 3x(2x1x32x5 + 64x4) = 1,728  = 2,624
+    #   l2i4s4n4 card 2x2x32x4 + 64x4 =   768  note 3x(2x1x32x4 + 64x4) = 1,536  = 2,304
+    # A 2-user Rust PTQ probe on the row-17 checkpoint said int6 costs +0.000003 ahead / +0.000002
+    # imm vs int8 and int5 +0.000017/-0.000073 (rust_grid_int6_probe.json) -- i.e. no visible
+    # penalty for 640/960 fewer bits. That probe CANNOT settle the gate: calibrated against rows 21
+    # and 23 it reproduces the note-int4 cost at only 54% and gets the card-int4 sign WRONG. So
+    # these are full 750-user QAT points, not PTQ.
+    "l2i6s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+               "row 17 layout at int6 factors (1,024/1,920 = 2,944 bits)", None),
+    "l2i5s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int5,note:1:int5",
+                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+               "row 17 layout at int5 factors (896/1,728 = 2,624 bits)", None),
+    "l2i4s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int4,note:1:int4",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+                 "row 17 layout at int4 factors, the bottom rung (768/1,536 = 2,304 bits)", None),
     "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),

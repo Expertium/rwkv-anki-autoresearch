@@ -54,6 +54,11 @@ CONFIGS = {
              "RWKV_STATE_SHIFT_LEVEL": "int8"},
     "l2i8s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
                "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    "l2i8s4f": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},  # row 17 + E2 solver
+    "l2i8s4f1": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1",
+                 "RWKV_LOWRANK_FAST_ITERS": "1"},  # row 17 + E2 solver, 1 iteration
     "l3i8s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:3:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
                "RWKV_STATE_SHIFT_LEVEL": "int4"},
     "l1i4h": {"RWKV_STATE_LOWRANK_SCOPE": "card:1:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
@@ -89,6 +94,29 @@ CONFIGS = {
     # cannot be expressed on the deploy side yet; that is a small engine gap, recorded in GPU_RUN_BOARD.
     "l2i8n3i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:3:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
+
+    # THE int6/int5 FACTOR RUNGS (2026-11-22). Every rung below row 17 that has been tested so
+    # far used int4 factors (rows 19-26); int6 and int5 were NEVER tried, although the ENGINE has
+    # always supported them (parse_level, model.rs:2104) and only the Python QAT path lacks the
+    # _QMAX keys. The card keeps rank 2 and the note rank 1 (row 17's exact layout), so the ONLY
+    # change against l2i8s4 is factor precision: 6 bits instead of 8. bits_for:
+    #   l2i6s4  card 2x2x32x6 + 64x4 = 1,024   note 3x(2x1x32x6 + 64x4) = 1,920   total 2,944
+    #   l2i5s4  card 2x2x32x5 + 64x4 =   896   note 3x(2x1x32x5 + 64x4) = 1,728   total 2,624
+    # i.e. 640 and 960 bits below row 17. The old rank-1 PTQ grid (l1i4/l1i5/l1i6/l1i8,
+    # RESULTS.md) said precision above int4 does not pay AT RANK 1, because the residual there IS
+    # the rank truncation; but that was rank 1, and PTQ on a checkpoint adapted to int8. At rank 2
+    # on a QAT-trained checkpoint the question is open.
+    "l2i6s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    "l2i5s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int5,note:1:int5", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    # PROBE CALIBRATION (2026-11-22): l2i4s4 is row 23's layout and l2i8s4n4 is row 21's, and both
+    # have 750-user QAT numbers in RESULTS.md, so running all three in one grid makes the 2-user
+    # Rust PTQ probe checkable against a known delta.
+    "l2i4s4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int4,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    "l2i8s4n4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
 
 }
 

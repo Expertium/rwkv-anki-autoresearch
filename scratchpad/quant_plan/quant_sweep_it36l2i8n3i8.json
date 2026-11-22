@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8n3i8\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i8n3i8",
+      "tag": "ql2i8n3i8_it36l2i8n3i8",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:3:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "note rank-3 int8: the rank ladder on the note, 5,376 of the 6,528 note bits",
+      "bits": {
+        "card": 1280,
+        "note": 5376
+      },
+      "rc": 0,
+      "secs": 3362.625,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 1.4806666666664558e-05,
+          "ub95": 3.263212719970031e-05,
+          "p_worse": 0.21508125663970862,
+          "mean_cur": 0.33381661733333334,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.00012236533333333306,
+          "ub95": 0.00014152972328071122,
+          "p_worse": 2.022943448664255e-30,
+          "mean_cur": 0.3063337626666666,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

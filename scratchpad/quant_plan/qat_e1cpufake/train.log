@@ -1,0 +1,36 @@
+[QAT-LOWRANK] set: card_id=rank2/fq127.0, note_id=rank1/fq127.0
+[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
+Running on cpu. Training without CUDA is supported but will be significantly slower.
+[determinism] training-process RNG + cuBLAS/cuDNN pinned (augmentation seed set separately)
+[augmentation] training fetch seed = 1234 (FIXED (disabled, run-to-run variance ~0))
+Loading model: C:\Users\Andrew\rwkv-anki-autoresearch\pretrain\rwkv\opt_iter36/rwkv_iter36_558.pth
+[wd] reset optimizer per-group weight_decay to intended [0.01, 0.01, 0.01, 0.01, 0.0] after loading champion optim
+[lr] reset optimizer lr/initial_lr to intended [0.001, 0.001, 0.001, 0.001, 0.001] after loading champion optim
+Trainable parameters: 192800
+Number of groups: 629
+[bench] cap 3 steps, warmup 30 excluded from timing
+
+[(43, 32769, 40960, 13950)]
+Got: 0.8622s
+[tail-penalty] lambda=1.0 card=0.002918(n=23) note=0.038505(n=102)
+0 0 1, all: 0.857803, ahead: 0.3954 (0.3948), imm: 0.442
+
+[(73, 245761, 253952, 15029)]
+Got: 0.0040s
+[tail-penalty] lambda=1.0 card=0.001662(n=189) note=0.007219(n=570)
+0 1 2, all: 1.087890, ahead: 0.3442 (0.3481), imm: 0.737
+
+[(41, 49153, 57344, 15320)]
+Got: 0.0040s
+[tail-penalty] lambda=1.0 card=0.002475(n=52) note=0.012885(n=156)
+0 2 3, all: 0.826018, ahead: 0.1721 (0.1684), imm: 0.648
+MODEL SAVED.
+Elapsed: 688.0370497703552
+Steps per second: 0.004360230311727114
+loss_n per second: 28.36039135757706
+5002 ahead_loss: 0.391 (0.386), imm_loss: 0.380, imm_n: 227995
+5004 ahead_loss: 0.364 (0.363), imm_loss: 0.375, imm_n: 71705
+Mean ahead validation loss: 0.3843 (0.3804), imm: 0.3786, validation n: 299700
+Killed processes.
+[QAT-LOWRANK] set: card_id=rank2/fq127.0, note_id=rank1/fq127.0
+[QAT-SHIFT] state_shift_qmax set: card_id=7.0, note_id=7.0
