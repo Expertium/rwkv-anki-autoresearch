@@ -126,13 +126,14 @@ GitHub (2026-11-21). Do it EXACTLY like this, in this order, and nothing else:
 
     cd /d C:\Users\Andrew\rwkv-anki-autoresearch
     git add scratchpad/quant_plan/RESULTS.md
-    git status --short --cached
+    git diff --cached --name-status
     git commit -m "Hourly supervisor: record landed sweep results in RESULTS.md"
     git push origin main
 
 Rules for that push, all of them hard:
 
-- `git status --short --cached` must list ONLY `scratchpad/quant_plan/RESULTS.md` (plus, if you also
+- `git diff --cached --name-status` (run it, do not use `git status --short --cached`: this checkout's
+  git rejects that option with exit 129) must list ONLY `scratchpad/quant_plan/RESULTS.md` (plus, if you also
   edited them in this same run, `scratchpad/quant_plan/NOTES.md` and
   `optimization/GPU_RUN_BOARD.md`). If ANY other path is staged, run
   `git reset` and log `PUSH ABORTED: unexpected staged files` - do not commit, do not push.
