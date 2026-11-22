@@ -1018,3 +1018,27 @@ Screen artifacts: `rust_grid_it36wide6.json` (absolutes), `rust_wide_screen_it36
 So int6 is a knee on both streams: the 640 bits from int8 take +0.000073/+0.000054, the next 320 bits (card int6 -> int5) take +0.000160/+0.000184, and int4 breaks both heads. This matches the CPU deploy screen run beside the chain (`it36wide6`: the note's int6 -> int5 step costs +0.000605/+0.000747 for 192 bits), so two independent methods agree on the knee. QAT does recover part of the PTQ price, which is why these rungs need GPU runs rather than screens alone.
 
 Consequence: 2,944 bits (row 45) is the axis-1 frontier, and the one measured-cheap knob left is SHIFT width (row 35: the note's int4 -> int3 step cost +0.000011/+0.000037 for 192 bits). A CPU screen (`rust_grid.py --tag it36wide7`) is pricing the card's shift ladder (`l2i6s3n1i6s4` = 2,880 with only the card's shifts cut, `l2i6s3n1i6s3` = 2,688 with both streams' shifts at int3) before any further GPU time goes into it. Chain 18 (`it36int6card`) started as soon as the row-45 finiteness check released the GPU.
+
+## Amendment 33 (2026-11-23 02:45): the SHIFT-width ladder is closed too - 2,944 bits is the floor of the uniform design space
+
+`it36wide7` is the CPU deploy screen for the last knob the factor ladder left open. Base = row 45's own
+`l2i6s4` (1,024/1,920), so these are PAIRED per-user deltas with a 2,000-resample bootstrap, not
+differences of marginal means (`rust_wide_screen_it36wide7.json`, `rust_grid_it36wide7.json`):
+
+    config          bits card/note   d ahead                       d imm                      verdict
+    l2i6s3n1i6s4      960/1,920      +0.000071 [-0.000082,+0.000245] +0.000497 [+0.000044,+0.001095]  REJECT
+    l2i6s3n1i6s3      960/1,728      +0.000139 [-0.000049,+0.000317] +0.000461 [+0.000031,+0.000993]  REJECT
+    l2i6s2n1i6s3      896/1,728      +0.000848 [+0.000253,+0.001611] +0.002195 [+0.000660,+0.004423]  REJECT
+
+The ahead head is nearly free on the two int3 rungs (the card's own shift cut is the one that costs),
+but the immediate head is not: even the LOW end of each imm interval is at row 45's remaining imm
+headroom (row 45 imm = +0.000381, ub95 +0.000446 of the +0.0005 bound, i.e. 0.89x used), and QAT
+historically recovers only about a tenth of a PTQ imm price. So no QAT point is spent on any shift rung.
+
+Consequence: the factor ladder closed at int6 (rows 46/47) and the shift ladder closes here, so 2,944
+bits (row 45) is the floor of the uniform (rank, factor width, shift width) design space. The remaining
+axis-1 claims are (a) chain 22's 2,752-bit `l2i6s4n1i6s3`, which is row 45 minus the NOTE's 192 shift
+bits - the note's share of the shift cost, priced by row 35 at +0.000011/+0.000037 - and (b) TAX removal
+at a fixed size: the fixed-basis note codec (chain 19) and the E1 tail-energy penalty (chains 23/24).
+Row 35's deck of "the note's int4 -> int3 shift step is cheap" survives; what this screen adds is that
+the CARD's shift bits are NOT cheap, which is why the both-stream rung costs what the card's rung costs.

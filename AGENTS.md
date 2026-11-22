@@ -75,11 +75,16 @@
   top of row 17 for 640 bits. **int6 is a KNEE on both streams**: the next steps cost 6x more per bit
   (row 46 `l2i5s4` 2,624: +0.000160/+0.000184, FAIL imm 1.13x; row 47 `l2i4s4n4` 2,304: FAIL
   1.34x/2.25x), and the independent CPU screen agrees (`it36wide6`: the note's int6 -> int5 step
-  costs +0.000605/+0.000747 for 192 bits). Every FACTOR rung below 2,944 is closed, so **the only
-  measured-cheap knob left is SHIFT width** (row 35: the note's int4 -> int3 step cost
-  +0.000011/+0.000037 for 192 bits) - priced in `rust_grid.py` `CONFIGS` as `l2i6s3n1i6s4` (2,880),
-  `l2i6s3n1i6s3` (2,688) and `l2i6s2n1i6s3` (2,624). Chain 22's 2,752 point (`l2i6s4n1i6s3`) is the
-  other live sub-3,136 claim (PTQ +0.000343/+0.000435).
+  costs +0.000605/+0.000747 for 192 bits). Every FACTOR rung below 2,944 is closed, so
+  SHIFT width is the one remaining knob, and the paired `it36wide7` screen
+  (2026-11-23 02:45, base = row 45's own `l2i6s4`) CLOSED it on the immediate head: the CARD's
+  int4 -> int3 shift cut costs +0.000071 ahead / +0.000497 imm [+0.000044, +0.001095] (2,880 bits),
+  both streams at int3 cost +0.000139/+0.000461 (2,688), and the extra card int2 rung costs
+  +0.000848/+0.002195 (2,624). Row 45's imm head already uses 0.89x of the ceiling, so no shift rung
+  can pass, and no QAT point is queued for one. **So 2,944 bits (row 45) is the floor of the uniform
+  (rank, factor width, shift width) design space.** The last live sub-2,944 claim is chain 22's 2,752
+  point (`l2i6s4n1i6s3` = row 45 minus the NOTE's 192 shift bits, which row 35 priced at
+  +0.000011/+0.000037 on 750 users); the CARD owns the shift cost, not the note.
 - **Deploy screening:** `scratchpad/quant_plan/corruption/wide_screen.py` turns any number of
   `rust_grid.py` grids into per-user PAIRED deltas against a base config (2000-resample bootstrap,
   seed 20261119). Its `tags` list takes several grids, so a screen can be run in batches under

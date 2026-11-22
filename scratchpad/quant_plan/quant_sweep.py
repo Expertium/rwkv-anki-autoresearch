@@ -296,6 +296,25 @@ CANDIDATES = {
     "l2i4s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int4,note:1:int4",
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                  "row 17 layout at int4 factors, the bottom rung (768/1,536 = 2,304 bits)", None),
+    # THE SHIFT-WIDTH RUNGS (2026-11-23): row 35 measured the note's int4 -> int3 SHIFT step at only
+    # +0.000011/+0.000037 for 192 bits, and int6 is now the FACTOR knee on both streams, so shift width
+    # is the only measured-cheap knob left below row 45's 2,944 bits. A CPU deploy screen
+    # (`rust_grid.py --tag it36wide7`) prices the same three layouts; the QAT run is what decides the
+    # gate, because the screen is PTQ against weights trained for int8 factors.
+    # Bit math: card 2x2x32xq + 64xs = 768+64s, note 3x(2x1x32xq + 64xs) = 3x(384+64s).
+    #   l2i6s3n1i6s4   card  960  note 1,920 = 2,880   (card shifts int4 -> int3 only)
+    #   l2i6s3n1i6s3   card  960  note 1,728 = 2,688   (both streams' shifts at int3)
+    #   l2i6s2n1i6s3   card  896  note 1,728 = 2,624   (card shifts int3 -> int2 as well)
+    "l2i6s3n1i6s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                      "RWKV_QAT_SHIFT_SCOPE": "card:int3,note:int4"},
+                     "row 45 with the CARD's shifts int4 -> int3 (960/1,920 = 2,880 bits)", None),
+    "l2i6s3n1i6s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                      "RWKV_QAT_SHIFT_SCOPE": "card:int3,note:int3"},
+                     "row 45 with BOTH streams' shifts int4 -> int3 (960/1,728 = 2,688 bits)", None),
+    "l2i6s2n1i6s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                      "RWKV_QAT_SHIFT_SCOPE": "card:int2,note:int3"},
+                     "row 45 with the card's shifts int2 and the note's int3 (896/1,728 = 2,624 bits)",
+                     None),
     # THE NOTE-ONLY FIXED-BASIS CANDIDATES (2026-11-22, after the leave-one-user-out measurement).
     # WHY THE NOTE ONLY: at rank 2 the CARD is reproduced EXACTLY for 1,280 bits, and the best fixed
     # basis on the card needs m=16 (2,304 bits) to reach only 0.9596 held out - the card is the wrong

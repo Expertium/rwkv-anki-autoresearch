@@ -96,6 +96,21 @@ CONFIGS = {
                "chain 17 point 2 (int5 card factors + int6 note factors, 2,624 bits)"),
     "l2i4s4n4": (RUN / "qat_it36l2i4s4n4" / "qat_124.pth", "l2i4s4n4",
                  "chain 17 point 3 (int4 card factors + int4 note factors, 2,304 bits)"),
+    # THE SHIFT-WIDTH RUNGS (2026-11-23): shift width is the only measured-cheap knob left below
+    # row 45's 2,944 bits. The winner of the pair's own sweep gets its finiteness check here.
+    "l2i6s3n1i6s4": (RUN / "qat_it36l2i6s3n1i6s4" / "qat_124.pth", "l2i6s3n1i6s4",
+                     "shift rung 1 (card shifts int4 -> int3, 960/1,920 = 2,880 bits)"),
+    "l2i6s3n1i6s3": (RUN / "qat_it36l2i6s3n1i6s3" / "qat_124.pth", "l2i6s3n1i6s3",
+                     "shift rung 2 (both streams' shifts int3, 960/1,728 = 2,688 bits)"),
+    "l2i6s2n1i6s3": (RUN / "qat_it36l2i6s2n1i6s3" / "qat_124.pth", "l2i6s2n1i6s3",
+                     "shift rung 3 (card shifts int2, note int3, 896/1,728 = 2,624 bits)"),
+    # CHAIN 18 (it36int6card, 2026-11-23): the MIXED-precision int6 points, which say WHERE the
+    # int6 tax comes from. Both sit ABOVE row 45's 2,944 bits (3,328 and 3,200), so they are
+    # diagnostic rows rather than frontier rows - but each needs its finiteness check like any row.
+    "l2i6c": (RUN / "qat_it36l2i6c" / "qat_124.pth", "l2i6c",
+              "chain 18 point 1 (card rank-2 int6 + note rank-1 int8, 3,328 bits)"),
+    "l2i6n": (RUN / "qat_it36l2i6n" / "qat_124.pth", "l2i6n",
+              "chain 18 point 2 (card rank-2 int8 + note rank-1 int6, 3,200 bits)"),
     # CHAIN 24: the E1 tail penalty on row 45's frontier layout (2,944 bits). Registered now because
     # chain 24 picks the lambda whose deploy deltas beat the penalty-free control and runs the
     # matching combination; a passing combination then needs its own finiteness check like any row.
