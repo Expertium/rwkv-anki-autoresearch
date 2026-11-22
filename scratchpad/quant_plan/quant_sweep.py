@@ -248,6 +248,21 @@ CANDIDATES = {
     "l2i4s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int4,note:1:int4",
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                  "row 17 layout at int4 factors, the bottom rung (768/1,536 = 2,304 bits)", None),
+
+    # MIXED precision (2026-11-22 20:20): the ladder above coarsens BOTH streams at once, so a result cannot say
+    # WHERE the int6 tax comes from. An 11-user deploy screen says it is mostly the NOTE's: card int6 + note
+    # int8 (`l2i6c`) costs +0.000115 imm [+0.000018,+0.000218] and +0.000052 ahead [-0.000007,+0.000109], while
+    # card int8 + note int6 (`l2i6n`) costs +0.000307 imm [+0.000124,+0.000558] and +0.000268 ahead
+    # [+0.000079,+0.000601] (paired vs l2i8s4, rust_wide_screen_it36int6split.json). So the CARD's int6 is
+    # nearly free at PTQ and is the one worth a 750-user QAT point.
+    "l2i6c": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int8",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+              "row 17 layout with the CARD at int6 and the note left at int8 (1,024/2,304 = 3,328 bits)",
+              None),
+    "l2i6n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int6",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
+              "row 17 layout with the NOTE at int6 and the card left at int8 (1,280/1,920 = 3,200 bits)",
+              None),
     "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),

@@ -879,3 +879,15 @@ same roster, so the two implementations agree where it matters. Note: the engine
 line reports zeros because its cumulative counter does not aggregate across users - the per-user
 records are the numbers above. The last 10 traces were still exporting; re-run with
 `--tag corrupt50_rest` when they land.
+
+
+## Amendment 22 (2026-11-22 20:35): the int6 tax splits - the CARD-only int6 rung is nearly free, the NOTE's is not
+
+The 21-user int6 price (Amendment 20: `l2i6s4` +0.000442 ahead / +0.000726 imm) is now split by quantizing one stream at a time on 11 long-history users, as per-user PAIRED deltas against `l2i8s4` (`rust_wide_screen_it36int6split.json`; absolutes `rust_grid_it36int6split.json`):
+
+| config | card bits | note bits | total | d ahead (95% CI) | d imm (95% CI) |
+|---|---:|---:|---:|---|---|
+| `l2i6c` card int6, note int8 | 1,024 | 2,304 | 3,328 | +0.000052 [-0.000007, +0.000109] better 2/11 | +0.000115 [+0.000018, +0.000218] better 2/11 |
+| `l2i6n` card int8, note int6 | 1,280 | 1,920 | 3,200 | +0.000268 [+0.000079, +0.000601] better 0/11 | +0.000307 [+0.000124, +0.000558] better 1/11 |
+
+`l2i6c` is 256 bits BELOW row 17 and its ahead interval contains zero; `l2i6n` is 128 bits below the card rung and worse on both heads. The card rung is therefore the axis-1 point worth a 750-user QAT run: chain 18 (`it36int6card`, points `l2i6c` then `l2i6n`, 124 steps vs `qnj_it36ctl`) is queued behind chain 17 (`it36int6`). Both configs were added to `rust_grid.CONFIGS` and `quant_sweep.CANDIDATES`; the deploy engine's `parse_level` already accepts int6, so `card:2:int6,note:1:int8` is expressible and this rung is DEPLOYABLE, unlike the per-stream-shift rows (31/34/37).
