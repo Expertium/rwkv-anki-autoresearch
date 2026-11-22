@@ -1,0 +1,89 @@
+{
+ "weights": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\rust_artifacts\\it36l2i8_124.safetensors",
+ "users": [
+  107,
+  110,
+  116,
+  120,
+  121,
+  128,
+  136,
+  146,
+  150,
+  151,
+  156,
+  159,
+  162,
+  165,
+  175,
+  176,
+  187,
+  198
+ ],
+ "configs": [
+  "plain",
+  "l2i8s4"
+ ],
+ "reps": 3,
+ "speed": {
+  "plain": {
+   "off_rev_s": 2877.466063348416,
+   "on_rev_s": 2858.067415730337,
+   "rev_ratio": 0.9932584269662922,
+   "off_states_s": 5982.094444444445,
+   "on_states_s": 5921.038888888889,
+   "states_ratio": 0.9897936155768557,
+   "off_samples": [
+    2832.60579064588,
+    2851.659192825112,
+    2877.466063348416
+   ],
+   "on_samples": [
+    2807.593818984548,
+    2801.409691629956,
+    2858.067415730337
+   ],
+   "off_median_rev_s": 2851.659192825112,
+   "on_median_rev_s": 2807.593818984548,
+   "median_ratio": 0.9845474613686537
+  },
+  "l2i8s4": {
+   "off_rev_s": 2267.0944741532976,
+   "on_rev_s": 2235.2196836555363,
+   "rev_ratio": 0.9859402460456944,
+   "off_states_s": 3885.5555555555557,
+   "on_states_s": 3785.4444444444443,
+   "states_ratio": 0.9742350586216757,
+   "off_samples": [
+    2235.2196836555363,
+    2239.154929577465,
+    2267.0944741532976
+   ],
+   "on_samples": [
+    2219.6160558464226,
+    2219.6160558464226,
+    2235.2196836555363
+   ],
+   "off_median_rev_s": 2239.154929577465,
+   "on_median_rev_s": 2219.6160558464226,
+   "median_ratio": 0.9912739965095987
+  }
+ },
+ "bit_identity": {
+  "plain": {
+   "files": 18,
+   "text_identical": true,
+   "max_abs_diff": 0.0,
+   "worst_user": "rust_pred_107",
+   "missing": []
+  },
+  "l2i8s4": {
+   "files": 18,
+   "text_identical": true,
+   "max_abs_diff": 0.0,
+   "worst_user": "rust_pred_107",
+   "missing": []
+  }
+ },
+ "verdict": "OFF-PATH FREE (within noise) and OBSERVATION-ONLY"
+}

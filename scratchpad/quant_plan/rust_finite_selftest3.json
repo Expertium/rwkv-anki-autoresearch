@@ -1,0 +1,33 @@
+{
+ "tag": "selftest3",
+ "weights": "scratchpad\\quant_plan\\rust_artifacts\\it36l2i8_124.safetensors",
+ "users": [
+  107
+ ],
+ "trace_dir": "reference",
+ "strict": true,
+ "configs": {
+  "plain": {
+   "status": "INCOMPLETE",
+   "rc": 3,
+   "per_user": {
+    "107": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "state_maxabs": 0.0,
+     "vec_maxabs": 0.0
+    }
+   },
+   "totals": {},
+   "offending_keys": [],
+   "tail": " mode must exit 3)\n[speed] user 107: R/s (query pass, retrievability) 5776.7   states/s (state pass, review_features) 5847.0\n[finite] user=107 compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=9444 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0 planted=1 -> non_finite_total=1\n[finite] STRICT FAIL: 1 non-finite value(s) - see the per-user lines above\n"
+  }
+ }
+}

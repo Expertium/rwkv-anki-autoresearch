@@ -1,0 +1,74 @@
+{
+ "current_engine": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\rust\\rwkv-infer\\target\\release\\rwkv-infer.exe",
+ "old_engine": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\rust_bin\\rwkv-infer-precheck.exe",
+ "users": [
+  107,
+  110,
+  116,
+  120,
+  121,
+  128,
+  136,
+  146,
+  150,
+  151,
+  156,
+  159,
+  162,
+  165,
+  175,
+  176,
+  187,
+  198
+ ],
+ "configs": [
+  "plain",
+  "l2i8s4"
+ ],
+ "reps": 3,
+ "speed": {
+  "plain": {
+   "current_samples": [
+    2903.744292237443,
+    2858.067415730337,
+    2903.744292237443
+   ],
+   "old_samples": [
+    2845.2796420581653,
+    2801.409691629956,
+    2838.9285714285716
+   ],
+   "current_median": 2903.744292237443,
+   "old_median": 2838.9285714285716,
+   "ratio": 1.0228310502283104
+  },
+  "l2i8s4": {
+   "current_samples": [
+    2267.0944741532976,
+    2287.482014388489,
+    2287.482014388489
+   ],
+   "old_samples": [
+    2275.20572450805,
+    2295.740072202166,
+    2267.0944741532976
+   ],
+   "current_median": 2287.482014388489,
+   "old_median": 2275.20572450805,
+   "ratio": 1.0053956834532374
+  }
+ },
+ "bit_identity": {
+  "plain": {
+   "files": 18,
+   "text_identical": true,
+   "missing": []
+  },
+  "l2i8s4": {
+   "files": 18,
+   "text_identical": true,
+   "missing": []
+  }
+ },
+ "verdict": "OFF PATH COSTS NOTHING (and both builds agree bit-for-bit)"
+}

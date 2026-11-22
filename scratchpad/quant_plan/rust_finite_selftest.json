@@ -1,0 +1,36 @@
+{
+ "tag": "selftest",
+ "weights": "scratchpad\\quant_plan\\rust_artifacts\\it36l2i8_124.safetensors",
+ "users": [
+  107
+ ],
+ "trace_dir": "reference",
+ "strict": true,
+ "configs": {
+  "plain": {
+   "status": "PASS",
+   "rc": 0,
+   "per_user": {
+    "107": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "maxabs": 0.0
+    }
+   },
+   "totals": {
+    "total_p_bad": 0,
+    "planted": 0,
+    "non_finite_total": 0
+   },
+   "offending_keys": [],
+   "tail": ": card,deck,note,preset,user\n[finite] check ON (strict) - counting non-finite state, quantized-state, shift-vector and p(recall) values; the run is otherwise unchanged\n[speed] user 107: R/s (query pass, retrievability) 5184.4   states/s (state pass, review_features) 5221.8\n[finite] user=107 compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=9444 p_bad=0 maxabs=0.000000e0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 planted=0 -> non_finite_total=0\n"
+  }
+ }
+}

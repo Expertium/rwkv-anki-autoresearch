@@ -68,6 +68,19 @@ CONFIGS = {
                "RWKV_LOWRANK_HADAMARD": "1", "RWKV_LOWRANK_PERCOL": "1"},
     "l1i4als": {"RWKV_STATE_LOWRANK_SCOPE": "card:1:int4,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
                 "RWKV_LOWRANK_ALS": "3"},
+    # Rank-2 (and 3) on the NOTE, the new chain-14 candidates (Andrew, 2026-11-22 12:01). The engine's
+    # low-rank path is generic over the stream, so these exist to prove it parses a rank>=2 note and to
+    # price the speed. l2i8n2i8 is the direct twin of l2i8s4 with the note's rank raised 1 -> 2.
+    "l2i8n2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    "l3i8n2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:3:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    # NOTE: the engine has NO per-stream shift level - parse_level() takes a bare "int4"/"int8" and any
+    # "card:x,note:y" string yields None (= no override). So `l2i8n2i8s8` (card int4 / note int8 shifts)
+    # cannot be expressed on the deploy side yet; that is a small engine gap, recorded in GPU_RUN_BOARD.
+    "l2i8n3i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:3:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
+
 }
 
 sys.path.insert(0, str(ROOT / "scratchpad" / "quant_plan"))
@@ -75,13 +88,25 @@ import rust_score  # noqa: E402
 
 
 def bits_for(env):
+    """State bits per stream (WKV + token shifts). Must agree with `quant_sweep.bits_for`.
+
+    A BARE `RWKV_STATE_SHIFT_LEVEL` is GLOBAL: the engine's `parse_level` takes ONE level and applies
+    it to every stream. Reading a bare level as "note-only" (the old behaviour here) made the card
+    fall back to its WKV width and reported 1,536 bits for `l2i8s4` instead of the true 1,280, so the
+    deployed row was scored against the wrong card bit count. A `stream:level` list is accepted too,
+    for symmetry with the training side, but the engine ignores such a string.
+    """
     shift = {}
+    bare = None
     for entry in env.get("RWKV_STATE_SHIFT_LEVEL", "").split(","):
-        if not entry.strip():
+        entry = entry.strip()
+        if not entry:
             continue  # "" splits to [""] and would otherwise register a bogus fp32 shift level
-        key = "card" if "card" in entry else "note"
-        level = entry.split(":")[-1] if ":" in entry else entry
-        shift[key] = QBITS.get(level, 32)
+        head, level = entry.split(":")[0], entry.split(":")[-1]
+        if ":" in entry:
+            shift[head] = QBITS.get(level, 32)
+        else:
+            bare = QBITS.get(level, 32)
     low = {}
     for entry in env.get("RWKV_STATE_LOWRANK_SCOPE", "").split(","):
         parts = entry.split(":")
@@ -94,15 +119,17 @@ def bits_for(env):
             full[parts[0]] = QBITS.get(parts[-1], 32)
     out = {}
     for s, n in LAYERS.items():
-        # shifts follow the WKV level when the override is absent or fp32
-        sb = shift.get(s, low[s][1] if s in low else full.get(s, 32))
+        # the shifts follow the WKV level when no shift override is given
+        if bare is not None:
+            sb = bare
+        else:
+            sb = shift.get(s, low[s][1] if s in low else full.get(s, 32))
         if s in low:
             r, qb = low[s]
             out[s] = n * (2 * r * 32 * qb + 64 * sb)
         else:
             out[s] = n * (1024 * full.get(s, 32) + 64 * sb)
     return out
-
 
 def run(weights, trace_dir, users, name, preds_root):
     env = dict(__import__("os").environ)

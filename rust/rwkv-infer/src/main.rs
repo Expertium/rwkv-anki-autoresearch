@@ -1,4 +1,5 @@
 mod fast;
+mod finite;
 mod model;
 mod pava;
 
@@ -38,6 +39,9 @@ struct UserPreds {
 /// power users, is affected -> finite (max-entropy) instead of NaN, so scoring never crashes.
 #[inline]
 fn san(p: f32) -> f32 {
+    // observation only (RWKV_FINITE_CHECK): the deploy gate must know how often this hides a
+    // non-finite p(recall) as 0.5. Does not change the value.
+    crate::finite::p(p);
     if p.is_finite() {
         p.clamp(1e-7, 1.0 - 1e-7)
     } else {
@@ -1071,6 +1075,7 @@ fn main() -> Result<()> {
     let weights = weights_owned.as_str();
     let model = Model::load(weights, Device::Cpu)?;
     println!("model loaded from {weights}");
+    finite::announce();
 
     // --bench <secs> [user]: timed throughput trial
     let argv: Vec<String> = std::env::args().skip(1).collect();
@@ -1325,6 +1330,7 @@ fn main() -> Result<()> {
     };
     for u in users {
         run_user(&model, u)?;
+        finite::report_user(u);
     }
     {
         use std::sync::atomic::Ordering::Relaxed;
@@ -1332,6 +1338,11 @@ fn main() -> Result<()> {
         if c > 0 {
             eprintln!("[pq-scan] {} catalog searches, {:.2} exact rechecks per search", c, n as f64 / c as f64);
         }
+    }
+    let bad = finite::report_total();
+    if finite::strict() && bad > 0 {
+        eprintln!("[finite] STRICT FAIL: {bad} non-finite value(s) - see the per-user lines above");
+        std::process::exit(3);
     }
     Ok(())
 }

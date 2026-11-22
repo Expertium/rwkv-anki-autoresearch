@@ -347,11 +347,15 @@ pub fn quant_codes(t: &Tensor, qmax: f64) -> Result<(Vec<f32>, f64)> {
 /// (>=1e-12), store round(x/scale) clamped to [-qmax,qmax], dequant = code*scale. Used by the fast
 /// engine's shift-vector quantization so it matches the candle path.
 pub fn quant_vec_inplace(v: &mut [f32], qmax: f64) {
+    crate::finite::vec_raw(v); // observation only (RWKV_FINITE_CHECK)
     let amax = v.iter().fold(0f32, |m, &x| m.max(x.abs())) as f64;
+    // A non-finite input makes amax non-finite, hence scale inf, hence every output NaN - so the exit
+    // count below is the honest "did quantization produce garbage" number. The value itself is kept.
     let scale = (amax / qmax).max(1e-12);
     for x in v.iter_mut() {
         *x = (((*x as f64) / scale).round().clamp(-qmax, qmax) * scale) as f32;
     }
+    crate::finite::vec_quant(v);
 }
 
 /// Per-stream state-compression config, shared by the candle and fast inference paths so both compress
@@ -1231,6 +1235,7 @@ pub fn compress_wkv_state(
             }
         }
     }
+    crate::finite::state_raw(data); // observation only (RWKV_FINITE_CHECK)
     let r = rank.min(k);
     // QuIP#/QuaRot incoherence rotation (#3): built once, reused per head. None if K not a power of 2.
     let hmat = if hadamard { hadamard_matrix(k) } else { None };
@@ -1432,6 +1437,7 @@ pub fn compress_wkv_state(
                 data[off + rr * k + cc] = a_r[(rr, cc)];
             }
         }
+        crate::finite::state_quant(&data[off..off + k * k]); // observation only
     }
 }
 
