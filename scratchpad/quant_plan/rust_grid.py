@@ -89,9 +89,9 @@ CONFIGS = {
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
     "l3i8n2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:3:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
-    # NOTE: the engine has NO per-stream shift level - parse_level() takes a bare "int4"/"int8" and any
-    # "card:x,note:y" string yields None (= no override). So `l2i8n2i8s8` (card int4 / note int8 shifts)
-    # cannot be expressed on the deploy side yet; that is a small engine gap, recorded in GPU_RUN_BOARD.
+    # NOTE: a PER-STREAM shift level now works (model.rs `shift_level`, 2026-11-22), so `l2i8n2i8s8`
+    # (card int4 / note int8 shifts) can be expressed here as "card:int4,note:int8". The config below
+    # still says "int4" for both, so it is NOT the s8 twin; add a separate entry if that matters.
     "l2i8n3i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:3:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
 
@@ -153,6 +153,41 @@ CONFIGS = {
                     "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_EF": "1",
                     "RWKV_EF_ERANK": "1", "RWKV_EF_ELEVEL": "int2"},
 
+    # THE PER-STREAM SHIFT LEVEL UNBLOCKS THESE (2026-11-22). Until model.rs grew a per-stream
+    # `shift_level`, the engine took ONE bare level and ignored "card:int4,note:int3", so any row whose
+    # two streams want different shift widths could not be run at all (recorded as "loss-only" in
+    # RESULTS.md). `n1i8s3` is the SMALLEST row that PASSES the loss gate:
+    #   card rank-2 int8, int4 shifts = 2*2*32*8 + 64*4 = 1,280
+    #   note rank-1 int8, int3 shifts = 3*(2*1*32*8 + 64*3) = 2,112     total 3,392 (192 BELOW row 17)
+    # It is otherwise row 17's exact layout, so its deploy speed should land at row 17's ~0.80x.
+    "n1i8s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    # row 31 (l2i8n2i8s8, 5,888) and row 34 (l2i8s2, FAIL on the loss gate) - scored for the record.
+    # Row 31 needs the fast rank-r solver for its rank-2 note (E2), hence RWKV_LOWRANK_FAST.
+    "l2i8n2i8s8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                   "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int8", "RWKV_LOWRANK_FAST": "1"},
+    "l2i8s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+               "RWKV_STATE_SHIFT_LEVEL": "card:int2,note:int4"},
+
+    # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
+    # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),
+    # instead of the rank-r path's 2*K*r factor numbers. Basis file = the fitted per-(stream, layer)
+    # bases (corruption/fixedbasis_l2i8s4all.txt, fitted on 3 users of the row-17 checkpoint).
+    #   fb8i8      m=8 int8 on BOTH streams        768 + 3x768 = 3,072
+    #   l2i8fb8n   card rank-2 int8 + note fb m=8  1,280 + 3x768 = 3,584  (row 17's exact size)
+    #   l2i8fb6n   card rank-2 int8 + note fb m=6  1,280 + 3x544 = 2,912  (672 below row 17)
+    # l2i8fb8n is the clean codec A/B at equal bits; l2i8fb6n is the size claim.
+    "fb8i8": {"RWKV_STATE_FIXEDBASIS_SCOPE": "card:8:int8,note:8:int8", "RWKV_QUANT_SHIFTS": "1",
+              "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt"},
+    "fb4i8": {"RWKV_STATE_FIXEDBASIS_SCOPE": "card:4:int8,note:4:int8", "RWKV_QUANT_SHIFTS": "1",
+              "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt"},
+    "l2i8fb8n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:8:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb6n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:6:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+
 }
 
 sys.path.insert(0, str(ROOT / "scratchpad" / "quant_plan"))
@@ -162,11 +197,12 @@ import rust_score  # noqa: E402
 def bits_for(env):
     """State bits per stream (WKV + token shifts). Must agree with `quant_sweep.bits_for`.
 
-    A BARE `RWKV_STATE_SHIFT_LEVEL` is GLOBAL: the engine's `parse_level` takes ONE level and applies
-    it to every stream. Reading a bare level as "note-only" (the old behaviour here) made the card
-    fall back to its WKV width and reported 1,536 bits for `l2i8s4` instead of the true 1,280, so the
-    deployed row was scored against the wrong card bit count. A `stream:level` list is accepted too,
-    for symmetry with the training side, but the engine ignores such a string.
+    A BARE `RWKV_STATE_SHIFT_LEVEL` is GLOBAL (every compressed stream); a `stream:level` list sets
+    only the named streams (engine: model.rs, `shift_level`, 2026-11-22 - it used to be a single level
+    and a mixed string was silently ignored, which is why rows 31/34/37/35 were loss-only). Reading a
+    bare level as "note-only" (the old behaviour here) made the card fall back to its WKV width and
+    reported 1,536 bits for `l2i8s4` instead of the true 1,280, so the deployed row was scored against
+    the wrong card bit count.
     """
     shift = {}
     bare = None
@@ -198,6 +234,13 @@ def bits_for(env):
     _ef_rank = int(env.get("RWKV_EF_ERANK", "1") or "1") if _ef_on else 0
     _ef_bits = QBITS.get(str(env.get("RWKV_EF_ELEVEL", "int4")).strip(), 4) if _ef_on else 0
     ef_bits = 2 * _ef_rank * 32 * _ef_bits
+    # RWKV_STATE_FIXEDBASIS_SCOPE="note:8:int8": stream -> (m, coefficient qbits). The payload is an
+    # m x m coefficient block instead of 2*K*r factors, so the WKV bits are m*m*qbits.
+    fb = {}
+    for entry in env.get("RWKV_STATE_FIXEDBASIS_SCOPE", "").split(","):
+        parts = entry.strip().split(":")
+        if len(parts) >= 2 and parts[0]:
+            fb[parts[0]] = (int(parts[1]), QBITS.get(parts[-1], 32))
     out = {}
     for s, n in LAYERS.items():
         # the shifts follow the WKV level when no shift override is given
@@ -205,7 +248,10 @@ def bits_for(env):
             sb = bare
         else:
             sb = shift.get(s, low[s][1] if s in low else full.get(s, 32))
-        if s in low:
+        if s in fb:
+            m_, qb_ = fb[s]
+            out[s] = n * (m_ * m_ * qb_ + 64 * sb)
+        elif s in low:
             r, qb = low[s]
             if vbits is None:
                 out[s] = n * (2 * r * 32 * qb + 64 * sb)
@@ -226,7 +272,8 @@ def run(weights, trace_dir, users, name, preds_root):
     for k in ("RWKV_STATE_QUANT_SCOPE", "RWKV_STATE_LOWRANK_SCOPE", "RWKV_QUANT_SHIFTS",
               "RWKV_STATE_SHIFT_LEVEL", "RWKV_LOWRANK_HADAMARD", "RWKV_LOWRANK_PERCOL",
               "RWKV_LOWRANK_ALS", "RWKV_LOWRANK_4LEVEL", "RWKV_LOWRANK_MIXED53",
-              "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT"):
+              "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT",
+              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH"):
         env.pop(k, None)
     env.update({k: str(v) for k, v in CONFIGS[name].items()})
     r = subprocess.run([str(ENGINE)] + [str(u) for u in users], cwd=ROOT, env=env,

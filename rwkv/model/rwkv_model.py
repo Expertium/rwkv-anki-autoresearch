@@ -1106,6 +1106,9 @@ class RWKV7TimeMixer(ModuleType):
                 r_BTHK, k_BTHK, v_BTHK, w_BTHK, a_BTHK, k_deformed_BTHK, skip_BT,
                 self.state_qmax, self.state_lowrank_rank, self.state_lowrank_fqmax,
                 tail_tag=(self.tail_tag if (self.training and self.tail_reg > 0.0) else ""),
+                # fixed-basis state coding (RWKV_FIXEDBASIS_PATH) needs the stream
+                # and layer to pick its fixed P, Q; both are inert when unset.
+                stream=self.tail_tag, layer=self.layer_id,
             )
             if self.rank1_reg > 0.0 and self.state_lowrank_rank > 0 and self.training:
                 accum_rank1_penalty(k_BTHK, v_BTHK, skip_BT)

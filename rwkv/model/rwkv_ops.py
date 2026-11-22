@@ -338,6 +338,93 @@ def _fake_quant_factor(f: Tensor, qmax: float) -> Tensor:
     return torch.round(f / scale).clamp(-qmax, qmax) * scale
 
 
+# ---- FIXED-BASIS STATE CODING (RWKV_FIXEDBASIS_PATH=<file.npz>, 2026-11-22) -------------------
+# WHY. The rank-r scheme stores U_r and V_r, i.e. 2*r*K numbers per layer, because it re-describes a
+# BASIS at every step. The state is a decayed sum of the model's OWN key/value projections, so its
+# dominant directions are shared across users and time, and a FIXED basis carries them in far fewer
+# numbers: store the m x m coefficient block C = P^T W Q (P, Q fixed K x m) and reconstruct P C Q^T.
+# That is m*m numbers instead of 2*r*K, and the deploy cost is two small matmuls, so it is FASTER than
+# the Gram/power-iteration compress as well.
+#
+# MEASURED FIRST (corruption/state_probe.py + analyze_state_subspace.py, users 7213/7044/6960, row
+# 17's own checkpoint, 1,347 states per layer): at m=8 the fixed basis captures 0.9998-0.9999 of
+# E||W||^2 on every stream for 512 bits per layer, where the shipped note rank-1 (768 bits) captures
+# 0.877-0.976 and the card rank-2 (1,280 bits) captures 0.9998. At m=4 it still captures 0.994-0.998
+# for 128 bits per layer. Andrew approved this direction 2026-11-22 20:51.
+#
+# THE BASIS IS A MODEL-SIDE OBJECT, NOT STATE: a fixed linear transform (a codec basis), not a
+# codebook - no discrete entries, no nearest-neighbour lookup, no per-user vectors - stored once per
+# (stream, layer) in the named file and costing no state bits. Inert unless the path is set.
+_FB_PATH = os.environ.get("RWKV_FIXEDBASIS_PATH", "")
+# WHICH STREAMS use it. Empty = every stream that has a basis entry (the both-stream screens). A comma
+# list ("note") keeps the other streams on the rank-r path - the shape a "card keeps rank 2, note uses
+# the fixed basis" candidate needs. Mirrors the Rust RWKV_STATE_FIXEDBASIS_SCOPE.
+_FB_SCOPE = {s.strip() for s in os.environ.get("RWKV_FIXEDBASIS_SCOPE", "").split(",") if s.strip()}
+_FB_CACHE: dict = {}
+_FB_MISSED: set = set()
+
+
+def fixedbasis_loaded() -> bool:
+    return bool(_FB_PATH)
+
+
+def _fb_wanted(stream: str) -> bool:
+    """Is THIS stream on the fixed-basis path? False = it keeps the rank-r round-trip."""
+    return bool(_FB_PATH) and (not _FB_SCOPE or stream in _FB_SCOPE)
+
+
+def _fb_lookup(stream: str, layer: int, m: int):
+    """(P, Q) for this (stream, layer) at m modes per side, or None when the file has no entry."""
+    if not _fb_wanted(stream):
+        return None
+    if not _FB_CACHE:
+        import numpy as _np
+        with _np.load(_FB_PATH) as z:
+            for k in z.files:
+                _FB_CACHE[k] = torch.from_numpy(z[k].astype("float32"))
+    for key in (f"P__{stream}__L{layer}", f"P__{stream}__ALL"):
+        p = _FB_CACHE.get(key)
+        q = _FB_CACHE.get(key.replace("P__", "Q__", 1))
+        if p is not None and q is not None and p.shape[1] >= m:
+            if os.environ.get("RWKV_FIXEDBASIS_DEBUG", "0") == "1":
+                print(f"[fixedbasis] {stream}/L{layer} <- {key} (m={m})", flush=True)
+            return p[:, :m], q[:, :m]
+    # A miss silently falls back to the rank-r path, which would invalidate a screen: say so
+    # once per (stream, layer) instead. A basis file that simply does not cover a stream is
+    # fine - but then that stream is NOT running the fixed-basis round-trip.
+    if key not in _FB_MISSED:
+        _FB_MISSED.add(key)
+        print(f"[fixedbasis] NO BASIS for {stream}/L{layer} in {_FB_PATH} -- falling back to the rank-r path for this stream", flush=True)
+    return None
+
+
+def fake_fixedbasis_state(s_BHKK: Tensor, m: int, qmax: float, stream: str = "",
+                          layer: int = -1) -> Tensor:
+    """STE fixed-basis round-trip W -> P (quant(P^T W Q)) Q^T, the deploy analog of the rank-r path.
+
+    `m` is the modes per side (the QAT scope's rank slot) and `qmax` quantizes the m x m coefficient
+    block with the SAME symmetric per-matrix int-N round-trip the factors use. Falls back to
+    `fake_lowrank_state` when the basis file has no entry for this (stream, layer), so a stream whose
+    basis was never fitted keeps the old behavior instead of silently changing.
+    """
+    if m <= 0:
+        return s_BHKK
+    basis = _fb_lookup(stream, layer, m)
+    if basis is None:
+        return fake_lowrank_state(s_BHKK, m, qmax, "")
+    p, q = basis
+    s_BHKK = _sanitize_state(s_BHKK)  # NaN/inf safeguard: keep the coefficients finite
+    B, H, K, _ = s_BHKK.shape
+    p = p.to(device=s_BHKK.device, dtype=torch.float32)
+    q = q.to(device=s_BHKK.device, dtype=torch.float32)
+    with torch.no_grad():
+        s = s_BHKK.reshape(B * H, K, K).float()
+        c = torch.einsum("ik,bij,jl->bkl", p, s, q)          # (BH, m, m) coefficients
+        c = _fake_quant_factor(c, qmax)                      # symmetric int-N, per (BH) matrix
+        recon = torch.einsum("ik,bkl,jl->bij", p, c, q).reshape(B, H, K, K).to(s_BHKK.dtype)
+    return s_BHKK + (recon - s_BHKK).detach()
+
+
 # ---- TAIL-ENERGY PENALTY (RWKV_QAT_TAIL_PENALTY=<lambda>, 2026-11-22) ---------------------------
 # WHY. The deploy tax of a rank-truncated card/note state is RANK TRUNCATION, not precision: `cn8`
 # (full-matrix int8, NO truncation) is 4x over the bit bars and scores +0.000033/+0.000022, while the
@@ -638,9 +725,13 @@ def quant_aware_rwkv7(
     lowrank_rank: int = 0,
     lowrank_fqmax: float = float("inf"),
     tail_tag: str = "",
+    stream: str = "",
+    layer: int = -1,
 ) -> Tensor:
     """Per-step reference WKV with the recurrent state round-tripped each step (quant-aware training).
     If lowrank_rank>0 the state is rank-r truncated (+ optional int-N factor quant) instead of full
+    int-N quant. With RWKV_FIXEDBASIS_PATH set, the same slot instead carries the modes-per-side
+    m of a FIXED basis (see fake_fixedbasis_state) and `stream`/`layer` select its P, Q.
     int-N quant -- the QAT analog of the deploy low-rank card/note state. Identical to `reference_rwkv7`
     when state_qmax=inf and lowrank_rank=0. Used ONLY for short-recurrence card/note streams in QAT."""
     out_dtype = k_BTHK.dtype
@@ -654,7 +745,7 @@ def quant_aware_rwkv7(
         return out_BTHK.to(out_dtype)
     # Fused RANK-1 int-N low-rank path (matches the deploy rank-1 compression). Only rank==1 is fused;
     # higher ranks (needing deflation/SVD) fall through to the Python loop below.
-    if _fused and lowrank_rank == 1 and lowrank_fqmax != float("inf"):
+    if _fused and lowrank_rank == 1 and lowrank_fqmax != float("inf") and not _fb_wanted(stream):
         if _TAIL_REG > 0.0 and tail_tag:
             raise RuntimeError(
                 f"RWKV_QAT_TAIL_PENALTY={_TAIL_REG} is set but the {tail_tag!r} stream's rank-1 "
@@ -687,9 +778,13 @@ def quant_aware_rwkv7(
             k_deformed_BTHK[:, t],
             state_BHKK,
         )
-        if lowrank_rank > 0:  # rank-r truncation (+ factor quant) -- the low-rank deploy analog
-            next_state_BHKK = fake_lowrank_state(
-                next_state_BHKK, lowrank_rank, lowrank_fqmax, tail_tag)
+        if lowrank_rank > 0:  # rank-r truncation, or the fixed-basis round-trip
+            if _fb_wanted(stream):  # RWKV_FIXEDBASIS_PATH: fixed P, Q instead of a fresh SVD
+                next_state_BHKK = fake_fixedbasis_state(
+                    next_state_BHKK, lowrank_rank, lowrank_fqmax, stream, layer)
+            else:
+                next_state_BHKK = fake_lowrank_state(
+                    next_state_BHKK, lowrank_rank, lowrank_fqmax, tail_tag)
         else:
             next_state_BHKK = fake_quant_state(next_state_BHKK, state_qmax)  # quant before next step
         skip_B111 = skip_BT111[:, t]

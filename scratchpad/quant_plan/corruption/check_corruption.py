@@ -75,6 +75,12 @@ CONFIGS = {
     "l3i8n2i8": (RUN / "qat_it36l3i8n2i8" / "qat_124.pth", "l3i8n2i8", "chain 14 point 2"),
     "l2i8n2i8s8": (RUN / "qat_it36l2i8n2i8s8" / "qat_124.pth", "l2i8n2i8s8", "chain 14 point 3"),
     "l2i8n3i8": (RUN / "qat_it36l2i8n3i8" / "qat_124.pth", "l2i8n3i8", "chain 14 point 4"),
+    # FIXED-BASIS (codec) rows, chain 19 (2026-11-22): the note holds row 17's rank-1 payload size at
+    # m=8 and beats it at m=6. Registered here so the check is one command once a sweep passes.
+    "l2i8fb8n": (RUN / "qat_it36l2i8fb8n" / "qat_124.pth", "l2i8fb8n",
+                 "chain 19 point 1 (fixed-basis note m=8, row 17's exact size)"),
+    "l2i8fb6n": (RUN / "qat_it36l2i8fb6n" / "qat_124.pth", "l2i8fb6n",
+                 "chain 19 point 2 (fixed-basis note m=6, 672 bits below row 17)"),
 }
 
 

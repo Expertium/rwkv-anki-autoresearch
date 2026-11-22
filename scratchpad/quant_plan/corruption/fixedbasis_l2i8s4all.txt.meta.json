@@ -1,0 +1,34 @@
+{
+ "npz": "scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz",
+ "out": "scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.txt",
+ "entries": [
+  {
+   "stream": "card",
+   "layer": 0,
+   "stride": 16,
+   "p_norm": 4.0,
+   "q_norm": 4.0
+  },
+  {
+   "stream": "note",
+   "layer": 0,
+   "stride": 16,
+   "p_norm": 4.0,
+   "q_norm": 4.0
+  },
+  {
+   "stream": "note",
+   "layer": 1,
+   "stride": 16,
+   "p_norm": 4.0,
+   "q_norm": 4.0
+  },
+  {
+   "stream": "note",
+   "layer": 2,
+   "stride": 16,
+   "p_norm": 4.0,
+   "q_norm": 4.0
+  }
+ ]
+}

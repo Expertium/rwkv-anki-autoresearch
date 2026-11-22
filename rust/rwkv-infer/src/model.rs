@@ -369,7 +369,7 @@ pub struct CompressCfg {
     /// level, for streams that are already compressed (quant_shifts on). None = shifts follow the WKV
     /// level (default). Lets card = WKV int4 (256 b) + shifts int2 (128 b) = 384 b — a finer-WKV split
     /// than int3-everything at the same size. Only lowers the shift bits; the WKV factor level is untouched.
-    pub shift_qmax_override: Option<f64>,
+    pub shift_level: std::collections::HashMap<usize, f64>,
     pub percol: bool,
     pub hadamard: bool,
     pub four_level: bool,
@@ -403,6 +403,16 @@ pub struct CompressCfg {
     /// express). File: line1 `C`, then 2 role blocks (0=t, 1=c) of C rows x C floats (row-major R).
     /// Applied rotate -> encode_decode -> unrotate; norms are rotation-invariant. Global, amortized.
     pub shift_rot: Option<std::sync::Arc<Vec<f32>>>,
+    /// FIXED-BASIS (codec) state coding: stream -> (m, coefficient qmax). Instead of re-describing a
+    /// BASIS every step (the rank-r path stores 2*K*r factors), store the m x m coefficient block
+    /// C = P^T W Q against a FIXED K x m basis pair (P, Q) that ships with the model. Bits/stream =
+    /// layers * (m*m*qbits + 64*shift_bits). A codec basis, NOT a codebook (no discrete entries, no
+    /// nearest-neighbour lookup, no per-user vectors). Applied INSTEAD of the rank-r round-trip for
+    /// that stream. Set RWKV_STATE_FIXEDBASIS_SCOPE + RWKV_FIXEDBASIS_PATH.
+    pub fb: std::collections::HashMap<usize, (usize, Option<f64>)>,
+    /// The fixed bases themselves: (module_idx, layer) -> (P, Q), each K x stride row-major. Arc-shared
+    /// because a basis is a MODEL-side artifact, identical for every card -- not per-card state.
+    pub fb_basis: std::sync::Arc<std::collections::HashMap<(usize, usize), (Vec<f32>, Vec<f32>)>>,
 }
 
 /// Apply the shift pre-rotation in place: y = R x (forward) or x = R^T y (transpose). `rot` is one
@@ -588,6 +598,119 @@ fn lowrank_roundtrip(
         None, // no fast-rank basis: this wrapper is the PARITY REFERENCE, the fast path is engine-only
     );
     Ok(Tensor::from_vec(data, (h, k, k), t.device())?)
+}
+
+/// FIXED-BASIS (codec) state coding: W -> P * quant(P^T W Q) * Q^T, one scale per head. `p` and `q`
+/// are K x `stride` row-major basis matrices that ship with the model (only the first `m` columns are
+/// read). This replaces the rank-r round-trip's per-step re-description of a BASIS (2*K*r numbers)
+/// with an m x m COEFFICIENT block against a basis fixed at deploy (m*m numbers), and its cost
+/// (2*K*K*m + 2*K*m*m flops) sits below the rank>=2 Gram + symmetric eigensolve, so it is faster too.
+/// NOT a codebook: no discrete entries, no nearest-neighbour lookup, no per-user vectors.
+pub fn fixedbasis_roundtrip(
+    data: &mut [f32],
+    h: usize,
+    k: usize,
+    m: usize,
+    p: &[f32],
+    q: &[f32],
+    stride: usize,
+    qmax: Option<f64>,
+) {
+    assert!(
+        m > 0 && m <= stride && m <= k,
+        "fixedbasis: bad block size m={m} (stride={stride}, k={k})"
+    );
+    assert!(
+        p.len() >= k * stride && q.len() >= k * stride,
+        "fixedbasis: basis too small ({} / {} vs {})",
+        p.len(),
+        q.len(),
+        k * stride
+    );
+    crate::finite::state_raw(data); // observation only (RWKV_FINITE_CHECK)
+    let mut tmp = vec![0f32; k * m]; // W Q       (k x m)
+    let mut c = vec![0f32; m * m]; //  P^T W Q   (m x m) -- the stored payload
+    let mut u = vec![0f32; k * m]; //  P C       (k x m)
+    for hh in 0..h {
+        let w = &mut data[hh * k * k..(hh + 1) * k * k];
+        for i in 0..k {
+            for t in 0..m {
+                let mut s = 0f32;
+                for j in 0..k {
+                    s += w[i * k + j] * q[j * stride + t];
+                }
+                tmp[i * m + t] = s;
+            }
+        }
+        for s0 in 0..m {
+            for t in 0..m {
+                let mut s = 0f32;
+                for i in 0..k {
+                    s += p[i * stride + s0] * tmp[i * m + t];
+                }
+                c[s0 * m + t] = s;
+            }
+        }
+        if let Some(qmax) = qmax {
+            quant_vec_inplace(&mut c, qmax);
+        }
+        for i in 0..k {
+            for t in 0..m {
+                let mut s = 0f32;
+                for s0 in 0..m {
+                    s += p[i * stride + s0] * c[s0 * m + t];
+                }
+                u[i * m + t] = s;
+            }
+        }
+        for i in 0..k {
+            for j in 0..k {
+                let mut s = 0f32;
+                for t in 0..m {
+                    s += u[i * m + t] * q[j * stride + t];
+                }
+                w[i * k + j] = s;
+            }
+        }
+        crate::finite::state_quant(w); // observation only
+    }
+}
+
+/// Candle wrapper for `fixedbasis_roundtrip` (H,K,K), mirroring `lowrank_roundtrip`: the parity
+/// reference for the fast engine's copy of the same math.
+fn fixedbasis_roundtrip_tensor(
+    t: &Tensor,
+    m: usize,
+    p: &[f32],
+    q: &[f32],
+    qmax: Option<f64>,
+) -> Result<Tensor> {
+    let (h, k, k2) = t.dims3()?;
+    assert_eq!(k, k2, "WKV state must be square KxK");
+    let stride = (p.len() / k).max(1);
+    let mut data: Vec<f32> = t.flatten_all()?.to_vec1()?;
+    fixedbasis_roundtrip(&mut data, h, k, m, p, q, stride, qmax);
+    Ok(Tensor::from_vec(data, (h, k, k), t.device())?)
+}
+
+/// Batched candle wrapper (B,H,K,K). The coefficient scale is per CARD (per leading dim), matching
+/// `quant_roundtrip_batched` and the fast engine's per-entity loop.
+fn fixedbasis_roundtrip_batched(
+    t: &Tensor,
+    m: usize,
+    p: &[f32],
+    q: &[f32],
+    qmax: Option<f64>,
+) -> Result<Tensor> {
+    let (b, h, k, k2) = t.dims4()?;
+    assert_eq!(k, k2, "WKV state must be square KxK");
+    let stride = (p.len() / k).max(1);
+    let mut data: Vec<f32> = t.flatten_all()?.to_vec1()?;
+    let per = h * k * k;
+    for bi in 0..b {
+        fixedbasis_roundtrip(&mut data[bi * per..(bi + 1) * per], h, k, m, p, q, stride, qmax);
+    }
+    Ok(Tensor::from_vec(data, (b, h, k, k), t.device())?)
 }
 
 /// Product-quantization codebook for rank-2 WKV factor DIRECTIONS. Roles: 0=u1, 1=v1, 2=u2, 3=v2 (rank
@@ -1943,13 +2066,20 @@ pub struct Model {
     // for a module, the per-step WKV state is replaced by its rank-r SVD truncation (and factors
     // optionally quantized) INSTEAD of full-matrix quant -- the 0.15 KB card path (step 4). See load().
     state_lowrank: std::collections::HashMap<usize, (usize, Option<f64>)>,
+    // FIXED-BASIS (codec) state coding (approach 1): module_idx -> (m, coefficient qmax). Applied
+    // INSTEAD of the rank-r round-trip for that stream, layer by layer. See CompressCfg::fb.
+    state_fixedbasis: std::collections::HashMap<usize, (usize, Option<f64>)>,
+    // The fixed K x stride basis pairs, one per (module_idx, layer). Arc-shared, model-side.
+    fb_basis: std::sync::Arc<std::collections::HashMap<(usize, usize), (Vec<f32>, Vec<f32>)>>,
     // RWKV_QUANT_SHIFTS=1: also quantize the (1-D, non-low-rankable) token-shift vectors of any
     // COMPRESSED stream at its bit-width, so the deploy SIZE accounting is honest (shifts otherwise
     // stay fp32, which alone blows the 0.15 KB card budget). Off by default -> past numbers reproduce.
     quant_shifts: bool,
     // RWKV_STATE_SHIFT_LEVEL=intN: override token-shift bit-width independently of the WKV factor level
     // (only for already-compressed streams). None = shifts follow the WKV level. See CompressCfg doc.
-    shift_qmax_override: Option<f64>,
+    // RWKV_STATE_SHIFT_LEVEL, per stream: module_idx -> shift qmax. A BARE level in the env fills all
+    // five streams; a "card:int4,note:int8" list fills only the named ones. See CompressCfg::shift_level.
+    shift_level: std::collections::HashMap<usize, f64>,
     // RWKV_LOWRANK_PERCOL=1: quantize low-rank factors with a PER-COLUMN (per rank-component) scale
     // instead of one shared scale -> makes int2 low-rank viable (the small-sigma column isn't crushed).
     lowrank_percol: bool,
@@ -2244,13 +2374,120 @@ impl Model {
                 state_lowrank.insert(name_to_idx(name), (rank, fqmax));
             }
         }
+        // FIXED-BASIS (codec) state coding (approach 1, 2026-11-22):
+        //   RWKV_STATE_FIXEDBASIS_SCOPE = "card:8:int8,note:8:int8" (name:m[:level]; m = coefficient
+        //     block size, level = its bit-width) + RWKV_FIXEDBASIS_PATH = the fitted-basis text file.
+        //   File: line 1 = entry count, then per entry
+        //     <name> <layer> <stride> <K*stride floats P row-major> <K*stride floats Q row-major>
+        //   Only the first m <= stride columns are read, so ONE fitted file serves every m.
+        let mut state_fixedbasis: std::collections::HashMap<usize, (usize, Option<f64>)> =
+            std::collections::HashMap::new();
+        let fb_scope = std::env::var("RWKV_STATE_FIXEDBASIS_SCOPE").unwrap_or_default();
+        if !fb_scope.trim().is_empty() {
+            for entry in fb_scope.split(',') {
+                let parts: Vec<&str> = entry.trim().split(':').collect();
+                let msz: usize = parts
+                    .get(1)
+                    .expect("RWKV_STATE_FIXEDBASIS_SCOPE entry needs name:m[:level]")
+                    .parse()
+                    .expect("bad m in RWKV_STATE_FIXEDBASIS_SCOPE");
+                let lvl = parts
+                    .get(2)
+                    .map(|l| parse_level(l).expect("bad level in FIXEDBASIS scope (int4/int8)"));
+                assert!(msz >= 1 && msz <= k, "RWKV_STATE_FIXEDBASIS_SCOPE: need 1 <= m <= K");
+                state_fixedbasis.insert(name_to_idx(parts[0]), (msz, lvl));
+            }
+        }
+        let mut fb_basis: std::collections::HashMap<(usize, usize), (Vec<f32>, Vec<f32>)> =
+            std::collections::HashMap::new();
+        if !state_fixedbasis.is_empty() {
+            let path = std::env::var("RWKV_FIXEDBASIS_PATH").expect(
+                "RWKV_STATE_FIXEDBASIS_SCOPE is set but RWKV_FIXEDBASIS_PATH is not; refusing to silently measure uncompressed state",
+            );
+            let txt = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read RWKV_FIXEDBASIS_PATH '{path}': {e}"));
+            let mut it = txt.split_whitespace();
+            let n: usize = it
+                .next()
+                .and_then(|t| t.parse().ok())
+                .unwrap_or_else(|| panic!("RWKV_FIXEDBASIS_PATH '{path}': line 1 must be the entry count"));
+            for e in 0..n {
+                let name = it
+                    .next()
+                    .unwrap_or_else(|| panic!("FIXEDBASIS '{path}': entry {e}: missing name"));
+                let layer: usize = it
+                    .next()
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or_else(|| panic!("FIXEDBASIS '{path}': entry {e}: bad layer"));
+                let stride: usize = it
+                    .next()
+                    .and_then(|t| t.parse().ok())
+                    .unwrap_or_else(|| panic!("FIXEDBASIS '{path}': entry {e}: bad stride"));
+                let take = |it: &mut std::str::SplitWhitespace| -> Vec<f32> {
+                    (0..k * stride)
+                        .map(|_| {
+                            it.next()
+                                .and_then(|t| t.parse().ok())
+                                .unwrap_or_else(|| panic!("FIXEDBASIS '{path}': entry {e}: short basis"))
+                        })
+                        .collect()
+                };
+                let p = take(&mut it);
+                let q = take(&mut it);
+                fb_basis.insert((name_to_idx(name), layer), (p, q));
+            }
+            for (&(mi, l), (p, q)) in fb_basis.iter() {
+                assert_eq!(p.len(), q.len(), "FIXEDBASIS '{path}': P/Q length mismatch at {mi}/L{l}");
+                if let Some(&(mm, _)) = state_fixedbasis.get(&mi) {
+                    let stride = p.len() / k;
+                    assert!(
+                        mm <= stride,
+                        "FIXEDBASIS '{path}': stream {mi} layer {l} needs m={mm} but its basis has {stride} columns"
+                    );
+                }
+            }
+            let rows: Vec<String> = {
+                let mut r: Vec<String> = state_fixedbasis
+                    .iter()
+                    .map(|(&mi, &(mm, fq))| format!("module {mi}: m={mm} qmax={fq:?}"))
+                    .collect();
+                r.sort();
+                r
+            };
+            eprintln!(
+                "[fixedbasis] scope [{}] with {} basis entries from {path}",
+                rows.join(", "),
+                fb_basis.len()
+            );
+        }
+        let fb_basis = std::sync::Arc::new(fb_basis);
         let quant_shifts = std::env::var("RWKV_QUANT_SHIFTS")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
         // RWKV_STATE_SHIFT_LEVEL=intN: quantize token-shifts at intN instead of the WKV factor level.
-        let shift_qmax_override = std::env::var("RWKV_STATE_SHIFT_LEVEL")
-            .ok()
-            .and_then(|v| parse_level(v.as_str()));
+        // BARE level ("int4") = every compressed stream; PER-STREAM list ("card:int4,note:int8") =
+        // only the named streams, the rest follow their WKV factor level. Same shape as the quant scope.
+        let mut shift_level: std::collections::HashMap<usize, f64> = std::collections::HashMap::new();
+        for entry in std::env::var("RWKV_STATE_SHIFT_LEVEL").unwrap_or_default().split(',') {
+            let entry = entry.trim();
+            if entry.is_empty() {
+                continue;
+            }
+            match entry.split_once(':') {
+                Some((n, lvl)) => {
+                    if let Some(q) = parse_level(lvl) {
+                        shift_level.insert(name_to_idx(n), q);
+                    }
+                }
+                None => {
+                    if let Some(q) = parse_level(entry) {
+                        for i in 0..5 {
+                            shift_level.insert(i, q);
+                        }
+                    }
+                }
+            }
+        }
         let lowrank_percol = std::env::var("RWKV_LOWRANK_PERCOL")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
@@ -2367,7 +2604,7 @@ impl Model {
             lowrank: state_lowrank.clone(),
             quant_qmax: state_quant_qmax.clone(),
             quant_shifts,
-            shift_qmax_override,
+            shift_level: shift_level.clone(),
             percol: lowrank_percol,
             hadamard: lowrank_hadamard,
             four_level: lowrank_4level,
@@ -2382,6 +2619,8 @@ impl Model {
             ef_pq,
             shift_pq,
             shift_rot,
+            fb: state_fixedbasis.clone(),
+            fb_basis: fb_basis.clone(),
         };
         let fast = crate::fast::FastModel::build(
             &w, &lin_wt, c, h, k, stream_layers.clone(), stream_slot, num_curves, num_points,
@@ -2403,7 +2642,7 @@ impl Model {
             state_quant_qmax,
             state_lowrank,
             quant_shifts,
-            shift_qmax_override,
+            shift_level,
             lowrank_percol,
             lowrank_hadamard,
             lowrank_4level,
@@ -2411,6 +2650,8 @@ impl Model {
             lowrank_compand,
             lowrank_vqmax,
             lowrank_als,
+            state_fixedbasis,
+            fb_basis,
             fast,
         })
     }
@@ -2683,7 +2924,14 @@ impl Model {
             // Simulate per-card STATE storage by round-tripping the recurrent WKV matrix each step
             // (worst-case accumulation == the deploy per-persist model). t_xshift/c_xshift are tiny ->
             // left fp32. Low-rank (the 0.15 KB path) takes precedence over full-matrix quant per stream.
-            let t_state = if let Some(&(rank, fqmax)) = self.state_lowrank.get(&module_idx) {
+            // FIXED-BASIS (codec) state coding takes precedence over the rank-r path for a stream that
+            // has a basis for THIS layer (RWKV_STATE_FIXEDBASIS_SCOPE + RWKV_FIXEDBASIS_PATH).
+            let fb_here = self.state_fixedbasis.get(&module_idx).and_then(|&(mm, fq)| {
+                self.fb_basis.get(&(module_idx, l)).map(|pq| (mm, fq, pq))
+            });
+            let t_state = if let Some((mm, fq, pq)) = fb_here {
+                fixedbasis_roundtrip_tensor(&t_state, mm, &pq.0, &pq.1, fq)?
+            } else if let Some(&(rank, fqmax)) = self.state_lowrank.get(&module_idx) {
                 lowrank_roundtrip(
                     &t_state,
                     rank,
@@ -2705,12 +2953,13 @@ impl Model {
             // bit-width so the deploy size is honest. Off unless RWKV_QUANT_SHIFTS=1.
             let shift_qmax: Option<f64> = if self.quant_shifts {
                 let base = self
-                    .state_lowrank
+                    .state_fixedbasis
                     .get(&module_idx)
                     .and_then(|&(_, fq)| fq)
+                    .or_else(|| self.state_lowrank.get(&module_idx).and_then(|&(_, fq)| fq))
                     .or_else(|| self.state_quant_qmax.get(&module_idx).copied());
                 // Override the LEVEL for already-compressed streams; leave uncompressed streams unquantized.
-                base.map(|b| self.shift_qmax_override.unwrap_or(b))
+                base.map(|b| self.shift_level.get(&module_idx).copied().unwrap_or(b))
             } else {
                 None
             };
@@ -3227,9 +3476,16 @@ impl Model {
             // clamp_state is shape-generic: it reduces over the trailing (K,K) and iterates the
             // flattened leading dims, so (B,H,K,K) works exactly as (H,K,K) does.
             let t_state = self.clamp_state(&t_state)?;
-            let t_state = match self.state_quant_qmax.get(&module_idx) {
-                Some(&qmax) => quant_roundtrip_batched(&t_state, qmax)?,
-                None => t_state,
+            let fb_here = self.state_fixedbasis.get(&module_idx).and_then(|&(mm, fq)| {
+                self.fb_basis.get(&(module_idx, l)).map(|pq| (mm, fq, pq))
+            });
+            let t_state = if let Some((mm, fq, pq)) = fb_here {
+                fixedbasis_roundtrip_batched(&t_state, mm, &pq.0, &pq.1, fq)?
+            } else {
+                match self.state_quant_qmax.get(&module_idx) {
+                    Some(&qmax) => quant_roundtrip_batched(&t_state, qmax)?,
+                    None => t_state,
+                }
             };
             let c_st = ls.map(|s| &s.c_xshift);
             // Stripped channel mixer: skip the sublayer and its residual (see run_stream).
@@ -3446,6 +3702,127 @@ fn norm_range_env(name: &str, lo: f32, hi: f32) -> (f32, f32) {
             (p[0], p[1])
         }
         _ => (lo, hi),
+    }
+}
+
+#[cfg(test)]
+mod fixedbasis_tests {
+    //! The fixed-basis (codec) round-trip must satisfy exactly what the scheme claims: m = K with no
+    //! quantization is an EXACT reconstruction (P, Q orthonormal), a state that lives in the basis's
+    //! top-m subspace survives m < K, and the coefficient block is what actually gets quantized.
+    //! Run: cargo test --release fixedbasis -- --nocapture
+    use super::fixedbasis_roundtrip;
+
+    const K: usize = 32;
+
+    /// A deterministic orthonormal K x K pair (QR of an LCG-filled matrix).
+    fn orth(seed: u64) -> Vec<f32> {
+        let mut s = seed | 1;
+        let mut rnd = move || {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            ((s >> 11) as f32 / (1u64 << 53) as f32) * 2.0 - 1.0
+        };
+        let mut m: Vec<Vec<f32>> = (0..K).map(|_| (0..K).map(|_| rnd()).collect()).collect();
+        // Gram-Schmidt: m rows -> orthonormal rows (row-major K x K).
+        for i in 0..K {
+            for j in 0..i {
+                let d: f32 = (0..K).map(|t| m[i][t] * m[j][t]).sum();
+                for t in 0..K {
+                    let v = m[j][t];
+                    m[i][t] -= d * v;
+                }
+            }
+            let n: f32 = (0..K).map(|t| m[i][t] * m[i][t]).sum::<f32>().sqrt().max(1e-9);
+            for t in 0..K {
+                m[i][t] /= n;
+            }
+        }
+        m.into_iter().flatten().collect()
+    }
+
+    fn rel_err(a: &[f32], b: &[f32]) -> f32 {
+        let num: f32 = a.iter().zip(b).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt();
+        let den: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-12);
+        num / den
+    }
+
+    #[test]
+    fn m_equals_k_without_quant_is_exact() {
+        let p = orth(11);
+        let q = orth(22);
+        let mut s = orth(33);
+        let orig = s.clone();
+        fixedbasis_roundtrip(&mut s, 1, K, K, &p, &q, K, None);
+        let e = rel_err(&s, &orig);
+        assert!(e < 1e-5, "m=K, qmax=None must be exact, rel={e}");
+    }
+
+    #[test]
+    fn in_subspace_state_survives_small_m() {
+        // A rank-2 state built INSIDE the basis's top-2 subspace: modes along P[0],P[1] and Q[0],Q[1].
+        let p = orth(11);
+        let q = orth(22);
+        let mut s = vec![0f32; K * K];
+        for i in 0..K {
+            for j in 0..K {
+                s[i * K + j] = 3.0 * p[i * K] * q[j * K] + 1.0 * p[i * K + 1] * q[j * K + 1];
+            }
+        }
+        let orig = s.clone();
+        fixedbasis_roundtrip(&mut s, 1, K, 2, &p, &q, K, None);
+        let e = rel_err(&s, &orig);
+        assert!(e < 1e-4, "a state inside the top-2 subspace must survive m=2, rel={e}");
+        // m=1 keeps the dominant mode only: 9/(9+1) = 0.9 of the energy, i.e. rel 0.316.
+        let mut s1 = orig.clone();
+        fixedbasis_roundtrip(&mut s1, 1, K, 1, &p, &q, K, None);
+        let e1 = rel_err(&s1, &orig);
+        assert!((0.25..0.45).contains(&e1), "m=1 must keep only the dominant mode, rel={e1}");
+    }
+
+    #[test]
+    fn narrow_stride_is_read_only_up_to_m() {
+        // The file stores a stride-8 basis; asking for m=4 must read the first 4 columns only.
+        let p8 = orth(11);
+        let q8 = orth(22);
+        let mut s4 = orth(44);
+        let mut s8 = s4.clone();
+        fixedbasis_roundtrip(&mut s4, 1, K, 4, &p8, &q8, K, None);
+        fixedbasis_roundtrip(&mut s8, 1, K, 8, &p8, &q8, K, None);
+        assert!(rel_err(&s4, &s8) > 1e-3, "m=4 and m=8 must differ on a full-rank state");
+    }
+
+    #[test]
+    fn quantization_hits_the_coefficient_block() {
+        // A state that LIVES in the basis's top-8 subspace (decaying modes along the basis's own first
+        // 8 directions): m=8 is then EXACT, so whatever error is left is the coefficient quantization
+        // alone -- which is what this check is about. A random full-rank state can only measure the
+        // subspace projection (~m/K of the energy), not the quantization.
+        let p = orth(11);
+        let q = orth(22);
+        let mut orig = vec![0f32; K * K];
+        let mut sigma = 3.0f32;
+        for s in 0..8 {
+            for i in 0..K {
+                for j in 0..K {
+                    orig[i * K + j] += sigma * p[i * K + s] * q[j * K + s];
+                }
+            }
+            sigma *= 0.8;
+        }
+        let mut exact = orig.clone();
+        fixedbasis_roundtrip(&mut exact, 1, K, 8, &p, &q, K, None);
+        let e0 = rel_err(&exact, &orig);
+        assert!(e0 < 1e-5, "m=8 on an in-subspace state must be exact, rel={e0}");
+        let mut a = orig.clone();
+        let mut c = orig.clone();
+        fixedbasis_roundtrip(&mut a, 1, K, 8, &p, &q, K, Some(127.0));
+        fixedbasis_roundtrip(&mut c, 1, K, 8, &p, &q, K, Some(1.0));
+        let ea = rel_err(&a, &orig);
+        let ec = rel_err(&c, &orig);
+        assert!(ea < 0.05, "int8 on the coefficient block must be a small precision error, rel={ea}");
+        assert!(ec > ea * 2.0, "int2 must be clearly worse than int8 ({ec} vs {ea})");
     }
 }
 

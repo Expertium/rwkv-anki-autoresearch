@@ -1,0 +1,23 @@
+Fixed-basis state coding (approach 1) in the Python and Rust paths; per-stream shift level
+
+Approach 1 stores a FIXED codec basis instead of re-describing a rank-r basis every step: with
+P, Q fixed K x m matrices the payload is the m x m coefficient block C = P^T W Q, so a layer costs
+m*m*qbits + 64*shift_bits and the deploy work is two small matmuls.
+
+* `rwkv/model/rwkv_ops.py`: `fake_fixedbasis_state` (STE W -> P(quant(P^T W Q))Q^T on the
+  coefficient block), a per-stream `RWKV_FIXEDBASIS_SCOPE` via `_fb_wanted`, and a loud
+  once-per-(stream, layer) message when a basis entry is missing.
+* `rwkv/model/rwkv_model.py`: the stream/layer kwargs that reach it.
+* `rust/rwkv-infer/src/model.rs`: `fixedbasis_roundtrip` + the candle and batched wrappers, the
+  `CompressCfg`/`Model` fields, the env parser (`RWKV_STATE_FIXEDBASIS_SCOPE` +
+  `RWKV_FIXEDBASIS_PATH`), 4 unit tests, and `shift_level: HashMap<usize, f64>` replacing the old
+  single `shift_qmax_override`, so `RWKV_STATE_SHIFT_LEVEL` accepts a bare level or a
+  `stream:level` list.
+* `rust/rwkv-infer/src/fast.rs`: the fixed-basis branch in `compress_stream_state` (which gains an
+  `l: usize` param) and the per-stream shift consumer.
+
+`cargo build --release` is clean and `cargo test --release` is 15 passed / 1 ignored.
+`scratchpad/quant_plan/` carries the fitted basis, the state-subspace measurement, the recording
+script and the chain that trains the two note-only candidates.
+
+Written by an AI agent 🤖

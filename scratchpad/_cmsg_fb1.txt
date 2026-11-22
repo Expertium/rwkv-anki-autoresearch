@@ -1,0 +1,14 @@
+Quant screens: approach 1 (fixed basis) measured on 3 users; RESULTS rows 39-40 land as FAILs
+
+RESULTS.md:
+* new rows 39 (`l2i8s2n4`, 1,152/1,536 = 2,688 bits) and 40 (`l3i8s4n4s2`, 1,792/1,152 = 2,944
+  bits), both from `it36shrink`; both FAIL, so the int4 note stays unaffordable and the note's
+  shifts are already at their int4 floor once its factors are int4.
+* a paragraph on approach 1 (fixed-basis state coding): the fitted basis looks like a win in
+  sample (0.9935-0.9995 at m=4-8) but collapses under leave-one-user-out (card 0.7181/0.9195/0.9596,
+  note 0.8559-0.9205 at m=4/8/16), so it is a CARD loss (rank-2 is already exact for 1,280 bits)
+  and a NOTE candidate; the two note-only candidates and the engine smoke are recorded.
+* a paragraph on the per-stream state shift level, which makes row 35 (n1i8s3, 3,392 bits, the
+  smallest passing row) deployable at 0.789x rev/s.
+
+Written by an AI agent 🤖

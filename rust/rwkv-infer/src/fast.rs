@@ -486,7 +486,7 @@ impl FastModel {
             // persist == false (a QUERY forward: the caller discards the returned state): the compression only
             // changes what the NEXT step would read back, never this step's outputs, so skipping it is exact.
             let (e_state, warm_wkv, warm_shift, basis) = if persist {
-                self.compress_stream_state(m, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls)
+                self.compress_stream_state(m, l, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls)
             } else {
                 (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             };
@@ -631,6 +631,7 @@ impl FastModel {
     fn compress_stream_state(
         &self,
         m: usize,
+        l: usize,
         b: usize,
         t_state: &mut [f32],
         t_xshift: &mut [f32],
@@ -670,6 +671,7 @@ impl FastModel {
             Some(&(rank, _))
                 if rank.min(k) >= 2
                     && cfg.als.is_none()
+                    && !cfg.fb.contains_key(&m) // the fixed-basis path reads no warm basis
                     && (crate::model::lowrank_fast_on() || crate::model::lowrank_fast_check()) =>
             {
                 b * h * (rank.min(k) + 1) * k
@@ -680,7 +682,26 @@ impl FastModel {
             .map(|s| s.basis.clone())
             .filter(|v| v.len() == want_basis)
             .unwrap_or_else(|| vec![0.0; want_basis]);
-        if let Some(&(rank, fqmax)) = cfg.lowrank.get(&m) {
+        // FIXED-BASIS (codec) round-trip: takes precedence over the rank-r path when this stream has
+        // a basis for THIS layer (RWKV_STATE_FIXEDBASIS_SCOPE + RWKV_FIXEDBASIS_PATH).
+        let fbb = cfg
+            .fb
+            .get(&m)
+            .and_then(|&(mm, fq)| cfg.fb_basis.get(&(m, l)).map(|pq| (mm, fq, pq)));
+        if let Some((mm, fq, pq)) = fbb {
+            for bi in 0..b {
+                crate::model::fixedbasis_roundtrip(
+                    &mut t_state[bi * hkk..(bi + 1) * hkk],
+                    h,
+                    k,
+                    mm,
+                    &pq.0,
+                    &pq.1,
+                    pq.0.len() / k,
+                    fq,
+                );
+            }
+        } else if let Some(&(rank, fqmax)) = cfg.lowrank.get(&m) {
             if cfg.ef {
                 // Idea EF: add the carried quant error back to the fresh state, re-compress, then store the
                 // NEW quant error (A' - Â) to carry forward. Cancels the compounding DC bias of the factor
@@ -744,9 +765,10 @@ impl FastModel {
         }
         if cfg.quant_shifts {
             let base = cfg
-                .lowrank
+                .fb
                 .get(&m)
                 .and_then(|&(_, fq)| fq)
+                .or_else(|| cfg.lowrank.get(&m).and_then(|&(_, fq)| fq))
                 .or_else(|| cfg.quant_qmax.get(&m).copied());
             // RWKV_SHIFT_PQ: codebook-encode the shift vectors of compressed streams (roles 0=t, 1=c)
             // instead of int-N — the WKV-PQ idea applied to the shift payload (40 b/vector at m4b8).
@@ -773,7 +795,7 @@ impl FastModel {
             } else {
                 // Override the shift LEVEL for already-compressed streams (RWKV_STATE_SHIFT_LEVEL); leave
                 // uncompressed streams unquantized. Lets shifts go coarser than the WKV factors.
-                let shift_qmax = base.map(|b| cfg.shift_qmax_override.unwrap_or(b));
+                let shift_qmax = base.map(|b| cfg.shift_level.get(&m).copied().unwrap_or(b));
                 if let Some(q) = shift_qmax {
                     for bi in 0..b {
                         crate::model::quant_vec_inplace(&mut t_xshift[bi * c..(bi + 1) * c], q);

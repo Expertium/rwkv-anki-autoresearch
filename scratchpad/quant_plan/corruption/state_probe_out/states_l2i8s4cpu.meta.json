@@ -1,0 +1,47 @@
+{
+ "probe": "state_subspace",
+ "tag": "l2i8s4cpu",
+ "every": 4,
+ "max": 4000,
+ "keys": [
+  "x|r1|L0",
+  "x|r1|L1",
+  "x|r1|L2",
+  "x|r2|L0"
+ ],
+ "meta": {
+  "x|r1|L0": {
+   "tag": "",
+   "rank": 1,
+   "layer": 0
+  },
+  "x|r1|L1": {
+   "tag": "",
+   "rank": 1,
+   "layer": 1
+  },
+  "x|r1|L2": {
+   "tag": "",
+   "rank": 1,
+   "layer": 2
+  },
+  "x|r2|L0": {
+   "tag": "",
+   "rank": 2,
+   "layer": 0
+  }
+ },
+ "kept": {
+  "x|r1|L0": 223,
+  "x|r1|L1": 223,
+  "x|r1|L2": 223,
+  "x|r2|L0": 223
+ },
+ "calls": {
+  "x|r1|L0": 889,
+  "x|r1|L1": 889,
+  "x|r1|L2": 889,
+  "x|r2|L0": 889
+ },
+ "total_states": 892
+}

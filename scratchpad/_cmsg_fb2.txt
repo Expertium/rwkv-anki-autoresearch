@@ -1,0 +1,11 @@
+NOTES/BOARD: approach 1 (fixed basis) does not transfer across users; per-stream shift level
+
+* NOTES.md: two live-status bullets (the fixed-basis measurement and the rows 39-40 / row-35
+  deployability pair).
+* optimization/GPU_RUN_BOARD.md: Amendment 23 - the fixed-basis in-sample vs leave-one-user-out
+  table, the two note-only candidates, the engine smoke on real traces, and the per-stream
+  `CompressCfg::shift_level` change that closes the gap behind rows 31/34/35/37.
+* scratchpad/quant_plan/autorun/RECORDED.txt: stamp the two newly recorded sweeps
+  (`it36l2i8s2n4`, `it36l3i8s4n4s2`) so the hourly supervisor does not write duplicate rows.
+
+Written by an AI agent 🤖

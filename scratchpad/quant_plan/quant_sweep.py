@@ -147,7 +147,8 @@ CANDIDATES = {
                  "card rank-2 int8 + int2 shifts, note rank-1 int4 + int4 (1,152/1,536)", None),
     "l3i8s4n4s2": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int4",
                     "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int2"},
-                   "card rank-3 int8 + int4 shifts, note rank-1 int4 + int2 (1,792/1,152)", None),
+                   "card rank-3 int8 + int4 shifts, note rank-1 int4 + int2 (1,792/1,152)", None),
+
     # Andrew's 2026-11-22 12:01 direction: put RANK 2 on the NOTE at int8 factors. The note is the big
     # pool (2/3 of a passing row's bits) and it is the one stream whose truncation tax nobody has cut
     # with precision - rows 19-22, 26 and the shrink combos all moved the note DOWN in bit width and
@@ -248,6 +249,56 @@ CANDIDATES = {
     "l2i4s4n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int4,note:1:int4",
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                  "row 17 layout at int4 factors, the bottom rung (768/1,536 = 2,304 bits)", None),
+    # THE NOTE-ONLY FIXED-BASIS CANDIDATES (2026-11-22, after the leave-one-user-out measurement).
+    # WHY THE NOTE ONLY: at rank 2 the CARD is reproduced EXACTLY for 1,280 bits, and the best fixed
+    # basis on the card needs m=16 (2,304 bits) to reach only 0.9596 held out - the card is the wrong
+    # place for a codec. The NOTE's shipped rank-1 captures 0.904-0.951 and passes the gate, and a
+    # fixed basis reaches 0.876-0.921 held out at m=8 for the SAME 768 bits/layer (0.82-0.87 at m=6,
+    # 544 bits/layer). So these hold the card at rank 2 and switch only the note (RWKV_FIXEDBASIS_SCOPE):
+    #   l2i8fb8n  card 1,280 + note 3x768 = 3,584  (row 17's EXACT size -> a pure codec A/B)
+    #   l2i8fb6n  card 1,280 + note 3x544 = 2,912  (672 below row 17 -> the size claim)
+    "l2i8fb8n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:8:int8",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_FIXEDBASIS_SCOPE": "note",
+                  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                 "card rank 2 (row 17's card) + NOTE fixed basis m=8 int8 (1,280/2,304 = 3,584 bits)",
+                 (1280, 2304)),
+    "l2i8fb6n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:6:int8",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_FIXEDBASIS_SCOPE": "note",
+                  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                 "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,632 = 2,912 bits)",
+                 (1280, 1632)),
+    "fb4i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:4:int8,note:4:int8",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+               "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+              "FIXED-BASIS state coding (approach 1): m=4 modes per side, int8 coefficient block (384/1152 = 1536 bits)",
+              (384, 1152)),
+    "fb6i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:6:int8,note:6:int8",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+               "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+              "FIXED-BASIS state coding (approach 1): m=6 modes per side, int8 coefficient block (544/1632 = 2176 bits)",
+              (544, 1632)),
+    "fb8i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:8:int8,note:8:int8",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+               "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+              "FIXED-BASIS state coding (approach 1): m=8 modes per side, int8 coefficient block (768/2304 = 3072 bits)",
+              (768, 2304)),
+    "fb12i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:12:int8,note:12:int8",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+               "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+              "FIXED-BASIS state coding (approach 1): m=12 modes per side, int8 coefficient block (1408/4224 = 5632 bits)",
+              (1408, 4224)),
+    "fb8i4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:8:int4,note:8:int4",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+               "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+              "FIXED-BASIS state coding (approach 1): m=8 modes per side, int4 coefficient block (512/1536 = 2048 bits)",
+              (512, 1536)),
+    "fb16i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:16:int8,note:16:int8",
+               "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+               "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+              "FIXED-BASIS state coding (approach 1): m=16 modes per side, int8 coefficient block (2304/6912 = 9216 bits)",
+              (2304, 6912)),
 
     # MIXED precision (2026-11-22 20:20): the ladder above coarsens BOTH streams at once, so a result cannot say
     # WHERE the int6 tax comes from. An 11-user deploy screen says it is mostly the NOTE's: card int6 + note
