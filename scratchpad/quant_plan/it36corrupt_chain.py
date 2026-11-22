@@ -41,8 +41,8 @@ COR = RUN / "corruption"
 PY = ROOT / ".venv" / "Scripts" / "python.exe"
 LOG = RUN / "it36corrupt_chain.log"
 LOCK = RUN / "it36corrupt_chain.lock"
-PREV_LOG = RUN / "it36shrink_chain.log"
-PREV_END = "=== it36shrink chain end ==="
+PREV_LOG = RUN / "it36longdecay_chain.log"
+PREV_END = "=== it36longdecay chain end ==="
 DRIVER = COR / "check_corruption.py"
 # Real GPU work only (the deadlock lesson: never list a sibling chain script, its waiting process
 # would count as busy forever and no chain would ever take the GPU).
@@ -101,37 +101,20 @@ def wait_for_prev_chain():
         log(f"waiting: prev chain ended={ended}, matching processes={busy}")
 
 
-def run(tag, cmd, logfile):
-    """Run one point, logging a heartbeat every HEARTBEAT_MIN so a long eval cannot look stalled.
+sys.path.insert(0, str(RUN))
+import it36ladder_lib as _lib  # noqa: E402  the shared wedge watchdog + retry (2026-11-22)
 
-    The supervisor's restart rule keys on "log unchanged > 45 min" plus "GPU idle"; a point that
-    scores 50 long-history users for an hour writes NOTHING to this log while it runs, so without the
-    heartbeat a healthy point would look like a dead chain and could be restarted on top of itself.
+
+def run(tag, cmd, logfile):
+    """Run one point through the shared watchdog (`it36ladder_lib.run`).
+
+    That watchdog logs a heartbeat every 5 minutes AND kills the child if it writes nothing and burns
+    no CPU for 20 minutes (the 2026-11-22 02:33 wedge: an F: HDD I/O error, events 153/51, left the
+    trainer and its fetch worker at 0 CPU for 8.7 h while the chain log looked merely "busy"). The
+    watchdog's presence also keeps THIS chain log fresh, so the hourly supervisor's "log unchanged >
+    45 min" rule cannot mistake a healthy 50-user corruption point for a dead chain.
     """
-    log(f"START {tag}: {' '.join(cmd)}")
-    t0 = time.time()
-    hb = time.time()
-    with logfile.open("a", encoding="utf-8") as fh:
-        fh.write(f"\n=== {tag} {' '.join(cmd)} ===\n")
-        fh.flush()
-        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT)
-        while True:
-            try:
-                rc = p.wait(timeout=60)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-            if time.time() - hb >= HEARTBEAT_MIN * 60:
-                hb = time.time()
-                tail = ""
-                try:
-                    tail = logfile.read_text(encoding="utf-8", errors="replace").strip(
-                        ).splitlines()[-1][:120]
-                except Exception:
-                    pass
-                log(f"  ... {tag} running {(time.time() - t0) / 60:.0f} min; last child line: {tail}")
-    log(f"DONE  {tag}: rc={rc} in {(time.time() - t0) / 60:.1f} min")
-    return rc
+    return _lib.run(log, tag, cmd, logfile)
 
 
 def summary_block():

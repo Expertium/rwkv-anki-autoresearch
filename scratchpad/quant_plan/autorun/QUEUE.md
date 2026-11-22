@@ -24,8 +24,27 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 
 A chain is LIVE only if its name is in this list:
 
-`it36rank`, `it36notecut`, `it36rankprec`, `it36longdecay`, `it36shrink`, `it36corrupt`,
-`it36equalbits`, `it36combo`, `it36corrupt2`
+`it36corrupt`
+
+**PAUSED by Andrew on 2026-11-22 11:21** ("Let's stop further runs for now and ONLY do corruption checks
+for (as of right now) passed runs"): `it36shrink`, `it36equalbits`, `it36combo`, `it36corrupt2`. They
+were killed at 11:24 and their lock files were deleted, so their logs have NO end marker and will look
+STALLED after 45 min. That is expected: **never restart them, do not re-create their locks, do not run
+one of their points.** They stay paused until Andrew says otherwise. The reason is that the only rows
+that pass the log-loss gate right now are 15 (`l2i8`), 16 (`l3i8`), 17 (`l2i8s4`) and 18 (`l3i8s4`) -
+every other sweep result, including all of the overnight ones and the 496/992-step decays, FAILS - so
+new sweeps would spend GPU time on rows that are not deploy candidates. `it36corrupt` is the chain that
+checks the rows that do pass.
+
+The finished chains `it36rank`, `it36notecut`, `it36rankprec` and `it36longdecay` are the same as
+before: their logs carry an end marker, so the restart rule below never fires for them.
+
+The report now prints a `CPU over 5 s:` line (added 2026-11-22, after an F: disk I/O error wedged
+`it36shrink` for 8.7 h at 0.000 s CPU while the report still said `GPU BUSY` and every chain log looked
+normal). If that line says `WEDGE? live workload processes burned no CPU`, do NOT kill anything: log
+`NEEDS ANDREW: wedged workload at <time> - <pid lines>` and STOP. The chains now kill and retry such a
+run by themselves (`it36ladder_lib.run`: 20 min with neither log growth nor CPU -> `taskkill /F /T`,
+then one retry).
 
 `it36corrupt` (added 2026-11-21 22:50) is the corruption/finiteness check: it waits for `it36shrink`,
 then scores the 50 longest-history users of `corruption/corrupt50.json` for the four passing rows plus
@@ -128,17 +147,20 @@ identical decay with no QAT and no quantization. A row passes only when `ub95 <=
 
 ## 5. Pre-authorized launch items
 
-None right now. The nine LIVE chains above are the whole authorized queue.
-They run in this order (each waits for the previous chain's end marker): `it36rankprec` (running),
-`it36longdecay`, `it36shrink`, `it36corrupt`, `it36equalbits` (chain 11, the equal-bits follow-ups),
-`it36combo` (chain 13, the cheap card under the cheap note), `it36corrupt2` (chain 12, the corruption
-sweep for the rows chains 11 and 13 create - it skips any row that fails the log-loss gate).
+None right now. `it36corrupt` is the only chain allowed to run, and it owns the GPU until it ends.
 
-When this list is empty and the GPU is idle, log `QUEUE EMPTY - needs Andrew's decision` and stop.
-Do NOT invent a new experiment, and do NOT extend an existing chain. Andrew adds an item here when he
-authorizes one. A real item is one raw, unindented line: the box marker, then the task, then `::`, then
-the exact command line, then `::`, then the proof of success. `status_report.py` counts only raw
-unindented box lines, so keep any example indented like this paragraph:
+It works through its five points in this order, writing `corruption/corruption_corrupt_<tag>.json` for
+each: `l2i8s4` (row 17, DONE 11:25:24 - PASS, 50/50 users, 158,986 state observations, 0 non-finite,
+4.8 min), `l2i8` (row 15), `l3i8` (row 16), `l3i8s4` (row 18), and `ctl_fp32` (the same decay with
+quantization OFF, for attribution). Its 5-minute heartbeat line is normal while a point runs.
+
+When its log ends with `=== it36corrupt chain end ===` and the GPU is idle, there is nothing left to
+run: log `QUEUE EMPTY - needs Andrew's decision` and stop.
+Do NOT invent a new experiment, do NOT extend an existing chain, and do NOT restart a paused chain.
+Andrew adds an item here when he authorizes one. A real item is one raw, unindented line: the box
+marker, then the task, then `::`, then the exact command line, then `::`, then the proof of success.
+`status_report.py` counts only raw unindented box lines, so keep any example indented like this
+paragraph:
 
         - [ ] <what to run> :: <exact command line> :: <what proves it worked>
 

@@ -67,6 +67,10 @@ CONFIGS = {
     "l3i4s4n8s3": (RUN / "qat_it36l3i4s4n8s3" / "qat_124.pth", "l3i4s4n8s3", "chain 13 point 1"),
     "l3i4s4n3": (RUN / "qat_it36l3i4s4n3" / "qat_124.pth", "l3i4s4n3", "chain 13 point 2"),
     "l2i4s4n8s3": (RUN / "qat_it36l2i4s4n8s3" / "qat_124.pth", "l2i4s4n8s3", "chain 13 point 3"),
+    "l3i4s4n4": (RUN / "qat_it36l3i4s4n4" / "qat_124.pth", "l3i4s4n4", "shrink point 1"),
+    "l2i8s4n3": (RUN / "qat_it36l2i8s4n3" / "qat_124.pth", "l2i8s4n3", "shrink point 2"),
+    "l2i8s2n4": (RUN / "qat_it36l2i8s2n4" / "qat_124.pth", "l2i8s2n4", "shrink point 3"),
+    "l3i8s4n4s2": (RUN / "qat_it36l3i8s4n4s2" / "qat_124.pth", "l3i8s4n4s2", "shrink point 4"),
 }
 
 

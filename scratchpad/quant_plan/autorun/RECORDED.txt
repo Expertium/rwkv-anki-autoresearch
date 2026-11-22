@@ -40,3 +40,8 @@ it36nr4s2
 it36l2i8s4n4
 it36l3i8s4n4
 it36l2i4s4
+it36l4i4s4
+it36l7i4s4
+it36n2i4s4
+it36l2i8496
+it36l2i8992

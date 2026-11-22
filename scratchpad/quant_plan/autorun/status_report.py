@@ -33,6 +33,10 @@ WORKLOAD = ("qat_decay|quant_sweep|eval_sharded|train_rwkv|rwkv-infer|rust_speed
 RAM_FLOOR_GB = 10.0
 LOCK_STALE_MIN = 90
 CHAIN_STALL_MIN = 45
+# CPU a healthy workload process tree burns in a 5 s window. Added 2026-11-22 with cpu_used_s():
+# the 8.7 h wedge (F: disk I/O error, System log events 153/51 at 02:33:45) sat at 0.000 s while the
+# report still said "GPU BUSY" and the chain logs looked normal, so this reading is the only signal.
+CPU_ALIVE_S = 0.05
 
 
 def free_ram_gb():
@@ -72,6 +76,55 @@ def procs():
         if len(parts) == 3:
             rows.append((parts[0].strip(), parts[1].strip(), parts[2].strip()[:170]))
     return rows
+
+
+def cpu_used_s(rows, seconds=5):
+    """CPU seconds each workload process tree used over `seconds`.
+
+    Added 2026-11-22 after the 8.7 h wedge: an F: HDD I/O error (System log events 153/51, 02:33:45)
+    left `rwkv.train_rwkv` and its fetch worker at 0.000 s CPU while the report still said "GPU BUSY",
+    so the hourly supervisor saw nothing wrong and the restart rule (which needs GPU IDLE) never fired.
+    A 0.0 reading here is the wedge signal: healthy work always burns CPU.
+    """
+    try:
+        import psutil
+    except ImportError:
+        return {}, set()
+    before = {}
+    for pid, _, _ in rows:
+        try:
+            pr = psutil.Process(int(pid))
+            before[int(pid)] = tree_cpu(pr)
+        except Exception:
+            before[int(pid)] = None
+    time.sleep(seconds)
+    out = {}
+    gone = set()
+    for pid, base in before.items():
+        try:
+            now = tree_cpu(psutil.Process(pid))
+        except Exception:
+            out[pid] = None
+            gone.add(pid)
+            continue
+        out[pid] = None if base is None else now - base
+    return out, gone
+
+
+def tree_cpu(pr):
+    total = 0.0
+    procs = [pr]
+    try:
+        procs += pr.children(recursive=True)
+    except Exception:
+        pass
+    for p in procs:
+        try:
+            t = p.cpu_times()
+            total += t.user + t.system
+        except Exception:
+            pass
+    return total
 
 
 def chains():
@@ -166,6 +219,21 @@ def main():
           f"{'GPU BUSY' if plist else 'GPU IDLE (no matching workload process)'}")
     for pid, name, cmd in plist:
         print(f"  pid {pid} {name}: {cmd}")
+
+    if plist:
+        used, gone = cpu_used_s(plist)
+        shown = " ".join(f"{pid}={'gone' if int(pid) in gone or used.get(int(pid)) is None else f'{used[int(pid)]:.2f}s'}"
+                         for pid, _, _ in plist)
+        alive = [v for v in used.values() if v is not None and v > CPU_ALIVE_S]
+        here = len(plist) - len(gone)
+        if alive:
+            verdict = f"CPU alive ({len(alive)}/{here} processes busy)"
+        elif here == 0:
+            # a chain that finished a point and started the next one between the two samples
+            verdict = "all sampled processes exited during the sample (a point just changed)"
+        else:
+            verdict = "WEDGE? live workload processes burned no CPU - see section 2 of QUEUE.md"
+        print(f"  CPU over 5 s: {shown} -> {verdict}")
 
     print("chain logs (newest first):")
     for name, last, ended, age in chains():

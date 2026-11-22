@@ -55,6 +55,10 @@ POINTS = [
     ("l3i4s4n8s3", "it36l3i4s4n8s3", "chain 13 point 1 (cheap card under cheap note)"),
     ("l3i4s4n3", "it36l3i4s4n3", "chain 13 point 2"),
     ("l2i4s4n8s3", "it36l2i4s4n8s3", "chain 13 point 3"),
+    ("l3i4s4n4", "it36l3i4s4n4", "shrink point 1 (card rank-3 int4 + note int4)"),
+    ("l2i8s4n3", "it36l2i8s4n3", "shrink point 2 (note rank-1 int3 factors)"),
+    ("l2i8s2n4", "it36l2i8s2n4", "shrink point 3 (card int2 shifts + note int4)"),
+    ("l3i8s4n4s2", "it36l3i8s4n4s2", "shrink point 4 (note int4 + int2 shifts)"),
 ]
 
 
@@ -98,34 +102,18 @@ def wait_for_prev_chain():
         log(f"waiting: prev chain ended={ended}, matching processes={busy}")
 
 
+sys.path.insert(0, str(RUN))
+import it36ladder_lib as _lib  # noqa: E402  the shared wedge watchdog + retry (2026-11-22)
+
+
 def run(tag, cmd, logfile):
-    """Run one point with a heartbeat every HEARTBEAT_MIN (a silent long point looks like a dead
-    chain to the hourly supervisor, which would then restart it on top of itself)."""
-    log(f"START {tag}: {' '.join(cmd)}")
-    t0 = time.time()
-    hb = time.time()
-    rc = -1
-    with logfile.open("a", encoding="utf-8") as fh:
-        fh.write(f"\n=== {tag} {' '.join(cmd)} ===\n")
-        fh.flush()
-        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT)
-        while True:
-            try:
-                rc = p.wait(timeout=60)
-                break
-            except subprocess.TimeoutExpired:
-                pass
-            if time.time() - hb >= HEARTBEAT_MIN * 60:
-                hb = time.time()
-                tail = ""
-                try:
-                    tail = logfile.read_text(encoding="utf-8", errors="replace").strip(
-                        ).splitlines()[-1][:120]
-                except Exception:
-                    pass
-                log(f"  ... {tag} running {(time.time() - t0) / 60:.0f} min; last child line: {tail}")
-    log(f"DONE  {tag}: rc={rc} in {(time.time() - t0) / 60:.1f} min")
-    return rc
+    """Run one point through the shared watchdog (`it36ladder_lib.run`).
+
+    A heartbeat every 5 minutes, and a kill when the child writes nothing and burns no CPU for 20
+    minutes (the 2026-11-22 02:33 F: HDD I/O-error wedge, 8.7 h at 0 CPU). Both matter here: this
+    chain's points are the ones that would otherwise sit inside a corruption eval for a long time.
+    """
+    return _lib.run(log, tag, cmd, logfile)
 
 
 def gate_passed(stamp):

@@ -21,10 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import it36ladder_lib as lib  # noqa: E402
 
-BUSY_PAT = ("quant_sweep.py|rwkv.train_rwkv|rust_speed.py|rust_grid.py|rwkv-infer|"
-            "it36qatsmall_chain.py|it36qatsmall2_chain.py|it36qatsmall3_chain.py|"
-            "it36qatsmall4_chain.py|it36rank_chain.py|it36notecut_chain.py|"
-            "it36rankprec_chain.py|it36shrink_chain.py")
+BUSY_PAT = ("qat_decay.py|quant_sweep.py|rwkv.train_rwkv|eval_sharded.py|rust_speed.py|rust_grid.py|rwkv-infer")
 
 POINTS = [
     ("l2i8", "it36l2i8496", 496, "qnj_it36ctl496"),

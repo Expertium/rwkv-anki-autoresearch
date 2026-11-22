@@ -66,15 +66,102 @@ def wait_for_prev(log, prev_log, prev_end, busy_pat):
         log(f"waiting: prev chain ended={ended}, matching processes={busy}")
 
 
-def run(log, tag, cmd, logfile):
-    log(f"START {tag}: {' '.join(cmd)}")
+STALL_MIN = 20          # no child output AND no child CPU for this long = the run is wedged
+STALL_RETRIES = 1       # a wedged run is retried once before the point is given up
+POLL_S = 30
+STALL_RC = -9
+
+_PSUTIL = None
+
+
+def _psutil():
+    global _PSUTIL
+    if _PSUTIL is None:
+        import psutil as _p
+        _PSUTIL = _p
+    return _PSUTIL
+
+
+def tree_cpu_s(pid):
+    """CPU seconds used by pid and all its descendants, or None when the process is gone.
+
+    The stall test needs BOTH halves: a wedged run writes nothing to its log AND burns no CPU (measured
+    2026-11-22: 0.000 s over 6 s on both the trainer and its fetch worker). A healthy run may be quiet
+    for a while (model load, a long validation pass) but its worker keeps consuming CPU, so a
+    CPU-progress check is what stops the watchdog from killing good work.
+    """
+    ps = _psutil()
+    try:
+        me = ps.Process(pid)
+        procs = [me] + me.children(recursive=True)
+    except Exception:
+        return None
+    total = 0.0
+    for p in procs:
+        try:
+            t = p.cpu_times()
+            total += t.user + t.system
+        except Exception:
+            pass
+    return total
+
+
+def _run_once(log, tag, cmd, logfile):
+    """One attempt: run the child, log a heartbeat, kill it if it wedges. STALL_RC = killed as wedged."""
     t0 = time.time()
+    hb = time.time()
     with logfile.open("a", encoding="utf-8") as fh:
         fh.write(f"\n=== {tag} {' '.join(cmd)} ===\n")
         fh.flush()
-        rc = subprocess.run(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT).returncode
-    log(f"DONE  {tag}: rc={rc} in {(time.time() - t0) / 60:.1f} min")
-    return rc
+        p = subprocess.Popen(cmd, cwd=str(ROOT), stdout=fh, stderr=subprocess.STDOUT)
+        last_size = logfile.stat().st_size if logfile.exists() else 0
+        last_progress = time.time()
+        last_cpu = tree_cpu_s(p.pid)
+        while True:
+            try:
+                return p.wait(timeout=POLL_S)
+            except subprocess.TimeoutExpired:
+                pass
+            now = time.time()
+            size = logfile.stat().st_size if logfile.exists() else 0
+            if size != last_size:
+                last_size = size
+                last_progress = now
+            cpu = tree_cpu_s(p.pid)
+            if cpu is not None and last_cpu is not None and cpu - last_cpu > 1.0:
+                last_progress = now
+            last_cpu = cpu
+            if now - last_progress > STALL_MIN * 60:
+                log(f"STALL {tag}: no log output and no CPU for {STALL_MIN} min -> killing pid "
+                    f"{p.pid} with its children (this is the 2026-11-22 02:33 disk-error wedge: the "
+                    f"trainer and its fetch worker sat at 0 CPU for 8.7 h)")
+                subprocess.run(["taskkill", "/F", "/T", "/PID", str(p.pid)],
+                               capture_output=True, text=True)
+                try:
+                    p.wait(timeout=120)
+                except subprocess.TimeoutExpired:
+                    log(f"STALL {tag}: pid {p.pid} still alive 120 s after taskkill")
+                return STALL_RC
+            if now - hb >= 5 * 60:
+                hb = now
+                log(f"  ... {tag} running {(now - t0) / 60:.0f} min; log {size} bytes; "
+                    f"cpu {cpu if cpu is None else f'{cpu:.1f}'} s")
+    return -1
+
+
+def run(log, tag, cmd, logfile):
+    """Run one step of a point, with a wedge watchdog and one retry (the F: HDD throws I/O errors)."""
+    for attempt in range(STALL_RETRIES + 1):
+        suffix = f" (attempt {attempt + 1})" if attempt else ""
+        log(f"START {tag}{suffix}: {' '.join(cmd)}")
+        t0 = time.time()
+        rc = _run_once(log, tag, cmd, logfile)
+        log(f"DONE  {tag}: rc={rc} in {(time.time() - t0) / 60:.1f} min")
+        if rc != STALL_RC:
+            return rc
+        log(f"{tag}: killed as wedged; "
+            + ("retrying once" if attempt < STALL_RETRIES else "GIVING UP on this point"))
+    return STALL_RC
 
 
 def qat_point(log, cand, stamp, steps, ref, epochs):
