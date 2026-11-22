@@ -655,3 +655,47 @@ only inside a point's own window** - a point is roughly smoke 1-3 min + decay 10
 the job must finish well before the point does. The wide-roster fast-solver grid (the 22 landed
 `trace_corrupt50` users, `plain/l2i8s4/l2i8s4f/l2i8s4f1`) was launched for that purpose and will be
 re-run that way.
+
+## Amendment 16 (2026-11-22 17:50): the fast solver is free on long histories; factor-precision cost scales with history; VLEVEL is dropped
+
+**Axis 3 - the shipped row-17 weights get 16% faster for free.** On the three LONGEST corrupt50
+histories (users 7250 / 5052 / 5939, 28-29k reviews each, 80-84 MB traces) `l2i8s4`, `l2i8s4f`
+(`RWKV_LOWRANK_FAST=1`) and `l2i8s4f1` (plus `RWKV_LOWRANK_FAST_ITERS=1`) agree to **<=3e-6 on both
+heads** (tax -0.003711/-0.003620, -0.003714/-0.003623, -0.003714/-0.003621). Together with the speed
+measurements (0.800x -> 0.844-0.889x -> 0.927x rev/s, median per-user 0.921x) this makes ITERS=1 the
+deploy setting for row 17: same weights, same bits, same log loss, 16% faster, no retraining. The flag
+must stay OFF for any Python<->Rust parity run, because the fast factors are an approximation rather
+than a bit-identical truncation. Evidence: `rust_grid_fast_wide3.json`, `rust_speed_fastrow17.json`,
+`rust_speed_fastiters.json`.
+
+**Axis 1 - the cost of cutting factor precision GROWS with history length, so the 2-user screen
+understated it ~100x.** Per-user paired imm deltas against `l2i8s4` (`rust_grid_long_paired.json`):
+
+| config | 7250 | 5052 | 5939 | mean | std |
+| --- | --- | --- | --- | --- | --- |
+| `l2i6s4` (1,024/1,920 = 2,944 bits) | +0.000067 | +0.000226 | +0.000742 | +0.000345 | 0.00035 |
+| `l2i5s4` (896/1,728 = 2,624 bits) | +0.000629 | +0.001147 | +0.002877 | +0.001551 | 0.00118 |
+| `l2i8s4v4` (V int4, 2,944 bits) | +0.000653 | +0.000057 | +0.002334 | +0.001015 | 0.00118 |
+| `l2i8s4v3` (V int3, 2,784 bits) | +0.001639 | -0.006228 | +0.003570 | -0.000340 | 0.00519 |
+| `l2i8s4v2` (V int2, 2,624 bits) | +0.003583 | -0.006194 | +0.005652 | +0.001013 | 0.00633 |
+
+Both exponent rungs are the SAME SIGN on every user and grow with length (the longest user, 5939, pays
+the most). **Expectation now on record before chain 17 runs:** `l2i6s4` is a coin flip - row 17's own
+imm is +0.000327 with ub95 +0.000390 against a +0.0005 ceiling, so an added ~+0.0001-0.0003 leaves
+little room - and `l2i5s4` plus the bottom rung `l2i4s4n4` are EXPECTED TO FAIL on imm. They still run,
+because the gate is the 750-user roster and a roster average sits below the long-user figure but above
+zero, and the measured answer is the deliverable. If int6 lands, it is a 640-bit (18%) cut.
+
+**Axis 1 negative - `RWKV_LOWRANK_VLEVEL` is dropped.** At the SAME 640-bit saving, coarsening V while U
+stays int8 costs +0.001015 (std 0.00118) against int6's +0.000345 (std 0.00035): three times larger and
+three times noisier, so the bits are better spent symmetrically. Worse, the VLEVEL spread is ~15x wider
+than the symmetric rungs' and V int3's negative mean is driven by ONE user (5052 reads -0.006228 while
+the other two read +0.001639/+0.003570), which means coarsening V does not add a smooth error - it
+destabilizes the state trajectory. No trainer support and no chain are added for it; the engine knob
+stays available for future work.
+
+**Method note.** The per-user paired difference is what makes these readable: the grid JSONs store only
+per-config means, and on these long traces every quantized config reads BETTER than `plain` by ~0.0036
+(the trace-path offset already documented), so absolute taxes cannot rank configs. Differencing the same
+users pairwise cancels that offset and leaves the std above, which is what separates
+`int6` (sign-consistent, std 0.00035) from VLEVEL (sign-flipping, std 0.005-0.006).

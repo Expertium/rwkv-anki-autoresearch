@@ -117,6 +117,17 @@ CONFIGS = {
                "RWKV_STATE_SHIFT_LEVEL": "int4"},
     "l2i8s4n4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int4", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_SHIFT_LEVEL": "int4"},
+    # ASYMMETRIC FACTOR BUDGETS (2026-11-22): U keeps the scope level, V drops to VLEVEL. At
+    # row 17's layout U int8 / V int4 is 2,944 bits and V int3 / V int2 give 2,784 / 2,624,
+    # i.e. 640 / 800 / 960 bits below row 17. U and V are not interchangeable (U holds the
+    # state-space directions, V the read-out weights), which is why this is worth asking even
+    # though the symmetric ladder said precision above int4 does not pay at rank 1.
+    "l2i8s4v4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_VLEVEL": "int4"},
+    "l2i8s4v3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_VLEVEL": "int3"},
+    "l2i8s4v2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_VLEVEL": "int2"},
 
 }
 
@@ -154,6 +165,10 @@ def bits_for(env):
         parts = entry.split(":")
         if parts[0] in LAYERS:
             full[parts[0]] = QBITS.get(parts[-1], 32)
+    # RWKV_LOWRANK_VLEVEL overrides the SECOND factor (V) only, so the pair costs r*32*(U+V)
+    # bits instead of 2*r*32*U. Without this the reported bit counts would be the symmetric
+    # ones, which is exactly the kind of mis-count that made `l2i8s4` read 1,536 instead of 1,280.
+    vbits = QBITS.get(str(env.get("RWKV_LOWRANK_VLEVEL", "")).strip())
     out = {}
     for s, n in LAYERS.items():
         # the shifts follow the WKV level when no shift override is given
@@ -163,7 +178,10 @@ def bits_for(env):
             sb = shift.get(s, low[s][1] if s in low else full.get(s, 32))
         if s in low:
             r, qb = low[s]
-            out[s] = n * (2 * r * 32 * qb + 64 * sb)
+            if vbits is None:
+                out[s] = n * (2 * r * 32 * qb + 64 * sb)
+            else:
+                out[s] = n * (r * 32 * qb + r * 32 * vbits + 64 * sb)
         else:
             out[s] = n * (1024 * full.get(s, 32) + 64 * sb)
     return out
