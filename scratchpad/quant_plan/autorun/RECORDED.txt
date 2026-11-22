@@ -52,3 +52,8 @@ it36l2i8n3i8
 it36l3i4s4
 it36l2i8s2
 it36n1i8s3
+it36l3i4s4n4
+it36n2i4s3
+it36l2i8s4n3
+it36l2i8s2n4
+it36l3i8s4n4s2

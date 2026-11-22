@@ -891,3 +891,20 @@ The 21-user int6 price (Amendment 20: `l2i6s4` +0.000442 ahead / +0.000726 imm) 
 | `l2i6n` card int8, note int6 | 1,280 | 1,920 | 3,200 | +0.000268 [+0.000079, +0.000601] better 0/11 | +0.000307 [+0.000124, +0.000558] better 1/11 |
 
 `l2i6c` is 256 bits BELOW row 17 and its ahead interval contains zero; `l2i6n` is 128 bits below the card rung and worse on both heads. The card rung is therefore the axis-1 point worth a 750-user QAT run: chain 18 (`it36int6card`, points `l2i6c` then `l2i6n`, 124 steps vs `qnj_it36ctl`) is queued behind chain 17 (`it36int6`). Both configs were added to `rust_grid.CONFIGS` and `quant_sweep.CANDIDATES`; the deploy engine's `parse_level` already accepts int6, so `card:2:int6,note:1:int8` is expressible and this rung is DEPLOYABLE, unlike the per-stream-shift rows (31/34/37).
+
+
+## Amendment 23 (2026-11-22 21:40): approach 1 (fixed basis) measured - the basis does not transfer across users - and the per-stream shift level makes row 35 deployable
+
+Approach 1 of the six state-size mechanisms stores a FIXED codec basis instead of re-describing one every step: with P, Q fixed K x m matrices the payload is the m x m coefficient block C = P^T W Q, so a layer costs `m*m*qbits + 64*shift_bits` bits and the deploy work is two small matmuls. It is a model-side codec object (no discrete entries, no nearest-neighbour lookup, no per-user vectors) - not a codebook. Fitted on 1,347 raw pre-truncation states per (stream, layer) from 3 users of row 17's checkpoint (`corruption/fit_fixedbasis.py`, `state_subspace_l2i8s4all.npz`, every=1) and scored leave-one-user-out:
+
+| key | n | in-sample m=4 / m=8 / m=16 | LOO m=4 / m=8 / m=16 |
+|---|---:|---|---|
+| card L0 | 1347 | 0.9938 / 0.9997 / 1.0000 | 0.7181 / 0.9195 / 0.9596 |
+| note L0 | 1347 | 0.9935 / 0.9995 / 1.0000 | 0.8559 / 0.9205 / 0.9604 |
+| note L1 | 1347 | 0.9856 / 0.9995 / 1.0000 | 0.7510 / 0.8939 / 0.9659 |
+| note L2 | 1347 | 0.9848 / 0.9993 / 1.0000 | 0.7816 / 0.8757 / 0.9647 |
+| note ALL | 4041 | 0.8636 / 0.9679 / 0.9992 | 0.5671 / 0.7616 / 0.9220 |
+
+The in-sample column is an overfit artifact; the LOO column is the deploy-relevant one. It says (a) the CARD is the wrong place for a codec - its shipped rank-2 truncation is exact (0.9998) for 1,280 bits while the best fixed basis needs m=16 (2,304 bits) for 0.9596 held out - and (b) the NOTE is worth measuring, because its shipped rank-1 keeps only 0.904-0.951 and still passes. Two candidates hold the card at rank 2 and switch ONLY the note: `l2i8fb8n` (1,280/2,304 = 3,584 bits, row 17's exact size) and `l2i8fb6n` (1,280/1,632 = 2,912, 672 below). Both are implemented in the Python path (`fake_fixedbasis_state`, `RWKV_FIXEDBASIS_SCOPE`) and the Rust engine (`fixedbasis_roundtrip` in `model.rs` + the `fast.rs` branch, `RWKV_STATE_FIXEDBASIS_SCOPE` + `RWKV_FIXEDBASIS_PATH`, basis text `corruption/fixedbasis_l2i8s4all.txt`), registered in `quant_sweep.CANDIDATES`, `rust_grid.CONFIGS` and `check_corruption.CONFIGS`, and the engine was smoked on real traces (`rust_grid_it36fbsmoke.json`: plain 0.369532/0.363273, `l2i8s4` 0.368217/0.361383, `fb8i8` 0.369105/0.362425, `l2i8fb8n` 0.368729/0.363213). Chain 19 `it36fixedbasis` trains both points (124 steps vs `qnj_it36ctl`) and then runs its own corruption phase for whichever passes the gate.
+
+Also this amendment: `RWKV_STATE_SHIFT_LEVEL` is now PER-STREAM in the deploy engine (`CompressCfg::shift_level: HashMap<usize, f64>`; a bare level still fills all five streams, a `stream:level` list sets only the named ones). That closes the gap behind the loss-only rows 31, 34, 35 and 37: row 35 (`n1i8s3`, 3,392 bits, the smallest passing row) measures 2155.5 rev/s = 0.789x rev/s (median per-user 0.791) on users 7213/7250 against plain 2732.5, above the 0.75x floor, so it is now DEPLOYABLE (`rust_speed_underload_n1i8s3.json`).
