@@ -944,3 +944,12 @@ Better on one user out of 7 on ahead and none on imm - a consistent sign, not an
 **(3) The 7-user CPU screen is reproducible to 1e-5.** `rust_grid.py --tag it36wide5` re-ran the row-17 deploy weights over the same 7 held-out long histories: `plain` 0.411068/0.398831 (earlier 0.411063/0.398798), `l2i8s4` 0.407618/0.395728 (earlier 0.407610/0.395718), `l2i6s4n1i8s3` 0.407791/0.395947 = +0.000173/+0.000219 (earlier +0.000164/+0.000205). Two new rungs are registered for it in `rust_grid.CONFIGS`: `l2i5s4n1i8s3` (3,008) and `l2i5s4n1i8s2` (2,816).
 
 **(4) Chain state.** `it36combo` ended at 23:17:03 with its list exhausted; `it36corrupt2` skipped the three gate-failing points and started the 50-user check for `n1i8s3` (row 35) at 23:21:17. The remaining waiters are `it36e1shrink`, `it36fixedbasis`, `it36e1`, `it36int6card`, `it36int6combo` and `it36int6`.
+
+
+## Amendment 27 (2026-11-22 23:26): row 35 PASSES the corruption gate - the corruption column is CLOSED and 3,392 bits is fully deployable
+
+`it36corrupt2` scored `n1i8s3` (card rank-2 int8 + int4 shifts, note rank-1 int8 + int3 shifts, 1,280/2,112 = 3,392 bits) on the 50-user long-history roster: 50/50 users, 78,911 raw card/note state observations before `_sanitize_state`, 0 NaN, 0 +inf, 0 -inf, max |state| 0.5899 (after quantization 0.5902), 582 shift-vector passes at max |x| 5.5312, 150 p(recall) tensors with 0 non-finite, 4.7 min on CUDA. **PASS** (`corruption_corrupt_n1i8s3.json`).
+
+This closes the corruption column: rows 15, 16, 17, 18, 29, 30, 31, 32 and 35 all PASS, every other row is a gate FAIL that is never checked, and no cell says `pending` any more. Row 35 is therefore the smallest recipe that satisfies ALL SIX constraints - the loss ceiling on both heads, both bit bars, the 0.75x speed floor (0.789x) and finiteness at 3,392 bits - and it is the number to beat.
+
+`it36corrupt2` then logged `=== it36corrupt2 chain end ===` at 23:26:01: its first three points are gate Fails (rows 23, 33, 34), rows 39-43 fail too, and its last four are `it36noterank2` rows already recorded. `it36e1` took the GPU at 23:29:46 with `l2i8s4pf`, its fused-off QAT control, followed by the two lambda brackets `l2i8s4e1a`/`l2i8s4e1b`.

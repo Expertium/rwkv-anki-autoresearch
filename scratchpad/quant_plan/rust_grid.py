@@ -194,6 +194,17 @@ CONFIGS = {
     "l2i5s4n1i8s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int5,note:1:int8",
                      "RWKV_QUANT_SHIFTS": "1",
                      "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int2"},
+    # THE NOTE-int6 RUNGS UNDER THE CHEAP SHIFT RUNGS (2026-11-22). `l2i6n` priced the note's
+    # int6 factors at +0.000268/+0.000307 on a deploy screen and row 35 priced the note's int3
+    # shift rung at +0.000011/+0.000037, and row 41 showed those two-kind cuts compose SUBLINEARLY.
+    # So the stack is the smallest plausible pass: card int6 (1,024) + note int6/int3 (1,728) = 2,752,
+    # and with the note's int2 shifts (1,536) = 2,560. Both are below row 43's 2,880 (a FAIL).
+    "l2i6s4n1i6s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    "l2i6s4n1i6s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int2"},
 
     # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
     # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),
