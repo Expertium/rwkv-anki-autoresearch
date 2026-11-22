@@ -1,0 +1,17 @@
+Quant screens: row 41 lands 0.000016 short at 3,136 bits; the held-out fixed-basis screen rejects the codec NOTE
+
+RESULTS.md:
+* new row 41 (`l3i4s4n8s3`, card rank-3 int4 + int4 shifts / note rank-1 int8 + int3 shifts,
+  1,024/2,112 = 3,136 bits): +0.000232 ahead (ub95 +0.000301) / +0.000516 imm (ub95 +0.000589) - the
+  smallest total measured and 0.000016 short of the immediate-head ceiling. The two cuts compose
+  sublinearly, so the note's int3 shift rung is nearly free on a coarse card, and the expensive half
+  is the CARD (int6 rank-2 reaches the same 1,024 bits for +0.000115 vs rank-3 int4's +0.000472).
+* a paragraph on the held-out fixed-basis screen: on the 7 long histories NOT used to fit the basis,
+  the codec note costs +0.002035/+0.002756 at row 17's exact 3,584 bits (better on 1/7 and 0/7 users)
+  and +0.001455/+0.002154 at 2,912 bits, i.e. 4-6x the ceiling and 7-9x a factor-width cut. QAT is the
+  one regime the screen cannot see, so chain 19 stays queued with that expectation recorded.
+* row 31's cell corrected: the per-stream shift level now exists, so the "LOSS-ONLY" claim was stale
+  (only its deploy speed is still missing). The corruption-column note now names row 35 as the only
+  `pending` cell and explains why `it36corrupt2` reaches it first.
+
+Written by an AI agent 🤖

@@ -314,6 +314,11 @@ CANDIDATES = {
                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
               "row 17 layout with the NOTE at int6 and the card left at int8 (1,280/1,920 = 3,200 bits)",
               None),
+    "l2i6s4n1i8s3": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int8",
+                      "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int3"},
+                     "card rank-2 int6 + int4 shifts and note rank-1 int8 + int3 shifts "
+                     "(1,024/2,112 = 3,136 = 256 BELOW row 35, the smallest passing row)",
+                     (1024, 2112)),
     "l3i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-3 int8 factors + int4 shifts (1,792/2,304 bits)", None),

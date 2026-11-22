@@ -169,6 +169,12 @@ CONFIGS = {
     "l2i8s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
                "RWKV_STATE_SHIFT_LEVEL": "card:int2,note:int4"},
 
+    # The int6 CARD rung (+0.000052/+0.000115 on 11 long histories) stacked on the note's int3
+    # SHIFT rung (row 35, +0.000011/+0.000037): 1,024 + 2,112 = 3,136 bits, 256 below row 35.
+    "l2i6s4n1i8s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int6,note:1:int8",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+
     # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
     # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),
     # instead of the rank-r path's 2*K*r factor numbers. Basis file = the fitted per-(stream, layer)

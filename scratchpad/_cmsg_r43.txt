@@ -1,0 +1,15 @@
+Register chain 21 (`l2i6s4n1i8s3`, 3,136 bits) and retire two stale "no per-stream shift level" claims
+
+* `quant_sweep.CANDIDATES`, `rust_grid.CONFIGS`, `check_corruption.CONFIGS`: the new candidate
+  `l2i6s4n1i8s3` - card rank-2 int6 + int4 shifts (1,024) with note rank-1 int8 + int3 shifts (2,112),
+  the same 3,136 bits row 41 reached but with the card bought at int6 (+0.000052/+0.000115 on 11 long
+  histories) instead of rank-3 int4 (+0.000208/+0.000472). `bits_for` reads 1,024/2,112 in both the
+  sweep and the engine.
+* `it36int6combo_chain.py`: chain 21, one QAT point (124 steps vs `qnj_it36ctl`) plus its own
+  gate-guarded 50-user corruption phase. Launched 22:18, waiting behind chain 19.
+* `it36noterank2_chain.py`, `RESULTS.md` row 31, `_record_l2i8n2i8s8.py`: the deploy engine now parses
+  and runs a rank >= 2 note and now takes a per-stream shift level, so the old "does not parse / cannot
+  express" wording is replaced. The recording script also gains a one-shot guard, because re-running it
+  would have written a duplicate row 31.
+
+Written by an AI agent 🤖

@@ -1,0 +1,10 @@
+NOTES/BOARD: three live-status bullets and Amendment 24 (row 41, the codec screen, the trace gap)
+
+* NOTES.md: row 41 (3,136 bits, 0.000016 short), the held-out fixed-basis rejection, and the 10-user
+  trace-export gap with its root cause (the frame comes from `../anki-revlogs-10k` while the equalize
+  set comes from the eval's label DB, so 10 users have a review_th beyond the frame's length).
+* optimization/GPU_RUN_BOARD.md: Amendment 24 with the same three findings and the chain-21 swap that
+  the row-41 result motivates.
+* scratchpad/quant_plan/autorun/RECORDED.txt: stamp `it36l3i4s4n8s3`.
+
+Written by an AI agent 🤖

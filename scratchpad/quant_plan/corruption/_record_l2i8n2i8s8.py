@@ -17,12 +17,13 @@ ROW31 = (
     "lowest imm tax of the note-rank-2 family**: ahead is BETTER than the anchor by 0.000119 "
     "(ub95 -0.000088, p_worse 1.0000) and imm is 0.000084 above it (ub95 +0.000108, p_worse 7.2e-11) "
     "- but it spends 768 MORE note bits than row 29 (4,608 vs 3,840) to buy 0.000019 of imm, so an "
-    "int8 note shift level is not free. **LOSS-ONLY: the deploy engine cannot express a per-stream "
-    "shift level.** `RWKV_STATE_SHIFT_LEVEL` takes ONE bare level, and a per-stream string such as "
-    "`card:int4,note:int8` is silently dropped (`parse_level` in `rust/rwkv-infer/src/model.rs` "
-    "matches only `intN`), after which the shifts fall back to the WKV FACTOR level. Verified "
-    "2026-11-22 by running the engine three times on user 107: `card:int4,note:int8` gave predictions "
-    "identical to `int8` (max abs diff 0.0) and 0.087 away from `int4` | pending |\n"
+    "int8 note shift level is not free. **Deployable on the speed axis since 2026-11-22**: "
+    "`RWKV_STATE_SHIFT_LEVEL` is now a PER-STREAM map (`CompressCfg::shift_level` in "
+    "`rust/rwkv-infer/src/model.rs`, GPU_RUN_BOARD Amendment 23), so `card:int4,note:int8` is "
+    "expressible; when this row was recorded the option took ONE bare level and a per-stream string "
+    "was dropped, after which the shifts followed the WKV FACTOR level. The deploy SPEED is still "
+    "missing: the rank-2 note path needs `RWKV_LOWRANK_FAST=1` (0.803x on `l2i8n2i8`), and at 5,888 "
+    "bits the row is a loss instrument rather than an axis-1 candidate | pending |\n"
 )
 
 PARA = (
@@ -80,6 +81,12 @@ def sub(raw: bytes, old: bytes, new: bytes, label: str) -> bytes:
 
 def main() -> int:
     res = RESULTS.read_bytes()
+    if b"| 31 |" in res:
+        # This script is ONE-SHOT: it appends row 31 after row 30's cell, so running it twice would
+        # write a duplicate row. Row 31 is already in RESULTS.md (and was later corrected in place by
+        # _fix_row31_cell.py when the per-stream shift level landed).
+        print("  RESULTS: row 31 already recorded; nothing to do")
+        return 0
     anchor = b"rust_speed_fastrank_on.json`; 0.611x without it) | pending |"
     res = sub(res, anchor, anchor + b"\n" + ROW31.encode("utf-8").rstrip(b"\n"), "RESULTS row 31")
     res = sub(res, b"**Row 19 (`nr4`, the note-pool cut) FAILS**",

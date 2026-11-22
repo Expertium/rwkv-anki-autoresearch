@@ -15,9 +15,11 @@ The first point is the direct A/B against row 17: same card, same shifts, only t
 All four are inside the bars (card 2,176, note 6,528) and all are scored against row 0 (`qnj_it36ctl`),
 the identical unquantized 124-step decay, like every other row.
 
-NOTE for the record: a rank >= 2 note is a path the Rust deploy engine does not parse yet (it parses
-`card:r:intN`), so any passing row here needs engine work before constraint 6 can be quoted. That work
-is approved (Andrew, 2026-11-22 12:01: "Sure, try rank-2 note") and is being done in parallel.
+NOTE for the record: the deploy engine PARSES and runs a rank >= 2 note. Since 2026-11-22 it also has a
+FAST rank-r path (`RWKV_LOWRANK_FAST=1`: 0.803x rev/s for a rank-2 note against 0.618x for the reference
+Gram eigensolve) and per-stream shift levels (`CompressCfg::shift_level`), so a passing row here can be
+deployed and its speed measured. That work was approved (Andrew, 2026-11-22 12:01: "Sure, try rank-2
+note"). See GPU_RUN_BOARD Amendments 19 and 23.
 """
 import sys
 from pathlib import Path
