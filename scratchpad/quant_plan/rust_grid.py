@@ -179,6 +179,22 @@ CONFIGS = {
                      "RWKV_QUANT_SHIFTS": "1",
                      "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int2"},
 
+    # THE int5/int4 CARD RUNGS UNDER THE NOTE's int3 SHIFT RUNG (2026-11-22). Chain 21 tests the
+    # int6 card at 3,136 bits (1,024 + 2,112). The int5 card buys 128 more bits off the SAME note
+    # (896 + 2,112 = 3,008) and has never been tried; the int4 card buys another 128 (768 + 2,112 =
+    # 2,880) but carried +0.000214/+0.000390 on the tail at int4 SHIFTS (row 23). The third entry is
+    # the int5 card under the note's int2 shift rung (896 + 1,920 = 2,816, 128 below chain 21's
+    # gated 2,944). These three price the whole sub-3,136 corner on the CPU before any GPU run.
+    "l2i5s4n1i8s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int5,note:1:int8",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    "l2i4s4n1i8s3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int4,note:1:int8",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int3"},
+    "l2i5s4n1i8s2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int5,note:1:int8",
+                     "RWKV_QUANT_SHIFTS": "1",
+                     "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int2"},
+
     # FIXED-BASIS (codec) state coding (approach 1, 2026-11-22): store the m x m coefficient block
     # C = P^T W Q against a FIXED K x m basis that ships with the model (model.rs::fixedbasis_roundtrip),
     # instead of the rank-r path's 2*K*r factor numbers. Basis file = the fitted per-(stream, layer)
