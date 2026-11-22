@@ -842,6 +842,7 @@ fn batched_to_fast(
                         e_state: Vec::new(),
                         warm_wkv: Vec::new(),
                         warm_shift: Vec::new(),
+                        basis: Vec::new(), // no fast-rank basis on a freshly built state
                     });
                 }
                 out.push(Some(fs));
@@ -900,6 +901,7 @@ fn bench_synth_fast(model: &Model, secs: f64, b: usize) -> Result<()> {
                 e_state: Vec::new(),
                 warm_wkv: Vec::new(),
                 warm_shift: Vec::new(),
+                basis: Vec::new(), // no fast-rank basis on a freshly built state
             });
         }
         states.push(Some(st));
@@ -972,6 +974,7 @@ fn bench_buttons(model: &Model, secs: f64) -> Result<()> {
                     e_state: Vec::new(),
                     warm_wkv: Vec::new(),
                     warm_shift: Vec::new(),
+                    basis: Vec::new(), // no fast-rank basis on a freshly built state
                 });
             }
             states.push(Some(st));
@@ -1268,6 +1271,7 @@ fn main() -> Result<()> {
                     e_state: Vec::new(),
                     warm_wkv: Vec::new(),
                     warm_shift: Vec::new(),
+                    basis: Vec::new(), // no fast-rank basis on a freshly built state
                 });
             }
             states.push(Some(st));
@@ -1339,6 +1343,7 @@ fn main() -> Result<()> {
             eprintln!("[pq-scan] {} catalog searches, {:.2} exact rechecks per search", c, n as f64 / c as f64);
         }
     }
+    crate::model::fastpath_report(); // RWKV_LOWRANK_FAST counters + worst relative Frobenius diff
     let bad = finite::report_total();
     if finite::strict() && bad > 0 {
         eprintln!("[finite] STRICT FAIL: {bad} non-finite value(s) - see the per-user lines above");

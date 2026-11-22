@@ -585,6 +585,7 @@ fn lowrank_roundtrip(
         &mut data, h, k, rank, factor_qmax, per_col, hadamard, four_level, mixed53, compand, v_qmax,
         als_iters, None, // PQ is fast-path only (like EF); candle stays for parity A/B of the non-PQ paths
         None, // no PQ -> no warm indices
+        None, // no fast-rank basis: this wrapper is the PARITY REFERENCE, the fast path is engine-only
     );
     Ok(Tensor::from_vec(data, (h, k, k), t.device())?)
 }
@@ -1196,6 +1197,361 @@ fn rank1_static<const K: usize>(a_rows: &[f32], scale: f32) -> Option<(Vec<f32>,
     Some((u.iter().copied().collect(), v_un.iter().copied().collect(), sigma))
 }
 
+/// `RWKV_LOWRANK_FAST=1` switches the rank>=2 truncation from the reference KxK Gram + symmetric
+/// eigendecomposition (~35 us on a 32x32 state, measured by the `compress_bench` test) to a warm-started
+/// block subspace iteration on fixed-size arrays (a few us), which never forms the Gram matrix. OFF by
+/// default: every published number keeps describing the reference path.
+pub fn lowrank_fast_on() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| flag("RWKV_LOWRANK_FAST"))
+}
+
+/// `RWKV_LOWRANK_FAST_CHECK=1` runs BOTH paths and records the largest relative Frobenius difference
+/// between the two rank-r reconstructions. The run still WRITES the reference factors, so a checked run
+/// reproduces the reference run exactly and only the difference statistic is new.
+pub fn lowrank_fast_check() -> bool {
+    use std::sync::OnceLock;
+    static ON: OnceLock<bool> = OnceLock::new();
+    *ON.get_or_init(|| flag("RWKV_LOWRANK_FAST_CHECK"))
+}
+
+fn flag(name: &str) -> bool {
+    matches!(std::env::var(name).unwrap_or_default().trim().to_ascii_lowercase().as_str(),
+             "1" | "true" | "on" | "yes")
+}
+
+/// Subspace-iteration steps per call; the state moves slowly, so two is normally plenty.
+fn fast_iters() -> usize {
+    use std::sync::OnceLock;
+    static N: OnceLock<usize> = OnceLock::new();
+    *N.get_or_init(|| {
+        std::env::var("RWKV_LOWRANK_FAST_ITERS").ok().and_then(|v| v.trim().parse().ok())
+            .filter(|&n| (1..=16).contains(&n)).unwrap_or(2)
+    })
+}
+
+static FAST_CALLS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static FAST_FALLBACK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// f32::to_bits() of a non-negative finite float is monotone, so a plain atomic max works.
+static FAST_MAX_REL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Counts of the recorded differences in buckets (<1e-3, <1e-2, <1e-1, <1, >=1). The MAX alone cannot
+/// separate a single cold-start outlier -- the first compression of a state has no warm basis -- from a
+/// systematic error, and the deploy decision needs both facts.
+static REL_BUCKETS: [std::sync::atomic::AtomicU64; 5] = [
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+    std::sync::atomic::AtomicU64::new(0),
+];
+
+/// Report the fast-path counters (called from `main` next to the finiteness report).
+pub fn fastpath_report() {
+    use std::sync::atomic::Ordering;
+    if !lowrank_fast_on() && !lowrank_fast_check() {
+        return;
+    }
+    let calls = FAST_CALLS.load(Ordering::Relaxed);
+    let fb = FAST_FALLBACK.load(Ordering::Relaxed);
+    let worst = f32::from_bits(FAST_MAX_REL.load(Ordering::Relaxed) as u32);
+    let bk: Vec<u64> = REL_BUCKETS.iter().map(|b| b.load(Ordering::Relaxed)).collect();
+    eprintln!(
+        "[fastrank] mode={}{} iters={} rank>=2 calls={calls} reference fallbacks={fb} \
+         max_relFrobenius_vs_reference={worst:.3e} rel_buckets={}/{}/{}/{}/{}",
+        if lowrank_fast_on() { "fast" } else { "measure-only" },
+        if lowrank_fast_check() { "+check" } else { "" },
+        fast_iters(),
+        bk[0],
+        bk[1],
+        bk[2],
+        bk[3],
+        bk[4]
+    );
+}
+
+/// Record the relative Frobenius difference of one rank-r reconstruction against the reference.
+fn record_rel_diff(fast: &nalgebra::DMatrix<f32>, reference: &nalgebra::DMatrix<f32>) {
+    use std::sync::atomic::Ordering;
+    let num: f32 = fast.iter().zip(reference.iter()).map(|(x, y)| (x - y) * (x - y)).sum::<f32>().sqrt();
+    let den: f32 = reference.iter().map(|y| y * y).sum::<f32>().sqrt().max(1e-30);
+    let rel = num / den;
+    if !rel.is_finite() {
+        return;
+    }
+    let bucket = if rel < 1e-3 {
+        0
+    } else if rel < 1e-2 {
+        1
+    } else if rel < 1e-1 {
+        2
+    } else if rel < 1.0 {
+        3
+    } else {
+        4
+    };
+    REL_BUCKETS[bucket].fetch_add(1, Ordering::Relaxed);
+    let bits = rel.to_bits() as u64;
+    let mut cur = FAST_MAX_REL.load(Ordering::Relaxed);
+    while bits > cur {
+        match FAST_MAX_REL.compare_exchange_weak(cur, bits, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return,
+            Err(seen) => cur = seen,
+        }
+    }
+}
+
+/// Modified Gram-Schmidt with one reorthogonalization pass; false if a column is not usable.
+fn mgs_into<const K: usize, const R: usize>(z: &mut nalgebra::SMatrix<f32, K, R>) -> bool {
+    for j in 0..R {
+        for _ in 0..2 {
+            for l in 0..j {
+                let mut tmp = nalgebra::SVector::<f32, K>::zeros();
+                tmp.copy_from(&z.column(l));
+                let d = tmp.dot(&z.column(j));
+                for i in 0..K {
+                    z[(i, j)] -= d * tmp[i];
+                }
+            }
+        }
+        let n = z.column(j).norm();
+        if !n.is_finite() || n < 1e-20 {
+            return false;
+        }
+        for i in 0..K {
+            z[(i, j)] /= n;
+        }
+    }
+    true
+}
+
+/// Cold block: the B columns of A with the largest norm, orthonormalized. The top left singular vectors
+/// live in range(A), so this is a far better start than the identity.
+fn cold_block<const K: usize, const B: usize>(a: &nalgebra::SMatrix<f32, K, K>) -> nalgebra::SMatrix<f32, K, B> {
+    let mut order: Vec<usize> = (0..K).collect();
+    let mut norms: Vec<f32> = (0..K).map(|c| (0..K).map(|r| a[(r, c)] * a[(r, c)]).sum()).collect();
+    order.sort_by(|&i, &j| norms[j].partial_cmp(&norms[i]).unwrap_or(std::cmp::Ordering::Equal));
+    norms.clear();
+    let mut q = nalgebra::SMatrix::<f32, K, B>::zeros();
+    let mut filled = 0;
+    for &c in &order {
+        if filled >= B {
+            break;
+        }
+        let mut v = a.column(c).into_owned();
+        for j in 0..filled {
+            let d = q.column(j).dot(&v);
+            v -= &q.column(j) * d;
+        }
+        let n = v.norm();
+        if n.is_finite() && n > 1e-20 {
+            q.set_column(filled, &(v / n));
+            filled += 1;
+        }
+    }
+    q
+}
+
+/// The extra tracked direction: the strongest column of A with the top-R directions removed. Refreshing it
+/// every call is what lets a NEW dominant direction enter the subspace (a pure iteration only preserves
+/// the span it already has).
+fn refresh_extra<const K: usize, const R: usize, const B: usize>(
+    an: &nalgebra::SMatrix<f32, K, K>,
+    q: &mut nalgebra::SMatrix<f32, K, B>,
+) {
+    let mut best = 0usize;
+    let mut best_n = -1.0f32;
+    for c in 0..K {
+        let n: f32 = (0..K).map(|r| an[(r, c)] * an[(r, c)]).sum();
+        if n > best_n {
+            best_n = n;
+            best = c;
+        }
+    }
+    let mut v = an.column(best).into_owned();
+    for j in 0..R {
+        let mut tmp = nalgebra::SVector::<f32, K>::zeros();
+        tmp.copy_from(&q.column(j));
+        let d = tmp.dot(&v);
+        for i in 0..K {
+            v[i] -= d * tmp[i];
+        }
+    }
+    let n = v.norm();
+    if n.is_finite() && n > 1e-20 {
+        q.set_column(R, &(v / n));
+    } else {
+        let keep = q.column(R).into_owned();
+        q.set_column(R, &keep);
+    }
+}
+
+/// The REFERENCE rank-r truncation (unchanged math): Gram matrix + symmetric eigendecomposition, top-r
+/// eigenpairs, sigma from the ORIGINAL A, sqrt(sigma) split into both factors.
+fn rankr_reference(
+    a: &nalgebra::DMatrix<f32>,
+    an: &nalgebra::DMatrix<f32>,
+    k: usize,
+    r: usize,
+    scale: f32,
+    uf: &mut nalgebra::DMatrix<f32>,
+    vf: &mut nalgebra::DMatrix<f32>,
+) {
+    let gram = an * an.transpose();
+    let eig = nalgebra::SymmetricEigen::new(gram);
+    let evals = &eig.eigenvalues;
+    let mut order: Vec<usize> = (0..k).collect();
+    order.sort_by(|&i, &j| {
+        let a = if evals[i].is_finite() { evals[i] } else { f32::NEG_INFINITY };
+        let b = if evals[j].is_finite() { evals[j] } else { f32::NEG_INFINITY };
+        b.partial_cmp(&a).unwrap()
+    });
+    for j in 0..r {
+        let col = order[j];
+        let ev = evals[col];
+        if !ev.is_finite() || ev <= 0.0 {
+            continue;
+        }
+        let sigma = ev.sqrt() * scale;
+        if sigma > 1e-20 && sigma.is_finite() {
+            let sj = sigma.sqrt();
+            let u_col = eig.eigenvectors.column(col).into_owned();
+            let v_unscaled = a.transpose() * &u_col;
+            for i in 0..k {
+                uf[(i, j)] = u_col[i] * sj;
+                vf[(i, j)] = (v_unscaled[i] / sigma) * sj;
+            }
+        }
+    }
+}
+
+/// One (K, r) shape of the fast path, monomorphized by a MACRO rather than by const generics: the tracked
+/// block width is B = R+1, a `const B: usize = R + 1;` inside a generic fn cannot be used in type position
+/// (E0401), and the const-generic form of nalgebra's fixed-size types cannot satisfy `ToTypenum` (its
+/// fixed-size SymmetricEigen needs a concrete dimension, and const-generic arithmetic in types needs the
+/// unstable `generic_const_exprs`). Pasting LITERAL sizes gives the same specialized code with no dynamic
+/// allocation on the hot path. `a`, `an`, `q`, `uf`, `vf` are passed in explicitly because macro hygiene
+/// hides the caller's locals.
+///
+/// Math (the reference is `rankr_reference`, the definition of correct here): iterate the block towards
+/// the dominant left subspace of the NORMALIZED `an` (Z = an an^T Q + reorthogonalization), then
+/// Rayleigh-Ritz on the (R+1)x(R+1) projection G = (an^T Q)^T (an^T Q), whose top-R eigenvectors give the
+/// best R directions inside the tracked block; the (R+1)-th is discarded. sigma is recomputed from the
+/// ORIGINAL `a` and sqrt(sigma) is split into both factors, exactly as the reference does.
+macro_rules! rankr_fast_impl {
+    ($k_lit:literal, $r_lit:literal, $a:expr, $an:expr, $q:expr, $uf:expr, $vf:expr) => {{
+        const K: usize = $k_lit;
+        const R: usize = $r_lit;
+        const B: usize = R + 1; // the R wanted directions + 1 extra, so a NEW one can still enter
+        let a: &nalgebra::DMatrix<f32> = $a;
+        let an: &nalgebra::DMatrix<f32> = $an;
+        let q: &mut [f32] = $q;
+        let uf: &mut nalgebra::DMatrix<f32> = $uf;
+        let vf: &mut nalgebra::DMatrix<f32> = $vf;
+        if q.len() < B * K {
+            return false;
+        }
+        use nalgebra::{SMatrix, SymmetricEigen};
+        let an_s = SMatrix::<f32, K, K>::from_fn(|i, j| an[(i, j)]);
+        // Seed from the previous step's block; a zero, non-finite or degenerate seed means a cold start.
+        let mut block = SMatrix::<f32, K, B>::zeros();
+        let mut warm_ok = true;
+        for j in 0..B {
+            for i in 0..K {
+                block[(i, j)] = q[j * K + i];
+            }
+            let n = block.column(j).norm();
+            if !n.is_finite() || n < 1e-6 {
+                warm_ok = false;
+            }
+        }
+        if warm_ok && !mgs_into::<K, B>(&mut block) {
+            warm_ok = false;
+        }
+        if !warm_ok {
+            block = cold_block::<K, B>(&an_s);
+        }
+        for _ in 0..fast_iters() {
+            let t = an_s.transpose() * block; // an^T Q   (KxB)
+            let mut z = an_s * t; // an an^T Q (KxB) -- the KxK Gram matrix is never formed
+            if !mgs_into::<K, B>(&mut z) {
+                return false;
+            }
+            block = z;
+        }
+        let t = an_s.transpose() * block; // KxB
+        let g = t.transpose() * t; // BxB: the projection of an an^T onto span(block)
+        let eig = SymmetricEigen::new(g);
+        let mut order: Vec<usize> = (0..B).collect();
+        order.sort_by(|&i, &j| {
+            let x = if eig.eigenvalues[i].is_finite() { eig.eigenvalues[i] } else { f32::NEG_INFINITY };
+            let y = if eig.eigenvalues[j].is_finite() { eig.eigenvalues[j] } else { f32::NEG_INFINITY };
+            y.partial_cmp(&x).unwrap()
+        });
+        let mut w = SMatrix::<f32, B, R>::zeros();
+        for j in 0..R {
+            let c = order[j];
+            for i in 0..B {
+                w[(i, j)] = eig.eigenvectors[(i, c)];
+            }
+        }
+        let mut u = block * w; // KxR
+        if !mgs_into::<K, R>(&mut u) {
+            return false;
+        }
+        for j in 0..R {
+            let u_col = u.column(j).into_owned(); // unit left singular vector of an (= of a)
+            let v_un = a.transpose() * &u_col; // = sigma * v  (the ORIGINAL a -> the true sigma)
+            let sigma = v_un.norm();
+            if !sigma.is_finite() || sigma <= 1e-20 {
+                continue;
+            }
+            let sj = sigma.sqrt();
+            for i in 0..K {
+                uf[(i, j)] = u_col[i] * sj;
+                vf[(i, j)] = (v_un[i] / sigma) * sj;
+            }
+        }
+        // next step's block: the R refined directions + one freshly refreshed extra direction
+        for j in 0..R {
+            for i in 0..K {
+                block[(i, j)] = u[(i, j)];
+            }
+        }
+        let mut rotated = block;
+        refresh_extra::<K, R, B>(&an_s, &mut rotated);
+        for j in 0..B {
+            for i in 0..K {
+                q[j * K + i] = rotated[(i, j)];
+            }
+        }
+        true
+    }};
+}
+
+/// FAST rank-r truncation for one KxK state: warm-started block subspace iteration + Rayleigh-Ritz.
+/// `q` is this (head of this stream)'s block from the previous step, column-major, (R+1)*K floats; it is
+/// overwritten with the new block. Returns false when the shape is not covered or the iteration went
+/// degenerate, so the caller can fall back to the reference.
+fn rankr_fast(
+    a: &nalgebra::DMatrix<f32>,
+    an: &nalgebra::DMatrix<f32>,
+    k: usize,
+    r: usize,
+    q: &mut [f32],
+    uf: &mut nalgebra::DMatrix<f32>,
+    vf: &mut nalgebra::DMatrix<f32>,
+) -> bool {
+    match (k, r) {
+        (32, 2) => rankr_fast_impl!(32, 2, a, an, &mut *q, &mut *uf, &mut *vf),
+        (32, 3) => rankr_fast_impl!(32, 3, a, an, &mut *q, &mut *uf, &mut *vf),
+        (32, 4) => rankr_fast_impl!(32, 4, a, an, &mut *q, &mut *uf, &mut *vf),
+        (16, 2) => rankr_fast_impl!(16, 2, a, an, &mut *q, &mut *uf, &mut *vf),
+        (8, 2) => rankr_fast_impl!(8, 2, a, an, &mut *q, &mut *uf, &mut *vf),
+        _ => false, // any other shape: keep the reference path
+    }
+}
+
 /// In-place rank-r SVD-truncation + quantization of a flat row-major (H,K,K) WKV state. The SHARED
 /// compression core called by BOTH the candle `lowrank_roundtrip` and the plain-Rust fast engine
 /// (`fast.rs`), so the two inference paths produce bit-identical compressed states. Each head's KxK is
@@ -1218,6 +1574,10 @@ pub fn compress_wkv_state(
     // task25: joint-path warm indices for THIS entity, layout [head*2 + rank_component], -1 = none
     // (len >= h*2 when Some). Only the joint PQ path uses it; everything else ignores it.
     mut warm: Option<&mut [i32]>,
+    // FAST RANK-r PATH (RWKV_LOWRANK_FAST): this (entity, stream, head)'s subspace block from the
+    // previous step, layout [head][R+1 columns][K], i.e. len >= h*(r+1)*k. None = no warm basis,
+    // which just means the fast path cold-starts; the reference path ignores it entirely.
+    mut basis: Option<&mut [f32]>,
 ) {
     use nalgebra::DMatrix;
     // DEBUG ONLY (2026-09-19): RWKV_DEBUG_JITTER=<rel> multiplies every state element by 1 +/- rel (deterministic hash
@@ -1302,35 +1662,40 @@ pub fn compress_wkv_state(
             }
             }
         } else {
-            // Top-r (r>1, or ALS) via symmetric eigendecomposition of the Gram G = an an^T (KxK PSD):
-            // eigenvectors of G are left singular vectors, eigenvalues are sigma_n^2; v = A^T u / sigma.
-            let gram = &an * an.transpose();
-            let eig = nalgebra::SymmetricEigen::new(gram);
-            let evals = &eig.eigenvalues;
-            let mut order: Vec<usize> = (0..k).collect();
-            // NaN-safe descending sort: non-finite eigenvalues -> -inf (sort last, never picked as top-r),
-            // and a PROPER total order (a bare partial_cmp.unwrap_or(Equal) panics on NaN evals from int2).
-            order.sort_by(|&i, &j| {
-                let a = if evals[i].is_finite() { evals[i] } else { f32::NEG_INFINITY };
-                let b = if evals[j].is_finite() { evals[j] } else { f32::NEG_INFINITY };
-                b.partial_cmp(&a).unwrap()
-            });
-            for j in 0..r {
-                let col = order[j];
-                let ev = evals[col];
-                if !ev.is_finite() || ev <= 0.0 {
-                    continue; // skip degenerate/non-finite components (graceful rank reduction)
-                }
-                let sigma = ev.sqrt() * scale; // unscale -> true singular value
-                if sigma > 1e-20 && sigma.is_finite() {
-                    let sj = sigma.sqrt(); // split sqrt(sigma) symmetrically into both factors
-                    let u_col = eig.eigenvectors.column(col).into_owned();
-                    let v_unscaled = &a.transpose() * &u_col; // = sigma * v  (Kx1, uses original A)
-                    for i in 0..k {
-                        uf[(i, j)] = u_col[i] * sj;
-                        vf[(i, j)] = (v_unscaled[i] / sigma) * sj;
+            // RANK >= 2 (or ALS): reference path = symmetric eigendecomposition of the Gram G = an an^T
+            // (KxK PSD; eigenvectors of G are left singular vectors, eigenvalues are sigma_n^2, and
+            // v = A^T u / sigma). FAST path (RWKV_LOWRANK_FAST=1) = warm-started block subspace iteration
+            // + Rayleigh-Ritz, see `rankr_fast`. RWKV_LOWRANK_FAST_CHECK=1 runs both and records
+            // the difference but still writes the REFERENCE factors, so a checked run is bit-reproducible.
+            let check = lowrank_fast_check();
+            let mut done = false;
+            if als_iters.is_none() && (lowrank_fast_on() || check) {
+                use std::sync::atomic::Ordering;
+                let per_head = k * r + k; // the block is R+1 columns
+                let maybe = basis.as_deref_mut().filter(|b| b.len() >= (hh + 1) * per_head);
+                if let Some(b) = maybe {
+                    FAST_CALLS.fetch_add(1, Ordering::Relaxed);
+                    let mut uf_f = DMatrix::<f32>::zeros(k, r);
+                    let mut vf_f = DMatrix::<f32>::zeros(k, r);
+                    done = rankr_fast(&a, &an, k, r, &mut b[hh * per_head..(hh + 1) * per_head],
+                                      &mut uf_f, &mut vf_f);
+                    if done && check {
+                        let mut uf_r = DMatrix::<f32>::zeros(k, r);
+                        let mut vf_r = DMatrix::<f32>::zeros(k, r);
+                        rankr_reference(&a, &an, k, r, scale, &mut uf_r, &mut vf_r);
+                        record_rel_diff(&(&uf_f * vf_f.transpose()), &(&uf_r * vf_r.transpose()));
+                        uf = uf_r; // the checked run reproduces the reference exactly
+                        vf = vf_r;
+                    } else if done {
+                        uf = uf_f;
+                        vf = vf_f;
+                    } else {
+                        FAST_FALLBACK.fetch_add(1, Ordering::Relaxed);
                     }
                 }
+            }
+            if !done {
+                rankr_reference(&a, &an, k, r, scale, &mut uf, &mut vf);
             }
         }
         if let Some(pq) = pq {
@@ -3081,5 +3446,240 @@ fn norm_range_env(name: &str, lo: f32, hi: f32) -> (f32, f32) {
             (p[0], p[1])
         }
         _ => (lo, hi),
+    }
+}
+
+#[cfg(test)]
+mod compress_bench {
+    //! Ignored benchmark + prototype for the rank>=2 compression cost (run with --ignored --nocapture).
+    //!
+    //! The deploy engine measures a rank-2 NOTE at 0.600x rev/s and rank-3 at 0.581x, both below the
+    //! 0.75x floor, while rank 1 (a power iteration on stack matrices) is 0.90x. The suspicion is that
+    //! the rank>=2 branch - which forms the KxK Gram matrix and calls `nalgebra::SymmetricEigen` - is
+    //! the whole cost. This module measures that, and prototypes the cheap alternative: subspace
+    //! iteration on fixed-size arrays, which never forms the Gram matrix and can be warm-started from
+    //! the previous step's basis because the state moves slowly.
+    use super::compress_wkv_state;
+    use nalgebra as na;
+    use std::hint::black_box;
+    use std::time::Instant;
+
+    const K: usize = 32;
+    const R: usize = 2;
+
+    /// A KxK state with a geometric singular spectrum: sum_i decay^i * k_i v_i^T with |k| = |v| = 1.
+    fn synth(decay: f32, terms: usize, seed: u64) -> Vec<f32> {
+        let mut out = vec![0.0f32; K * K];
+        let mut s = 1.0f32;
+        let mut rng = seed | 1;
+        let mut rnd = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            ((rng >> 11) as f32 / (1u64 << 53) as f32) * 2.0 - 1.0
+        };
+        for _ in 0..terms {
+            let k: Vec<f32> = (0..K).map(|_| rnd()).collect();
+            let v: Vec<f32> = (0..K).map(|_| rnd()).collect();
+            let kn = k.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
+            let vn = v.iter().map(|x| x * x).sum::<f32>().sqrt().max(1e-9);
+            for i in 0..K {
+                for j in 0..K {
+                    out[i * K + j] += s * (k[i] / kn) * (v[j] / vn);
+                }
+            }
+            s *= decay;
+        }
+        out
+    }
+
+    /// The production exact rank-2 truncation: `compress_wkv_state` with NO quantization at all, so the
+    /// buffer it writes back IS A_2 = U_2 V_2^T.
+    fn reference(a: &[f32]) -> Vec<f32> {
+        let mut buf = a.to_vec();
+        compress_wkv_state(&mut buf, 1, K, R, None, false, false, false, false, None, None, None, None,
+                           None, None);
+        buf
+    }
+
+    /// PROTOTYPE: top-2 left singular subspace by subspace iteration on fixed-size arrays. `q` is the
+    /// basis (columns = orthonormal K-vectors) and is updated in place. Never forms A A^T.
+    fn subit(a: &na::SMatrix<f32, K, K>, q: &mut na::SMatrix<f32, K, R>, iters: usize) {
+        for _ in 0..iters {
+            let t = a.transpose() * &*q; // KxR
+            let mut z = a * t; // A A^T q  (KxR)
+            for j in 0..R {
+                for _ in 0..2 {
+                    // modified Gram-Schmidt with one reorthogonalization pass
+                    for l in 0..j {
+                        let mut tmp = na::SVector::<f32, K>::zeros();
+                        tmp.copy_from(&z.column(l));
+                        let d = tmp.dot(&z.column(j));
+                        for i in 0..K {
+                            z[(i, j)] -= d * tmp[i];
+                        }
+                    }
+                }
+                let n = z.column(j).norm();
+                if n.is_finite() && n > 1e-30 {
+                    for i in 0..K {
+                        z[(i, j)] /= n;
+                    }
+                }
+            }
+            *q = z;
+        }
+    }
+
+    /// Factor the prototype's basis exactly as the production path does: sigma from the ORIGINAL A,
+    /// then split sqrt(sigma) into both factors.
+    fn proto_factors(
+        a: &na::SMatrix<f32, K, K>,
+        q: &na::SMatrix<f32, K, R>,
+    ) -> (na::SMatrix<f32, K, R>, na::SMatrix<f32, K, R>) {
+        let mut uf = na::SMatrix::<f32, K, R>::zeros();
+        let mut vf = na::SMatrix::<f32, K, R>::zeros();
+        for j in 0..R {
+            let u = q.column(j).into_owned();
+            let v_un = a.transpose() * &u; // = sigma * v
+            let sigma = v_un.norm();
+            if sigma.is_finite() && sigma > 1e-20 {
+                let sj = sigma.sqrt();
+                for i in 0..K {
+                    uf[(i, j)] = u[i] * sj;
+                    vf[(i, j)] = (v_un[i] / sigma) * sj;
+                }
+            }
+        }
+        (uf, vf)
+    }
+
+    /// Flatten a KxK matrix to the ROW-major layout `compress_wkv_state` works in (nalgebra's
+    /// own iterator is column-major, so a direct comparison would compare a matrix with its
+    /// transpose).
+    fn row_major(m: &na::SMatrix<f32, K, K>) -> Vec<f32> {
+        let mut out = Vec::with_capacity(K * K);
+        for r in 0..K {
+            for c in 0..K {
+                out.push(m[(r, c)]);
+            }
+        }
+        out
+    }
+
+    fn rel_frob(x: &[f32], y: &[f32]) -> f32 {
+        let num: f32 = x.iter().zip(y).map(|(p, q)| (p - q) * (p - q)).sum::<f32>().sqrt();
+        let den: f32 = y.iter().map(|q| q * q).sum::<f32>().sqrt().max(1e-30);
+        num / den
+    }
+
+    /// A cold basis: the two columns of A with the largest norm, orthonormalized (the top left singular
+    /// vectors live in range(A), so this starts far better than the identity does).
+    fn cold_basis(a: &na::SMatrix<f32, K, K>) -> na::SMatrix<f32, K, R> {
+        let mut order: Vec<usize> = (0..K).collect();
+        order.sort_by(|&i, &j| {
+            let ni: f32 = (0..K).map(|r| a[(r, i)] * a[(r, i)]).sum();
+            let nj: f32 = (0..K).map(|r| a[(r, j)] * a[(r, j)]).sum();
+            nj.partial_cmp(&ni).unwrap()
+        });
+        let c0 = a.column(order[0]).into_owned().normalize();
+        let c1 = a.column(order[1]).into_owned();
+        let d = c1.dot(&c0);
+        let c1o = (c1 - c0.clone() * d).normalize();
+        let mut q = na::SMatrix::<f32, K, R>::zeros();
+        q.set_column(0, &c0);
+        q.set_column(1, &c1o);
+        q
+    }
+
+    fn us_per(secs: f64, n: usize) -> f64 {
+        secs * 1e6 / n as f64
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_rank2_paths() {
+        let n = 2000usize;
+        let cases: Vec<(&str, Vec<f32>)> = vec![
+            ("lowrank(0.85x8)", synth(0.85, 8, 12345)),
+            ("slow(0.98x16)", synth(0.98, 16, 999)),
+            ("flat(1.0x32)", synth(1.0, 32, 4242)),
+        ];
+        for (name, a) in &cases {
+            let sm = na::SMatrix::<f32, K, K>::from_row_slice(a);
+            let gram = sm * sm.transpose();
+            let t0 = Instant::now();
+            for _ in 0..n {
+                let e = na::SymmetricEigen::new(black_box(gram));
+                black_box(e.eigenvalues[0]);
+            }
+            let t_eig = us_per(t0.elapsed().as_secs_f64(), n);
+            let t0 = Instant::now();
+            for _ in 0..n {
+                black_box(black_box(&sm) * black_box(&sm).transpose());
+            }
+            let t_gram = us_per(t0.elapsed().as_secs_f64(), n);
+
+            let mut buf = a.clone();
+            let t0 = Instant::now();
+            for _ in 0..n {
+                buf.copy_from_slice(a);
+                compress_wkv_state(&mut buf, 1, K, 1, None, false, false, false, false, None, None,
+                                   None, None, None, None);
+            }
+            let t_r1 = us_per(t0.elapsed().as_secs_f64(), n);
+            let ref2 = reference(a);
+            let t0 = Instant::now();
+            for _ in 0..n {
+                buf.copy_from_slice(a);
+                compress_wkv_state(&mut buf, 1, K, R, None, false, false, false, false, None, None,
+                                   None, None, None, None);
+            }
+            let t_r2 = us_per(t0.elapsed().as_secs_f64(), n);
+
+            let mut line = format!(
+                "{name:16} gram {t_gram:6.2}us eig {t_eig:6.2}us compress r1 {t_r1:6.2}us r2 {t_r2:6.2}us"
+            );
+            for iters in [1usize, 2, 4, 8] {
+                let mut q = cold_basis(&sm);
+                subit(&sm, &mut q, iters);
+                let (uf, vf) = proto_factors(&sm, &q);
+                let proto: Vec<f32> = row_major(&(uf * vf.transpose()));
+                let err = rel_frob(&proto, &ref2);
+                let t0 = Instant::now();
+                for _ in 0..n {
+                    let mut q2 = cold_basis(black_box(&sm));
+                    subit(black_box(&sm), &mut q2, iters);
+                    black_box(&q2);
+                }
+                let t = us_per(t0.elapsed().as_secs_f64(), n);
+                line += &format!(" | cold{iters} {t:5.2}us err {err:.2e}");
+            }
+            // warm start: the state drifts a little between steps, so re-converge from the PREVIOUS basis
+            let mut warm = cold_basis(&sm);
+            subit(&sm, &mut warm, 8);
+            let mut d = a.clone();
+            for (i, x) in d.iter_mut().enumerate() {
+                *x = *x * 1.01 + 0.001 * ((i % 7) as f32 - 3.0);
+            }
+            let drifted = na::SMatrix::<f32, K, K>::from_row_slice(&d);
+            let ref_drift = reference(&d);
+            for iters in [1usize, 2] {
+                let mut q = warm;
+                subit(&drifted, &mut q, iters);
+                let (uf, vf) = proto_factors(&drifted, &q);
+                let proto: Vec<f32> = row_major(&(uf * vf.transpose()));
+                let err = rel_frob(&proto, &ref_drift);
+                let t0 = Instant::now();
+                for _ in 0..n {
+                    let mut q2 = black_box(warm);
+                    subit(black_box(&drifted), &mut q2, iters);
+                    black_box(&q2);
+                }
+                let t = us_per(t0.elapsed().as_secs_f64(), n);
+                line += &format!(" | warm{iters} {t:5.2}us err {err:.2e}");
+            }
+            println!("{line}");
+        }
     }
 }

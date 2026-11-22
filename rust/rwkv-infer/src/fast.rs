@@ -32,6 +32,12 @@ pub struct FastLayerState {
     /// so these change NO predictions. Empty when the respective PQ path is off.
     pub warm_wkv: Vec<i32>,   // B*H*2 joint-WKV picks ([bi][head][rank_comp]); -1 = none
     pub warm_shift: Vec<i32>, // B*2*m shift-PQ picks ([bi][role][pos]); -1 = none
+    /// RWKV_LOWRANK_FAST warm subspace block for the rank>=2 WKV truncation, layout
+    /// [bi][head][R+1 columns][K] = B*H*(rank+1)*K floats (empty while that path is off). Travels with
+    /// the state exactly like the warm PQ picks, and a length mismatch seeds ZEROS, which the fast path
+    /// reads as "cold start" (a zero column has no direction). SPEED ONLY: the reference path ignores
+    /// it, and under RWKV_LOWRANK_FAST_CHECK=1 the reference factors are what gets written.
+    pub basis: Vec<f32>,
 }
 pub type FastStreamState = Vec<FastLayerState>;
 
@@ -479,15 +485,15 @@ impl FastModel {
             let e_prev = ls.map(|s| s.e_state.as_slice());
             // persist == false (a QUERY forward: the caller discards the returned state): the compression only
             // changes what the NEXT step would read back, never this step's outputs, so skipping it is exact.
-            let (e_state, warm_wkv, warm_shift) = if persist {
+            let (e_state, warm_wkv, warm_shift, basis) = if persist {
                 self.compress_stream_state(m, b, &mut t_state, &mut t_xshift, &mut c_xshift, e_prev, ls)
             } else {
-                (Vec::new(), Vec::new(), Vec::new())
+                (Vec::new(), Vec::new(), Vec::new(), Vec::new())
             };
             Ok((
                 xc,
                 v0_out,
-                FastLayerState { t_xshift, t_state, c_xshift, e_state, warm_wkv, warm_shift },
+                FastLayerState { t_xshift, t_state, c_xshift, e_state, warm_wkv, warm_shift, basis },
             ))
         }
     }
@@ -619,7 +625,7 @@ impl FastModel {
     /// Per-step state compression for stream `m`, in place on the persisted (B,H,K,K)/(B,C) buffers.
     /// Mirrors the candle `forward_stream`: low-rank (card/note) takes precedence over full-matrix quant;
     /// shift vectors quantized at the stream's bit-width when `quant_shifts`. Per card (b).
-    /// Returns (new error-feedback buffer for the WKV state when EF is on, new warm_wkv, new warm_shift)
+    /// Returns (new error-feedback buffer for the WKV state when EF is on, new warm_wkv, new warm_shift, new fast-rank basis)
     /// — the warm vecs carry this entity's previous winning centroid indices (task25, speed-only).
     #[allow(clippy::too_many_arguments)]
     fn compress_stream_state(
@@ -631,7 +637,7 @@ impl FastModel {
         c_xshift: &mut [f32],
         e_prev: Option<&[f32]>,
         ls: Option<&FastLayerState>,
-    ) -> (Vec<f32>, Vec<i32>, Vec<i32>) {
+    ) -> (Vec<f32>, Vec<i32>, Vec<i32>, Vec<f32>) {
         let (c, h, k) = (self.c, self.h, self.k);
         let hkk = h * k * k;
         let cfg = &self.compress;
@@ -655,6 +661,25 @@ impl FastModel {
             .map(|s| s.warm_shift.clone())
             .filter(|v| v.len() == want_shift)
             .unwrap_or_else(|| vec![-1; want_shift]);
+        // RWKV_LOWRANK_FAST: this (entity, stream, layer)'s subspace block. Allocated ONLY while the
+        // fast path (or its check) is on AND the stream is a rank>=2 low-rank one that actually reads it
+        // (rank 1 never does, and the ALS path keeps the reference solver), so an untouched recipe
+        // allocates and copies nothing. Seeded from the entity's previous step, size-checked -- a
+        // mismatch (e.g. a state built before this feature) falls back to a cold start.
+        let want_basis = match cfg.lowrank.get(&m) {
+            Some(&(rank, _))
+                if rank.min(k) >= 2
+                    && cfg.als.is_none()
+                    && (crate::model::lowrank_fast_on() || crate::model::lowrank_fast_check()) =>
+            {
+                b * h * (rank.min(k) + 1) * k
+            }
+            _ => 0,
+        };
+        let mut basis: Vec<f32> = ls
+            .map(|s| s.basis.clone())
+            .filter(|v| v.len() == want_basis)
+            .unwrap_or_else(|| vec![0.0; want_basis]);
         if let Some(&(rank, fqmax)) = cfg.lowrank.get(&m) {
             if cfg.ef {
                 // Idea EF: add the carried quant error back to the fresh state, re-compress, then store the
@@ -678,6 +703,7 @@ impl FastModel {
                     crate::model::compress_wkv_state(
                         slice, h, k, rank, fqmax, cfg.percol, cfg.hadamard, cfg.four_level,
                         cfg.mixed53, cfg.compand, cfg.vqmax, cfg.als, cfg.pq.as_deref(), None,
+                        None, // EF stays cold here too (see the warm note above)
                     );
                     let eb = &mut e_new[bi * hkk..(bi + 1) * hkk];
                     for j in 0..hkk {
@@ -693,17 +719,21 @@ impl FastModel {
                         crate::model::compress_wkv_state(
                             eb, h, k, er, cfg.ef_elevel, cfg.percol, false, false, false, None, None,
                             None, epq, None,
+                            None, // the carried error is a different matrix: no shared basis
                         );
                     }
                 }
             } else {
+                let per_head = k * rank.min(k) + k; // the fast block is R+1 columns per head
                 for bi in 0..b {
                     let wslice = (!warm_wkv.is_empty())
                         .then(|| &mut warm_wkv[bi * h * 2..(bi + 1) * h * 2]);
+                    let bslice = (!basis.is_empty())
+                        .then(|| &mut basis[bi * h * per_head..(bi + 1) * h * per_head]);
                     crate::model::compress_wkv_state(
                         &mut t_state[bi * hkk..(bi + 1) * hkk], h, k, rank, fqmax, cfg.percol,
                         cfg.hadamard, cfg.four_level, cfg.mixed53, cfg.compand, cfg.vqmax, cfg.als,
-                        cfg.pq.as_deref(), wslice,
+                        cfg.pq.as_deref(), wslice, bslice,
                     );
                 }
             }
@@ -752,7 +782,7 @@ impl FastModel {
                 }
             }
         }
-        (e_new, warm_wkv, warm_shift)
+        (e_new, warm_wkv, warm_shift, basis)
     }
 
     /// forgetting_curve(out_w, elapsed) -> probability. out_w is (num_curves). Mirrors model.rs.
@@ -931,6 +961,7 @@ impl FastModel {
                             e_state: tile_b1(&ls.e_state, n),
                             warm_wkv: tile_b1_i32(&ls.warm_wkv, n),
                             warm_shift: tile_b1_i32(&ls.warm_shift, n),
+                            basis: tile_b1(&ls.basis, n),
                         });
                     }
                     Some(out)

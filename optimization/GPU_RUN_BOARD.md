@@ -343,9 +343,11 @@ absolute terms (its fp32 twin is 0.317213/0.289632), so absolute and relative re
 `it36rank` (launched 07:45) measures the card rank ladder - rows 15-18, card rank-2/3 int8 with int8 or
 int4 shifts, 1,280-2,048 card bits, note unchanged. QUEUED behind it: `it36notecut` (note rank-1 int4
 pool cut, plus the gated `l*i*s4n4` combinations only if the best card-rank imm delta comes in under
-+0.00070). BLOCKER: rank >= 2 has no fused path in the deploy engine (measured 0.629x rev/s, 0.448x
-states/s), so any rank >= 2 recipe needs a fused rank-r readout in the engine before it can be deployed
-- that is a deploy-path change and needs Andrew's approval. GPU at amendment time: `it36rank`'s `l2i8`
++0.00070). BLOCKER (SUPERSEDED 2026-11-22 14:15): rank >= 2 had no fused path in the deploy engine (measured
+0.629x rev/s, 0.448x states/s), so a rank >= 2 recipe needed a fused rank-r readout before it could be
+deployed. That path now EXISTS: `RWKV_LOWRANK_FAST=1` (E2) replaces the KxK Gram + symmetric
+eigensolve with a warm-started block subspace iteration + Rayleigh-Ritz, and it takes the rank-2 NOTE
+from 0.618x to 0.803x rev/s - see the E2 amendment at the end of this file. GPU at amendment time: `it36rank`'s `l2i8`
 QAT decay, chain `it36notecut` waiting.
 
 Row 11 amendment 11 (2026-11-21 08:40, Moscow). **ROW 15 PASSES ALL SIX CONSTRAINTS - the card/note state
@@ -359,7 +361,8 @@ both heads inside the +0.0005 ceiling including the upper bounds. Deploy engine 
 mechanism is confirmed: rank-1 imm +0.001009 -> rank-2 +0.000307. The earlier "rank >= 2 cannot be
 deployed" conclusion came from `l2i4`, which put rank 2 on the NOTE as well (4 layers) and measured
 0.629x; card-only rank-2 is 0.812x and needs NO engine change, because the engine already parses
-`card:2:int8`. Artifacts: `rust_artifacts/it36l2i8_124.safetensors`, `rust_speed_rank2card.json`, and the
+`card:2:int8`. (2026-11-22 14:15: the NOTE side is solved too - `RWKV_LOWRANK_FAST=1` measures
+`l2i8n2i8` at 0.803x rev/s and `l3i8n2i8` at 0.791x. See the E2 amendment at the end of this file.) Artifacts: `rust_artifacts/it36l2i8_124.safetensors`, `rust_speed_rank2card.json`, and the
 3-user deploy grid `rust_grid_it36l2i8.json`. OWED: an idle-machine speed re-measurement, and Andrew's
 decision on whether this recipe replaces the deployed 403/214-bit one. STILL RUNNING: rows 16-18 (card
 rank-3, int4 shifts) and `it36notecut` behind them. GPU at amendment time: `it36rank`'s `l3i8` QAT decay.
@@ -509,3 +512,37 @@ Row 11 amendment 17 (2026-11-22 11:45, Moscow). **The corruption check is DONE: 
   instruction), so the only authorized work left is the owed idle deploy measurement of `QUEUE.md`
   section 3 (`rust_speed.py --tag idle_l2i8`), which fixes the ~3% pessimistic 0.812x by measuring the
   rank-2 card path on an idle machine.
+
+## Amendment 13 (2026-11-22 14:15): the E2 fast rank-r solver unblocks a rank>=2 NOTE
+
+`RWKV_LOWRANK_FAST=1` replaces the rank>=2 truncation (KxK Gram matrix + full `nalgebra::SymmetricEigen`,
+about 35 us of a 43 us compress call on a 32x32 state) with a warm-started block subspace iteration on
+fixed-size arrays plus Rayleigh-Ritz on the (R+1)x(R+1) projection. The tracked block is the R wanted
+directions plus one extra direction, refreshed from the strongest column of A each call, so a new
+dominant direction can still enter. `RWKV_LOWRANK_FAST_ITERS` (default 2) sets the iteration count, and
+the basis travels with the per-entity state (`FastLayerState::basis`).
+
+Measured A/B, same session, `it36l2i8n2i8_124.safetensors`, users 107/136/156, 2 reps:
+
+| config | reference solver | fast solver | note |
+|---|---:|---:|---|
+| plain | 2,915.1 rev/s (1.000x) | 3,025.1 rev/s (1.000x) | baseline |
+| `l2i8` (rank-2 card) | 2,357.8 (0.809x) | 2,544.9 (0.841x) | the card path improves too |
+| `l2i8s4` | 2,357.8 (0.809x) | 2,544.9 (0.841x) | |
+| `l2i8n2i8` (rank-2 NOTE) | 1,801.5 (0.618x) | **2,429.2 (0.803x)** | was the blocker |
+| `l3i8n2i8` (rank-3 NOTE) | 1,781.4 (0.611x) | **2,393.0 (0.791x)** | |
+
+Why it is safe to deploy: `RWKV_LOWRANK_FAST_CHECK=1` runs both solvers, records the largest relative
+Frobenius difference, and still writes the REFERENCE factors, so a checked run is bit-identical to the
+no-flag run (verified on 3 configs). Of 64,132 rank>=2 calls on `l2i8n2i8`, 95.6% are under 1e-3
+relative, 57 are above 1e-1, none above 1.0, and 3.2% fall back to the reference because the state is
+degenerate (cheap there). Scored on the same traces the fast solver costs imm +0.000051 / ahead
++0.000000 (`rust_score.json`) - the same order as the quantization tax. The finiteness check with the flag
+ON passes (`rust_finite_fastrank.json`: 0 non-finite of 65,671,168 state values).
+
+Artifacts: `rust_fastrank_check.py`, `rust_fastrank_check.json`, `rust_speed_fastrank_{on,off}.json`,
+`rust_finite_fastrank.json`, `rust_artifacts/it36l2i8n2i8_124.safetensors`. The flag is recorded in
+`rust_grid.CONFIGS` for the three rank>=2-note configs and does NOT change `bits_for`; leave it UNSET for
+any Python<->Rust parity run, because the fast factors are an approximation, not a bit-identical
+truncation. RESULTS.md row 29 (`l2i8n2i8`) is now a loss-gate AND speed pass, so it is a deploy candidate
+once `it36corrupt2` clears it.

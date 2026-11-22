@@ -1,0 +1,169 @@
+{
+ "tag": "fastrank",
+ "weights": "scratchpad/quant_plan/rust_artifacts/it36l2i8n2i8_124.safetensors",
+ "users": [
+  107,
+  136,
+  156
+ ],
+ "trace_dir": "reference",
+ "strict": false,
+ "configs": {
+  "plain": {
+   "status": "PASS",
+   "rc": 0,
+   "per_user": {
+    "107": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "state_maxabs": 0.0,
+     "vec_maxabs": 0.0
+    },
+    "136": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 10032,
+     "p_bad": 0,
+     "state_maxabs": 0.0,
+     "vec_maxabs": 0.0
+    },
+    "156": {
+     "compressions": 0,
+     "state_vals": 0,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 0,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9871,
+     "p_bad": 0,
+     "state_maxabs": 0.0,
+     "vec_maxabs": 0.0
+    }
+   },
+   "totals": {
+    "total_p_bad": 0,
+    "planted": 0,
+    "non_finite_total": 0
+   },
+   "offending_keys": [],
+   "tail": "_raw_bad=0 vec_quant_bad=0 p_vals=10032 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0\n[speed] user 156: R/s (query pass, retrievability) 5965.7   states/s (state pass, review_features) 6041.6\n[finite] user=156 compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=9871 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0 planted=0 -> non_finite_total=0\n"
+  },
+  "l2i8n2i8": {
+   "status": "PASS",
+   "rc": 0,
+   "per_user": {
+    "107": {
+     "compressions": 20916,
+     "state_vals": 21417984,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1338624,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "state_maxabs": 0.6205243,
+     "vec_maxabs": 4.991416
+    },
+    "136": {
+     "compressions": 21540,
+     "state_vals": 22056960,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1378560,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 10032,
+     "p_bad": 0,
+     "state_maxabs": 0.1368386,
+     "vec_maxabs": 5.163795
+    },
+    "156": {
+     "compressions": 21676,
+     "state_vals": 22196224,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1387264,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9871,
+     "p_bad": 0,
+     "state_maxabs": 0.3963843,
+     "vec_maxabs": 4.971488
+    }
+   },
+   "totals": {
+    "total_p_bad": 0,
+    "planted": 0,
+    "non_finite_total": 0
+   },
+   "offending_keys": [],
+   "tail": "  states/s (state pass, review_features) 4109.2\n[finite] user=156 compressions=21676 state_vals=22196224 state_raw_bad=0 state_quant_bad=0 vec_vals=1387264 vec_raw_bad=0 vec_quant_bad=0 p_vals=9871 p_bad=0 state_maxabs=3.963843e-1 vec_maxabs=4.971488e0\n[fastrank] mode=fast iters=2 rank>=2 calls=64132 reference fallbacks=2085 max_relFrobenius_vs_reference=0.000e0 rel_buckets=0/0/0/0/0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0 planted=0 -> non_finite_total=0\n"
+  },
+  "l3i8n2i8": {
+   "status": "PASS",
+   "rc": 0,
+   "per_user": {
+    "107": {
+     "compressions": 20916,
+     "state_vals": 21417984,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1338624,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9444,
+     "p_bad": 0,
+     "state_maxabs": 0.6154449,
+     "vec_maxabs": 4.991416
+    },
+    "136": {
+     "compressions": 21540,
+     "state_vals": 22056960,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1378560,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 10032,
+     "p_bad": 0,
+     "state_maxabs": 0.1351872,
+     "vec_maxabs": 5.163795
+    },
+    "156": {
+     "compressions": 21676,
+     "state_vals": 22196224,
+     "state_raw_bad": 0,
+     "state_quant_bad": 0,
+     "vec_vals": 1387264,
+     "vec_raw_bad": 0,
+     "vec_quant_bad": 0,
+     "p_vals": 9871,
+     "p_bad": 0,
+     "state_maxabs": 0.3838847,
+     "vec_maxabs": 4.971488
+    }
+   },
+   "totals": {
+    "total_p_bad": 0,
+    "planted": 0,
+    "non_finite_total": 0
+   },
+   "offending_keys": [],
+   "tail": "  states/s (state pass, review_features) 3953.5\n[finite] user=156 compressions=21676 state_vals=22196224 state_raw_bad=0 state_quant_bad=0 vec_vals=1387264 vec_raw_bad=0 vec_quant_bad=0 p_vals=9871 p_bad=0 state_maxabs=3.838847e-1 vec_maxabs=4.971488e0\n[fastrank] mode=fast iters=2 rank>=2 calls=64132 reference fallbacks=2025 max_relFrobenius_vs_reference=0.000e0 rel_buckets=0/0/0/0/0\n[finite] TOTAL compressions=0 state_vals=0 state_raw_bad=0 state_quant_bad=0 vec_vals=0 vec_raw_bad=0 vec_quant_bad=0 p_vals=0 p_bad=0 state_maxabs=0.000000e0 vec_maxabs=0.000000e0 planted=0 -> non_finite_total=0\n"
+  }
+ }
+}

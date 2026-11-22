@@ -71,15 +71,21 @@ CONFIGS = {
     # Rank-2 (and 3) on the NOTE, the new chain-14 candidates (Andrew, 2026-11-22 12:01). The engine's
     # low-rank path is generic over the stream, so these exist to prove it parses a rank>=2 note and to
     # price the speed. l2i8n2i8 is the direct twin of l2i8s4 with the note's rank raised 1 -> 2.
+    # RWKV_LOWRANK_FAST=1 is the FAST rank-r SOLVER (E2, 2026-11-22): a deploy-side approximation, not a
+    # bit-budget change (bits_for ignores it). Without it a rank>=2 NOTE measures 0.618x rev/s (FAIL on
+    # the 0.75x floor); with it, 0.803x for l2i8n2i8 and 0.791x for l3i8n2i8, at a deploy log-loss cost
+    # of imm +0.000051 / ahead +0.000000 on users 107/136/156 (rust_fastrank_check.json,
+    # rust_score.json, rust_speed_fastrank_{on,off}.json). Do NOT set it for a Python<->Rust PARITY run:
+    # the fast factors are not bit-identical to the reference truncation by construction.
     "l2i8n2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
-                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
     "l3i8n2i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:3:int8,note:2:int8", "RWKV_QUANT_SHIFTS": "1",
-                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
     # NOTE: the engine has NO per-stream shift level - parse_level() takes a bare "int4"/"int8" and any
     # "card:x,note:y" string yields None (= no override). So `l2i8n2i8s8` (card int4 / note int8 shifts)
     # cannot be expressed on the deploy side yet; that is a small engine gap, recorded in GPU_RUN_BOARD.
     "l2i8n3i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:3:int8", "RWKV_QUANT_SHIFTS": "1",
-                 "RWKV_STATE_SHIFT_LEVEL": "int4"},
+                 "RWKV_STATE_SHIFT_LEVEL": "int4", "RWKV_LOWRANK_FAST": "1"},
 
 }
 
