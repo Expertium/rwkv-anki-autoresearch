@@ -482,3 +482,30 @@ Row 11 amendment 16 (2026-11-22 11:35, Moscow). **The 02:33-11:15 stall was an F
 - **Andrew's stop instruction (11:21).** "Let's stop further runs for now and ONLY do corruption checks for (as of right now) passed runs." The queue was reordered so `it36corrupt` runs FIRST (it no longer waits for `it36shrink`), and at 11:24 the waiters `it36shrink`, `it36equalbits`, `it36combo` and `it36corrupt2` were killed with their lock files deleted. `QUEUE.md` sections 2 and 5 now mark them PAUSED and forbid a restart: their logs have no end marker, so the supervisor's restart rule would otherwise fire as soon as the GPU is idle and their logs are 45 min old.
 - **Rows that pass as of now: 15, 16, 17 and 18 only.** All five overnight sweeps FAIL: 24 `l4i4s4` +0.000218/+0.000463, 25 `l7i4s4` +0.000209/+0.000466, 26 `n2i4s4` +0.000180/+0.000492, 27 `l2i8496` +0.000715/+0.000793, 28 `l2i8992` +0.000554/+0.000829.
 - **Corruption point 1 (`l2i8s4`, row 17) PASSES** at 11:25:24: rc=0, 50 of 50 users, **158,986 raw state observations and 150 p(recall) tensors, 0 non-finite**, 0 NaN skips, 4.8 min on the `corrupt50` roster with histories NOT truncated, on the Python QAT path (`RWKV_QAT_FUSED=0`) where the raw state is visible before `_sanitize_state` caps it. Verdict in `corruption/corruption_corrupt_l2i8s4.json`; the RESULTS.md cell is written by `corruption/record_corruption.py`. Points left: `l2i8` (row 15), `l3i8` (16), `l3i8s4` (18), and the quantization-OFF control `ctl_fp32`.
+Row 11 amendment 17 (2026-11-22 11:45, Moscow). **The corruption check is DONE: all five points PASS.**
+
+`it36corrupt` logged `=== it36corrupt chain end ===` at 11:41:38.
+
+| point | RESULTS row | state calls | state non-finite | p(recall) tensors | p non-finite | users | min | mean LogLoss ahead / imm |
+|---|---|---|---|---|---|---|---|---|
+| `l2i8` | 15 | 158,986 | 0 | 150 | 0 | 50/50 | 4.7 | 0.382082 / 0.366948 |
+| `l3i8` | 16 | 158,986 | 0 | 150 | 0 | 50/50 | 4.8 | 0.382168 / 0.366710 |
+| `l2i8s4` | 17 | 158,986 | 0 | 150 | 0 | 50/50 | 4.8 | 0.382094 / 0.366979 |
+| `l3i8s4` | 18 | 158,986 | 0 | 150 | 0 | 50/50 | 4.7 | 0.382198 / 0.366806 |
+| `ctl_fp32` | 0 | 0 (no quantizer) | - | 150 | 0 | 50/50 | 1.8 | 0.382646 / 0.366875 |
+
+- Every verdict is `corruption/corruption_corrupt_<tag>.json`; the RESULTS.md cells were written by
+  `corruption/record_corruption.py`. No cell is `pending` any more.
+- The state count is the same for all four quantized rows because the roster, the layer count and the
+  sequence plan are the same: rank and bit width change the representation, not the number of state
+  values, so the four rows are directly comparable.
+- On this roster quantization is not worse than fp32 on the ahead head (0.38208-0.38220 vs 0.38265) and
+  about equal on the immediate head. A 50-user roster is not the 750-user gate roster, so this is the
+  finiteness gate plus a sanity band, not an acceptance result.
+- The chain ran with `RWKV_QAT_FUSED=0` (the Python twin of the fused CUDA kernels) because the raw state
+  is only visible there, and with `probe_get_result.py` monkey-patching the eval path, so no repo source
+  was edited for the measurement.
+- **Next: the GPU is idle and no chain is queued** (every other chain is PAUSED by Andrew's 11:21
+  instruction), so the only authorized work left is the owed idle deploy measurement of `QUEUE.md`
+  section 3 (`rust_speed.py --tag idle_l2i8`), which fixes the ~3% pessimistic 0.812x by measuring the
+  rank-2 card path on an idle machine.
