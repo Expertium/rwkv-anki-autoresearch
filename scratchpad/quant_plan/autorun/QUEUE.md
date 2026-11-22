@@ -22,49 +22,38 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 
 ## 2. LIVE chains, and the restart rule
 
-A chain is LIVE only if its name is in this list:
+LIVE chains, in run order (Andrew resumed experiments on 2026-11-22 12:02: "Since corruption checks are
+done, we can resume experiments. Sure, try rank-2 note"):
 
-`it36corrupt`
+`it36noterank2` -> `it36shrink` -> `it36equalbits` -> `it36combo` -> `it36corrupt2`
 
-**PAUSED by Andrew on 2026-11-22 11:21** ("Let's stop further runs for now and ONLY do corruption checks
-for (as of right now) passed runs"): `it36shrink`, `it36equalbits`, `it36combo`, `it36corrupt2`. They
-were killed at 11:24 and their lock files were deleted, so their logs have NO end marker and will look
-STALLED after 45 min. That is expected: **never restart them, do not re-create their locks, do not run
-one of their points.** They stay paused until Andrew says otherwise. The reason is that the only rows
-that pass the log-loss gate right now are 15 (`l2i8`), 16 (`l3i8`), 17 (`l2i8s4`) and 18 (`l3i8s4`) -
-every other sweep result, including all of the overnight ones and the 496/992-step decays, FAILS - so
-new sweeps would spend GPU time on rows that are not deploy candidates. `it36corrupt` is the chain that
-checks the rows that do pass.
+All five are LIVE. The 11:21 pause ended when `it36corrupt` finished at 11:41 with five PASSes; the four
+chains killed at 11:24 were relaunched at ~12:06 waiting behind `it36noterank2`, and `it36noterank2`
+(the rank-2/3 NOTE ladder from Andrew's 12:01 direction) started at 12:05:28.
 
-**If the status report marks a PAUSED chain as `STALLED?`, that is expected and it is NOT an instruction
-to act** - a paused chain has no end marker and its log stopped when it was killed. Leave it alone.
+Each chain takes its own lock file and, while waiting, logs `waiting: prev chain ended=..., matching
+processes=N` once a minute. So a WAITING chain's log GROWS and the 45-minute rule below never fires for
+it. A chain killed by an earlier stop has no end marker and its log stops growing, which the report
+shows as `STALLED?`; for the four relaunched chains that is the OLD kill, not a new stall - read the log
+tail before doing anything.
 
-The finished chains `it36rank`, `it36notecut`, `it36rankprec` and `it36longdecay` are the same as
-before: their logs carry an end marker, so the restart rule below never fires for them.
-
-The report now prints a `CPU over 5 s:` line (added 2026-11-22, after an F: disk I/O error wedged
+The report prints a `CPU over 5 s:` line (added 2026-11-22, after an F: disk I/O error wedged
 `it36shrink` for 8.7 h at 0.000 s CPU while the report still said `GPU BUSY` and every chain log looked
 normal). If that line says `WEDGE? live workload processes burned no CPU`, do NOT kill anything: log
 `NEEDS ANDREW: wedged workload at <time> - <pid lines>` and STOP. The chains now kill and retry such a
 run by themselves (`it36ladder_lib.run`: 20 min with neither log growth nor CPU -> `taskkill /F /T`,
 then one retry).
 
-`it36corrupt` (added 2026-11-21 22:50) is the corruption/finiteness check: it waits for `it36shrink`,
-then scores the 50 longest-history users of `corruption/corrupt50.json` for the four passing rows plus
-the quantization-OFF control. It writes `corruption/corruption_corrupt_<name>.json` per point and logs a
-heartbeat every 5 minutes while a point runs (a point can take an hour, and the old silent `run()` would
-have looked like a dead chain). Its driver (`corruption/check_corruption.py` +
-`corruption/probe_get_result.py`) is now in `status_report.py`'s WORKLOAD pattern, so the report says
-GPU BUSY while it scores.
+`it36corrupt` (the corruption/finiteness check) is DONE: five points, `=== it36corrupt chain end ===`
+at 11:41:38, all five PASS - RESULTS.md rows 17, 15, 16, 18 and the quantization-OFF control of row 0,
+50/50 users each, 158,986 raw state observations and 150 p(recall) tensors per quantized point, zero
+non-finite. `it36corrupt2` (16 gate-guarded points, four of them `it36noterank2`'s) is the chain that
+checks the new rows, and it is last in the queue.
 
-⚠ A chain queued BEHIND `it36corrupt` must add `probe_get_result.py|check_corruption.py` to its own
+A chain queued BEHIND a corruption chain must add `probe_get_result.py|check_corruption.py` to its own
 BUSY_PAT, or it will start on top of the corruption run (the driver's command line matches no other
-chain's pattern). `it36equalbits` (added 2026-11-21 23:25) is the first such chain and does exactly
-that: it waits for `=== it36corrupt chain end ===` with
-BUSY_PAT `qat_decay.py|quant_sweep.py|rwkv.train_rwkv|eval_sharded.py|rust_speed.py|rust_grid.py|rwkv-infer|probe_get_result|check_corruption`.
-It runs four 124-step decay points off row 0: `l3i4s4` (card rank-3 int4, 1,024/2,304), `l2i8s2`
-(card int2 shifts, 1,152/2,304), `n1i8s3` and `n2i4s3` (the equal 2,112 note bits: rank-1 int8 vs
-rank-2 int4 factors + int3 shifts).
+chain's pattern). `it36shrink`, `it36equalbits`, `it36combo` and `it36corrupt2` all carry those two
+patterns.
 
 The chains sequence themselves through their own lock file and their `=== <name> chain end` marker.
 Normally you do nothing for them.
@@ -81,8 +70,9 @@ Then run these two commands and log the restart:
     del "scratchpad\quant_plan\<name>_chain.lock"
     powershell -NoProfile -File scratchpad\detach.ps1 -Command ".venv\Scripts\python.exe -u scratchpad\quant_plan\<name>_chain.py > scratchpad\quant_plan\<name>_launcher.log 2>&1"
 
-The chain skips any point whose merged result already exists, so a restart resumes cleanly. Restart at
-most one chain per run. Never restart a chain while any workload process is running.
+The chain skips any point whose merged result already exists, so a restart resumes cleanly. A WAITER
+that stalled is safe to restart: it re-takes its lock and goes back to waiting for its predecessor.
+Restart at most one chain per run. Never restart a chain while any workload process is running.
 
 ## 3. Idle-only deploy measurement (run at most once)
 
@@ -150,22 +140,28 @@ identical decay with no QAT and no quantization. A row passes only when `ub95 <=
 
 ## 5. Pre-authorized launch items
 
-None right now. `it36corrupt` is the only chain allowed to run, and it owns the GPU until it ends.
+None right now, and none are needed: the five LIVE chains of section 2 already own the queue in run
+order, so there is no `- [ ]` item for you to launch. Do NOT launch a chain by hand and do NOT add one -
+the queue drains by itself.
 
-It works through its five points in this order, writing `corruption/corruption_corrupt_<tag>.json` for
-each: `l2i8s4` (row 17, DONE 11:25:24 - PASS, 50/50 users, 158,986 state observations, 0 non-finite,
-4.8 min), `l2i8` (row 15), `l3i8` (row 16), `l3i8s4` (row 18), and `ctl_fp32` (the same decay with
-quantization OFF, for attribution). Its 5-minute heartbeat line is normal while a point runs.
+When the report says `GPU IDLE` while a LIVE chain is waiting (its log says `waiting: ...`), that is a
+normal hand-off: the next chain starts on its own within about a minute. It is NOT an instruction to
+start anything.
 
-When its log ends with `=== it36corrupt chain end ===` and the GPU is idle, there is nothing left to
-run: log `QUEUE EMPTY - needs Andrew's decision` and stop.
-Do NOT invent a new experiment, do NOT extend an existing chain, and do NOT restart a paused chain.
+When `it36corrupt2` logs `=== it36corrupt2 chain end ===` and the GPU is idle, there is nothing left to
+run: log `QUEUE EMPTY - needs Andrew's decision` and stop. Do NOT invent a new experiment, do NOT extend
+an existing chain, and do NOT restart a finished chain.
+
+The CPU-only Rust checks (`rust_finite.py`, `measure_finite_offpath.py`, `measure_offpath_oldbuild.py`)
+also exist now, but they are the interactive session's job, NOT yours: each one ends in an artifact that
+a human decision depends on.
+
 Andrew adds an item here when he authorizes one. A real item is one raw, unindented line: the box
 marker, then the task, then `::`, then the exact command line, then `::`, then the proof of success.
 `status_report.py` counts only raw unindented box lines, so keep any example indented like this
 paragraph:
 
-        - [ ] <what to run> :: <exact command line> :: <what proves it worked>
+    - [ ] <what to run> :: <exact command line> :: <what proves it worked>
 
 ## 6. Forbidden, always
 
