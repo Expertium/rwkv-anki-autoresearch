@@ -1042,3 +1042,21 @@ bits - the note's share of the shift cost, priced by row 35 at +0.000011/+0.0000
 at a fixed size: the fixed-basis note codec (chain 19) and the E1 tail-energy penalty (chains 23/24).
 Row 35's deck of "the note's int4 -> int3 shift step is cheap" survives; what this screen adds is that
 the CARD's shift bits are NOT cheap, which is why the both-stream rung costs what the card's rung costs.
+
+## Amendment 34 (2026-11-23 02:40): chain 18 point 1 (`l2i6c`) PASSES at 3,328 bits - the int6 tax is split between the streams
+
+`it36int6card` took the GPU at 01:59:32, the moment the row-45 finiteness check released it, and its
+first point landed at 02:34:05 after 27.2 min: card rank-2 int6 + int4 shifts with the note left at
+rank-1 int8 (1,024/2,304 = 3,328 bits, 256 below row 17) reads +0.000085/+0.000364 (ub95
++0.000153/+0.000429, p 9.4e-06/0.0) - a PASS on both heads. It is a diagnostic row, not a frontier row:
+it exists to say WHERE the int6 tax comes from. Decomposition against the two ends of chain 17's ladder:
+the card's int8 -> int6 cut costs +0.000033 ahead / +0.000037 imm for 256 bits (against row 17) and the
+note's costs +0.000040/+0.000017 for 384 bits (against row 45), so the two streams share the int6 tax
+roughly in proportion to the bits they save and neither owns it - the opposite of the int4/int5 rungs,
+which break the immediate head outright.
+
+Point 2 (`l2i6n`, card rank-1 int8 + note rank-1 int6, 1,280/1,920 = 3,200 bits) started at 02:34:05 and
+is the mirror image. The chain has NO corruption phase of its own, so both rows' finiteness checks are
+queued in `corruption/_watch_and_check_chain18.py`, which has held the queue since 02:08:47 (a CPU-only
+`gpu_hold.py --tag check_corruption`, which every `it36*_chain.py` BUSY_PAT matches) and runs each check
+only for a row whose sweep passes, in the first free window after the chain's end marker.
