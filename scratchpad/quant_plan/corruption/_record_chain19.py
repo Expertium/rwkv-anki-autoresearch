@@ -18,14 +18,17 @@ again later records the other one). A row whose id is already present is skipped
 
 SPEED CELL: filled from a real `rust_speed.py` run. RESULTS.md's own table note says speed is PER CONFIG
 and does not depend on the checkpoint, so the codec's engine path is measured once on the row-17 deploy
-artifact and its ratio transfers to these rows. The first such run (`rust_speed_fb_speed.json`,
-2026-11-23 03:34, users 107/136/156, 1 rep, taken while chain 19's eval held the CPU) reads
-plain 2,863.0 rev/s, `l2i8fb8n` 2,166.6 = 0.757x rev (median per-user 0.738 -> the script's own constraint
-says FAIL, by a hair) and `l2i8fb6n` 2,196.3 = 0.767x (median per-user 0.778 -> PASS). An idle re-measure
-is queued under the tag `fb_idle`, and this script PREFERS it when it exists: a ratio within 2% of the
-floor is exactly the case where the ~1% under-load bias matters, so the tag that produced the number is
-always named. The script now also prints a warning when a point passes the LOSS gate but fails the SPEED
-floor, because such a row is not deployable.
+artifact and its ratio transfers to these rows. The first run (`rust_speed_fb_speed.json`, 2026-11-23
+03:34) read `l2i8fb8n` 2,166.6 rev/s = 0.757x (median per-user 0.738 = FAIL) and `l2i8fb6n` 2,196.3 =
+0.767x (median per-user 0.778 = PASS). That sent the codec's round-trip into the benchmark, and
+`bench_fixedbasis_layout` showed the strided basis layout was the cost: transposing the basis ONCE per
+call and running contiguous inner loops is 1.70-1.80x faster per call with a BIT-IDENTICAL result
+(`rust_grid_fbpar_before.json` vs `..._after.json` are equal to the last bit on both configs). After
+that engine change the same probe (`rust_speed_fb_speed3.json`, reps 3, with `l2i8s4` as an internal
+reference at 0.796x) reads `l2i8fb8n` 2,258.2 = 0.775x (median per-user 0.7785 = PASS) and `l2i8fb6n`
+2,323.6 = 0.797x (median per-user 0.7928 = PASS), so both codec points now clear the floor. The tag
+that produced each number is always named in the cell, and the script prints a warning when a point
+passes the LOSS gate but fails the SPEED floor.
 
 Usage: .venv\\Scripts\\python.exe scratchpad\\quant_plan\\corruption\\_record_chain19.py
 """
@@ -55,8 +58,15 @@ POINTS = [
     (50, "l2i8fb8n", "it36l2i8fb8n", "0.876-0.921", "row 17 (the SAME 3,584 bits)"),
     (51, "l2i8fb6n", "it36l2i8fb6n", "0.82-0.87", "row 45's 2,944-bit frontier, 32 bits above it"),
 ]
-# Speed JSONs to try, best first: an idle-machine run beats an under-load one.
-SPEED_TAGS = ["fb_idle", "fb_speed"]
+# Speed JSONs to try, best first: the most robust post-fix run first, then the under-load ones.
+# `fb_speed3` (reps 3, 4 configs, includes the `l2i8s4` reference) is the number to quote: the
+# codec's engine path was made 1.70-1.80x faster per call on 2026-11-23 by transposing the basis once
+# per call (bit-identical: exact parity on both configs, `rust_grid_fbpar_{before,after}.json`), so the
+# PRE-fix probes (`fb_speed`, `fb_speed2`) are kept only to show what the fix bought.
+SPEED_TAGS = ["fb_speed3", "fb_speed2", "fb_idle", "fb_speed"]
+# What each config read BEFORE the fix (rev/s, x rev, median per-user x) - quoted in the prose so the
+# row shows both sides of the engine change that turned a failing codec into a passing one.
+PRE_FIX = {"l2i8fb8n": (2166.6, 0.7568, 0.7379), "l2i8fb6n": (2196.3, 0.7671, 0.7782)}
 
 
 def speed_of(name):
@@ -136,11 +146,17 @@ def build(row_id, name, stamp, capture, compare, r):
         rev, xrev, med, tag = sp
         sp_cells = f"{rev:,.1f} | {xrev:.3f}x"
         sp_ok = med >= SPEED_FLOOR
+        prev = PRE_FIX.get(name)
+        fix_clause = ("" if not prev else
+                      f". Before the 2026-11-23 basis-layout fix the same path read {prev[0]:,.1f} rev/s "
+                      f"= {prev[1]:.3f}x (median per-user {prev[2]:.3f}x), which FAILED the floor; the fix "
+                      f"transposes the basis once per call and is BIT-IDENTICAL (exact parity on both "
+                      f"configs, `rust_grid_fbpar_before.json` vs `..._after.json`)")
         sp_clause = (f"the deploy engine's codec path measures {rev:,.1f} rev/s = {xrev:.3f}x rev/s "
                      f"(median per-user {med:.3f}x) against `plain` in the SAME run "
                      f"(`rust_speed_{tag}.json`, users 107/136/156), so it "
                      f"{'CLEARS' if sp_ok else 'FAILS'} the 0.75x floor by "
-                     f"{abs(med - SPEED_FLOOR):.3f}")
+                     f"{abs(med - SPEED_FLOOR):.3f}{fix_clause}")
     else:
         rev = xrev = med = None
         sp_ok = None
@@ -238,8 +254,7 @@ def build(row_id, name, stamp, capture, compare, r):
         f"held-out energy capture is {capture} at m={m}, against the shipped rank-1 note's 0.904-0.951 "
         f"per layer; against row 17 (the identical bits) the codec is "
         f"{cmp_word(vs17[0])}/{cmp_word(vs17[1])}. Speed is "
-        f"measured per config on the deploy engine: {sp_clause}. The row's "
-        f"finiteness {fin}.\n"
+        f"measured per config on the deploy engine: {sp_clause}. Finiteness: {fin}.\n"
     )
     return row, para, note_bullet, board, ok, sp_ok, med
 
