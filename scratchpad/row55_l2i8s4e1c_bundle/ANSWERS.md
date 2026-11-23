@@ -107,6 +107,31 @@ p50 0.00297, p99 0.04650, max
 0.15879, and 0.08% of cards move by more
 than 0.10 on the immediate head (0.01% ahead).
 
+**The same readout per CARD, which is the form the note asks for.** Same 40-user dump, aggregated per
+(user, card) - a card id is unique only within a user. Two summaries are given, because "the per-card
+|dR|" can mean either the MAX over the card's reviews (the quantity their guard uses) or the MEAN over
+them. Reproduce it with `code/scratchpad/quant_plan/bucket_percard.py` over the same npz dumps; the
+result is shipped as `evidence/bucket/bucket_percard_row55.json`.
+
+| set | head | cards | per-card MAX p50 | p90 | p99 | max | cards with a review >0.05 | >0.10 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| iter 55, quantizer pairing | immediate | 67,091 | 0.01126 | 0.03763 | 0.07178 | 0.15879 | 4.88% | 0.08% |
+| iter 55, quantizer pairing | ahead | 66,520 | 0.00959 | 0.02967 | 0.05720 | 0.17605 | 1.76% | 0.01% |
+| row 17, quantizer pairing | immediate | 67,091 | 0.02517 | 0.06622 | 0.11678 | 0.31809 | 20.58% | 2.11% |
+| row 17, quantizer pairing | ahead | 66,520 | 0.02864 | 0.07221 | 0.12117 | 0.24350 | 25.97% | 2.74% |
+| row 17, gate pairing | immediate | 67,091 | 0.01888 | 0.05627 | 0.10331 | 0.29624 | 13.34% | 1.14% |
+| row 17, gate pairing | ahead | 66,520 | 0.01692 | 0.04677 | 0.08725 | 0.20195 | 8.36% | 0.44% |
+| row 61 codec, quantizer pairing | immediate | 67,091 | 0.01834 | 0.04654 | 0.08845 | 0.26222 | 8.26% | 0.62% |
+| row 61 codec, quantizer pairing | ahead | 66,520 | 0.01771 | 0.04508 | 0.08825 | 0.19927 | 7.49% | 0.60% |
+
+For iter 55 against row 17 (immediate head), the other two summaries of the same rows: per-card MEAN
+|dp| p50 0.00337 against 0.00841 (p99
+0.02354 against 0.03870), and per-review
+|dp| p50 0.00297 against 0.00783 (p99
+0.04650 against 0.07126). The share of cards above
+0.10 is the number their guard turns on: 0.08% for iter 55
+against 2.11% for row 17.
+
 **Against their guard** (fail when more than 1% of cards have a review moving by more than 0.10):
 iter 55 reads 0.08% of cards immediate and 0.01%
 ahead, i.e. it clears the guard with about 12x margin. For scale, on the same kind of
@@ -170,8 +195,16 @@ effect. Consequences:
 
 * a deploy tax must always be quoted WITHIN one path. Every number in this bundle is: the gate is
   Python-evaluation vs Python-evaluation, the deploy tax is Rust vs Rust on the same traces.
-* the ahead head does not "rest on 2 users" more than the immediate head does; both are measured on
-  the same 750 users in the gate and on the same 40 users in the bucket work.
+* the deploy-side (engine) quantizer tax is measured on 40 users as well as on the 2-user verify set:
+  over the 40 longest-history users it reads -0.000627 immediate /
+  -0.000496 ahead (quantizer on vs off, same weights), so the ahead-head engine number
+  does not rest on 2 users.
+* the two user sets disagree in SIGN, and that is worth saying rather than smoothing over: on the two
+  short traces of the verify set the quantizer costs a little (+0.000329 ahead / +0.000338 immediate),
+  while on the 40 longest histories it gains (-0.000496 ahead /
+  -0.000627 immediate). A 2-user difference of 3e-4 is inside the noise of that set. The
+  750-user gate is the number that decides shipping; the engine figure is evidence of "no material
+  deploy tax", not a precise 2-user measurement.
 
 The row-17 bundle's `verification.md` carries the same correction as an appended note.
 
@@ -189,6 +222,16 @@ Read against their bars:
 | young cards <= +0.10% upper | iter 55 quantizer pairing 1-2 bucket: immediate -0.038%, ahead -0.058% - **both pass** (both are BETTER than the unquantized state); the largest positive cell anywhere in the table is the 3-4 bucket at +0.016% |
 | >1% of cards moving >0.10 = fail | iter 55, quantizer pairing: 0.08% of cards immediate / 0.01% ahead - **passes**, about 12x inside the 1% limit (the row-17 checkpoint, the same bits without the penalty, reads 2.11% / 2.74%) |
 
+**Your point 1, checked against our row 17.** You read row 17's immediate head as +0.107% relative
+(upper bound about +0.127%) and the ahead head as +0.016% (upper +0.035%). Our own sweep reproduces both
+exactly: row 17 reads +0.107% (+0.127% upper) and +0.015%
+(+0.035% upper), so their +0.05% dataset-wide bar would indeed reject row 17's immediate
+head. Two things change with iter 55. First, the immediate head is now BETTER than the control
+(+0.019% relative UPPER bound) and the ahead head is +0.045% upper, so both heads are
+inside their +0.05% bar. Second, our own +0.0005 ceiling is looser than their bar - it is
+0.163% of the immediate base loss and 0.150% of the ahead one, about
+3x their +0.05% - so passing OUR gate is not by itself evidence of passing THEIR bar. The pass above
+rests on the relative column, not on the absolute delta.
 The honest summary: this recipe clears their dataset-wide bar, their young-card bar and their per-card
 movement guard, and it meets their size ambition against the naive int4 bars. Its own overall deploy
 tax on this roster is NEGATIVE on both heads (-0.000627 immediate /
@@ -221,6 +264,13 @@ So a rank-2 write costs about 4x a rank-1 write, and the fixed-basis codec is bo
 6x cheaper than the rank-2 solve it replaces. Everything in this bundle's deploy path is measured
 with the reference solver unless a config says otherwise (`RWKV_LOWRANK_FAST` is off by default and
 its factors are an approximation, so it must not be used for a Python-Rust parity run).
+
+One thing that answers the question directly: **the deploy engine recompresses the state at every write,
+and the measured 2,358.7 rev/s (against 2,948.3 plain)
+already CONTAINS that per-write solve.** The per-write cost is not an add-on to the throughput figure -
+the rank-2 solve on the card layer is part of what the 0.78-0.80x ratio measures. In their fork the
+equivalent per-review cost is the 41-49 us per layer per write above; with this recipe's layout it is one
+rank-2 solve (card) plus three rank-1 solves (note) per review.
 
 ---
 

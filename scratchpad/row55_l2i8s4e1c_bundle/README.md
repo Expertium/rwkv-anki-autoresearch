@@ -136,6 +136,20 @@ nothing there), and the ahead head is inside its ceiling. Row 17, the penalty-OF
 bits, read +0.000052 / +0.000327; **iter 55 removes the immediate-head tax entirely at the same
 size**, which is why it is the row worth shipping.
 
+### 3.1a Two different pairings - do not mix them
+
+The table above is the ACCEPTANCE GATE: the QAT + quantized checkpoint against a control trained
+WITHOUT QAT and scored WITHOUT quantization, over 750 users in the Python evaluation path. It answers
+"is this recipe good enough to ship", and it contains BOTH effects at once - the training gain and the
+quantization tax. On the immediate head the training gain wins, which is why that delta is negative.
+
+The deploy tax in 3.2 is a different measurement: the SAME weights with the state quantizer switched on
+vs off, in the Rust deploy engine, on the two shipped traces. It answers "what does the quantizer cost
+at deploy", and it is about ten times larger (+0.000329 / +0.000338
+against -0.000045 / +0.000028). The two are not comparable: different pairing,
+different path, different user set. Read the gate for "should we ship" and the engine tax for "what the
+quantizer costs" - never the two against each other.
+
 ### 3.2 The other checks
 
 | check | result |
@@ -186,7 +200,7 @@ code/
   export_rnn_trace.py             the trace exporter (Python RNN -> trace files)
   scratchpad/quant_plan/          the harness: qat_decay.py, quant_sweep.py, rust_grid.py,
                                   rust_speed.py, rust_finite.py, rust_score.py, py_rust_parity.py,
-                                  bucket_tax.py, bucket_mix.py, trace_eval_gap.py
+                                  bucket_tax.py, bucket_mix.py, bucket_percard.py, trace_eval_gap.py
   scratchpad/quant_plan/corruption/  the corruption gate + the trace exporters
   scratchpad/adaptive_wd/adaptive_train.py   the training entry point the harness calls
 evidence/

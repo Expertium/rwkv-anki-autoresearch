@@ -67,6 +67,7 @@ FILES = [
     # --- the tools that answer the other team's questions (section 3 of ANSWERS.md) ------------
     ("scratchpad/quant_plan/bucket_tax.py", "code/scratchpad/quant_plan/bucket_tax.py"),
     ("scratchpad/quant_plan/bucket_mix.py", "code/scratchpad/quant_plan/bucket_mix.py"),
+    ("scratchpad/quant_plan/bucket_percard.py", "code/scratchpad/quant_plan/bucket_percard.py"),
     ("scratchpad/quant_plan/trace_eval_gap.py", "code/scratchpad/quant_plan/trace_eval_gap.py"),
     # --- the corruption (finiteness) gate ------------------------------------------------------
     ("scratchpad/quant_plan/corruption/check_corruption.py",
@@ -131,6 +132,10 @@ FILES = [
      "evidence/bucket/bucket_mix_roster750.json"),
     ("scratchpad/quant_plan/trace_eval_gap_plain.json",
      "evidence/bucket/trace_eval_gap_plain.json"),
+    ("scratchpad/quant_plan/bucket_percard_row55.json",
+     "evidence/bucket/bucket_percard_row55.json"),
+    ("scratchpad/quant_plan/quant_sweep_it36l2i8s4.json",
+     "evidence/sweep_row17_l2i8s4.json"),
 ]
 
 DIRS = [
@@ -154,6 +159,8 @@ EV = {
     "deploy61": QP / "bucket_tax_deploy61.json",
     "mix": QP / "bucket_mix_roster750_seed20261119.json",
     "gap": QP / "trace_eval_gap_plain.json",
+    "percard": QP / "bucket_percard_row55.json",
+    "sweep17": QP / "quant_sweep_it36l2i8s4.json",
 }
 
 def load(key):
@@ -350,6 +357,20 @@ nothing there), and the ahead head is inside its ceiling. Row 17, the penalty-OF
 bits, read +0.000052 / +0.000327; **iter 55 removes the immediate-head tax entirely at the same
 size**, which is why it is the row worth shipping.
 
+### 3.1a Two different pairings - do not mix them
+
+The table above is the ACCEPTANCE GATE: the QAT + quantized checkpoint against a control trained
+WITHOUT QAT and scored WITHOUT quantization, over 750 users in the Python evaluation path. It answers
+"is this recipe good enough to ship", and it contains BOTH effects at once - the training gain and the
+quantization tax. On the immediate head the training gain wins, which is why that delta is negative.
+
+The deploy tax in 3.2 is a different measurement: the SAME weights with the state quantizer switched on
+vs off, in the Rust deploy engine, on the two shipped traces. It answers "what does the quantizer cost
+at deploy", and it is about ten times larger ({ctx["grid_tax_ahead"]:+.6f} / {ctx["grid_tax_imm"]:+.6f}
+against {gi["delta"]:+.6f} / {ga["delta"]:+.6f}). The two are not comparable: different pairing,
+different path, different user set. Read the gate for "should we ship" and the engine tax for "what the
+quantizer costs" - never the two against each other.
+
 ### 3.2 The other checks
 
 | check | result |
@@ -400,7 +421,7 @@ code/
   export_rnn_trace.py             the trace exporter (Python RNN -> trace files)
   scratchpad/quant_plan/          the harness: qat_decay.py, quant_sweep.py, rust_grid.py,
                                   rust_speed.py, rust_finite.py, rust_score.py, py_rust_parity.py,
-                                  bucket_tax.py, bucket_mix.py, trace_eval_gap.py
+                                  bucket_tax.py, bucket_mix.py, bucket_percard.py, trace_eval_gap.py
   scratchpad/quant_plan/corruption/  the corruption gate + the trace exporters
   scratchpad/adaptive_wd/adaptive_train.py   the training entry point the harness calls
 evidence/
@@ -593,6 +614,31 @@ def doc_answers(ctx):
                 f"| cards with a review moving > 0.05 (ahead) | {100 * rec['cards_ahead_gt_0.05']:.2f}% |\n"
                 f"| cards with a review moving > 0.10 (ahead) | {100 * rec['cards_ahead_gt_0.10']:.2f}% |")
 
+    pc = ctx["percard"]
+    _pc_rows = []
+    for _key, _label in (("iter55_quant", "iter 55, quantizer pairing"),
+                         ("row17_quant", "row 17, quantizer pairing"),
+                         ("row17_gate", "row 17, gate pairing"),
+                         ("row61_quant", "row 61 codec, quantizer pairing")):
+        for _head, _hlabel in (("imm", "immediate"), ("ahead", "ahead")):
+            _r = pc["sets"][_key][_head]
+            _cm = _r["card_max"]
+            _pc_rows.append(
+                f"| {_label} | {_hlabel} | {_r['n_cards']:,} | {_cm['p50']:.5f} | {_cm['p90']:.5f} | "
+                f"{_cm['p99']:.5f} | {_cm['max']:.5f} | {100 * _cm['share_gt_0.05']:.2f}% | "
+                f"{100 * _cm['share_gt_0.10']:.2f}% |")
+    pc_table = "\n".join(_pc_rows)
+    s17 = ctx["sweep17"]["rows"][0]["gate"]
+    s17_imm_rel = 100.0 * s17["imm"]["delta"] / s17["imm"]["mean_ref"]
+    s17_imm_ub = 100.0 * s17["imm"]["ub95"] / s17["imm"]["mean_ref"]
+    s17_ahead_rel = 100.0 * s17["ahead"]["delta"] / s17["ahead"]["mean_ref"]
+    s17_ahead_ub = 100.0 * s17["ahead"]["ub95"] / s17["ahead"]["mean_ref"]
+    gate_abs_rel_imm = 100.0 * 0.0005 / ctx["gate"]["imm"]["mean_ref"]
+    gate_abs_rel_ahead = 100.0 * 0.0005 / ctx["gate"]["ahead"]["mean_ref"]
+    b55_all = b55["all"]
+    sp55 = ctx["speed"]
+    _i55 = pc["sets"]["iter55_quant"]
+    _i17 = pc["sets"]["row17_quant"]
     return f"""# Answers to "Recurrent State Compression Notes"
 
 The other team's note (Recurrent State Compression Notes, on `anki-revlogs-10k`) reads the row-17
@@ -672,6 +718,24 @@ p50 {b55["all"]["move_imm"]["p50"]:.5f}, p99 {b55["all"]["move_imm"]["p99"]:.5f}
 {b55["all"]["move_imm"]["max"]:.5f}, and {100 * b55["cards_imm_gt_0.10"]:.2f}% of cards move by more
 than 0.10 on the immediate head ({100 * b55["cards_ahead_gt_0.10"]:.2f}% ahead).
 
+**The same readout per CARD, which is the form the note asks for.** Same 40-user dump, aggregated per
+(user, card) - a card id is unique only within a user. Two summaries are given, because "the per-card
+|dR|" can mean either the MAX over the card's reviews (the quantity their guard uses) or the MEAN over
+them. Reproduce it with `code/scratchpad/quant_plan/bucket_percard.py` over the same npz dumps; the
+result is shipped as `evidence/bucket/bucket_percard_row55.json`.
+
+| set | head | cards | per-card MAX p50 | p90 | p99 | max | cards with a review >0.05 | >0.10 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+{pc_table}
+
+For iter 55 against row 17 (immediate head), the other two summaries of the same rows: per-card MEAN
+|dp| p50 {_i55['imm']['card_mean']['p50']:.5f} against {_i17['imm']['card_mean']['p50']:.5f} (p99
+{_i55['imm']['card_mean']['p99']:.5f} against {_i17['imm']['card_mean']['p99']:.5f}), and per-review
+|dp| p50 {_i55['imm']['review']['p50']:.5f} against {_i17['imm']['review']['p50']:.5f} (p99
+{_i55['imm']['review']['p99']:.5f} against {_i17['imm']['review']['p99']:.5f}). The share of cards above
+0.10 is the number their guard turns on: {100 * _i55['imm']['card_max']['share_gt_0.10']:.2f}% for iter 55
+against {100 * _i17['imm']['card_max']['share_gt_0.10']:.2f}% for row 17.
+
 **Against their guard** (fail when more than 1% of cards have a review moving by more than 0.10):
 iter 55 reads {100 * b55["cards_imm_gt_0.10"]:.2f}% of cards immediate and {100 * b55["cards_ahead_gt_0.10"]:.2f}%
 ahead, i.e. it clears the guard with about {guard_margin:.0f}x margin. For scale, on the same kind of
@@ -735,8 +799,16 @@ effect. Consequences:
 
 * a deploy tax must always be quoted WITHIN one path. Every number in this bundle is: the gate is
   Python-evaluation vs Python-evaluation, the deploy tax is Rust vs Rust on the same traces.
-* the ahead head does not "rest on 2 users" more than the immediate head does; both are measured on
-  the same 750 users in the gate and on the same 40 users in the bucket work.
+* the deploy-side (engine) quantizer tax is measured on 40 users as well as on the 2-user verify set:
+  over the 40 longest-history users it reads {b55_all["d_imm"]:+.6f} immediate /
+  {b55_all["d_ahead"]:+.6f} ahead (quantizer on vs off, same weights), so the ahead-head engine number
+  does not rest on 2 users.
+* the two user sets disagree in SIGN, and that is worth saying rather than smoothing over: on the two
+  short traces of the verify set the quantizer costs a little (+0.000329 ahead / +0.000338 immediate),
+  while on the 40 longest histories it gains ({b55_all["d_ahead"]:+.6f} ahead /
+  {b55_all["d_imm"]:+.6f} immediate). A 2-user difference of 3e-4 is inside the noise of that set. The
+  750-user gate is the number that decides shipping; the engine figure is evidence of "no material
+  deploy tax", not a precise 2-user measurement.
 
 The row-17 bundle's `verification.md` carries the same correction as an appended note.
 
@@ -754,6 +826,16 @@ Read against their bars:
 | young cards <= +0.10% upper | iter 55 quantizer pairing 1-2 bucket: immediate {b55["buckets"]["1-2"]["rel_imm_pct"]:+.3f}%, ahead {b55["buckets"]["1-2"]["rel_ahead_pct"]:+.3f}% - **both pass** (both are BETTER than the unquantized state); the largest positive cell anywhere in the table is the {b55_worst_imm[0]} bucket at {b55_worst_imm[1]["rel_imm_pct"]:+.3f}% |
 | >1% of cards moving >0.10 = fail | iter 55, quantizer pairing: {100 * b55["cards_imm_gt_0.10"]:.2f}% of cards immediate / {100 * b55["cards_ahead_gt_0.10"]:.2f}% ahead - **passes**, about {guard_margin:.0f}x inside the 1% limit (the row-17 checkpoint, the same bits without the penalty, reads {100 * d17["cards_imm_gt_0.10"]:.2f}% / {100 * d17["cards_ahead_gt_0.10"]:.2f}%) |
 
+**Your point 1, checked against our row 17.** You read row 17's immediate head as +0.107% relative
+(upper bound about +0.127%) and the ahead head as +0.016% (upper +0.035%). Our own sweep reproduces both
+exactly: row 17 reads {s17_imm_rel:+.3f}% ({s17_imm_ub:+.3f}% upper) and {s17_ahead_rel:+.3f}%
+({s17_ahead_ub:+.3f}% upper), so their +0.05% dataset-wide bar would indeed reject row 17's immediate
+head. Two things change with iter 55. First, the immediate head is now BETTER than the control
+({gate_ri:+.3f}% relative UPPER bound) and the ahead head is {gate_ra:+.3f}% upper, so both heads are
+inside their +0.05% bar. Second, our own +0.0005 ceiling is looser than their bar - it is
+{gate_abs_rel_imm:.3f}% of the immediate base loss and {gate_abs_rel_ahead:.3f}% of the ahead one, about
+3x their +0.05% - so passing OUR gate is not by itself evidence of passing THEIR bar. The pass above
+rests on the relative column, not on the absolute delta.
 The honest summary: this recipe clears their dataset-wide bar, their young-card bar and their per-card
 movement guard, and it meets their size ambition against the naive int4 bars. Its own overall deploy
 tax on this roster is NEGATIVE on both heads ({b55["all"]["d_imm"]:+.6f} immediate /
@@ -786,6 +868,13 @@ So a rank-2 write costs about 4x a rank-1 write, and the fixed-basis codec is bo
 6x cheaper than the rank-2 solve it replaces. Everything in this bundle's deploy path is measured
 with the reference solver unless a config says otherwise (`RWKV_LOWRANK_FAST` is off by default and
 its factors are an approximation, so it must not be used for a Python-Rust parity run).
+
+One thing that answers the question directly: **the deploy engine recompresses the state at every write,
+and the measured {sp55["l2i8s4"]["rev_s"]:,.1f} rev/s (against {sp55["plain"]["rev_s"]:,.1f} plain)
+already CONTAINS that per-write solve.** The per-write cost is not an add-on to the throughput figure -
+the rank-2 solve on the card layer is part of what the 0.78-0.80x ratio measures. In their fork the
+equivalent per-review cost is the 41-49 us per layer per write above; with this recipe's layout it is one
+rank-2 solve (card) plus three rank-1 solves (note) per review.
 
 ---
 
@@ -891,6 +980,13 @@ different order. The values and the recipe metadata - `stream_order`, `interleav
 `interleave_placement`, `state_clamp_tau` - are identical.)
 
 ## 2. Deploy log loss: the quantization tax inside the Rust engine
+
+**This is a different pairing from the 750-user gate in section 7.** Here the SAME weights are scored
+with the state quantizer switched ON and OFF, in the engine, on two users. The gate compares the
+QAT+quantized checkpoint against a control trained WITHOUT QAT and scored WITHOUT quantization, over 750
+users. The two numbers (+0.000329 / +0.000338 here and +0.000028 / -0.000045 there) are about 10x apart
+and must not be mixed: the first answers "what does the quantizer cost at deploy", the second "is the
+recipe good enough to ship".
 
 `rust_grid.py` runs the engine twice on the same trace - once with no state quantization (`plain`) and
 once with the recipe - and scores both against the labels with sklearn's log loss, exactly the metric
@@ -1156,6 +1252,8 @@ def build_context():
     speed = load("speed")
     b55 = load("bucket55")
     gap = load("gap")
+    pc = load("percard")
+    sw17 = load("sweep17")
 
     def fin_totals(rec, key):
         tot = {k: 0 for k in ("state_vals", "vec_vals", "p_vals", "state_raw_bad",
@@ -1198,6 +1296,8 @@ def build_context():
         "deploy61": load("deploy61"),
         "mix": load("mix"),
         "gap": gap,
+        "percard": pc,
+        "sweep17": sw17,
         "bits_card": row["bits"]["card"],
         "bits_note": row["bits"]["note"],
         "bits_total": row["bits"]["card"] + row["bits"]["note"],

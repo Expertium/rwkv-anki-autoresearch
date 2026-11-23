@@ -34,6 +34,13 @@ different order. The values and the recipe metadata - `stream_order`, `interleav
 
 ## 2. Deploy log loss: the quantization tax inside the Rust engine
 
+**This is a different pairing from the 750-user gate in section 7.** Here the SAME weights are scored
+with the state quantizer switched ON and OFF, in the engine, on two users. The gate compares the
+QAT+quantized checkpoint against a control trained WITHOUT QAT and scored WITHOUT quantization, over 750
+users. The two numbers (+0.000329 / +0.000338 here and +0.000028 / -0.000045 there) are about 10x apart
+and must not be mixed: the first answers "what does the quantizer cost at deploy", the second "is the
+recipe good enough to ship".
+
 `rust_grid.py` runs the engine twice on the same trace - once with no state quantization (`plain`) and
 once with the recipe - and scores both against the labels with sklearn's log loss, exactly the metric
 the Python gate uses. This isolates the DEPLOY quantization tax; it is not the 750-user gate.
