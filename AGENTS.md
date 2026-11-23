@@ -184,3 +184,16 @@
   code; (4) a launch line may appear once or twice in `detach_launches.log`, so check the job's own `.lock`
   before assuming a double start. Note: a shell call that FAILS also discards the `console.log` output already
   produced in that same `run()`.
+- **The eval's per-head result files are named the other way round (settled 2026-11-23):**
+  `result/adw_<tag>.jsonl` is the **AHEAD** head and `result/adwP_<tag>.jsonl` is the **IMMEDIATE** head
+  (`quant_sweep.py` line 10 says so in its own docstring). Reading them the intuitive way swaps the two heads
+  and fabricates a "0.005-0.09 ahead-head trace-vs-eval gap" out of nothing; with the correct mapping, on the
+  40 long-history users of `trace_corrupt50`, the SAME weights and NO quantization, the deploy trace path and
+  the evaluation path agree with mean|d| 0.0031 (imm) / 0.0032 (ahead), max 0.014 (see
+  `scratchpad/quant_plan/trace_eval_gap.py`, `trace_eval_gap_plain.json`). So the residual is a small
+  trace-maker-frame vs eval-dataset INPUT difference, present on BOTH heads - which is why a deploy tax must
+  always be quoted WITHIN one path. Related tools: `scratchpad/quant_plan/bucket_tax.py` (the deploy tax split
+  by a card's answer count 1-2/3-4/5-8/9-15/16-31/32-127/128+, plus the per-review |delta p| median/P99/max and
+  the share of reviews and of cards moving >0.05 / >0.10) and `bucket_mix.py` (a roster's own answer-count mix;
+  the 750 roster reads 25.7/19.4/22.9/15.2/10.4/5.9/0.4% of answers per bucket and P50 = 5 answers per card,
+  i.e. the same mix the other team reports).

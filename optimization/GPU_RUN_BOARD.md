@@ -1239,3 +1239,46 @@ The note's coefficient block at int6 instead of int8 (m held at 6). `l2i8fb6n6` 
 ## Amendment 47 (2026-11-23 13:21): chain 27 point 2 `l2i8fb6n4` - card rank-2 int8 + note codec m=6 with int4 coefficients, 1,280/1,200 = 2,480 bits
 
 The note's coefficient block at int4 (16 levels per matrix entry). `l2i8fb6n4` reads 0.334144/0.306749 = +0.000342/+0.000538 (ub95 +0.000393/+0.000596, 750 users) - **FAIL**. Against row 45 (+0.000125/+0.000381, +464 bits) worse/worse 0.000217/0.000157; against row 51 (+0.000018/+0.000209, +432 bits) worse/worse 0.000324/0.000329; against row 61 (+0.000032/+0.000311, -48 bits) worse/worse 0.000310/0.000227. Quality: held-out capture unchanged at m=6 (0.818-0.871). Speed: the deploy engine measures 2,226.8 rev/s = 0.792x rev/s (median per-user 0.755x) against `plain` in the same run (`rust_speed_c27.json`), clearing the 0.75x floor by 0.005. Finiteness: not needed - the row fails the loss gate.
+
+## Amendment 48 (2026-11-23 14:00): iter 55 (`l2i8s4e1c`) is bundled and handed over, and ALL GPU WORK IS STOPPED
+
+Andrew (13:26-13:32): "Bundle iter 55 into a .zip, it seems like the best one: no tax, great reduction of
+state sizes. When bundling, make sure to address questions and concerns from
+`C:\Users\Andrew\Downloads\Recurrent State Compression Notes.html`", then "Tell me when the bundle is
+ready, then stop all other GPU work, we're done."
+
+Iter 55 is RESULTS row 55 = candidate `l2i8s4e1c`: row 17's EXACT state layout (card rank-2 int8 + int4
+shifts, note rank-1 int8 + int4 shifts, 1,280/2,304 = **3,584 bits - the same size as row 17**; the
+"reduction" is against the naive int4 bars of 2,176/6,528 and against a dense per-matrix code) trained
+on the Python per-step QAT loop (`RWKV_QAT_FUSED=0`) WITH the E1 tail-energy penalty
+(`RWKV_QAT_TAIL_PENALTY=1.0`, `RWKV_QAT_TAIL_STRIDE=8`). Its gate: 0.333830/0.306166 =
++0.000028/-0.000045 (ub95 +0.000150/+0.000059, 750 users) - PASS on both heads, immediate head BETTER
+than the penalty-OFF control. Corruption PASS 158,986 state calls / 150 p(recall) tensors / 0
+non-finite on 50 users.
+
+The bundle is `scratchpad/row55_l2i8s4e1c_bundle/` (built by
+`scratchpad/quant_plan/corruption/_build_row55_bundle.py`, mirrors the row-17 bundle's layout: `code/`,
+`weights/`, `traces/`, `traces_long/`, `evidence/`, generated `README.md` / `ANSWERS.md` /
+`verification.md` / `verify.cmd` / `MANIFEST.md`). Its documents are GENERATED from the evidence JSONs,
+so they cannot drift. `ANSWERS.md` answers the other team's six questions with: the answer-count bucket
+split measured on the row-55 checkpoint itself, the per-card movement readout with THEIR per-card guard
+evaluated (it would fail row 17 at 2.11% of cards >0.10 and pass the codec row 61 at 0.62%), the
+head-file mapping correction (their "0.005 ahead-only gap" was an artifact: corrected, the trace and
+evaluation paths agree at mean|d| 0.0031 imm / 0.0032 ahead, max 0.0147 on BOTH heads), the relative
+bars, the per-write solver cost (rank-2 Gram+eig 41-49 us per layer per write vs the codec's 7.1 us at
+m=4), and an explicit "not measured" for rank-and-precision-by-age. New deploy evidence produced for
+this bundle with the shipped weights: `rust_grid_row55.json` (plain 0.243431/0.198319 vs l2i8s4
+0.243760/0.198657 = tax +0.000329/+0.000338), `rust_finite_row55.json` (PASS, 43,474,944 state values,
+0 non-finite) + `rust_finite_row55_long.json` (user 5098, 119,463,936 state values, 0 non-finite),
+`py_rust_parity_row55_plain.json` (PARITY PASS, max 5.9e-07 per review - on traces RE-EXPORTED for this
+checkpoint) and `rust_speed_row55.json` (plain 2,948.3 rev/s, l2i8s4 2,358.7 = 0.800x, median per-user
+0.792x, PASS). The row-17 bundle's `verification.md` gained section 9 with the corrected head mapping.
+
+STOPPED at 13:37, at Andrew's instruction: chain 27 `it36fbwidth` (killed mid point 3 `fbc8n6i8`; its
+sweep started 13:26:11 and never landed, so that point has NO row and must be re-run if ever wanted),
+chain 28 `it36shiftsb` (killed while still waiting behind chain 27; it produced no point at all) and the
+Windows task `RWKV-Quant-Autorun` (DISABLED, so the hourly supervisor cannot restart a chain). Chain 29
+`it36fblowm` was staged and is NOT launched. GPU is idle (5% util, 1.2 GiB). The last GPU results before
+the stop are rows 63/64 (chain 27 points 1-2). Chain 27's points 3-4 and chain 28's five shift-codec
+points and chain 29's two low-m points were never measured - re-launching any of them needs Andrew's
+word. Iter 55 is row 17's layout, so the row-17 speed path applies to it; the bundle says so.

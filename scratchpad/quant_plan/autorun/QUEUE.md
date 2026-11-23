@@ -25,7 +25,16 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 CURRENT live list (supersedes everything below; edited by hand as chains land). These are the chains
 the interactive session launched, and the restart rule below applies to each of them:
 
-`it36fbrung` (chain 26, the codec `m` ladder: m=4 row 61, m=5 point 2) -> `it36fbwidth` (chain 27,
+**NOTHING IS LIVE (2026-11-23 13:37).** Andrew: "Tell me when the bundle is ready, then stop all
+other GPU work, we're done." The interactive session then killed chain 27 `it36fbwidth` (mid point 3
+`fbc8n6i8`, whose 750-user sweep had started 13:26:11 and never landed, so it has no row) and chain 28
+`it36shiftsb` (which had produced no point: it was still waiting behind chain 27), and DISABLED the
+Windows task `RWKV-Quant-Autorun` so nothing restarts either of them. Chain 29 `it36fblowm` was staged
+(script written, corruption names registered) but never launched. The list below is the state up to
+that stop; the older noterank2/shrink/equalbits/combo/corrupt2 list is stale (those chains are not
+running). The GPU may be used again only if Andrew asks for it.
+
+Up to the stop: `it36fbrung` (chain 26, the codec `m` ladder: m=4 row 61, m=5 point 2) -> `it36fbwidth` (chain 27,
 the codec's coefficient bit-width + the CARD on the codec) -> `it36shiftsb` (chain 28, the token-shift codec,
 launched 11:30:49). Each takes its own
 lock file and waits for its predecessor's `=== <name> chain end ===` marker, so a WAITING chain's log

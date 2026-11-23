@@ -1,0 +1,8 @@
+# This folder is a self-contained, zippable bundle for iter 55 (`l2i8s4e1c`).
+# Rebuild it with: scratchpad/quant_plan/corruption/_build_row55_bundle.py
+# The docs (README.md, ANSWERS.md, verification.md, verify.cmd) and MANIFEST.md are tracked.
+# The heavy / fully-reproducible parts are not pushed to git:
+weights/
+traces/
+code/
+evidence/

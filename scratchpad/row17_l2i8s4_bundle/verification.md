@@ -211,3 +211,29 @@ config are in `evidence/run/smoke_train.log` and `smoke_train.toml`.
   prediction dictionary has no entry for it (the evaluation path's vectorised gather does not raise
   on that; the exporter's slow path asserts). Nothing about the recipe depends on that user.
 * The speed numbers depend on the machine, the CPU governor and the load. Re-measure.
+
+## 9. Correction (2026-11-23): the head mapping in section 4b
+
+**Section 4b's table reads the evaluation's two result files the wrong way round.** This project names
+them counter-intuitively: `result/adw_<tag>.jsonl` is the **AHEAD** head and
+`result/adwP_<tag>.jsonl` is the **IMMEDIATE** head (`quant_sweep.py` says so in its own docstring,
+and line 661 pairs `(0, f"adw_{tag}.jsonl"), (1, f"adwP_{tag}.jsonl")` with `0 = ahead, 1 = immediate`).
+Section 4b compared the trace path's AHEAD numbers with the evaluation's IMMEDIATE numbers, which is
+what manufactured the "0.005 gap in the ahead head, about 10x the tax" reading. With the mapping
+corrected, on the 40 longest-history users, the SAME weights and NO quantization on either side
+(`scratchpad/quant_plan/trace_eval_gap.py`, `trace_eval_gap_plain.json`):
+
+| head | mean difference | mean abs difference | max abs difference |
+|---|---:|---:|---:|
+| immediate | -0.0015 | 0.0031 | 0.0147 |
+| ahead | -0.0001 | 0.0032 | 0.0144 |
+
+So the two paths differ by the same small amount on BOTH heads: the residual is an INPUT difference
+between the trace exporter's frame/clock and the evaluation dataset, not an ahead-head bug and not a
+quantization effect. What section 4b says in the end - compare ahead numbers only WITHIN one path, and
+the deploy tax in section 2 is a within-path comparison - still holds, and every tax quoted in this
+bundle is within one path. The bundle's own numbers (sections 1-3, 5) are unaffected: they are all
+Python-evaluation-vs-Python-evaluation or Rust-vs-Rust on the same traces.
+
+The row-55 bundle (`scratchpad/row55_l2i8s4e1c_bundle/`) carries this measurement corrected, in its
+`ANSWERS.md` section (d).
