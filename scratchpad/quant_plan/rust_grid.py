@@ -247,6 +247,12 @@ CONFIGS = {
     "l2i8fb6n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:6:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb4n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb5n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:5:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
 
 }
 

@@ -1126,3 +1126,19 @@ Approach 1 (fixed-basis state coding) is the codec A/B. `l2i8fb8n` holds row 17'
 ## Amendment 39 (2026-11-23 04:36): chain 19 point (fb6n) `l2i8fb6n` - fixed-basis codec m=6, 1,280/1,632 = 2,912 bits
 
 Approach 1 (fixed-basis state coding) is the codec A/B. `l2i8fb6n` holds row 17's card at rank-2 int8 + int4 shifts and replaces the note's per-step rank-1 factors with an m x m coefficient block against a basis that ships with the model: 1,280/1,632 = 2,912 bits, 672 below row 17 and 32 below row 45. Landed 04:34 after 28.5 min of eval. It reads 0.333820/0.306421 = +0.000018/+0.000209 (ub95 +0.000055/+0.000249, 750 users) - PASS on both heads. The codec's held-out energy capture is 0.82-0.87 at m=6, against the shipped rank-1 note's 0.904-0.951 per layer; against row 17 (which costs 672 MORE bits) the codec is BETTER by 0.000034/BETTER by 0.000118. Speed is measured per config on the deploy engine: the deploy engine's codec path measures 2,323.6 rev/s = 0.797x rev/s (median per-user 0.793x) against `plain` in the SAME run (`rust_speed_fb_speed3.json`, users 107/136/156), so it CLEARS the 0.75x floor by 0.043. Before the 2026-11-23 basis-layout fix the same path read 2,196.3 rev/s = 0.767x (median per-user 0.778x), which FAILED the floor; the fix transposes the basis once per call and is BIT-IDENTICAL (exact parity on both configs, `rust_grid_fbpar_before.json` vs `..._after.json`). Finiteness: PASS - this chain's own corruption check scored all 50 roster users (39,586 state observations, 150 p(recall) tensors, 0 non-finite) in 2.9 min (`corruption_corrupt_l2i8fb6n.json`).
+
+## Amendment 40 (2026-11-23 05:00): chain 26 (`it36fbrung`) - the codec's own size ladder, m=4 and m=5
+
+Rows 50/51 changed what the codec is worth: at a FIXED size it beats the per-step rank-r factors on both heads, and at 2,912 bits it beats the 2,944-bit uniform frontier. Its note payload is `m*m*qbits` for the whole WKV (not `2*K*r*qbits`), so `m` is a size axis the uniform design does not have - and the fitting artifact is nested (2D-PCA, sliced to its first m columns), so one file serves every rung.
+
+    point       note payload       total bits   vs row 45 (2,944)   held-out capture/layer
+    l2i8fb4n    3*(16*8 + 256)     2,432        512 BELOW            0.751-0.856
+    l2i8fb5n    3*(25*8 + 256)     2,648        296 BELOW            between m=4 and m=6
+    l2i8fb6n    3*(36*8 + 256)     2,912        -32 (row 51, PASS)   0.818-0.871
+
+Both points hold row 17's card (rank-2 int8 + int4 shifts), so each is a clean note-only A/B, and both run 124 decay steps against `qnj_it36ctl` - the length every codec row has used, so the comparison is apples-to-apples. The ladder is NOT gated point-on-point: if m=4 breaks the gate, m=5 is the rung that would fill the gap. Each point runs its own 50-user finiteness check in this chain's own phase (Andrew's standing order), so no check is left pending. Chain 19's basis file needed no re-fit.
+
+Bit accounting (fixed in the same pass): `quant_sweep.bits_for` had no fixed-basis branch and returned `bits_override` EARLY, so a codec candidate's reported bits were a registry claim that nothing checked. It now derives the bits from the env - `RWKV_FIXEDBASIS_PATH` set with an empty `RWKV_FIXEDBASIS_SCOPE` means every stream, exactly `rwkv_ops._fb_wanted` - warns on a disagreement, and keeps the override only for a learned-codebook payload (`RWKV_QAT_PQ`) it cannot model. All 84 candidates re-checked: 0 disagreements.
+
+Queued behind chain 25 (`it36shiftrung`), the tail of the live queue. Outside `autorun/QUEUE.md` on purpose: it is the interactive session's chain, like `it36fixedbasis` and the rest.
+

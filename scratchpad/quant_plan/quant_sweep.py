@@ -335,6 +335,24 @@ CANDIDATES = {
                   "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
                  "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,632 = 2,912 bits)",
                  (1280, 1632)),
+    # THE m LADDER (2026-11-23, after row 51 showed the codec BUYS size AND loss at m=6). The basis
+    # file is fitted at 16 modes and the codec slices its first m columns, so one artifact serves any
+    # m with no re-fit. The note costs 3*(m*m*8 + 64*4) bits: m=4 -> 1,152 (2,432 total, 512 BELOW
+    # row 45's 2,944-bit frontier), m=5 -> 1,368 (2,648 total). Held-out capture per layer (leave-one-
+    # user-out): m=4 0.751-0.856, m=6 0.818-0.871, m=8 0.876-0.921.
+    "l2i8fb4n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_FIXEDBASIS_SCOPE": "note",
+                  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                 "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,152 = 2,432 bits)",
+                 (1280, 1152)),
+    "l2i8fb5n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:5:int8",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_FIXEDBASIS_SCOPE": "note",
+                  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                 "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,368 = 2,648 bits)",
+                 (1280, 1368)),
+
     "fb4i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:4:int8,note:4:int8",
                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
                "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
@@ -483,8 +501,6 @@ def bits_for(env, bits_override=None):
     full matrix: layers * (1024 + 64) * qbits
     rank r int-N: layers * (2*r*K*qbits + 64*shift_bits)
     """
-    if bits_override is not None:
-        return {"card": bits_override[0], "note": bits_override[1]}
     shift_bits = {}
     for entry in env.get("RWKV_QAT_SHIFT_SCOPE", "").split(","):
         if ":" in entry:
@@ -495,6 +511,18 @@ def bits_for(env, bits_override=None):
         parts = entry.split(":")
         if len(parts) >= 3:
             lr[parts[0]] = (int(parts[1]), _QBITS.get(parts[2], 32))
+    # RWKV_QAT_FIXEDBASIS_SCOPE names the streams whose WKV state is coded as an m x m coefficient
+    # block against a basis that ships with the model. m rides in the LOWRANK scope's rank slot
+    # (rwkv_ops.fake_fixedbasis_state takes m from there), so the payload is m*m*qbits per layer
+    # instead of 2*K*r*qbits.
+    fb = {s.strip() for s in env.get("RWKV_FIXEDBASIS_SCOPE", "").split(",") if s.strip()}
+    # rwkv_ops._fb_wanted: with the path set, an EMPTY scope means every stream is coded; a non-empty
+    # scope names the streams (the note-only rows set "note"). The QAT-side names carry no QAT_/
+    # STATE_ prefix - `RWKV_STATE_FIXEDBASIS_SCOPE` is the Rust engine's spelling.
+    fb_on = bool(str(env.get("RWKV_FIXEDBASIS_PATH", "")).strip())
+    # A learned CODEBOOK payload (RWKV_QAT_PQ / RWKV_QAT_SHIFT_PQ, e.g. `q72u`) is not modelled here,
+    # so for those candidates the registered override stays authoritative.
+    opaque = any(str(env.get(k, "")).strip() for k in ("RWKV_QAT_PQ", "RWKV_QAT_SHIFT_PQ"))
     fq = {}
     for entry in env.get("RWKV_QAT_SCOPE", "").split(","):
         parts = entry.split(":")
@@ -503,13 +531,23 @@ def bits_for(env, bits_override=None):
     out = {}
     for s, n in LAYERS.items():
         sb = shift_bits.get(s, 32)
-        if s in lr:
+        if fb_on and (not fb or s in fb) and s in lr:
+            m, qb = lr[s]
+            out[s] = n * (m * m * qb + 64 * sb)
+        elif s in lr:
             r, qb = lr[s]
             out[s] = n * (2 * r * 32 * qb + 64 * sb)
         elif s in fq:
             out[s] = n * (1024 * fq[s] + 64 * sb)
         else:
             out[s] = n * (1024 + 64) * 32
+    if bits_override is not None:
+        claimed = {"card": bits_override[0], "note": bits_override[1]}
+        if claimed != out:
+            if opaque:
+                return claimed  # the codebook payload is not modelled by this function
+            print(f"WARNING: the registry claims bits {claimed}, the env implies {out}; "
+                  f"reporting the value derived from the env", flush=True)
     return out
 
 
