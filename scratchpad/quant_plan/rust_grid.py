@@ -253,6 +253,26 @@ CONFIGS = {
     "l2i8fb5n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:5:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    # chain 27 (2026-11-23): two NEW codec knobs - the m x m coefficient block's own BIT-WIDTH
+    # (int8 -> int6 -> int4), and the CARD on the codec instead of the rank-2 path. The level in
+    # the FIXEDBASIS scope is the coefficient width; the basis file is NESTED at 16 modes and it
+    # already carries `card 0 16` (P__card__L0 / Q__card__L0), so the card needs no re-fit.
+    #   l2i8fb6n6  card rank-2 int8 + note fb m=6 int6   1,280 + 3x472 = 2,696  (248 below row 45)
+    #   l2i8fb6n4  card rank-2 int8 + note fb m=6 int4   1,280 + 3x400 = 2,480  (464 below row 45)
+    #   fbc8n6i8   card fb m=8 int8 + note fb m=6 int8     768 + 3x544 = 2,400  (544 below row 45)
+    #   fbc8n6i6   card fb m=8 int8 + note fb m=6 int6     768 + 3x472 = 2,184  (760 below row 45)
+    "l2i8fb6n6": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:6:int6", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb6n4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:6:int4", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "fbc8n6i8": {"RWKV_STATE_FIXEDBASIS_SCOPE": "card:8:int8,note:6:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "fbc8n6i6": {"RWKV_STATE_FIXEDBASIS_SCOPE": "card:8:int8,note:6:int6", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
 
 }
 

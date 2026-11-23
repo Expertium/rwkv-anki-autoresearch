@@ -344,7 +344,7 @@ CANDIDATES = {
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
                   "RWKV_FIXEDBASIS_SCOPE": "note",
                   "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
-                 "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,152 = 2,432 bits)",
+                 "card rank 2 (row 17's card) + NOTE fixed basis m=4 int8 (1,280/1,152 = 2,432 bits)",
                  (1280, 1152)),
     "l2i8fb5n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:5:int8",
                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
@@ -352,6 +352,37 @@ CANDIDATES = {
                   "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
                  "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,368 = 2,648 bits)",
                  (1280, 1368)),
+    # CHAIN 27 (2026-11-23): the CODEC's own coefficient BIT-WIDTH, and the CARD moved onto
+    # the codec. The level slot of RWKV_QAT_LOWRANK_SCOPE sets that stream's qmax, and
+    # `fake_fixedbasis_state` quantizes the m x m coefficient block with it, so `note:6:int6`
+    # means m=6 with int6 coefficients. Note bits are 3*(m*m*qb + 64*4): m=6 int6 -> 3*472 =
+    # 1,416, m=6 int4 -> 3*400 = 1,200. The card's own codec at m=8 int8 is 1*(64*8 + 64*4) =
+    # 768 against row 17's rank-2 card's 1,280; the basis already carries `card 0 16`.
+    "l2i8fb6n6": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:6:int6",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                  "card rank 2 (row 17's card) + NOTE fixed basis m=6 with int6 coefficients (1,280/1,416 = 2,696 bits)",
+                  (1280, 1416)),
+    "l2i8fb6n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:6:int4",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                  "card rank 2 (row 17's card) + NOTE fixed basis m=6 with int4 coefficients (1,280/1,200 = 2,480 bits)",
+                  (1280, 1200)),
+    "fbc8n6i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:8:int8,note:6:int8",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_FIXEDBASIS_SCOPE": "card,note",
+                  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                 "CARD and NOTE both on the fixed basis: card m=8 int8 + note m=6 int8 (768/1,632 = 2,400 bits)",
+                 (768, 1632)),
+    "fbc8n6i6": ({"RWKV_QAT_LOWRANK_SCOPE": "card:8:int8,note:6:int6",
+                  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                  "RWKV_FIXEDBASIS_SCOPE": "card,note",
+                  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
+                 "CARD and NOTE both on the fixed basis: card m=8 int8 + note m=6 int6 (768/1,416 = 2,184 bits)",
+                 (768, 1416)),
+
 
     "fb4i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:4:int8,note:4:int8",
                "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
