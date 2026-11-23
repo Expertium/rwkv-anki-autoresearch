@@ -1,0 +1,132 @@
+{
+ "probe": "shift_subspace",
+ "tag": "note_l2i8s4",
+ "stream": "note",
+ "every": 1,
+ "max": 6000,
+ "keys": [
+  "note|?|L-1",
+  "note|RWKV7TimeMixer|L0",
+  "note|RWKV7TimeMixer|L1",
+  "note|RWKV7TimeMixer|L2"
+ ],
+ "meta": {
+  "note|?|L-1": {
+   "stream": "note",
+   "role": "?",
+   "layer": -1
+  },
+  "note|RWKV7TimeMixer|L0": {
+   "stream": "note",
+   "role": "RWKV7TimeMixer",
+   "layer": 0
+  },
+  "note|RWKV7TimeMixer|L1": {
+   "stream": "note",
+   "role": "RWKV7TimeMixer",
+   "layer": 1
+  },
+  "note|RWKV7TimeMixer|L2": {
+   "stream": "note",
+   "role": "RWKV7TimeMixer",
+   "layer": 2
+  }
+ },
+ "shapes": {
+  "note|?|L-1": [
+   [
+    1131,
+    169,
+    32
+   ],
+   [
+    1566,
+    669,
+    32
+   ],
+   [
+    2966,
+    51,
+    32
+   ]
+  ],
+  "note|RWKV7TimeMixer|L0": [
+   [
+    1131,
+    169,
+    32
+   ],
+   [
+    1566,
+    669,
+    32
+   ],
+   [
+    2966,
+    51,
+    32
+   ]
+  ],
+  "note|RWKV7TimeMixer|L1": [
+   [
+    1131,
+    169,
+    32
+   ],
+   [
+    1566,
+    669,
+    32
+   ],
+   [
+    2966,
+    51,
+    32
+   ]
+  ],
+  "note|RWKV7TimeMixer|L2": [
+   [
+    1131,
+    169,
+    32
+   ],
+   [
+    1566,
+    669,
+    32
+   ],
+   [
+    2966,
+    51,
+    32
+   ]
+  ]
+ },
+ "kept": {
+  "note|?|L-1": 6000,
+  "note|RWKV7TimeMixer|L0": 6000,
+  "note|RWKV7TimeMixer|L1": 6000,
+  "note|RWKV7TimeMixer|L2": 6000
+ },
+ "rows": {
+  "note|?|L-1": 4170177,
+  "note|RWKV7TimeMixer|L0": 1390059,
+  "note|RWKV7TimeMixer|L1": 1390059,
+  "note|RWKV7TimeMixer|L2": 1390059
+ },
+ "users": {
+  "note|?|L-1": [
+   7044
+  ],
+  "note|RWKV7TimeMixer|L0": [
+   7044
+  ],
+  "note|RWKV7TimeMixer|L1": [
+   7044
+  ],
+  "note|RWKV7TimeMixer|L2": [
+   7044
+  ]
+ },
+ "total_rows": 24000
+}

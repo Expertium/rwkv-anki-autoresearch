@@ -83,8 +83,13 @@ def record(x_BTC, role: str, lay: int) -> None:
         room = _MAX - _N.get(key, 0)
         if room <= 0:
             return
-        idx = [i for i in range(flat.shape[0]) if (start + i) % _EVERY == 0][:room]
-        if not idx:
+        # SPREAD the sample over the WHOLE call, not its first `room` rows: one call can carry far
+        # more vectors than the cap (a (B,T,C) shift tensor is B*T rows), and a prefix would sample
+        # only the first few items' histories, which is a real bias for a per-card statistic.
+        n = flat.shape[0]
+        stride = max(_EVERY, int(np.ceil(n / room)))
+        idx = np.arange(0, n, stride)[:room]
+        if idx.size == 0:
             return
         rows = flat[idx]
         _ACC.setdefault(key, []).extend(rows)

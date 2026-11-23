@@ -1,0 +1,7 @@
+{
+  "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+  "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+  "RWKV_FIXEDBASIS_SCOPE": "note",
+  "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz",
+  "RWKV_NO_JIT": "1"
+}
