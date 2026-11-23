@@ -97,7 +97,7 @@ POINTS = [
      ["61", "45"]),
 ]
 
-SPEED_TAGS = ["c28", "c27", "fbrung", "fb_speed3", "fb_idle"]
+SPEED_TAGS = ["c28b", "c28", "c27", "fbrung", "fb_speed3", "fb_idle"]
 
 
 def speed_of(name):

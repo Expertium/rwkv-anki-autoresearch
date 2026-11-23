@@ -93,6 +93,24 @@ CONFIGS = {
                  "chain 27 point 3 (codec on the CARD too, m=8 int8 + note m=6 int8, 2,400 bits)"),
     "fbc8n6i6": (RUN / "qat_it36fbc8n6i6" / "qat_124.pth", "fbc8n6i6",
                  "chain 27 point 4 (codec on the CARD too, m=8 int8 + note m=6 int6, 2,184 bits)"),
+    # CHAIN 28 (it36shiftsb, 2026-11-23): the TOKEN-SHIFT codec ladder. Every point holds chain 26's
+    # PASSING row 61 (`l2i8fb4n`: card rank-2 int8 + note state codec m=4 int8 + raw int4 shifts,
+    # 2,432 bits) and changes ONLY the note's shift coder, so each passing point's finiteness check
+    # measures the shift codec itself: the driver runs the Python default (RWKV_QAT_FUSED=0), where the
+    # codec goes through the real mixer forwards (rwkv_model.fake_shift_fixedbasis) and the CARD stays
+    # on raw int4 (RWKV_SHIFT_FIXEDBASIS_SCOPE=note). Registered BEFORE the chain reaches its
+    # corruption phase, because `--tag <name>` with a name that is not in this dict would run ZERO
+    # points and write a verdict with no state observations - a vacuous pass.
+    "l2i8fb4nsb16i4": (RUN / "qat_it36l2i8fb4nsb16i4" / "qat_124.pth", "l2i8fb4nsb16i4",
+                       "chain 28 point 1 (note shift codec m=16 int4, 2,048 bits)"),
+    "l2i8fb4nsb16i6": (RUN / "qat_it36l2i8fb4nsb16i6" / "qat_124.pth", "l2i8fb4nsb16i6",
+                       "chain 28 point 2 (note shift codec m=16 int6, 2,240 bits)"),
+    "l2i8fb4nsb16i8": (RUN / "qat_it36l2i8fb4nsb16i8" / "qat_124.pth", "l2i8fb4nsb16i8",
+                       "chain 28 point 3 (note shift codec m=16 int8, same-bits control, 2,432 bits)"),
+    "l2i8fb4nsb12i4": (RUN / "qat_it36l2i8fb4nsb12i4" / "qat_124.pth", "l2i8fb4nsb12i4",
+                       "chain 28 point 4 (note shift codec m=12 int4, 1,952 bits)"),
+    "l2i8fb4nsb8i4": (RUN / "qat_it36l2i8fb4nsb8i4" / "qat_124.pth", "l2i8fb4nsb8i4",
+                      "chain 28 point 5 (note shift codec m=8 int4, 1,856 bits)"),
 
     "l2i6s4n1i8s3": (RUN / "qat_it36l2i6s4n1i8s3" / "qat_124.pth", "l2i6s4n1i8s3",
                      "chain 21 point 1 (int6 card + note int3 shifts, 3,136 bits)"),
