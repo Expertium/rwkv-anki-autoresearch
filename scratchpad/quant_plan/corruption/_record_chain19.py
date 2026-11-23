@@ -16,10 +16,16 @@ sweep lands, and either point may PASS or FAIL. Every number and verdict word is
 `quant_sweep_it36<point>.json` at run time, and the script records whichever point has landed (running it
 again later records the other one). A row whose id is already present is skipped.
 
-SPEED CELL: left as "unmeasured" on purpose. The codec changes `compress_wkv_state`, so row 17's measured
-2,290 rev/s = 0.800x does NOT transfer the way it does for a factor-width change. The script prints a
-warning when a point passes the loss gate, because such a row still needs its own `rust_speed.py` run
-before it can be called deployable.
+SPEED CELL: filled from a real `rust_speed.py` run. RESULTS.md's own table note says speed is PER CONFIG
+and does not depend on the checkpoint, so the codec's engine path is measured once on the row-17 deploy
+artifact and its ratio transfers to these rows. The first such run (`rust_speed_fb_speed.json`,
+2026-11-23 03:34, users 107/136/156, 1 rep, taken while chain 19's eval held the CPU) reads
+plain 2,863.0 rev/s, `l2i8fb8n` 2,166.6 = 0.757x rev (median per-user 0.738 -> the script's own constraint
+says FAIL, by a hair) and `l2i8fb6n` 2,196.3 = 0.767x (median per-user 0.778 -> PASS). An idle re-measure
+is queued under the tag `fb_idle`, and this script PREFERS it when it exists: a ratio within 2% of the
+floor is exactly the case where the ~1% under-load bias matters, so the tag that produced the number is
+always named. The script now also prints a warning when a point passes the LOSS gate but fails the SPEED
+floor, because such a row is not deployable.
 
 Usage: .venv\\Scripts\\python.exe scratchpad\\quant_plan\\corruption\\_record_chain19.py
 """
@@ -40,6 +46,7 @@ RECORDED = RUN / "autorun" / "RECORDED.txt"
 CHAIN_LOG = RUN / "it36fixedbasis_chain.log"
 
 CEIL = 0.0005
+SPEED_FLOOR = 0.75
 ROW17 = (0.000052, 0.000327)   # 1,280/2,304 = 3,584 bits, both streams rank-1/2 int8 + int4 shifts
 ROW45 = (0.000125, 0.000381)   # 1,024/1,920 = 2,944 bits, both factor widths at int6
 
@@ -48,6 +55,28 @@ POINTS = [
     (50, "l2i8fb8n", "it36l2i8fb8n", "0.876-0.921", "row 17 (the SAME 3,584 bits)"),
     (51, "l2i8fb6n", "it36l2i8fb6n", "0.82-0.87", "row 45's 2,944-bit frontier, 32 bits above it"),
 ]
+# Speed JSONs to try, best first: an idle-machine run beats an under-load one.
+SPEED_TAGS = ["fb_idle", "fb_speed"]
+
+
+def speed_of(name):
+    """(rev_s, x_rev, median per-user x, tag) for a config, from the first available speed JSON."""
+    for tag in SPEED_TAGS:
+        p = RUN / f"rust_speed_{tag}.json"
+        if not p.exists():
+            continue
+        try:
+            d = json.loads(p.read_text(encoding="utf-8"))
+        except ValueError:
+            continue
+        if name not in d or "plain" not in d:
+            continue
+        r, b = d[name], d["plain"]
+        common = sorted(set(r["per_user_rev_s"]) & set(b["per_user_rev_s"]))
+        ratios = sorted(r["per_user_rev_s"][u] / b["per_user_rev_s"][u] for u in common)
+        med = ratios[len(ratios) // 2] if ratios else float("nan")
+        return r["rev_s"], r["rev_s"] / b["rev_s"], med, tag
+    return None
 
 
 def load(stamp: str):
@@ -68,13 +97,13 @@ def load(stamp: str):
     return r
 
 
-def landing(stamp: str):
-    """The chain log's DONE line for the point's eval - wall-clock landing time and duration."""
+def landing(name: str):
+    """The chain log's DONE line for THIS point's eval - wall-clock landing time and duration."""
     if not CHAIN_LOG.exists():
         return "landed", 0.0
     txt = CHAIN_LOG.read_text(encoding="utf-8", errors="replace")
     m = None
-    for m in re.finditer(rf"\[(\d\d:\d\d:\d\d)\] DONE  eval \w+@124: rc=0 in ([\d.]+) min", txt):
+    for m in re.finditer(rf"\[(\d\d:\d\d:\d\d)\] DONE  eval {name}@124: rc=0 in ([\d.]+) min", txt):
         pass
     return (m.group(1)[:5], float(m.group(2))) if m else ("landed", 0.0)
 
@@ -91,11 +120,30 @@ def build(row_id, name, stamp, capture, compare, r):
     pass_a, pass_i = a["ub95"] <= CEIL, i["ub95"] <= CEIL
     ok = bool(r["bits_ok"]) and pass_a and pass_i
     mins = r.get("secs", 0.0) / 60.0
-    when, eval_min = landing(stamp)
+    when, eval_min = landing(name)
     vs17 = (a["delta"] - ROW17[0], i["delta"] - ROW17[1])
     vs45 = (a["delta"] - ROW45[0], i["delta"] - ROW45[1])
     which = "fb8n" if name.endswith("fb8n") else "fb6n"
     m = 8 if which == "fb8n" else 6
+
+    sp = speed_of(name)
+    if sp:
+        rev, xrev, med, tag = sp
+        sp_cells = f"{rev:,.1f} | {xrev:.3f}x"
+        sp_ok = med >= SPEED_FLOOR
+        sp_clause = (f"the deploy engine's codec path measures {rev:,.1f} rev/s = {xrev:.3f}x rev/s "
+                     f"(median per-user {med:.3f}x) against `plain` in the SAME run "
+                     f"(`rust_speed_{tag}.json`, users 107/136/156), so it "
+                     f"{'CLEARS' if sp_ok else 'FAILS'} the 0.75x floor by "
+                     f"{abs(med - SPEED_FLOOR):.3f}")
+    else:
+        rev = xrev = med = None
+        sp_ok = None
+        sp_cells = "unmeasured | unmeasured"
+        sp_clause = ("speed cell UNMEASURED: the codec changes `compress_wkv_state`, so row 17's 0.800x "
+                     "does not transfer and a `rust_speed.py` run is still needed")
+    near_floor = sp is not None and abs(med - SPEED_FLOOR) < 0.02
+
     desc = (
         f"QAT card rank-2 int8 + int4 shifts (row 17's card), note **FIXED-BASIS codec** m={m} int8 "
         f"({card:,}/{note:,} = {total:,} bits, {3584 - total} below row 17 and {total - 2944} "
@@ -103,8 +151,8 @@ def build(row_id, name, stamp, capture, compare, r):
         f"coefficient block against a basis SHIPPED with the model instead of the rank-1 path's per-step "
         f"factors (`{name}`, `it36fixedbasis` point {1 if which == 'fb8n' else 2}, landed {when}, "
         f"{eval_min:.1f} min; the codec's held-out capture is {capture} at m={m}, against the shipped "
-        f"rank-1 path's 0.904-0.951 per layer; speed cell UNMEASURED because the codec changes "
-        f"`compress_wkv_state`, so row 17's 0.800x does not transfer)"
+        f"rank-1 path's 0.904-0.951 per layer; speed is the codec path's own engine measurement "
+        f"(`rust_speed_{sp[3] if sp else 'n/a'}.json`), since speed is per config and not per checkpoint)"
     )
     if ok:
         size_clause = ("at row 17's EXACT size, so the codec's lower energy capture costs "
@@ -116,17 +164,17 @@ def build(row_id, name, stamp, capture, compare, r):
             f"**PASS on both heads**: ahead at {a['ub95'] / CEIL:.2f}x of the ceiling (ub95 "
             f"{fmt(a['ub95'])}) and the immediate head at {i['ub95'] / CEIL:.2f}x (ub95 {fmt(i['ub95'])}). "
             f"Against row 17 ({fmt(ROW17[0])}/{fmt(ROW17[1])}) it costs {fmt(vs17[0])}/{fmt(vs17[1])}, "
-            f"{size_clause}"
+            f"{size_clause}, and {sp_clause}"
         )
     else:
         bits_fail = ", ".join(w for w in (f"ahead {a['delta'] / CEIL:.2f}x" if not pass_a else "",
                                          f"imm {i['delta'] / CEIL:.2f}x" if not pass_i else "") if w)
         verdict = (f"**FAIL**: {bits_fail} over the ceiling (ub95 {fmt(a['ub95'])}/{fmt(i['ub95'])}); "
                    f"against row 17 ({fmt(ROW17[0])}/{fmt(ROW17[1])}) the codec costs "
-                   f"{fmt(vs17[0])}/{fmt(vs17[1])}")
+                   f"{fmt(vs17[0])}/{fmt(vs17[1])} and its {sp_clause}")
     row = (
-        f"| {row_id} | {desc} | {card:,} ({card // 8}) | {note:,} ({note // 8}) | unmeasured | "
-        f"unmeasured | {a['mean_cur']:.6f} | {i['mean_cur']:.6f} | {fmt(a['delta'])} | {fmt(i['delta'])} "
+        f"| {row_id} | {desc} | {card:,} ({card // 8}) | {note:,} ({note // 8}) | {sp_cells} | "
+        f"{a['mean_cur']:.6f} | {i['mean_cur']:.6f} | {fmt(a['delta'])} | {fmt(i['delta'])} "
         f"| {verdict} | {'pending' if ok else '-'} |"
     )
     head = f"**Row {row_id} (`{name}`)"
@@ -141,10 +189,18 @@ def build(row_id, name, stamp, capture, compare, r):
         f"({fmt(ROW17[0])}/{fmt(ROW17[1])}), the codec costs {fmt(vs17[0])}/{fmt(vs17[1])}; priced "
         f"against row 45 ({fmt(ROW45[0])}/{fmt(ROW45[1])}), {fmt(vs45[0])}/{fmt(vs45[1])}. "
         f"{'So a FIXED basis of this size is competitive with the per-step rank-r factors' if ok else 'So the fixed basis pays more than the per-step factors do at this size'}"
-        f". The speed cell is deliberately unmeasured: the codec replaces `compress_wkv_state` in the "
-        f"deploy engine, so row 17's 0.800x does not transfer and this row needs its own "
-        f"`rust_speed.py` run before it can be called deployable."
+        f". On the speed axis the codec is measured on the deploy engine as {sp_clause}"
+        f"{' - and because that margin is inside 2% of the floor, an idle-machine re-measure (tag `fb_idle`) is the number to quote' if near_floor else ''}."
     )
+    if not ok:
+        para_extra = ""
+    elif sp_ok is False:
+        para_extra = (" The row PASSES the loss gate but FAILS the speed floor, so it is NOT deployable as "
+                      "measured: the codec's engine path needs to be made cheaper before this size can be "
+                      "claimed.")
+    else:
+        para_extra = ""
+    para += para_extra
     note_bullet = (
         f"* {time.strftime('%Y-%m-%d %H:%M')} - **Chain 19 point ({which}) `{name}` lands as RESULTS row "
         f"{row_id}: {card:,}/{note:,} = {total:,} bits, {'PASS' if ok else 'FAIL'}.** "
@@ -157,7 +213,10 @@ def build(row_id, name, stamp, capture, compare, r):
         f"{'At 3,584 bits this is row 17s exact size, so the codec MATCHES the per-step factors for the same bits.' if which == 'fb8n' and ok else ''}"
         f"{'At 2,912 bits this is 32 bits BELOW row 45s frontier, so the frontier has moved.' if which == 'fb6n' and ok else ''}"
         f"{'The codec loses to the per-step factors at this size.' if not ok else ''}"
-        f"{' Its speed cell is UNMEASURED (the codec changes `compress_wkv_state`), so a `rust_speed.py` run is still needed before it is deployable.' if ok else ''}\n"
+        f" Speed is the codec path's OWN engine measurement, because RESULTS.md quotes speed per config: "
+        f"{sp_clause}. "
+        f"{'That ratio is within 2% of the floor, so the idle re-measure is the number to quote.' if near_floor else ''}"
+        f"{'This row is therefore NOT deployable as measured even where it passes the loss gate.' if ok and sp_ok is False else ''}\n"
     )
     fin = ("a corruption check runs in this chain's own phase"
            if ok else "not needed - the row fails the loss gate")
@@ -172,11 +231,11 @@ def build(row_id, name, stamp, capture, compare, r):
         f"{i['mean_cur']:.6f} = {fmt(a['delta'])}/{fmt(i['delta'])} (ub95 {fmt(a['ub95'])}/"
         f"{fmt(i['ub95'])}, 750 users) - {'PASS on both heads' if ok else '**FAIL**'}. The codec's "
         f"held-out energy capture is {capture} at m={m}, against the shipped rank-1 note's 0.904-0.951 "
-        f"per layer; priced against row 17 the codec costs {fmt(vs17[0])}/{fmt(vs17[1])}. The row's "
-        f"finiteness {fin}, and its speed cell stays UNMEASURED because the codec replaces "
-        f"`compress_wkv_state` in the deploy engine.\n"
+        f"per layer; priced against row 17 the codec costs {fmt(vs17[0])}/{fmt(vs17[1])}. Speed is "
+        f"measured per config on the deploy engine: {sp_clause}. The row's "
+        f"finiteness {fin}.\n"
     )
-    return row, para, note_bullet, board, ok
+    return row, para, note_bullet, board, ok, sp_ok, med
 
 
 AMEND = [37]
@@ -221,12 +280,19 @@ def main() -> int:
         return 0
 
     okall = True
-    for row_id, name, stamp, (row, para, note_bullet, board, ok) in todo:
+    for row_id, name, stamp, (row, para, note_bullet, board, ok, sp_ok, med) in todo:
         print(f"verdict row {row_id} ({name}): {'PASS' if ok else 'FAIL'} "
               f"{' '.join(row.split())[:100]}...")
-        if ok:
+        if ok and sp_ok is False:
+            print(f"  WARNING: row {row_id} PASSES the loss gate but its speed is {med:.3f}x median "
+                  f"per-user, BELOW the 0.75x floor - it is not deployable as measured")
+        elif ok and sp_ok is None:
             print(f"  WARNING: row {row_id} passes the loss gate but its SPEED is unmeasured - "
                   f"it needs `rust_speed.py` before it is deployable")
+        elif ok and med is not None and abs(med - SPEED_FLOOR) < 0.02:
+            print(f"  NOTE: row {row_id} passes the loss gate and clears the speed floor by only "
+                  f"{abs(med - SPEED_FLOOR):.3f} ({med:.3f}x) - an idle re-measure (tag fb_idle) is "
+                  f"recommended before quoting it")
 
         def do_results(lf: str, row_id=row_id, row=row, para=para):
             if re.search(rf"^\|\s*{row_id}\s*\|", lf, re.M):
