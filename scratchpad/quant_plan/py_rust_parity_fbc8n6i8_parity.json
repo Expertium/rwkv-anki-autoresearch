@@ -1,0 +1,33 @@
+{
+ "weights": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\rust_artifacts\\it36l2i8_124.safetensors",
+ "trace_dir": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\trace_fbc8n6i8_parity",
+ "config": "fbc8n6i8",
+ "env": {
+  "RWKV_STATE_FIXEDBASIS_SCOPE": "card:8:int8,note:6:int8",
+  "RWKV_QUANT_SHIFTS": "1",
+  "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"
+ },
+ "users": {
+  "107": {
+   "n_eq": 3465,
+   "n_common": 3465,
+   "imm": {
+    "n": 3465,
+    "ll_rust": 0.271893957418816,
+    "ll_py": 0.27150683172380297,
+    "d_ll": 0.0003871256950130353,
+    "max_dpred": 0.05395669198516845
+   },
+   "ahead": {
+    "n": 3465,
+    "ll_rust": 0.3311616296587069,
+    "ll_py": 0.3306964908001519,
+    "d_ll": 0.00046513885855498094,
+    "max_dpred": 0.03733750062697605
+   }
+  }
+ },
+ "tolerance": 0.0005,
+ "verdict": "PASS"
+}
