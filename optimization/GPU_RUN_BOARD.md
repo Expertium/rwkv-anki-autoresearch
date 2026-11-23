@@ -1202,3 +1202,28 @@ lists, the basis `.npz` keys, the engine's text export (`card 0 16` present) and
 derive the same bits in `quant_sweep.bits_for` and `rust_grid.bits_for` (88 candidates, 0 disagreements).
 The chain takes an ATOMIC `os.O_EXCL` lock, because the shell tool can run one launch command twice
 concurrently (see AGENTS.md). Outside `autorun/QUEUE.md` on purpose: the interactive session's chain.
+
+## Amendment 43 (2026-11-23 10:55): chain 25 (`it36shiftrung`) is CLOSED - both shift rungs FAIL - and chain 26 (`it36fbrung`) has the GPU
+
+    point              card / note bits     total    vs row 45's 2,944    result (ub95, vs `qnj_it36ctl`, n=750)
+    `l2i6s3n1i6s4`     960 / 1,920          2,880    64 BELOW             ahead +0.000256 PASS (0.51x) / imm +0.000537 FAIL (1.07x)
+    `l2i6s3n1i6s3`     960 / 1,728          2,688    256 BELOW            ahead +0.000248 PASS (0.50x) / imm +0.000575 FAIL (1.15x)
+
+Both points hold row 45's card (rank-2 int6 factors) and cut one shift width below the int4 that row 45
+uses. The measured cost of the card's rung against row 45 is only +0.000063 ahead / +0.000082 imm, so the
+rung is cheap; it fails on the immediate head because row 45 already spends 0.89x of the +0.0005 ceiling
+and the rung consumes the remaining 0.000119. The second point is WORSE on imm than the first despite 192
+fewer bits, so the note's int3 shift rung is not the cheap half of the pair.
+
+This closes the uniform (rank, factor width, shift width) design space from below - row 45 `l2i6s4` at
+1,024/1,920 = 2,944 bits is its smallest passing point, at RESULTS rows 59-60. It also corrects the
+screen doctrine: the `it36wide7` PTQ screen had priced this ladder at +0.000071 ahead / +0.000497 imm,
+i.e. accurate to 0.000034 on the head that fails, so a screen CAN match a QAT cost - the recorded rule
+that a PTQ screen overprices QAT (the codec's int6 cut: screen +0.000268/+0.000307 vs QAT
++0.000046/+0.000031) holds in the pessimistic direction only, and a screen's NEGATIVE verdict is the
+reliable half of its output.
+
+Chain state after this: `it36fbrung` (chain 26, the codec `m` ladder at m=4 = 2,432 bits and m=5 = 2,648
+bits) took the GPU at 10:39:41 and passed its smoke for `l2i8fb4n`; `it36fbwidth` (chain 27) waits behind
+it with its atomic lock. Outside `autorun/QUEUE.md` on purpose: both are the interactive session's chains,
+so the hourly supervisor must not start, kill, restart or score them.
