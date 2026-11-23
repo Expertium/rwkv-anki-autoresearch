@@ -1064,3 +1064,21 @@ only for a row whose sweep passes, in the first free window after the chain's en
 ## Amendment 35 (2026-11-23 03:10): chain 18 point 2 (`l2i6n`) prices the NOTE's int6 cut directly (1,280/1,920 = 3,200 bits)
 
 `it36int6card` point 2 holds the card at row 17's rank-2 int8 + int4 shifts and cuts only the NOTE's factor width int8 -> int6: 1,280/1,920 = 3,200 bits, 384 below row 17 and 256 above row 45. It lands at 0.333899/0.306569 = +0.000098/+0.000358 (ub95 +0.000160/+0.000420, 750 users, 26.2 min) - PASS on both heads. With point 1 (`l2i6c`, card int6 + note int8) the two rows give each stream's int6 cost directly on the full roster: the note's 384 bits cost +0.000046 ahead / +0.000031 imm (row 49 minus row 17) and the card's 256 bits cost +0.000033/+0.000037 (row 48 minus row 17), against the 11-user deploy screen's +0.000268/+0.000307 for the note's cut. Reading: the int6 tax stays split between the streams (the note's 384 bits cost 0.8x the card's 256 on the immediate head), which agrees with row 48's reading and means the 11-user screen's +0.000307 for the note's cut was a PTQ price that QAT recovers. Both rows' finiteness checks are queued in `corruption/_watch_and_check_chain18.py`.
+
+## Amendment 36 (2026-11-23 03:20): the chain-18 finiteness checks close their cells - rows 48 and 49 PASS
+
+`it36int6card` has no corruption phase of its own, so `corruption/_watch_and_check_chain18.py` held the
+queue from 02:08:47 with a CPU-only `gpu_hold.py --tag check_corruption` and ran both checks back to back
+in the first free window after the chain's end marker (03:07:47):
+
+    config  row  check start  driver      state observations  p(recall) tensors  non-finite  users   max |state|
+    l2i6c    48  03:08:32     rc=0 4.6 min            158,986                150           0  50/50   0.598
+    l2i6n    49  03:13:14     rc=0 4.6 min            158,986                150           0  50/50   0.693
+
+Each run also observes 4.41 billion shift-vector values and ~70.5 billion state element values on the RAW
+and the QUANTIZED side of every compression, with zero non-finite values of any kind (largest |shift
+vector| 5.531, largest p 0.991, largest loss scalar 11.93). Histories were NOT truncated and no user was
+skipped. So both mixed-int6 rows are deployable on Andrew's blowup gate and the whole 3,200-/3,328-bit
+band is clean. `record_corruption.py` needed two new `ROWS` entries for these tags: rows 41 and 45 name
+both tags in their own cells, so the "exactly one row-line mentions it" fallback could not resolve them.
+Chain 19 (`it36fixedbasis`) took the GPU at 03:19:05, about a minute after the watcher released the hold.

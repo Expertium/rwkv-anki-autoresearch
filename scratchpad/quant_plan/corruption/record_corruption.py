@@ -38,6 +38,11 @@ ROWS = {
     "l2i8s4": "17",
     "l3i8s4": "18",
     "l2i4s4": "23",
+    # Added 2026-11-23: rows whose Method cell is not the only line naming the tag (rows 41 and
+    # 45 pre-register the mixed int6 points by name), so the "exactly one row-line mentions it"
+    # fallback cannot resolve them.
+    "l2i6c": "48",     # chain 18 point 1 (card rank-2 int6 + note rank-1 int8, 3,328 bits)
+    "l2i6n": "49",     # chain 18 point 2 (card rank-2 int8 + note rank-1 int6, 3,200 bits)
 }
 
 
