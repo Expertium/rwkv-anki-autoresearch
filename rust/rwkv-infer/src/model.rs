@@ -628,25 +628,36 @@ pub fn fixedbasis_roundtrip(
         k * stride
     );
     crate::finite::state_raw(data); // observation only (RWKV_FINITE_CHECK)
+    // The bases ship as K x stride row-major, so with stride = K every inner-loop access below would
+    // sit `stride * 4` bytes (a fresh cache line) from the previous one, in all four loops. Transposing
+    // them ONCE per call costs ~0.9 us on a 32x32 state (see `compress_bench::bench_fixedbasis_layout`)
+    // and makes every inner loop contiguous: measured 1.70x at m=6 and 1.70-1.80x at m=8..16, with
+    // max|diff| = 0 because the accumulation ORDER in each loop is unchanged. The result is therefore
+    // bit-identical to the strided version, which is what the Python<->Rust parity checks rely on.
+    let pt = transpose_basis(p, k, stride);
+    let qt = transpose_basis(q, k, stride);
     let mut tmp = vec![0f32; k * m]; // W Q       (k x m)
     let mut c = vec![0f32; m * m]; //  P^T W Q   (m x m) -- the stored payload
     let mut u = vec![0f32; k * m]; //  P C       (k x m)
     for hh in 0..h {
         let w = &mut data[hh * k * k..(hh + 1) * k * k];
         for i in 0..k {
+            let wrow = &w[i * k..i * k + k];
             for t in 0..m {
+                let qrow = &qt[t * k..t * k + k];
                 let mut s = 0f32;
                 for j in 0..k {
-                    s += w[i * k + j] * q[j * stride + t];
+                    s += wrow[j] * qrow[j];
                 }
                 tmp[i * m + t] = s;
             }
         }
         for s0 in 0..m {
+            let prow = &pt[s0 * k..s0 * k + k];
             for t in 0..m {
                 let mut s = 0f32;
                 for i in 0..k {
-                    s += p[i * stride + s0] * tmp[i * m + t];
+                    s += prow[i] * tmp[i * m + t];
                 }
                 c[s0 * m + t] = s;
             }
@@ -655,25 +666,41 @@ pub fn fixedbasis_roundtrip(
             quant_vec_inplace(&mut c, qmax);
         }
         for i in 0..k {
+            let prow = &p[i * stride..i * stride + stride];
             for t in 0..m {
                 let mut s = 0f32;
                 for s0 in 0..m {
-                    s += p[i * stride + s0] * c[s0 * m + t];
+                    s += prow[s0] * c[s0 * m + t];
                 }
                 u[i * m + t] = s;
             }
         }
         for i in 0..k {
+            let urow = &u[i * m..i * m + m];
             for j in 0..k {
+                let qrow = &q[j * stride..j * stride + stride];
                 let mut s = 0f32;
                 for t in 0..m {
-                    s += u[i * m + t] * q[j * stride + t];
+                    s += urow[t] * qrow[t];
                 }
                 w[i * k + j] = s;
             }
         }
         crate::finite::state_quant(w); // observation only
     }
+}
+
+/// Transpose a K x `stride` row-major basis into a `stride` x K one: `out[t*k + i] = a[i*stride + t]`.
+/// The codec's contiguous fast path needs both orientations; this bridges the on-disk layout.
+pub fn transpose_basis(a: &[f32], k: usize, stride: usize) -> Vec<f32> {
+    let mut out = vec![0f32; k * stride];
+    for i in 0..k {
+        let row = &a[i * stride..i * stride + stride];
+        for t in 0..stride {
+            out[t * k + i] = row[t];
+        }
+    }
+    out
 }
 
 /// Candle wrapper for `fixedbasis_roundtrip` (H,K,K), mirroring `lowrank_roundtrip`: the parity
@@ -4057,6 +4084,153 @@ mod compress_bench {
                 line += &format!(" | warm{iters} {t:5.2}us err {err:.2e}");
             }
             println!("{line}");
+        }
+    }
+
+    /// PROTOTYPE BENCH (2026-11-23): is the BASIS LAYOUT the reason the codec's engine path is slower
+    /// than the rank-1 path? `fixedbasis_roundtrip` reads its bases with a stride of `stride` floats,
+    /// so consecutive inner-loop accesses are `stride * 4` bytes apart - at stride 32 that is a fresh
+    /// cache line for EVERY element, in all four loops (two K x m projections and the K x K
+    /// reconstruction). This times the production function against the SAME math with pre-transposed
+    /// bases (every inner loop walks contiguous memory) and asserts the two outputs are bit-identical,
+    /// because the accumulation order is unchanged.
+    fn random_basis(k: usize, stride: usize, seed: u64) -> Vec<f32> {
+        let mut rng = seed | 1;
+        let mut rnd = move || {
+            rng ^= rng << 13;
+            rng ^= rng >> 7;
+            rng ^= rng << 17;
+            ((rng >> 11) as f32 / (1u64 << 53) as f32) * 2.0 - 1.0
+        };
+        (0..k * stride).map(|_| rnd()).collect()
+    }
+
+    fn transpose_basis(a: &[f32], k: usize, stride: usize) -> Vec<f32> {
+        let mut out = vec![0f32; k * stride];
+        for i in 0..k {
+            for t in 0..stride {
+                out[t * k + i] = a[i * stride + t];
+            }
+        }
+        out
+    }
+
+    /// The same math as `super::fixedbasis_roundtrip`, but every inner loop is contiguous: `pt`/`qt`
+    /// are the transposes of `p`/`q`. The accumulation order in each of the four loops is IDENTICAL
+    /// to the production function, so the result must be bit-for-bit equal.
+    #[allow(clippy::too_many_arguments)]
+    fn fb_contiguous(
+        data: &mut [f32],
+        h: usize,
+        k: usize,
+        m: usize,
+        p: &[f32],
+        pt: &[f32],
+        q: &[f32],
+        qt: &[f32],
+        stride: usize,
+        qmax: Option<f64>,
+    ) {
+        let mut tmp = vec![0f32; k * m]; // W Q     (k x m)
+        let mut c = vec![0f32; m * m]; //   P^T W Q (m x m)
+        let mut u = vec![0f32; k * m]; //   P C     (k x m)
+        for hh in 0..h {
+            let w = &mut data[hh * k * k..(hh + 1) * k * k];
+            for i in 0..k {
+                let wrow = &w[i * k..i * k + k];
+                for t in 0..m {
+                    let qrow = &qt[t * k..t * k + k];
+                    let mut s = 0f32;
+                    for j in 0..k {
+                        s += wrow[j] * qrow[j];
+                    }
+                    tmp[i * m + t] = s;
+                }
+            }
+            for s0 in 0..m {
+                let prow = &pt[s0 * k..s0 * k + k];
+                for t in 0..m {
+                    let mut s = 0f32;
+                    for i in 0..k {
+                        s += prow[i] * tmp[i * m + t];
+                    }
+                    c[s0 * m + t] = s;
+                }
+            }
+            if let Some(qmax) = qmax {
+                super::quant_vec_inplace(&mut c, qmax);
+            }
+            for i in 0..k {
+                let prow = &p[i * stride..i * stride + stride];
+                for t in 0..m {
+                    let mut s = 0f32;
+                    for s0 in 0..m {
+                        s += prow[s0] * c[s0 * m + t];
+                    }
+                    u[i * m + t] = s;
+                }
+            }
+            for i in 0..k {
+                let urow = &u[i * m..i * m + m];
+                for j in 0..k {
+                    let qrow = &q[j * stride..j * stride + stride];
+                    let mut s = 0f32;
+                    for t in 0..m {
+                        s += urow[t] * qrow[t];
+                    }
+                    w[i * k + j] = s;
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn bench_fixedbasis_layout() {
+        use super::fixedbasis_roundtrip;
+        let n = 5000usize;
+        let stride = K;
+        let p = random_basis(K, stride, 777);
+        let q = random_basis(K, stride, 778);
+        let pt = transpose_basis(&p, K, stride);
+        let qt = transpose_basis(&q, K, stride);
+        let a = synth(0.92, 12, 31337);
+        for m in [4usize, 6, 8, 16] {
+            let mut buf = a.clone();
+            fixedbasis_roundtrip(&mut buf, 1, K, m, &p, &q, stride, None);
+            let mut buf2 = a.clone();
+            fb_contiguous(&mut buf2, 1, K, m, &p, &pt, &q, &qt, stride, None);
+            let diff = buf
+                .iter()
+                .zip(buf2.iter())
+                .map(|(x, y)| (x - y).abs())
+                .fold(0f32, f32::max);
+            let t0 = Instant::now();
+            for _ in 0..n {
+                let mut b = a.clone();
+                fixedbasis_roundtrip(black_box(&mut b), 1, K, m, &p, &q, stride, None);
+            }
+            let t_prod = us_per(t0.elapsed().as_secs_f64(), n);
+            let t0 = Instant::now();
+            for _ in 0..n {
+                let mut b = a.clone();
+                fb_contiguous(black_box(&mut b), 1, K, m, &p, &pt, &q, &qt, stride, None);
+            }
+            let t_cont = us_per(t0.elapsed().as_secs_f64(), n);
+            let t0 = Instant::now();
+            for _ in 0..n {
+                let mut b = a.clone();
+                let ptv = transpose_basis(&p, K, stride);
+                let qtv = transpose_basis(&q, K, stride);
+                fb_contiguous(black_box(&mut b), 1, K, m, &p, &ptv, &q, &qtv, stride, None);
+            }
+            let t_trans = us_per(t0.elapsed().as_secs_f64(), n);
+            println!(
+                "m={m:2}  production {t_prod:7.3} us   contiguous {t_cont:7.3} us ({:.2}x)   \
+                 on-the-fly transpose {t_trans:7.3} us ({:.2}x)   max|diff| {diff:.3e}",
+                t_prod / t_cont,
+                t_prod / t_trans
+            );
         }
     }
 }
