@@ -25,8 +25,9 @@ Also never touch `scratchpad/quant_plan/qat_it36qat496/` or `scratchpad/quant_pl
 CURRENT live list (supersedes everything below; edited by hand as chains land). These are the chains
 the interactive session launched, and the restart rule below applies to each of them:
 
-`it36shiftrung` (chain 25, the shift-width rungs) -> `it36fbrung` (chain 26, the codec `m` ladder) ->
-`it36fbwidth` (chain 27, the codec's coefficient bit-width + the CARD on the codec). Each takes its own
+`it36fbrung` (chain 26, the codec `m` ladder: m=4 row 61, m=5 point 2) -> `it36fbwidth` (chain 27,
+the codec's coefficient bit-width + the CARD on the codec) -> `it36shiftsb` (chain 28, the token-shift codec,
+launched 11:30:49). Each takes its own
 lock file and waits for its predecessor's `=== <name> chain end ===` marker, so a WAITING chain's log
 GROWS once a minute and the 45-minute rule never fires for it. A chain the interactive session runs
 that is NOT listed here must not be started, killed, restarted or scored by this run.
