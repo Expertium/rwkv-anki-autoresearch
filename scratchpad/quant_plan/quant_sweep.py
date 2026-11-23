@@ -412,6 +412,33 @@ CANDIDATES = {
                    "RWKV_SHIFT_FIXEDBASIS_MODES": "8",
                    "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
                   "chain 26 point 1 + note shift codec m=8 int4 (1,280/576 = 1,856 bits)", (1280, 576)),
+    # CHAIN 29 (2026-11-23): the codec's mode ladder DOWNWARD (m=3 and m=2, int8 and int4
+    # coefficients). m=4 (row 61) is the cheapest point and among the best, so the low end of
+    # the ladder is where the size claim lives: the note payload is 3*(m*m*qbits + 64*4).
+    "l2i8fb3n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:3:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz"},
+                  "chain 29 point: note codec m=3 int8 (984 note bits, 2,264 total)",
+                  (1280, 984)),
+    "l2i8fb2n": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:2:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz"},
+                  "chain 29 point: note codec m=2 int8 (864 note bits, 2,144 total)",
+                  (1280, 864)),
+    "l2i8fb3n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:3:int4",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz"},
+                  "chain 29 point: note codec m=3 int4 (876 note bits, 2,156 total)",
+                  (1280, 876)),
+    "l2i8fb2n4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:2:int4",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz"},
+                  "chain 29 point: note codec m=2 int4 (816 note bits, 2,096 total)",
+                  (1280, 816)),
     # CHAIN 27 (2026-11-23): the CODEC's own coefficient BIT-WIDTH, and the CARD moved onto
     # the codec. The level slot of RWKV_QAT_LOWRANK_SCOPE sets that stream's qmax, and
     # `fake_fixedbasis_state` quantizes the m x m coefficient block with it, so `note:6:int6`

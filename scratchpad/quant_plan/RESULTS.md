@@ -527,7 +527,111 @@ Readings:
 4. Rank-1 int2/int3 are the same structure as int4/int8, so their speed is expected to be ~0.90x too;
    they will be measured on the idle machine if they become candidates.
 
-## Iteration log
+## Deploy tax by answer count (the other team's diagnostic, 2026-11-23)
+
+A dataset-wide average hides WHERE a compressed state costs accuracy. The other team measured their
+PTQ state precision by the card's answer count: int4 everywhere cost +0.015% on their whole set but
++0.18%..+0.74% on the cards with 128+ answers, because their rounding error is re-applied at every
+review and compounds over the card's life. Their guard set: a relative +0.05% bar dataset-wide,
+<= +0.5% point / +1.0% upper on long cards, <= +0.10% upper on young cards, and a FAIL when more than
+1% of cards have a review whose |delta R| moves by more than 0.10. Their open question about row 17:
+"A rank-2 truncation is re-applied at every update, like our rounding, so the same split on row 17
+would tell whether truncation error accumulates on old cards."
+
+Tooling (all CPU-only, `scratchpad/quant_plan/`): `bucket_tax.py` runs the DEPLOY engine and splits the
+paired per-review log-loss delta by the card's answer-count bucket (1-2/3-4/5-8/9-15/16-31/32-127/128+,
+the bucket being the number of earlier answers of the same card + 1), and reports the per-review
+|delta p| median/P99/max plus the share of REVIEWS and of CARDS moving by more than 0.05 / 0.10.
+`bucket_mix.py` reports a roster's own answer-count mix from the review logs alone.
+
+Our answer-count mix is theirs. The 750-user roster (50.3M answers, 6.79M cards) reads
+P10/P25/P50/P75/P90/P95/P99 = 2/3/5/9/15/21/45 answers per card against their 2/3/5/8/14/20/42; the
+buckets carry 25.7/19.4/22.9/15.2/10.4/5.9/0.4% of all answers; and the share of answers whose card had
+<=k earlier answers is 13.5/25.7/36.3/52.6/71.5/84.4% for k=0/1/2/4/8/15 against their 15/28/48/69/85%
+for k=1/2/4/8/16. So the two teams' per-bucket numbers are directly comparable.
+
+Setup: the 40 longest-history users of `trace_corrupt50` (1,763,360 reviews), the Rust deploy engine,
+the SAME user set and the SAME weights on both sides of every pair, `bucket_tax_bucket17.json`,
+`bucket_tax_deploy17.json`, `bucket_tax_deploy61.json`.
+
+### A. the gate's tax, by bucket: QAT + quantized against the fp32 control
+
+| candidate | card/note bits | bucket | d imm | rel % | d ahead | rel % | \|dp\| p50 | p99 | reviews >0.05 | >0.10 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| row 17 `l2i8s4` | 1,280/2,304 | all | -0.000510 | -0.130 | -0.000474 | -0.125 | 0.0053 | 0.0607 | 2.1% | 0.1% |
+| | | 1-2 | -0.003670 | -0.491 | -0.000027 | -0.007 | 0.0010 | 0.0194 | 0.0% | 0.0% |
+| | | 3-4 | +0.000378 | +0.100 | +0.000251 | +0.065 | 0.0020 | 0.0316 | 0.2% | 0.0% |
+| | | 5-8 | +0.000270 | +0.070 | -0.000157 | -0.039 | 0.0038 | 0.0463 | 0.7% | 0.0% |
+| | | 9-15 | +0.000264 | +0.073 | -0.000054 | -0.014 | 0.0047 | 0.0572 | 1.6% | 0.1% |
+| | | 16-31 | -0.000332 | -0.098 | -0.000649 | -0.182 | 0.0063 | 0.0626 | 2.3% | 0.1% |
+| | | 32-127 | -0.001092 | -0.295 | -0.001197 | -0.313 | 0.0104 | 0.0709 | 4.0% | 0.2% |
+| | | 128+ | -0.002436 | -0.448 | +0.001495 | +0.266 | 0.0194 | 0.1049 | 12.6% | 1.2% |
+| row 61 `l2i8fb4n` | 1,280/1,152 | all | -0.000609 | -0.155 | -0.000437 | -0.116 | 0.0038 | 0.0433 | 0.6% | 0.0% |
+| | | 1-2 | -0.006439 | -0.862 | -0.000398 | -0.101 | 0.0011 | 0.0185 | 0.0% | 0.0% |
+| | | 3-4 | +0.000504 | +0.134 | -0.000039 | -0.010 | 0.0020 | 0.0289 | 0.1% | 0.0% |
+| | | 5-8 | +0.000180 | +0.047 | -0.000162 | -0.041 | 0.0034 | 0.0365 | 0.3% | 0.0% |
+| | | 9-15 | +0.000246 | +0.068 | -0.000229 | -0.061 | 0.0038 | 0.0418 | 0.5% | 0.0% |
+| | | 16-31 | +0.000027 | +0.008 | -0.000560 | -0.157 | 0.0039 | 0.0428 | 0.6% | 0.0% |
+| | | 32-127 | -0.001158 | -0.313 | -0.000974 | -0.255 | 0.0060 | 0.0509 | 1.1% | 0.1% |
+| | | 128+ | +0.002699 | +0.497 | +0.006951 | +1.238 | 0.0162 | 0.0813 | 7.7% | 0.4% |
+
+### B. the quantization's own tax on the QAT checkpoint (quantizer on vs off, same weights)
+
+This is the "how sensitive is this checkpoint to the presence of the quantizer" pair of the fp32-twin
+caveat above - a mismatched model, not a second fp32 model - but it is the pair that isolates the
+mechanism the other team is asking about, because the training is held fixed.
+
+| candidate | card/note bits | bucket | d imm | rel % | d ahead | rel % | \|dp\| p50 | p99 | reviews >0.05 | >0.10 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| row 17 `l2i8s4` | 1,280/2,304 | all | -0.001745 | -0.443 | -0.002576 | -0.677 | 0.0078 | 0.0713 | 3.8% | 0.2% |
+| | | 1-2 | +0.003270 | +0.442 | +0.000614 | +0.155 | 0.0007 | 0.0160 | 0.0% | 0.0% |
+| | | 3-4 | +0.000704 | +0.187 | +0.000905 | +0.234 | 0.0022 | 0.0330 | 0.2% | 0.0% |
+| | | 5-8 | -0.000294 | -0.076 | -0.000174 | -0.044 | 0.0046 | 0.0503 | 1.0% | 0.0% |
+| | | 9-15 | -0.001381 | -0.379 | -0.001826 | -0.481 | 0.0075 | 0.0659 | 2.7% | 0.1% |
+| | | 16-31 | -0.002709 | -0.790 | -0.003630 | -1.008 | 0.0107 | 0.0746 | 4.4% | 0.2% |
+| | | 32-127 | -0.004112 | -1.101 | -0.005137 | -1.330 | 0.0162 | 0.0823 | 8.0% | 0.4% |
+| | | 128+ | -0.008170 | -1.488 | -0.001670 | -0.296 | 0.0178 | 0.1052 | 16.5% | 1.3% |
+| row 61 `l2i8fb4n` | 1,280/1,152 | all | -0.000656 | -0.167 | -0.001591 | -0.419 | 0.0047 | 0.0481 | 0.9% | 0.0% |
+| | | 1-2 | +0.004463 | +0.606 | +0.000976 | +0.248 | 0.0008 | 0.0244 | 0.0% | 0.0% |
+| | | 3-4 | -0.000244 | -0.065 | +0.000330 | +0.085 | 0.0031 | 0.0376 | 0.3% | 0.0% |
+| | | 5-8 | -0.000768 | -0.199 | -0.000261 | -0.066 | 0.0048 | 0.0458 | 0.7% | 0.0% |
+| | | 9-15 | -0.000720 | -0.198 | -0.001120 | -0.296 | 0.0049 | 0.0512 | 1.1% | 0.0% |
+| | | 16-31 | -0.000724 | -0.212 | -0.002126 | -0.593 | 0.0050 | 0.0490 | 0.9% | 0.1% |
+| | | 32-127 | -0.002253 | -0.606 | -0.003333 | -0.866 | 0.0068 | 0.0507 | 1.0% | 0.0% |
+| | | 128+ | -0.003690 | -0.671 | +0.001823 | +0.322 | 0.0102 | 0.0778 | 6.1% | 0.3% |
+
+### Per-card movement (their guard), and what the split says
+
+| pair | cards with a review moving >0.05 (imm / ahead) | >0.10 (imm / ahead) |
+|---|---:|---:|
+| row 17, gate tax | 13.3% / 8.4% | 1.14% / 0.44% |
+| row 61, gate tax | 5.2% / 7.5% | 0.42% / 0.60% |
+| row 17, quantizer on/off | 20.6% / 26.0% | 2.11% / 2.74% |
+| row 61, quantizer on/off | 8.3% / 7.5% | 0.62% / 0.60% |
+
+1. **Rank-2 truncation does NOT accumulate damage on old cards in this recipe.** Both tables move the
+   right way as the answer count grows: the largest bucket is the one that improves most (row 17, 128+:
+   -0.0024 imm / -0.0082 on the quantizer pair) and the only positive cells are the youngest ones
+   (1-2: +0.0033 imm on the quantizer pair, and in the gate pair the whole 3-15 band at +0.0003). QAT is
+   what makes the young cards better than the fp32 control (-0.0037/-0.0064 imm at 1-2); the quantizer
+   alone costs them ~+0.003/+0.004. So the other team's mechanism (error re-applied at every update
+   compounds) does not describe a QAT-trained rank-truncated card state on this roster.
+2. **The codec (row 61) is better than row 17 on both heads and moves FAR fewer predictions**, at 1,152
+   fewer note bits: gate tax -0.000609/-0.000437 against -0.000510/-0.000474, |dp| p50 0.0038 against
+   0.0053, and 0.62%/0.60% of cards moving >0.10 against 2.11%/2.74%. Its only worse cell is the 128+
+   bucket's ahead head (gate +0.006951, +1.238% - 10,226 reviews, i.e. 0.6% of this roster's rows, and
+   0.4% of the 750 roster's).
+3. **Their per-card guard would fail row 17 and pass row 61.** On the quantizer pair (the closest
+   analogue of their measurement) 2.11%/2.74% of cards have a review moving by more than 0.10 for row
+   17 against their 1% limit, versus 0.62%/0.60% for row 61. On the gate pair the same numbers are
+   1.14%/0.44% and 0.42%/0.60%.
+4. **Caveats.** The roster is the 40 longest-history users, deliberately - the bucket MIX is therefore
+   not the 750 mix (it has 0.6% of its reviews in the 128+ bucket against the roster's 0.4%). Every
+   number is the DEPLOY PTQ path applied to a QAT checkpoint, which is what a fork ships; the training
+   gate itself is the 750-user sweep above. And the fp32 control is a model trained WITHOUT QAT, so the
+   gate table mixes a training effect with the quantizer (which is exactly the gate's definition).
+
+    ## Iteration log
 
 - **Row 0, anchor `qnj_it36ctl`**: the 124-step decay replayed from `rwkv_iter36_558.pth` on users
   1-100 of the 5k db, quantization OFF. 10.2 min of training, final in-run validation 0.3743/0.3625.

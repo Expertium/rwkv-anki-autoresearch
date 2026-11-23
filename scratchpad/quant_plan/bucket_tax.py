@@ -47,10 +47,11 @@ def answer_ordinals(user):
     return (df.groupby("card_id").cumcount() + 1).to_numpy()
 
 
-def load_preds(trace_dir, preds_root, config, users):
+def load_preds(preds_dir, users):
+    """preds_dir holds rust_pred_<u>.json for ONE config."""
     out = {}
     for u in users:
-        p = preds_root / config / f"rust_pred_{u}.json"
+        p = Path(preds_dir) / f"rust_pred_{u}.json"
         if p.exists():
             out[u] = json.loads(p.read_text(encoding="utf-8"))
     return out
@@ -146,6 +147,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--weights", default=str(ROOT / "scratchpad/quant_plan/rust_artifacts/it36l2i8_124.safetensors"))
     ap.add_argument("--wmap", default="", help="per-config weights: name=path,name=path (else --weights)")
+    ap.add_argument("--preds-map", default="",
+                    help="reuse an existing prediction dir for a config: name=dir (that config is not re-run)")
     ap.add_argument("--trace-dir", default="scratchpad/quant_plan/trace_corrupt50")
     ap.add_argument("--configs", default="plain,l2i8s4,l2i8fb4n")
     ap.add_argument("--users", default="")
@@ -168,15 +171,22 @@ def main():
     for spec in (s.strip() for s in args.wmap.split(",") if s.strip()):
         k, _, v = spec.partition("=")
         wmap[k] = Path(v)
+    pmap = {}
+    for spec in (s.strip() for s in args.preds_map.split(",") if s.strip()):
+        k, _, v = spec.partition("=")
+        pmap[k] = Path(v) if Path(v).is_absolute() else ROOT / v
     if not args.no_run:
         for name in names:
+            if name in pmap:
+                print(f"{name:14s} reused from {pmap[name]}", flush=True)
+                continue
             w = wmap.get(name, Path(args.weights))
             pdir, err = rg.run(w, trace_dir, users, name, preds_root)
             print(f"{name:14s} {'OK' if not err else 'FAILED: ' + err}", flush=True)
 
     frames = {}
     for name in names:
-        pr = load_preds(trace_dir, preds_root, name, users)
+        pr = load_preds(pmap.get(name, preds_root / name), users)
         if not pr:
             print(f"{name}: no predictions")
             continue

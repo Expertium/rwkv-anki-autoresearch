@@ -334,6 +334,25 @@ CONFIGS = {
     "fbc8n6i6": {"RWKV_STATE_FIXEDBASIS_SCOPE": "card:8:int8,note:6:int6", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    # CHAIN 29 (2026-11-23): the codec's mode ladder DOWNWARD (m=3 and m=2, int8 and int4
+    # coefficients). m=4 (row 61) is the cheapest point and among the best, so the low end of
+    # the ladder is where the size claim lives: the note payload is 3*(m*m*qbits + 64*4).
+    "l2i8fb3n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:3:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb2n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:2:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb3n4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:3:int4",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb2n4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:2:int4",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
     # EQUAL-BITS codec A/B (2026-11-23, PTQ screen first): the note payload is 3*(m*m*qbits + 64*4),
     # so m=6 int8 and m=12 int2 are BOTH 1,632 bits, and m=8 int8 and m=16 int2 are BOTH 2,304. The
     # question is whether MORE MODES at FEWER coefficient levels beats the shipped m=6/m=8 int8 codec,
