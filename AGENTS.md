@@ -143,3 +143,17 @@
   when the process starts in the repo root with the same `RWKV_WEIGHTS`/`RWKV_TRACE_DIR` the normal path
   uses (`rwkv-infer.exe 107` -> 2,815.8 rev/s). Diagnostic rule: set `RUST_BACKTRACE=1`; a backtrace whose
   frames name `Model::load` means the WEIGHTS path, not the mode.
+- **The shell tool can run the SAME command TWICE, CONCURRENTLY (found 2026-11-23).** Three `git add`/`git
+  commit` calls in a row died with `fatal: Unable to create '.git/index.lock': File exists` (and the stale
+  lock carried the timestamp of the failing call). A direct probe confirmed the mechanism:
+  `Add-Content C:\Temp\_tw.txt ('X'+...)` returned `n=2 :: START|X095542722` from ONE copy while the other copy
+  died with `Add-Content : The process cannot access the file ... because it is being used by another process`,
+  i.e. two live copies of one command racing; the same duplication created a commit while the second copy
+  exited 1 with `no changes added to commit`. Rules that follow: (1) every mutating command must be
+  IDEMPOTENT, and a stale `.git/index.lock` with no `git.exe` alive is safe to delete before a re-run (verify
+  with `Get-CimInstance Win32_Process`); (2) NEVER append to a file from a shell one-liner - write the whole
+  file, or guard the append with an "already present" check (this is why every `_record_chainN.py` carries an
+  idempotence guard); (3) verify the result (`git log --oneline -1`, a line count) instead of trusting the exit
+  code; (4) a launch line may appear once or twice in `detach_launches.log`, so check the job's own `.lock`
+  before assuming a double start. Note: a shell call that FAILS also discards the `console.log` output already
+  produced in that same `run()`.
