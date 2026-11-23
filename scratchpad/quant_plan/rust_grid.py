@@ -273,6 +273,30 @@ CONFIGS = {
     "fbc8n6i6": {"RWKV_STATE_FIXEDBASIS_SCOPE": "card:8:int8,note:6:int6", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    # EQUAL-BITS codec A/B (2026-11-23, PTQ screen first): the note payload is 3*(m*m*qbits + 64*4),
+    # so m=6 int8 and m=12 int2 are BOTH 1,632 bits, and m=8 int8 and m=16 int2 are BOTH 2,304. The
+    # question is whether MORE MODES at FEWER coefficient levels beats the shipped m=6/m=8 int8 codec,
+    # i.e. whether a consistent fixed basis beats instantaneous capture (m=6 captures 0.82-0.87 per
+    # layer, m=16 about 0.96).
+    "l2i8fb12n2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                   "RWKV_STATE_FIXEDBASIS_SCOPE": "note:12:int2", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                   "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb16n2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                   "RWKV_STATE_FIXEDBASIS_SCOPE": "note:16:int2", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                   "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb16n3": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                   "RWKV_STATE_FIXEDBASIS_SCOPE": "note:16:int3", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                   "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb8n4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:8:int4", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    # int2 probe (2026-11-23): are the int2 rungs m-INDEPENDENT? See the note above.
+    "l2i8fb6n2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:6:int2", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    "l2i8fb8n2": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:8:int2", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
 
 }
 
