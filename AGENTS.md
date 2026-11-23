@@ -76,13 +76,18 @@
   (row 46 `l2i5s4` 2,624: +0.000160/+0.000184, FAIL imm 1.13x; row 47 `l2i4s4n4` 2,304: FAIL
   1.34x/2.25x), and the independent CPU screen agrees (`it36wide6`: the note's int6 -> int5 step
   costs +0.000605/+0.000747 for 192 bits). Every FACTOR rung below 2,944 is closed, so
-  SHIFT width is the one remaining knob, and the paired `it36wide7` screen
-  (2026-11-23 02:45, base = row 45's own `l2i6s4`) CLOSED it on the immediate head: the CARD's
-  int4 -> int3 shift cut costs +0.000071 ahead / +0.000497 imm [+0.000044, +0.001095] (2,880 bits),
-  both streams at int3 cost +0.000139/+0.000461 (2,688), and the extra card int2 rung costs
-  +0.000848/+0.002195 (2,624). Row 45's imm head already uses 0.89x of the ceiling, so no shift rung
-  can pass, and no QAT point is queued for one. **So 2,944 bits (row 45) is the floor of the uniform
-  (rank, factor width, shift width) design space.** The last live sub-2,944 claim is chain 22's 2,752
+  SHIFT width is the one remaining knob. The paired `it36wide7` screen
+  (2026-11-23 02:45, base = row 45's own `l2i6s4`) priced the three rungs at +0.000071/+0.000497
+  imm (card int4 -> int3, 2,880 bits), +0.000139/+0.000461 (both streams at int3, 2,688) and
+  +0.000848/+0.002195 (the extra card int2 rung, 2,624) and closed them - but that closure rested on
+  an INVERTED reading of its own number ("the note's int6 cut recovered 9% of its PTQ imm price"
+  means QAT REMOVES ~90%, which is the condition that would let a rung PASS). Corrected 2026-11-23
+  03:30, with the measured ratios: QAT's cost is 10-53% of a PTQ screen's price across the cuts
+  measured so far (the note's int6 cut: screen +0.000268/+0.000307 vs QAT +0.000046/+0.000031), so
+  **a PTQ screen does NOT predict a QAT cost.** Chain 25 (`it36shiftrung`, waiting behind chain 24)
+  therefore MEASURES the two rungs (2,880 then 2,688) at 124 steps against `qnj_it36ctl`, each with
+  its own finiteness check. Until they land, treat 2,944 bits as the frontier but NOT as a proven
+  floor of the uniform design space. The last live sub-2,944 claim is chain 22's 2,752
   point (`l2i6s4n1i6s3` = row 45 minus the NOTE's 192 shift bits, which row 35 priced at
   +0.000011/+0.000037 on 750 users); the CARD owns the shift cost, not the note.
 - **Deploy screening:** `scratchpad/quant_plan/corruption/wide_screen.py` turns any number of

@@ -1082,3 +1082,39 @@ skipped. So both mixed-int6 rows are deployable on Andrew's blowup gate and the 
 band is clean. `record_corruption.py` needed two new `ROWS` entries for these tags: rows 41 and 45 name
 both tags in their own cells, so the "exactly one row-line mentions it" fallback could not resolve them.
 Chain 19 (`it36fixedbasis`) took the GPU at 03:19:05, about a minute after the watcher released the hold.
+
+## Amendment 37 (2026-11-23 03:30): CORRECTION - the shift ladder was closed on an inverted reading; chain 25 re-tests it
+
+Amendment 33 closed the shift ladder with this sentence:
+
+> Row 45's immediate head already uses 0.89x of the +0.0005 ceiling (ub95 +0.000446), so a rung that costs
+> +0.00046 imm cannot pass unless QAT recovered ~90% of it - which it does not (the note's int6 cut
+> recovered 9% of its PTQ imm price).
+
+The parenthetical contradicts the conclusion. "The note's int6 cut recovered 9% of its PTQ imm price" means
+the QAT cost is ~10% OF the PTQ price, i.e. QAT REMOVES ~90% - which is precisely the condition the same
+sentence says would let a rung pass. Chain 18's 750-user runs then measured that quantity directly, and
+they confirm the reading, not the conclusion:
+
+    cut                          PTQ screen (small roster)   QAT, 750 users      QAT removes
+    note's int6 (row 49-row 17)  +0.000268 / +0.000307        +0.000046/+0.000031   83% / 90%
+    both int6 (l2i6s4 vs row 17) +0.000442 / +0.000726        +0.000125/+0.000381   72% / 47%
+    note's int4->int3 shifts      -0.000036 imm (7 users)      +0.000037 imm          agrees
+
+So a PTQ deploy screen does not predict a QAT cost; across the cuts measured so far the QAT cost has been
+10-53% of the screen's price. The shift rungs were therefore closed on an assumption the lineage's own
+measurements contradict. Row 45's remaining immediate-head headroom is +0.000119 (ub95 +0.000446 of the
++0.0005 bound), so a shift rung passes if QAT removes more than about 76% of its PTQ imm price.
+
+WHAT RUNS INSTEAD. Chain 25 (`it36shiftrung`, launched 03:26:49, waiting behind chain 24) runs two points
+on row 45's own layout with the same 124-step decay and the same `qnj_it36ctl` fp32 twin:
+
+    config           card/note bits   PTQ d ahead (7 users)             PTQ d imm (7 users)              verdict
+    l2i6s3n1i6s4      960/1,920      +0.000071 [-0.000082,+0.000245]  +0.000497 [+0.000044,+0.001095]  to measure
+    l2i6s3n1i6s3      960/1,728      +0.000139 [-0.000049,+0.000317]  +0.000461 [+0.000031,+0.000993]  to measure
+
+Both ahead intervals CONTAIN zero, so the question is entirely the immediate head. Each point gets its own
+50-user finiteness check in the chain's own phase. The candidates were pre-registered in
+`quant_sweep.CANDIDATES` and `check_corruption.CONFIGS` on 2026-11-23, so nothing else changed. If both
+FAIL, the shift ladder is closed by measurement rather than by inference, and row 45's 2,944 bits stands as
+the floor.
