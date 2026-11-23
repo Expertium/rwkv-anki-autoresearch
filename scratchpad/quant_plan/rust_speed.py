@@ -46,7 +46,12 @@ def run_once(weights, trace_dir, users, name, preds_root):
     for k in ("RWKV_STATE_QUANT_SCOPE", "RWKV_STATE_LOWRANK_SCOPE", "RWKV_QUANT_SHIFTS",
               "RWKV_STATE_SHIFT_LEVEL", "RWKV_LOWRANK_HADAMARD", "RWKV_LOWRANK_PERCOL",
               "RWKV_LOWRANK_ALS", "RWKV_LOWRANK_4LEVEL", "RWKV_LOWRANK_MIXED53",
-              "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT"):
+              "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT",
+              # The fixed-basis keys MUST be cleared too. Without them a run that puts a codec config
+              # before a non-codec one leaks the basis into the later config (rust_grid.py already
+              # clears both); with them the order cannot matter. Added 2026-11-23, when the first
+              # fixed-basis speed cells were about to be measured.
+              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH"):
         env.pop(k, None)
     env.update({k: str(v) for k, v in rg.CONFIGS[name].items()})
     r = subprocess.run([str(rg.ENGINE)] + [str(u) for u in users], cwd=ROOT, env=env,
