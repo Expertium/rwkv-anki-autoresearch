@@ -341,7 +341,14 @@ def main() -> int:
             return lf[:m.start()] + bullet + lf[m.start():]
 
         def do_board(lf: str, board=board):
-            return lf.rstrip("\n") + "\n" + board
+            m = re.search(r": chain 21 point \`([^\`]*)\`", board)
+            key = m.group(1) if m else None
+            if key and re.search(rf": chain 21 point \`{re.escape(key)}\`", lf):
+                print(f"skip: the BOARD already carries a chain-21 amendment for point {key}")
+                return lf
+            n = next_amendment(lf)
+            body = re.sub(r"^## Amendment \d+", f"## Amendment {n}", board.lstrip("\n"), count=1)
+            return lf.rstrip("\n") + "\n" + body
 
         def do_recorded(lf: str, stamp=stamp):
             if f"{stamp}\n" in lf:

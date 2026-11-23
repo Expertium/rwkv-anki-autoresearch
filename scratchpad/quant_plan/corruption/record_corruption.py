@@ -43,6 +43,11 @@ ROWS = {
     # fallback cannot resolve them.
     "l2i6c": "48",     # chain 18 point 1 (card rank-2 int6 + note rank-1 int8, 3,328 bits)
     "l2i6n": "49",     # chain 18 point 2 (card rank-2 int8 + note rank-1 int6, 3,200 bits)
+    # Added 2026-11-23: the fixed-basis codec rows name their tag in the narrative prose
+    # elsewhere in RESULTS.md as well, so the "exactly one row-line mentions it" fallback
+    # cannot resolve them either.
+    "l2i8fb8n": "50",    # chain 19 point 1 (codec note m=8, 1,280/2,304 = 3,584 bits)
+    "l2i8fb6n": "51",    # chain 19 point 2 (codec note m=6, 1,280/1,632 = 2,912 bits)
 }
 
 
