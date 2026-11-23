@@ -112,6 +112,17 @@ CONFIGS = {
     "l2i8fb4nsb8i4": (RUN / "qat_it36l2i8fb4nsb8i4" / "qat_124.pth", "l2i8fb4nsb8i4",
                       "chain 28 point 5 (note shift codec m=8 int4, 1,856 bits)"),
 
+    # chain 29 (it36fblowm): the codec's mode ladder DOWNWARD. Registered before the chain starts,
+    # because an unregistered tag would make --tag iterate over ZERO configs and still write a verdict.
+    "l2i8fb3n": (RUN / "qat_it36l2i8fb3n" / "qat_124.pth", "l2i8fb3n",
+                 "chain 29 point 1 (note codec m=3 int8, 2,264 bits)"),
+    "l2i8fb2n": (RUN / "qat_it36l2i8fb2n" / "qat_124.pth", "l2i8fb2n",
+                 "chain 29 point 2 (note codec m=2 int8, 2,144 bits)"),
+    "l2i8fb2n4": (RUN / "qat_it36l2i8fb2n4" / "qat_124.pth", "l2i8fb2n4",
+                  "chain 29 point 3 (note codec m=2 int4, 2,096 bits)"),
+    "l2i8fb3n4": (RUN / "qat_it36l2i8fb3n4" / "qat_124.pth", "l2i8fb3n4",
+                  "chain 29 rung not queued (note codec m=3 int4, 2,156 bits)"),
+
     "l2i6s4n1i8s3": (RUN / "qat_it36l2i6s4n1i8s3" / "qat_124.pth", "l2i6s4n1i8s3",
                      "chain 21 point 1 (int6 card + note int3 shifts, 3,136 bits)"),
     "l2i6s4n1i8s2": (RUN / "qat_it36l2i6s4n1i8s2" / "qat_124.pth", "l2i6s4n1i8s2",
