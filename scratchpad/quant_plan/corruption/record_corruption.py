@@ -48,6 +48,20 @@ ROWS = {
     # cannot resolve them either.
     "l2i8fb8n": "50",    # chain 19 point 1 (codec note m=8, 1,280/2,304 = 3,584 bits)
     "l2i8fb6n": "51",    # chain 19 point 2 (codec note m=6, 1,280/1,632 = 2,912 bits)
+    # Added 2026-11-23 by the hourly supervisor: chain 21's point 1 is named in the wide5 screen table
+    # near the bottom of RESULTS.md as well, so the "exactly one row-line mentions it" fallback fails.
+    "l2i6s4n1i8s3": "53",  # chain 21 point 1 (card rank-2 int6 + note rank-1 int8 + int3 shifts, 3,136 bits)
+    # Added 2026-11-23 by the hourly supervisor: row 55 (chain 23 point 1, the E1 lambda=1.0 point) names
+    # only its chain tag `it36e1b` in its Method cell, not the candidate tag, so the "exactly one
+    # row-line mentions it" fallback cannot resolve it.
+    "l2i8s4e1c": "55",     # chain 23 point 1 (E1 tail penalty lambda=1.0, stride 8, row 17's 1,280/2,304 layout)
+    # Added 2026-11-23: chain 24's point (E1 lambda=1.0 at row 45's 2,944-bit frontier) names
+    # its chain tag in the Method cell, so the row-line fallback cannot resolve the candidate tag.
+    "l2i6s4e1c": "58",     # chain 24 (E1 tail penalty lambda=1.0, stride 8, the 1,024/1,920 layout)
+    # Added 2026-11-23: two tags whose rows already read PASS but whose tag also appears in
+    # RESULTS.md prose, so the fallback reported them unresolved on every dry run.
+    "l2i6s4": "45",        # row 45 (the 1,024/1,920 = 2,944-bit uniform-design frontier)
+    "l2i8n2i8": "29",      # row 29 (note rank-2 int8)
 }
 
 

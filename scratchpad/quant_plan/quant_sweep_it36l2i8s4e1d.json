@@ -1,0 +1,50 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i8s4e1d\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i8s4e1d",
+      "tag": "ql2i8s4e1d_it36l2i8s4e1d",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+        "RWKV_QAT_FUSED": "0",
+        "RWKV_QAT_TAIL_PENALTY": "3.0",
+        "RWKV_QAT_TAIL_STRIDE": "8"
+      },
+      "comment": "row 17 + tail-energy penalty lambda=3.0, stride 8 (~7% of the loss) (1,280/2,304)",
+      "bits": {
+        "card": 1280,
+        "note": 2304
+      },
+      "rc": 0,
+      "secs": 2123.9370000000054,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0003374213333333331,
+          "ub95": 0.0005006548420018366,
+          "p_worse": 3.859668479397368e-10,
+          "mean_cur": 0.334139232,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.000323705333333334,
+          "ub95": 0.00045304522645338345,
+          "p_worse": 5.714936979625858e-05,
+          "mean_cur": 0.3065351026666666,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}
