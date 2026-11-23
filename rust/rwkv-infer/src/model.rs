@@ -413,6 +413,17 @@ pub struct CompressCfg {
     /// The fixed bases themselves: (module_idx, layer) -> (P, Q), each K x stride row-major. Arc-shared
     /// because a basis is a MODEL-side artifact, identical for every card -- not per-card state.
     pub fb_basis: std::sync::Arc<std::collections::HashMap<(usize, usize), (Vec<f32>, Vec<f32>)>>,
+    /// RWKV_SHIFT_FIXEDBASIS_PATH=<file>: FIXED-BASIS (codec) coding of the persisted TOKEN-SHIFT
+    /// vectors - the `fb` idea applied to the 2 x C shift payload a layer persists. The artifact
+    /// carries `mu` (C floats) + `P` (C x stride) per key; keys are TIERED exactly like the state
+    /// codec's lookup (`<stream>__r<role>__L<layer>` -> `<stream>__r<role>` -> `r<role>`) and are
+    /// resolved ONCE at load into (module, layer, role). `shift_fb_m` is the coefficient count; the
+    /// coefficient LEVEL is the stream's shift level (RWKV_STATE_SHIFT_LEVEL / the state level), so
+    /// the shift budget becomes 2*m*level_bits per layer instead of 64*level_bits.
+    /// NOT a codebook: a fixed linear transform, no discrete entries, no per-user vectors, ZERO
+    /// state bits for mu/P. Precedence: RWKV_SHIFT_PQ > this > int-N.
+    pub shift_fb: std::sync::Arc<std::collections::HashMap<(usize, usize, u8), ShiftBasis>>,
+    pub shift_fb_m: usize,
 }
 
 /// Apply the shift pre-rotation in place: y = R x (forward) or x = R^T y (transpose). `rot` is one
@@ -701,6 +712,72 @@ pub fn transpose_basis(a: &[f32], k: usize, stride: usize) -> Vec<f32> {
         }
     }
     out
+}
+
+/// One key's token-shift codec basis (see `fixedbasis_vec_inplace`): `mu` (C floats) plus `P`
+/// (C x `stride`, row-major). `pt` is P transposed ONCE at load so both inner loops below are
+/// contiguous - the state codec's own layout fix (1.7-1.8x there, bit-identical because the
+/// accumulation order is unchanged).
+pub struct ShiftBasis {
+    pub stride: usize,
+    pub mu: Vec<f32>,
+    pub p: Vec<f32>,
+    pt: Vec<f32>,
+}
+
+impl ShiftBasis {
+    pub fn new(stride: usize, mu: Vec<f32>, p: Vec<f32>) -> Self {
+        let c = mu.len();
+        let pt = transpose_basis(&p, c, stride);
+        Self { stride, mu, p, pt }
+    }
+}
+
+/// FIXED-BASIS (codec) round-trip of ONE persisted token-shift vector:
+/// `x -> mu + P * quant(P^T (x - mu))`. `mu`/`P` ship with the model (ZERO state bits), so the coded
+/// payload is only the `m` coefficients; the quantizer is the SAME symmetric per-vector int-N rule
+/// `quant_vec_inplace` applies (scale = amax/qmax per vector), so the level semantics are unchanged.
+/// Cost is 2*C*m flops. NOT a codebook: a fixed linear transform, no discrete entries, no
+/// nearest-neighbour lookup, no per-user vectors.
+pub fn fixedbasis_vec_inplace(v: &mut [f32], b: &ShiftBasis, m: usize, qmax: f64) {
+    let c = v.len();
+    assert!(
+        m > 0 && m <= b.stride && b.mu.len() == c && b.p.len() >= c * b.stride,
+        "shift fixedbasis: bad shapes (C={c}, stride={}, m={m})",
+        b.stride
+    );
+    crate::finite::vec_raw(v); // observation only (RWKV_FINITE_CHECK)
+    let mut coef = vec![0f32; m];
+    for (j, cj) in coef.iter_mut().enumerate() {
+        let prow = &b.pt[j * c..j * c + c];
+        let mut s = 0f32;
+        for i in 0..c {
+            s += (v[i] - b.mu[i]) * prow[i];
+        }
+        *cj = s;
+    }
+    quant_vec_inplace(&mut coef, qmax);
+    for i in 0..c {
+        let prow = &b.p[i * b.stride..i * b.stride + m];
+        let mut s = b.mu[i];
+        for (j, &cj) in coef.iter().enumerate() {
+            s += prow[j] * cj;
+        }
+        v[i] = s;
+    }
+    crate::finite::vec_quant(v); // observation only
+}
+
+/// Candle wrapper for ONE shift vector (...,C): codec-round-trip every C-long row in place.
+fn shift_fb_roundtrip_tensor(t: &Tensor, b: &ShiftBasis, m: usize, qmax: f64) -> Result<Tensor> {
+    let c = t.dims().last().copied().unwrap_or(0);
+    let mut data: Vec<f32> = t.flatten_all()?.to_vec1()?;
+    if c > 0 {
+        for chunk in data.chunks_mut(c) {
+            fixedbasis_vec_inplace(chunk, b, m, qmax);
+        }
+    }
+    Ok(Tensor::from_vec(data, t.dims().to_vec(), t.device())?)
 }
 
 /// Candle wrapper for `fixedbasis_roundtrip` (H,K,K), mirroring `lowrank_roundtrip`: the parity
@@ -2098,6 +2175,10 @@ pub struct Model {
     state_fixedbasis: std::collections::HashMap<usize, (usize, Option<f64>)>,
     // The fixed K x stride basis pairs, one per (module_idx, layer). Arc-shared, model-side.
     fb_basis: std::sync::Arc<std::collections::HashMap<(usize, usize), (Vec<f32>, Vec<f32>)>>,
+    // Token-shift FIXED-BASIS codec: (module, layer, role) -> mu/P, plus the mode count. Empty =
+    // inert (the shifts keep the int-N round-trip). See CompressCfg::shift_fb.
+    shift_fb: std::sync::Arc<std::collections::HashMap<(usize, usize, u8), ShiftBasis>>,
+    shift_fb_m: usize,
     // RWKV_QUANT_SHIFTS=1: also quantize the (1-D, non-low-rankable) token-shift vectors of any
     // COMPRESSED stream at its bit-width, so the deploy SIZE accounting is honest (shifts otherwise
     // stay fp32, which alone blows the 0.15 KB card budget). Off by default -> past numbers reproduce.
@@ -2488,6 +2569,82 @@ impl Model {
             );
         }
         let fb_basis = std::sync::Arc::new(fb_basis);
+        let mut shift_fb: std::collections::HashMap<(usize, usize, u8), ShiftBasis> =
+            std::collections::HashMap::new();
+        let shift_fb_m: usize = std::env::var("RWKV_SHIFT_FIXEDBASIS_MODES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(8);
+        let shift_fb_path = std::env::var("RWKV_SHIFT_FIXEDBASIS_PATH").unwrap_or_default();
+        // RWKV_SHIFT_FIXEDBASIS_SCOPE="note": only these streams get the codec; every other stream keeps
+        // the int-N shift round-trip (a basis fitted on one stream is 10-20x worse on another).
+        let shift_fb_scope: Vec<String> = std::env::var("RWKV_SHIFT_FIXEDBASIS_SCOPE")
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !shift_fb_path.is_empty() {
+            let txt = std::fs::read_to_string(&shift_fb_path).unwrap_or_else(|e| {
+                panic!("failed to read RWKV_SHIFT_FIXEDBASIS_PATH '{shift_fb_path}': {e}")
+            });
+            let mut it = txt.split_whitespace();
+            let n: usize = it.next().and_then(|t| t.parse().ok()).unwrap_or_else(|| {
+                panic!("RWKV_SHIFT_FIXEDBASIS_PATH '{shift_fb_path}': line 1 must be the entry count")
+            });
+            let mut raw: std::collections::HashMap<String, (usize, Vec<f32>, Vec<f32>)> =
+                std::collections::HashMap::new();
+            for e in 0..n {
+                let name = it
+                    .next()
+                    .unwrap_or_else(|| panic!("SHIFT-FB '{shift_fb_path}': entry {e}: missing key"))
+                    .to_string();
+                let stride: usize = it.next().and_then(|t| t.parse().ok()).unwrap_or_else(|| {
+                    panic!("SHIFT-FB '{shift_fb_path}': entry {e}: bad stride")
+                });
+                let mut take = |cnt: usize| -> Vec<f32> {
+                    (0..cnt)
+                        .map(|_| {
+                            it.next().and_then(|t| t.parse::<f32>().ok()).unwrap_or_else(|| {
+                                panic!("SHIFT-FB '{shift_fb_path}': entry {e}: short basis (need {cnt} floats)")
+                            })
+                        })
+                        .collect()
+                };
+                let mu = take(c);
+                let p = take(c * stride);
+                raw.insert(name, (stride, mu, p));
+            }
+            // Resolve the TIERS once: (module, layer, role) -> the most specific key present.
+            for (mi, sname) in stream_order.iter().enumerate() {
+                if !shift_fb_scope.is_empty() && !shift_fb_scope.iter().any(|s| s == sname) {
+                    continue;
+                }
+                for l in 0..stream_layers[mi] {
+                    for role in 0..2u8 {
+                        let cands = [
+                            format!("{sname}__r{role}__L{l}"),
+                            format!("{sname}__r{role}"),
+                            format!("r{role}"),
+                        ];
+                        let hit = cands.iter().find_map(|cand| raw.get(cand));
+                        if let Some((stride, mu, p)) = hit {
+                            assert!(
+                                shift_fb_m <= *stride,
+                                "RWKV_SHIFT_FIXEDBASIS_PATH '{shift_fb_path}': {sname}/L{l}/r{role} needs m={shift_fb_m} but its basis has {stride} columns"
+                            );
+                            shift_fb.insert((mi, l, role), ShiftBasis::new(*stride, mu.clone(), p.clone()));
+                        }
+                    }
+                }
+            }
+            let tiers = raw.len();
+            eprintln!(
+                "[shift-fixedbasis] m={shift_fb_m}, {} (module,layer,role) keys resolved from {tiers} tiers ({shift_fb_path})",
+                shift_fb.len()
+            );
+        }
+        let shift_fb = std::sync::Arc::new(shift_fb);
         let quant_shifts = std::env::var("RWKV_QUANT_SHIFTS")
             .map(|v| v == "1" || v == "true")
             .unwrap_or(false);
@@ -2648,6 +2805,8 @@ impl Model {
             shift_rot,
             fb: state_fixedbasis.clone(),
             fb_basis: fb_basis.clone(),
+            shift_fb: shift_fb.clone(),
+            shift_fb_m,
         };
         let fast = crate::fast::FastModel::build(
             &w, &lin_wt, c, h, k, stream_layers.clone(), stream_slot, num_curves, num_points,
@@ -2679,6 +2838,8 @@ impl Model {
             lowrank_als,
             state_fixedbasis,
             fb_basis,
+            shift_fb,
+            shift_fb_m,
             fast,
         })
     }
@@ -2991,7 +3152,10 @@ impl Model {
                 None
             };
             let t_xshift = match shift_qmax {
-                Some(q) => quant_roundtrip(&t_xshift, q)?,
+                Some(q) => match self.shift_fb.get(&(module_idx, l, 0)) {
+                    Some(fb) => shift_fb_roundtrip_tensor(&t_xshift, fb, self.shift_fb_m, q)?,
+                    None => quant_roundtrip(&t_xshift, q)?,
+                },
                 None => t_xshift,
             };
             let c_st = ls.map(|s| &s.c_xshift);
@@ -3003,7 +3167,10 @@ impl Model {
             let (xc, c_xshift) = if self.arch.has_cmix[module_idx][l] {
                 let (xc, cs) = self.channel_mixer(&cp, &xt, c_st)?;
                 let cs = match shift_qmax {
-                    Some(q) => quant_roundtrip(&cs, q)?,
+                    Some(q) => match self.shift_fb.get(&(module_idx, l, 1)) {
+                        Some(fb) => shift_fb_roundtrip_tensor(&cs, fb, self.shift_fb_m, q)?,
+                        None => quant_roundtrip(&cs, q)?,
+                    },
                     None => cs,
                 };
                 (xc, cs)

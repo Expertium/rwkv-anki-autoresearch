@@ -55,7 +55,9 @@ def run_engine(weights, trace_dir, users, name, preds_dir):
               # without them an ambient value leaks into a config that does not ask for a codec, so
               # the engine would code a stream the trace's Python side did not code, and the parity
               # verdict would be wrong. Added 2026-11-23, before the first codec parity run.
-              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH"):
+              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH",
+              # the token-shift codec's keys (2026-11-23), for exactly the same reason:
+              "RWKV_SHIFT_FIXEDBASIS_PATH", "RWKV_SHIFT_FIXEDBASIS_MODES"):
         env.pop(k, None)
     env.update({k: str(v) for k, v in rg.CONFIGS[name].items()})
     r = subprocess.run([str(rg.ENGINE)] + [str(u) for u in users], cwd=ROOT, env=env,

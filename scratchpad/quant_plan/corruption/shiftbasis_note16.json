@@ -1,0 +1,1834 @@
+{
+ "groups": [
+  {
+   "key": "note|?|L-1",
+   "stream": "note",
+   "role": "c_xshift",
+   "layer": -1,
+   "rows": 3000
+  },
+  {
+   "key": "note|RWKV7TimeMixer|L0",
+   "stream": "note",
+   "role": "t_xshift",
+   "layer": 0,
+   "rows": 3000
+  },
+  {
+   "key": "note|RWKV7TimeMixer|L1",
+   "stream": "note",
+   "role": "t_xshift",
+   "layer": 1,
+   "rows": 3000
+  },
+  {
+   "key": "note|RWKV7TimeMixer|L2",
+   "stream": "note",
+   "role": "t_xshift",
+   "layer": 2,
+   "rows": 3000
+  }
+ ],
+ "modes": 16,
+ "role_pooled": {
+  "t_xshift": {
+   "n": 9000,
+   "keys": [
+    "note|RWKV7TimeMixer|L0",
+    "note|RWKV7TimeMixer|L1",
+    "note|RWKV7TimeMixer|L2"
+   ],
+   "4": {
+    "bits": 32,
+    "per_key": {
+     "note|RWKV7TimeMixer|L0": 0.05069832131266594,
+     "note|RWKV7TimeMixer|L1": 0.04355143383145332,
+     "note|RWKV7TimeMixer|L2": 0.045355044305324554
+    },
+    "pooled": 0.046511877328157425,
+    "worst_key": 0.05069832131266594
+   },
+   "6": {
+    "bits": 48,
+    "per_key": {
+     "note|RWKV7TimeMixer|L0": 0.03581243380904198,
+     "note|RWKV7TimeMixer|L1": 0.03110513649880886,
+     "note|RWKV7TimeMixer|L2": 0.03175637125968933
+    },
+    "pooled": 0.03287927806377411,
+    "worst_key": 0.03581243380904198
+   },
+   "8": {
+    "bits": 64,
+    "per_key": {
+     "note|RWKV7TimeMixer|L0": 0.026267724111676216,
+     "note|RWKV7TimeMixer|L1": 0.023116225376725197,
+     "note|RWKV7TimeMixer|L2": 0.02382836863398552
+    },
+    "pooled": 0.024394426494836807,
+    "worst_key": 0.026267724111676216
+   },
+   "10": {
+    "bits": 80,
+    "per_key": {
+     "note|RWKV7TimeMixer|L0": 0.019334623590111732,
+     "note|RWKV7TimeMixer|L1": 0.017292914912104607,
+     "note|RWKV7TimeMixer|L2": 0.017530467361211777
+    },
+    "pooled": 0.01804771088063717,
+    "worst_key": 0.019334623590111732
+   },
+   "12": {
+    "bits": 96,
+    "per_key": {
+     "note|RWKV7TimeMixer|L0": 0.01420897338539362,
+     "note|RWKV7TimeMixer|L1": 0.012813880108296871,
+     "note|RWKV7TimeMixer|L2": 0.012794929556548595
+    },
+    "pooled": 0.013270271010696888,
+    "worst_key": 0.01420897338539362
+   },
+   "16": {
+    "bits": 128,
+    "per_key": {
+     "note|RWKV7TimeMixer|L0": 0.007472505792975426,
+     "note|RWKV7TimeMixer|L1": 0.0068412707187235355,
+     "note|RWKV7TimeMixer|L2": 0.006863103713840246
+    },
+    "pooled": 0.007057730108499527,
+    "worst_key": 0.007472505792975426
+   }
+  },
+  "c_xshift": {
+   "n": 3000,
+   "keys": [
+    "note|?|L-1"
+   ],
+   "4": {
+    "bits": 32,
+    "per_key": {
+     "note|?|L-1": 0.04495932534337044
+    },
+    "pooled": 0.04495932534337044,
+    "worst_key": 0.04495932534337044
+   },
+   "6": {
+    "bits": 48,
+    "per_key": {
+     "note|?|L-1": 0.031456928700208664
+    },
+    "pooled": 0.031456928700208664,
+    "worst_key": 0.031456928700208664
+   },
+   "8": {
+    "bits": 64,
+    "per_key": {
+     "note|?|L-1": 0.023150792345404625
+    },
+    "pooled": 0.023150792345404625,
+    "worst_key": 0.023150792345404625
+   },
+   "10": {
+    "bits": 80,
+    "per_key": {
+     "note|?|L-1": 0.017018262296915054
+    },
+    "pooled": 0.017018262296915054,
+    "worst_key": 0.017018262296915054
+   },
+   "12": {
+    "bits": 96,
+    "per_key": {
+     "note|?|L-1": 0.012442855164408684
+    },
+    "pooled": 0.012442855164408684,
+    "worst_key": 0.012442855164408684
+   },
+   "16": {
+    "bits": 128,
+    "per_key": {
+     "note|?|L-1": 0.006523967254906893
+    },
+    "pooled": 0.006523967254906893,
+    "worst_key": 0.006523967254906893
+   }
+  }
+ },
+ "per_stream_role": {
+  "note__t_xshift": {
+   "n": 9000,
+   "keys": [
+    "note|RWKV7TimeMixer|L0",
+    "note|RWKV7TimeMixer|L1",
+    "note|RWKV7TimeMixer|L2"
+   ],
+   "4": {
+    "bits": 32,
+    "pooled": 0.046511877328157425
+   },
+   "6": {
+    "bits": 48,
+    "pooled": 0.03287927806377411
+   },
+   "8": {
+    "bits": 64,
+    "pooled": 0.024394426494836807
+   },
+   "10": {
+    "bits": 80,
+    "pooled": 0.01804771088063717
+   },
+   "12": {
+    "bits": 96,
+    "pooled": 0.013270271010696888
+   },
+   "16": {
+    "bits": 128,
+    "pooled": 0.007057730108499527
+   }
+  },
+  "note__c_xshift": {
+   "n": 3000,
+   "keys": [
+    "note|?|L-1"
+   ],
+   "4": {
+    "bits": 32,
+    "pooled": 0.04495932534337044
+   },
+   "6": {
+    "bits": 48,
+    "pooled": 0.031456928700208664
+   },
+   "8": {
+    "bits": 64,
+    "pooled": 0.023150792345404625
+   },
+   "10": {
+    "bits": 80,
+    "pooled": 0.017018262296915054
+   },
+   "12": {
+    "bits": 96,
+    "pooled": 0.012442855164408684
+   },
+   "16": {
+    "bits": 128,
+    "pooled": 0.006523967254906893
+   }
+  }
+ },
+ "cross_stream": {},
+ "deploy_grid": {
+  "r0": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.046511877328157425,
+    "worst_key": 0.05069832131266594
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.03287927806377411,
+    "worst_key": 0.03581243380904198
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.024394426494836807,
+    "worst_key": 0.026267724111676216
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.01804771088063717,
+    "worst_key": 0.019334623590111732
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.013270271010696888,
+    "worst_key": 0.01420897338539362
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.007057730108499527,
+    "worst_key": 0.007472505792975426
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.0465589240193367,
+    "worst_key": 0.05074671655893326
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.0329572968184948,
+    "worst_key": 0.03589274361729622
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.024504853412508965,
+    "worst_key": 0.026380926370620728
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.01818867214024067,
+    "worst_key": 0.019480261951684952
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.013441265560686588,
+    "worst_key": 0.014386068098247051
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.00728817330673337,
+    "worst_key": 0.007712505757808685
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04672040045261383,
+    "worst_key": 0.05091315507888794
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.03323454037308693,
+    "worst_key": 0.03617847338318825
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.02489205077290535,
+    "worst_key": 0.02678374946117401
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.01869053579866886,
+    "worst_key": 0.019999932497739792
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.014052517712116241,
+    "worst_key": 0.015013777650892735
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.008128263987600803,
+    "worst_key": 0.008575103245675564
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.047506578266620636,
+    "worst_key": 0.05177101492881775
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.034506700932979584,
+    "worst_key": 0.03755764663219452
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.02663576416671276,
+    "worst_key": 0.028681162744760513
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.02092362381517887,
+    "worst_key": 0.02241329476237297
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.016755282878875732,
+    "worst_key": 0.01794012077152729
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.011766305193305016,
+    "worst_key": 0.012513624504208565
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.05133720114827156,
+    "worst_key": 0.0556107722222805
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.040932707488536835,
+    "worst_key": 0.044203534722328186
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.03551427647471428,
+    "worst_key": 0.03790988773107529
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.03207250311970711,
+    "worst_key": 0.03410957381129265
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.02962309867143631,
+    "worst_key": 0.03152073174715042
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.02733863703906536,
+    "worst_key": 0.02905517816543579
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.06739513576030731,
+    "worst_key": 0.07316449284553528
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.06316201388835907,
+    "worst_key": 0.06903572380542755
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.062157053500413895,
+    "worst_key": 0.06769344955682755
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.061682578176259995,
+    "worst_key": 0.06746060401201248
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.061474695801734924,
+    "worst_key": 0.06729769706726074
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.06137992814183235,
+    "worst_key": 0.06718531250953674
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 3.8685906474711373e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.1933553651033435e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0006478818249888718
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.00019871891709044576
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0027552710380405188
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0008516304078511894
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.012766309082508087
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.00392560102045536
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.07333508878946304
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.020183010026812553
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.39663273096084595
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.11244844645261765
+   }
+  },
+  "r1": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.04495932534337044,
+    "worst_key": 0.04495932534337044
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.031456928700208664,
+    "worst_key": 0.031456928700208664
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.023150792345404625,
+    "worst_key": 0.023150792345404625
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.017018262296915054,
+    "worst_key": 0.017018262296915054
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.012442855164408684,
+    "worst_key": 0.012442855164408684
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.006523967254906893,
+    "worst_key": 0.006523967254906893
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.045007895678281784,
+    "worst_key": 0.045007895678281784
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.0315379872918129,
+    "worst_key": 0.0315379872918129
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.023265674710273743,
+    "worst_key": 0.023265674710273743
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.017165532335639,
+    "worst_key": 0.017165532335639
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.01262409333139658,
+    "worst_key": 0.01262409333139658
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.0067680091597139835,
+    "worst_key": 0.0067680091597139835
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04518190398812294,
+    "worst_key": 0.04518190398812294
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.0318249836564064,
+    "worst_key": 0.0318249836564064
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.02366580255329609,
+    "worst_key": 0.02366580255329609
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.017678584903478622,
+    "worst_key": 0.017678584903478622
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.01326250471174717,
+    "worst_key": 0.01326250471174717
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.00763706723228097,
+    "worst_key": 0.00763706723228097
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.046026188880205154,
+    "worst_key": 0.046026188880205154
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.0331990011036396,
+    "worst_key": 0.0331990011036396
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.025577925145626068,
+    "worst_key": 0.025577925145626068
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.020079120993614197,
+    "worst_key": 0.020079120993614197
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.01616821251809597,
+    "worst_key": 0.01616821251809597
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.011574040167033672,
+    "worst_key": 0.011574040167033672
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.05012089014053345,
+    "worst_key": 0.05012089014053345
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.03971070051193237,
+    "worst_key": 0.03971070051193237
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.03464283421635628,
+    "worst_key": 0.03464283421635628
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.03128383681178093,
+    "worst_key": 0.03128383681178093
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.029011931270360947,
+    "worst_key": 0.029011931270360947
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.027091769501566887,
+    "worst_key": 0.027091769501566887
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.06568031013011932,
+    "worst_key": 0.06568031013011932
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.06218576803803444,
+    "worst_key": 0.06218576803803444
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.061079803854227066,
+    "worst_key": 0.061079803854227066
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.06074180454015732,
+    "worst_key": 0.06074180454015732
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.06051819771528244,
+    "worst_key": 0.06051819771528244
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.060480669140815735,
+    "worst_key": 0.060480669140815735
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 4.102931416127831e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.3343305909074843e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0006920666201040149
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0002264414360979572
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.002915526507422328
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0009711997117847204
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.013605996966362
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.004451484885066748
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.08325934410095215
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.02238686941564083
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.4095149040222168
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.11788620054721832
+   }
+  },
+  "note__r0": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.046511877328157425,
+    "worst_key": 0.05069832131266594
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.03287927806377411,
+    "worst_key": 0.03581243380904198
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.024394426494836807,
+    "worst_key": 0.026267724111676216
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.01804771088063717,
+    "worst_key": 0.019334623590111732
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.013270271010696888,
+    "worst_key": 0.01420897338539362
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.007057730108499527,
+    "worst_key": 0.007472505792975426
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.0465589240193367,
+    "worst_key": 0.05074671655893326
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.0329572968184948,
+    "worst_key": 0.03589274361729622
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.024504853412508965,
+    "worst_key": 0.026380926370620728
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.01818867214024067,
+    "worst_key": 0.019480261951684952
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.013441265560686588,
+    "worst_key": 0.014386068098247051
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.00728817330673337,
+    "worst_key": 0.007712505757808685
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04672040045261383,
+    "worst_key": 0.05091315507888794
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.03323454037308693,
+    "worst_key": 0.03617847338318825
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.02489205077290535,
+    "worst_key": 0.02678374946117401
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.01869053579866886,
+    "worst_key": 0.019999932497739792
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.014052517712116241,
+    "worst_key": 0.015013777650892735
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.008128263987600803,
+    "worst_key": 0.008575103245675564
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.047506578266620636,
+    "worst_key": 0.05177101492881775
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.034506700932979584,
+    "worst_key": 0.03755764663219452
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.02663576416671276,
+    "worst_key": 0.028681162744760513
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.02092362381517887,
+    "worst_key": 0.02241329476237297
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.016755282878875732,
+    "worst_key": 0.01794012077152729
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.011766305193305016,
+    "worst_key": 0.012513624504208565
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.05133720114827156,
+    "worst_key": 0.0556107722222805
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.040932707488536835,
+    "worst_key": 0.044203534722328186
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.03551427647471428,
+    "worst_key": 0.03790988773107529
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.03207250311970711,
+    "worst_key": 0.03410957381129265
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.02962309867143631,
+    "worst_key": 0.03152073174715042
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.02733863703906536,
+    "worst_key": 0.02905517816543579
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.06739513576030731,
+    "worst_key": 0.07316449284553528
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.06316201388835907,
+    "worst_key": 0.06903572380542755
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.062157053500413895,
+    "worst_key": 0.06769344955682755
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.061682578176259995,
+    "worst_key": 0.06746060401201248
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.061474695801734924,
+    "worst_key": 0.06729769706726074
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.06137992814183235,
+    "worst_key": 0.06718531250953674
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 3.8685906474711373e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.1933553651033435e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0006478818249888718
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.00019871891709044576
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0027552710380405188
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0008516304078511894
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.012766309082508087
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.00392560102045536
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.07333508878946304
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.020183010026812553
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.39663273096084595
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.11244844645261765
+   }
+  },
+  "note__r1": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.04495932534337044,
+    "worst_key": 0.04495932534337044
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.031456928700208664,
+    "worst_key": 0.031456928700208664
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.023150792345404625,
+    "worst_key": 0.023150792345404625
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.017018262296915054,
+    "worst_key": 0.017018262296915054
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.012442855164408684,
+    "worst_key": 0.012442855164408684
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.006523967254906893,
+    "worst_key": 0.006523967254906893
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.045007895678281784,
+    "worst_key": 0.045007895678281784
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.0315379872918129,
+    "worst_key": 0.0315379872918129
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.023265674710273743,
+    "worst_key": 0.023265674710273743
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.017165532335639,
+    "worst_key": 0.017165532335639
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.01262409333139658,
+    "worst_key": 0.01262409333139658
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.0067680091597139835,
+    "worst_key": 0.0067680091597139835
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04518190398812294,
+    "worst_key": 0.04518190398812294
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.0318249836564064,
+    "worst_key": 0.0318249836564064
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.02366580255329609,
+    "worst_key": 0.02366580255329609
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.017678584903478622,
+    "worst_key": 0.017678584903478622
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.01326250471174717,
+    "worst_key": 0.01326250471174717
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.00763706723228097,
+    "worst_key": 0.00763706723228097
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.046026188880205154,
+    "worst_key": 0.046026188880205154
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.0331990011036396,
+    "worst_key": 0.0331990011036396
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.025577925145626068,
+    "worst_key": 0.025577925145626068
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.020079120993614197,
+    "worst_key": 0.020079120993614197
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.01616821251809597,
+    "worst_key": 0.01616821251809597
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.011574040167033672,
+    "worst_key": 0.011574040167033672
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.05012089014053345,
+    "worst_key": 0.05012089014053345
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.03971070051193237,
+    "worst_key": 0.03971070051193237
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.03464283421635628,
+    "worst_key": 0.03464283421635628
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.03128383681178093,
+    "worst_key": 0.03128383681178093
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.029011931270360947,
+    "worst_key": 0.029011931270360947
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.027091769501566887,
+    "worst_key": 0.027091769501566887
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.06568031013011932,
+    "worst_key": 0.06568031013011932
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.06218576803803444,
+    "worst_key": 0.06218576803803444
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.061079803854227066,
+    "worst_key": 0.061079803854227066
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.06074180454015732,
+    "worst_key": 0.06074180454015732
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.06051819771528244,
+    "worst_key": 0.06051819771528244
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.060480669140815735,
+    "worst_key": 0.060480669140815735
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 4.102931416127831e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.3343305909074843e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0006920666201040149
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0002264414360979572
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.002915526507422328
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0009711997117847204
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.013605996966362
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.004451484885066748
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.08325934410095215
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.02238686941564083
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.4095149040222168
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.11788620054721832
+   }
+  },
+  "note__r0__L0": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.046764910221099854,
+    "worst_key": 0.046764910221099854
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.032639894634485245,
+    "worst_key": 0.032639894634485245
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.02395184151828289,
+    "worst_key": 0.02395184151828289
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.017767129465937614,
+    "worst_key": 0.017767129465937614
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.012995763681828976,
+    "worst_key": 0.012995763681828976
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.006796711590141058,
+    "worst_key": 0.006796711590141058
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.046816136687994,
+    "worst_key": 0.046816136687994
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.03272458538413048,
+    "worst_key": 0.03272458538413048
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.02406870387494564,
+    "worst_key": 0.02406870387494564
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.017915766686201096,
+    "worst_key": 0.017915766686201096
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.013178003020584583,
+    "worst_key": 0.013178003020584583
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.007043031044304371,
+    "worst_key": 0.007043031044304371
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04697567969560623,
+    "worst_key": 0.04697567969560623
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.03299480676651001,
+    "worst_key": 0.03299480676651001
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.024453897029161453,
+    "worst_key": 0.024453897029161453
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.018425818532705307,
+    "worst_key": 0.018425818532705307
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.013802650384604931,
+    "worst_key": 0.013802650384604931
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.007909097708761692,
+    "worst_key": 0.007909097708761692
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.0478106290102005,
+    "worst_key": 0.0478106290102005
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.03437923640012741,
+    "worst_key": 0.03437923640012741
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.026388943195343018,
+    "worst_key": 0.026388943195343018
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.020834442228078842,
+    "worst_key": 0.020834442228078842
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.01672258786857128,
+    "worst_key": 0.01672258786857128
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.011824090965092182,
+    "worst_key": 0.011824090965092182
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.05188804119825363,
+    "worst_key": 0.05188804119825363
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.04113762825727463,
+    "worst_key": 0.04113762825727463
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.035722412168979645,
+    "worst_key": 0.035722412168979645
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.032412681728601456,
+    "worst_key": 0.032412681728601456
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.030100179836153984,
+    "worst_key": 0.030100179836153984
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.028016764670610428,
+    "worst_key": 0.028016764670610428
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.0676085576415062,
+    "worst_key": 0.0676085576415062
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.06397558003664017,
+    "worst_key": 0.06397558003664017
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.06284508109092712,
+    "worst_key": 0.06284508109092712
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.06248139217495918,
+    "worst_key": 0.06248139217495918
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.062243495136499405,
+    "worst_key": 0.062243495136499405
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.06219363212585449,
+    "worst_key": 0.06219363212585449
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 4.126895873923786e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.3342266356630716e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.0006873400998301804
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.00022441877808887511
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0029249382205307484
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0009660829673521221
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.013581202365458012
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.0044697909615933895
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.08095316588878632
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.022379297763109207
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.4136667549610138
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.11972485482692719
+   }
+  },
+  "note__r0__L1": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.04224709793925285,
+    "worst_key": 0.04224709793925285
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.029681872576475143,
+    "worst_key": 0.029681872576475143
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.0220413189381361,
+    "worst_key": 0.0220413189381361
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.01637228950858116,
+    "worst_key": 0.01637228950858116
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.012037879787385464,
+    "worst_key": 0.012037879787385464
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.006363201886415482,
+    "worst_key": 0.006363201886415482
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.0422927625477314,
+    "worst_key": 0.0422927625477314
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.0297591183334589,
+    "worst_key": 0.0297591183334589
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.022147519513964653,
+    "worst_key": 0.022147519513964653
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.016506657004356384,
+    "worst_key": 0.016506657004356384
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.012200767174363136,
+    "worst_key": 0.012200767174363136
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.006585283670574427,
+    "worst_key": 0.006585283670574427
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04244724661111832,
+    "worst_key": 0.04244724661111832
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.030014701187610626,
+    "worst_key": 0.030014701187610626
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.022513126954436302,
+    "worst_key": 0.022513126954436302
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.016980022192001343,
+    "worst_key": 0.016980022192001343
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.012780779041349888,
+    "worst_key": 0.012780779041349888
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.007373998407274485,
+    "worst_key": 0.007373998407274485
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.043218739330768585,
+    "worst_key": 0.043218739330768585
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.03126894682645798,
+    "worst_key": 0.03126894682645798
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.024252451956272125,
+    "worst_key": 0.024252451956272125
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.019179727882146835,
+    "worst_key": 0.019179727882146835
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.015444071032106876,
+    "worst_key": 0.015444071032106876
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.010949548333883286,
+    "worst_key": 0.010949548333883286
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.04691394045948982,
+    "worst_key": 0.04691394045948982
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.03736719489097595,
+    "worst_key": 0.03736719489097595
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.032656461000442505,
+    "worst_key": 0.032656461000442505
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.029598891735076904,
+    "worst_key": 0.029598891735076904
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.02736070193350315,
+    "worst_key": 0.02736070193350315
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.025374235585331917,
+    "worst_key": 0.025374235585331917
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.06122218072414398,
+    "worst_key": 0.06122218072414398
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.0580168254673481,
+    "worst_key": 0.0580168254673481
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.05698047950863838,
+    "worst_key": 0.05698047950863838
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.05660255625844002,
+    "worst_key": 0.05660255625844002
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.056366339325904846,
+    "worst_key": 0.056366339325904846
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.05632758140563965,
+    "worst_key": 0.05632758140563965
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 3.805917367571965e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.0757389645732474e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.000635317584965378
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.00018146450747735798
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0027144858613610268
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0007602068362757564
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.012576485052704811
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.0035342162009328604
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.07063709199428558
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.018476035445928574
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.3842623829841614
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.10505779087543488
+   }
+  },
+  "note__r0__L2": {
+   "m4int8": {
+    "bits_per_vector": 32,
+    "pooled": 0.043556712567806244,
+    "worst_key": 0.043556712567806244
+   },
+   "m6int8": {
+    "bits_per_vector": 48,
+    "pooled": 0.03029433824121952,
+    "worst_key": 0.03029433824121952
+   },
+   "m8int8": {
+    "bits_per_vector": 64,
+    "pooled": 0.022606654092669487,
+    "worst_key": 0.022606654092669487
+   },
+   "m10int8": {
+    "bits_per_vector": 80,
+    "pooled": 0.016694139689207077,
+    "worst_key": 0.016694139689207077
+   },
+   "m12int8": {
+    "bits_per_vector": 96,
+    "pooled": 0.012122662737965584,
+    "worst_key": 0.012122662737965584
+   },
+   "m16int8": {
+    "bits_per_vector": 128,
+    "pooled": 0.006409910507500172,
+    "worst_key": 0.006409910507500172
+   },
+   "m4int6": {
+    "bits_per_vector": 24,
+    "pooled": 0.04360327497124672,
+    "worst_key": 0.04360327497124672
+   },
+   "m6int6": {
+    "bits_per_vector": 36,
+    "pooled": 0.03037153370678425,
+    "worst_key": 0.03037153370678425
+   },
+   "m8int6": {
+    "bits_per_vector": 48,
+    "pooled": 0.022713778540492058,
+    "worst_key": 0.022713778540492058
+   },
+   "m10int6": {
+    "bits_per_vector": 60,
+    "pooled": 0.01683232933282852,
+    "worst_key": 0.01683232933282852
+   },
+   "m12int6": {
+    "bits_per_vector": 72,
+    "pooled": 0.012290836311876774,
+    "worst_key": 0.012290836311876774
+   },
+   "m16int6": {
+    "bits_per_vector": 96,
+    "pooled": 0.006639998406171799,
+    "worst_key": 0.006639998406171799
+   },
+   "m4int5": {
+    "bits_per_vector": 20,
+    "pooled": 0.04377055540680885,
+    "worst_key": 0.04377055540680885
+   },
+   "m6int5": {
+    "bits_per_vector": 30,
+    "pooled": 0.030644213780760765,
+    "worst_key": 0.030644213780760765
+   },
+   "m8int5": {
+    "bits_per_vector": 40,
+    "pooled": 0.023098058998584747,
+    "worst_key": 0.023098058998584747
+   },
+   "m10int5": {
+    "bits_per_vector": 50,
+    "pooled": 0.017326002940535545,
+    "worst_key": 0.017326002940535545
+   },
+   "m12int5": {
+    "bits_per_vector": 60,
+    "pooled": 0.012889998964965343,
+    "worst_key": 0.012889998964965343
+   },
+   "m16int5": {
+    "bits_per_vector": 80,
+    "pooled": 0.0074418215081095695,
+    "worst_key": 0.0074418215081095695
+   },
+   "m4int4": {
+    "bits_per_vector": 16,
+    "pooled": 0.04453180357813835,
+    "worst_key": 0.04453180357813835
+   },
+   "m6int4": {
+    "bits_per_vector": 24,
+    "pooled": 0.031918108463287354,
+    "worst_key": 0.031918108463287354
+   },
+   "m8int4": {
+    "bits_per_vector": 32,
+    "pooled": 0.024863623082637787,
+    "worst_key": 0.024863623082637787
+   },
+   "m10int4": {
+    "bits_per_vector": 40,
+    "pooled": 0.019600307568907738,
+    "worst_key": 0.019600307568907738
+   },
+   "m12int4": {
+    "bits_per_vector": 48,
+    "pooled": 0.015684721991419792,
+    "worst_key": 0.015684721991419792
+   },
+   "m16int4": {
+    "bits_per_vector": 64,
+    "pooled": 0.01119116973131895,
+    "worst_key": 0.01119116973131895
+   },
+   "m4int3": {
+    "bits_per_vector": 12,
+    "pooled": 0.048652149736881256,
+    "worst_key": 0.048652149736881256
+   },
+   "m6int3": {
+    "bits_per_vector": 18,
+    "pooled": 0.03858352452516556,
+    "worst_key": 0.03858352452516556
+   },
+   "m8int3": {
+    "bits_per_vector": 24,
+    "pooled": 0.03357833996415138,
+    "worst_key": 0.03357833996415138
+   },
+   "m10int3": {
+    "bits_per_vector": 30,
+    "pooled": 0.030400266870856285,
+    "worst_key": 0.030400266870856285
+   },
+   "m12int3": {
+    "bits_per_vector": 36,
+    "pooled": 0.027868062257766724,
+    "worst_key": 0.027868062257766724
+   },
+   "m16int3": {
+    "bits_per_vector": 48,
+    "pooled": 0.025871912017464638,
+    "worst_key": 0.025871912017464638
+   },
+   "m4int2": {
+    "bits_per_vector": 8,
+    "pooled": 0.06391291320323944,
+    "worst_key": 0.06391291320323944
+   },
+   "m6int2": {
+    "bits_per_vector": 12,
+    "pooled": 0.06016488000750542,
+    "worst_key": 0.06016488000750542
+   },
+   "m8int2": {
+    "bits_per_vector": 16,
+    "pooled": 0.05914326012134552,
+    "worst_key": 0.05914326012134552
+   },
+   "m10int2": {
+    "bits_per_vector": 20,
+    "pooled": 0.0588623471558094,
+    "worst_key": 0.0588623471558094
+   },
+   "m12int2": {
+    "bits_per_vector": 24,
+    "pooled": 0.05866843834519386,
+    "worst_key": 0.05866843834519386
+   },
+   "m16int2": {
+    "bits_per_vector": 32,
+    "pooled": 0.058628711849451065,
+    "worst_key": 0.058628711849451065
+   },
+   "rawint8": {
+    "bits_per_vector": 256,
+    "pooled": 3.672285674838349e-05
+   },
+   "meanint8": {
+    "bits_per_vector": 256,
+    "pooled": 1.1095351510448381e-05
+   },
+   "rawint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.000621007930021733
+   },
+   "meanint6": {
+    "bits_per_vector": 192,
+    "pooled": 0.00018751926836557686
+   },
+   "rawint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.002625930355861783
+   },
+   "meanint5": {
+    "bits_per_vector": 160,
+    "pooled": 0.0007848076056689024
+   },
+   "rawint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.012138789519667625
+   },
+   "meanint4": {
+    "bits_per_vector": 128,
+    "pooled": 0.0036672779824584723
+   },
+   "rawint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.06843012571334839
+   },
+   "meanint3": {
+    "bits_per_vector": 96,
+    "pooled": 0.019080882892012596
+   },
+   "rawint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.39226388931274414
+   },
+   "meanint2": {
+    "bits_per_vector": 64,
+    "pooled": 0.1087133139371872
+   }
+  }
+ }
+}

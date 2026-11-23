@@ -247,12 +247,73 @@ CONFIGS = {
     "l2i8fb6n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:6:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    # TOKEN-SHIFT FIXED-BASIS (codec), 2026-11-23: the shift half of the codec family. The persisted
+    # shift payload becomes 2*m*level bits per layer instead of 64*level: `l2i8s4` is row 17's recipe
+    # (card rank-2 int8 + note rank-1 int8, shifts int4 both = 3,584 bits), and the codec variants
+    # below code those same shifts at m=8 with a [int4|int6|int8] coefficient width -> card 1,280-128
+    # = 1,152 / note 2,304-384 = 1,920 at int8, i.e. 3,072 bits. The synthetic-path config
+    # (`_synthpath`) exists so the ENGINE path can be exercised before a real basis is fitted.
+    # SUPERSEDED by chain 28's shift-codec ladder (2026-11-23): l2i8s4fbs8 / l2i8s4fbs6 /
+    # l2i8s4fbs4 pointed at `shiftbasis_l2i8s4.txt`, an artifact that was never fitted to disk,
+    # and their m=8 premise came from the SINGLE-user dump (pooled over 6 users m=8 int8 is
+    # 0.0244, worse than raw int4 at half the bits). The multi-user note-only fit is
+    # `shiftbasis_note16.txt` and the ladder is registered above as l2i8fb4nsb*; the synthetic
+    # config below stays as the ENGINE-path probe.
+    "l2i8s4fbs_synth": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8,note:1:int8", "RWKV_QUANT_SHIFTS": "1",
+                        "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4",
+                        "RWKV_SHIFT_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/shiftbasis_synth.txt",
+                        "RWKV_SHIFT_FIXEDBASIS_MODES": "8"},
     "l2i8fb4n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
     "l2i8fb5n": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
                  "RWKV_STATE_FIXEDBASIS_SCOPE": "note:5:int8", "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
                  "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4"},
+    # CHAIN 28 (2026-11-23): the TOKEN-SHIFT CODEC. The two persisted shift vectors are 47% of a
+    # compressed note layer's bits (2*32*4 = 256 of 768 at int4). A MODEL-SIDE mu + P (zero state bits)
+    # codes each vector as m coefficients at the stream's shift level, i.e. 2*m*level bits/layer. Fitted
+    # on the 6-user NOTE dump (3,000 rows per key): m=16 int4 = rel err 0.0112 against raw int4's 0.0121
+    # at HALF the bits; m=16 int8 = 0.0064 at the SAME bits; m=12 int4 = 0.0157 at 3/8; m=8 int4 =
+    # 0.0249 at 1/4. Every point holds chain 26's PASSING point 1 (card rank-2 int8 + note state codec
+    # m=4 int8, 2,432 bits) and changes ONLY the note's shift coder, so the ladder is a clean A/B.
+    # The artifact is NOTE-ONLY (its bare r0/r1 tiers were dropped) and the SCOPE pins the CARD to raw
+    # int4: the card's own shift subspace needs m=16 int8 merely to MATCH int4's error, so the codec
+    # buys nothing on the card.
+    "l2i8fb4nsb16i4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4",
+                 "RWKV_SHIFT_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/shiftbasis_note16.txt",
+                 "RWKV_SHIFT_FIXEDBASIS_MODES": "16",
+                 "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+    "l2i8fb4nsb16i6": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int6",
+                 "RWKV_SHIFT_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/shiftbasis_note16.txt",
+                 "RWKV_SHIFT_FIXEDBASIS_MODES": "16",
+                 "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+    "l2i8fb4nsb16i8": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int8",
+                 "RWKV_SHIFT_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/shiftbasis_note16.txt",
+                 "RWKV_SHIFT_FIXEDBASIS_MODES": "16",
+                 "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+    "l2i8fb4nsb12i4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4",
+                 "RWKV_SHIFT_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/shiftbasis_note16.txt",
+                 "RWKV_SHIFT_FIXEDBASIS_MODES": "12",
+                 "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+    "l2i8fb4nsb8i4": {"RWKV_STATE_LOWRANK_SCOPE": "card:2:int8", "RWKV_QUANT_SHIFTS": "1",
+                 "RWKV_STATE_FIXEDBASIS_SCOPE": "note:4:int8",
+                 "RWKV_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/fixedbasis_l2i8s4all.txt",
+                 "RWKV_STATE_SHIFT_LEVEL": "card:int4,note:int4",
+                 "RWKV_SHIFT_FIXEDBASIS_PATH": "scratchpad/quant_plan/corruption/shiftbasis_note16.txt",
+                 "RWKV_SHIFT_FIXEDBASIS_MODES": "8",
+                 "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
     # chain 27 (2026-11-23): two NEW codec knobs - the m x m coefficient block's own BIT-WIDTH
     # (int8 -> int6 -> int4), and the CARD on the codec instead of the rank-2 path. The level in
     # the FIXEDBASIS scope is the coefficient width; the basis file is NESTED at 16 modes and it
@@ -351,6 +412,15 @@ def bits_for(env):
         parts = entry.strip().split(":")
         if len(parts) >= 2 and parts[0]:
             fb[parts[0]] = (int(parts[1]), QBITS.get(parts[-1], 32))
+    # RWKV_SHIFT_FIXEDBASIS_PATH/MODES (2026-11-23): the token-shift CODEC codes each 32-d shift
+    # vector as m coefficients at the stream's shift level, so the shift payload is 2*m*level bits per
+    # layer instead of 64*level. mu/P are model-side and cost no state bits. It applies only where the
+    # shifts are quantized at all (an uncompressed stream keeps fp32 shifts).
+    _sfb = bool(str(env.get("RWKV_SHIFT_FIXEDBASIS_PATH", "")).strip())
+    _sfb_m = int(env.get("RWKV_SHIFT_FIXEDBASIS_MODES", 8) or 8)
+    # RWKV_SHIFT_FIXEDBASIS_SCOPE: the streams the codec codes; the engine falls back to int-N elsewhere.
+    _sfb_scope = {t for t in (p.strip() for p in str(
+        env.get("RWKV_SHIFT_FIXEDBASIS_SCOPE", "")).split(",")) if t}
     out = {}
     for s, n in LAYERS.items():
         # the shifts follow the WKV level when no shift override is given
@@ -358,17 +428,19 @@ def bits_for(env):
             sb = bare
         else:
             sb = shift.get(s, low[s][1] if s in low else full.get(s, 32))
+        _sfb_here = _sfb and sb < 32 and (not _sfb_scope or s in _sfb_scope)
+        shift_bits = 2 * _sfb_m * sb if _sfb_here else 64 * sb
         if s in fb:
             m_, qb_ = fb[s]
-            out[s] = n * (m_ * m_ * qb_ + 64 * sb)
+            out[s] = n * (m_ * m_ * qb_ + shift_bits)
         elif s in low:
             r, qb = low[s]
             if vbits is None:
-                out[s] = n * (2 * r * 32 * qb + 64 * sb)
+                out[s] = n * (2 * r * 32 * qb + shift_bits)
             else:
-                out[s] = n * (r * 32 * qb + r * 32 * vbits + 64 * sb)
+                out[s] = n * (r * 32 * qb + r * 32 * vbits + shift_bits)
         else:
-            out[s] = n * (1024 * full.get(s, 32) + 64 * sb)
+            out[s] = n * (1024 * full.get(s, 32) + shift_bits)
         if ef_bits and s in low:
             out[s] += n * ef_bits
     return out
@@ -383,7 +455,10 @@ def run(weights, trace_dir, users, name, preds_root):
               "RWKV_STATE_SHIFT_LEVEL", "RWKV_LOWRANK_HADAMARD", "RWKV_LOWRANK_PERCOL",
               "RWKV_LOWRANK_ALS", "RWKV_LOWRANK_4LEVEL", "RWKV_LOWRANK_MIXED53",
               "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT",
-              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH"):
+              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH",
+              # the token-shift codec's keys (2026-11-23): an ambient value would otherwise make the
+              # engine code shifts that this config's Pythonside did not code.
+              "RWKV_SHIFT_FIXEDBASIS_PATH", "RWKV_SHIFT_FIXEDBASIS_MODES"):
         env.pop(k, None)
     env.update({k: str(v) for k, v in CONFIGS[name].items()})
     r = subprocess.run([str(ENGINE)] + [str(u) for u in users], cwd=ROOT, env=env,

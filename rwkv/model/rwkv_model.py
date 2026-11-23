@@ -86,6 +86,95 @@ def fake_quant_shift(x_BTC: torch.Tensor, qmax: float) -> torch.Tensor:
     return x_BTC + (q - x_BTC).detach()
 
 
+# ---- FIXED-BASIS SHIFT CODING (RWKV_SHIFT_FIXEDBASIS_PATH=<file.npz>, 2026-11-23) ----------------
+# WHY. The two token-shift vectors a layer persists (2 x 32 coordinates; 47% of a codec-compressed
+# note, 256 of the card's 1,280 bits at int4) are LAYERNORM outputs: their mean alone carries 68-71%
+# of the energy and the per-key means are near-identical (pairwise cosine 0.991-0.998), so
+# `x ~ mu + P c` with a MODEL-SIDE mu (32 floats) and P (32 x m) codes them far better than int-N on
+# the raw vector. Measured on 6,000 real rows per key (corruption/measure_shift_subspace.py +
+# fit_shift_basis.py, the row-17 checkpoint): int4 now = 128 bits/vector at rel_err 0.0162-0.0173,
+# while m=8 int8 = 64 bits at 0.0132-0.0140 - HALF the bits at a LOWER error - and m=16 int8 = 128
+# bits at 0.0036-0.0038 (4.6x less error at the SAME bits). mu and P cost ZERO state bits.
+#
+# NOT A CODEBOOK: a fixed linear transform (a codec basis), no discrete entries, no nearest-neighbour
+# lookup, no per-user vectors. The COEFFICIENT level is the caller's `qmax` (the stream's shift level),
+# exactly like the int-N path, so bit accounting stays `2*m*level_bits` per layer.
+#
+# TIERED KEYS, like the state codec's stream/layer lookup: the file may carry
+# `M__<stream>__r<role>__L<layer>`, `M__<stream>__r<role>` or `M__r<role>` (and the matching `P__`),
+# most specific first. A miss falls back to `fake_quant_shift`, so a stream with no basis keeps the
+# documented int-N behavior instead of silently changing.
+_SHIFT_FB_PATH = os.environ.get("RWKV_SHIFT_FIXEDBASIS_PATH", "")
+_SHIFT_FB_M = int(os.environ.get("RWKV_SHIFT_FIXEDBASIS_MODES", "8") or 8)
+# RWKV_SHIFT_FIXEDBASIS_SCOPE="note" (2026-11-23): the streams the codec actually codes. A stream
+# outside the scope keeps the int-N shift round-trip, so a basis fitted on ONE stream can never be
+# silently applied to another - the cross-stream error is 10-20x worse (0.25 vs 0.017 at m=16), which
+# would be a silent quality loss. Empty (the default) = every stream the file has a key for.
+_SHIFT_FB_SCOPE = {t for t in (s.strip() for s in
+                              os.environ.get("RWKV_SHIFT_FIXEDBASIS_SCOPE", "").split(",")) if t}
+_SHIFT_FB_CACHE: dict = {}
+_SHIFT_FB_MISSED: set = set()
+
+
+def shift_fixedbasis_loaded() -> bool:
+    return bool(_SHIFT_FB_PATH)
+
+
+def _shift_fb_lookup(stream: str, layer: int, role: int, m: int):
+    """(mu, P) for this shift key at m modes, most specific tier first, or None when absent."""
+    if not _SHIFT_FB_PATH:
+        return None
+    if _SHIFT_FB_SCOPE and stream and stream not in _SHIFT_FB_SCOPE:
+        return None  # out of scope: keep the int-N path (no basis, no miss warning)
+    if not _SHIFT_FB_CACHE:
+        import numpy as _np
+        with _np.load(_SHIFT_FB_PATH) as z:
+            for k in z.files:
+                _SHIFT_FB_CACHE[k] = torch.from_numpy(z[k].astype("float32"))
+    names = []
+    if stream and layer >= 0:
+        names.append(f"{stream}__r{role}__L{layer}")
+    if stream:
+        names.append(f"{stream}__r{role}")
+    names.append(f"r{role}")
+    for name in names:
+        mu = _SHIFT_FB_CACHE.get(f"M__{name}")
+        p = _SHIFT_FB_CACHE.get(f"P__{name}")
+        if mu is not None and p is not None and p.shape[1] >= m:
+            return mu, p[:, :m]
+    if (stream, layer, role) not in _SHIFT_FB_MISSED:
+        _SHIFT_FB_MISSED.add((stream, layer, role))
+        print(f"[shift-fixedbasis] NO BASIS for {stream}/L{layer}/role{role} in {_SHIFT_FB_PATH} -- "
+              f"falling back to the int-N shift round-trip", flush=True)
+    return None
+
+
+@torch.jit.ignore
+def fake_shift_fixedbasis(x_BTC: torch.Tensor, qmax: float, role: int, stream: str = "",
+                          layer: int = -1, m: int = 0) -> torch.Tensor:
+    """STE round-trip of a token-shift tensor (B,T,C): c = P^T (x - mu) at int-N, x_hat = mu + P c.
+
+    `mu`/`P` ship with the model (zero state bits); only the m coefficients are stored, with the SAME
+    symmetric per-vector rule as `fake_quant_shift`/`quant_vec_inplace` (scale = amax/qmax per vector).
+    Falls back to `fake_quant_shift` when the file has no entry for this key.
+    """
+    mm = m or _SHIFT_FB_M
+    got = _shift_fb_lookup(stream, layer, role, mm)
+    if got is None:
+        return fake_quant_shift(x_BTC, qmax)
+    mu, p = got
+    mu = mu.to(x_BTC.device)
+    p = p.to(x_BTC.device)
+    with torch.no_grad():
+        flat = x_BTC.reshape(-1, x_BTC.shape[-1]).float()
+        c = (flat - mu) @ p
+        amax = c.abs().amax(dim=-1, keepdim=True)
+        scale = (amax / qmax).clamp_min(1e-12)
+        cq = (c / scale).round().clamp(-qmax, qmax) * scale
+        rec = (mu + cq @ p.T).reshape(x_BTC.shape).to(x_BTC.dtype)
+    return x_BTC + (rec - x_BTC).detach()
+
+
 # ---- Shift-PQ QAT (RWKV_QAT_SHIFT_PQ=<codebook file>) -----------------------------------------------
 # Product-quantize the token-shift vectors in the QAT forward, mirroring the Rust deploy RWKV_SHIFT_PQ
 # path (PqCodebook::encode_decode, 2 roles: 0 = time-mixer t_xshift, 1 = channel-mixer c_xshift):
@@ -639,6 +728,13 @@ class RWKV7ChannelMixer(ModuleType):
         self.state_shift_qmax = config.state_shift_qmax  # shift-QAT: inf = off
         # TorchScript can't read module-level str globals from a scripted forward -> instance bool
         self.shift_pq_on = bool(_SHIFT_PQ_PATH)
+        # Token-shift FIXED-BASIS codec (RWKV_SHIFT_FIXEDBASIS_PATH): needs the layer to pick a
+        # per-layer basis and the stream to pick a per-stream one - the state codec's key tiers.
+        # This mixer stores neither, so record them here (the shift probe's own note: the channel
+        # mixer never stored self.layer_id, which is why its dumps can only be pooled over layers).
+        self.layer_id = layer_id
+        self.stream_name = config.stream_name[:-3] if config.stream_name.endswith("_id") else config.stream_name
+        self.shift_fb_on = shift_fixedbasis_loaded()
         with torch.no_grad():
             ratio_1_to_almost_0 = 1.0 - (layer_id / config.total_layers)
             self.layer_norm = torch.nn.LayerNorm(config.d_model)
@@ -684,7 +780,10 @@ class RWKV7ChannelMixer(ModuleType):
         x_BTC = self.layer_norm(in_BTC)
         x_shift_BTC = time_shift_gather(x_BTC, time_shift_select_BT)
         if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
-            if self.shift_pq_on:
+            if self.shift_fb_on:
+                x_shift_BTC = fake_shift_fixedbasis(x_shift_BTC, self.state_shift_qmax, 1,
+                                                    self.stream_name, self.layer_id)
+            elif self.shift_pq_on:
                 x_shift_BTC = fake_pq_shift(x_shift_BTC, 1)  # role 1 = c_xshift
             else:
                 x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)
@@ -813,6 +912,10 @@ class RWKV7TimeMixer(ModuleType):
         self.tail_reg = _TAIL_REG
         self.state_lowrank_fqmax = config.state_lowrank_fqmax    # int-N factor quant (inf = fp32)
         self.state_shift_qmax = config.state_shift_qmax          # shift-QAT: inf = off
+        # Token-shift FIXED-BASIS codec (RWKV_SHIFT_FIXEDBASIS_PATH): `self.tail_tag` is already this
+        # stream's name and `self.layer_id` this layer, so these are the codec's lookup keys.
+        self.stream_name = self.tail_tag
+        self.shift_fb_on = shift_fixedbasis_loaded()
         # State-norm clamp (2026-07-18, A3-instability fix; see windowed_clamped_wkv).
         # tau=0 -> branch never taken = byte-identical. Engages per-stream when the padded
         # per-entity T exceeds one window (long recurrences only; training chunks stay under).
@@ -1041,7 +1144,10 @@ class RWKV7TimeMixer(ModuleType):
         x_BTC = self.layer_norm(in_BTC)
         x_shift_BTC = time_shift_gather(x_BTC, time_shift_select_BT)
         if self.state_shift_qmax != float("inf"):  # shift-QAT: fake-quant the persisted shift (deploy analog)
-            if self.shift_pq_on:
+            if self.shift_fb_on:
+                x_shift_BTC = fake_shift_fixedbasis(x_shift_BTC, self.state_shift_qmax, 0,
+                                                    self.stream_name, self.layer_id)
+            elif self.shift_pq_on:
                 x_shift_BTC = fake_pq_shift(x_shift_BTC, 0)  # role 0 = t_xshift
             else:
                 x_shift_BTC = fake_quant_shift(x_shift_BTC, self.state_shift_qmax)

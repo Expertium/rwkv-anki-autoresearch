@@ -53,7 +53,13 @@ def enabled() -> bool:
 
 
 def _caller(frame):
-    """The (role, layer id) of the mixer whose forward called `fake_quant_shift`."""
+    """The (role, layer id) of the mixer whose forward called `fake_quant_shift`.
+
+    The ROLE is the calling mixer's class name, and it is captured even when the layer id is missing:
+    `RWKV7ChannelMixer.__init__` never stores `self.layer_id`, so a `?` layer is that mixer, not an
+    unknown caller. (Before 2026-11-23 11:35 this returned `("?", -1)` for the channel mixer, which
+    pooled its three layers into one key without saying which mixer they came from.)
+    """
     role, lay = "?", -1
     try:
         f = frame
@@ -61,9 +67,9 @@ def _caller(frame):
             if f is None:
                 break
             self_ = f.f_locals.get("self")
-            if self_ is not None and hasattr(self_, "layer_id"):
+            if self_ is not None and type(self_).__name__.endswith("Mixer"):
                 role = type(self_).__name__
-                lay = int(getattr(self_, "layer_id"))
+                lay = int(getattr(self_, "layer_id", -1))
                 break
             f = f.f_back
     except Exception:

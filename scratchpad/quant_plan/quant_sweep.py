@@ -175,6 +175,16 @@ CANDIDATES = {
     "l3i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:3:int8,note:1:int8",
               "RWKV_QAT_SHIFT_SCOPE": "card:int8,note:int8"},
              "card rank-3 int8 factors + int8 shifts (2,048/3,072 bits)", None),
+    # ---- TOKEN-SHIFT FIXED-BASIS CODEC (2026-11-23) -------------------------------------------
+    # The shift half of the codec family: the two persisted 32-d shift vectors of a layer (47% of a
+    # codec-compressed note) are LayerNorm outputs with a near-shared mean, so a model-side mu + P
+    # codes them at 2*m*level bits/layer instead of 64*level. The LEVEL here is the COEFFICIENT
+    # width, so `s8`/`s6`/`s4` name the codec's level, not the raw int4 the baseline used.
+    # Measured reconstruction (corruption/fit_shift_basis.py, 6,000 rows/key): int4 raw = 128
+    # bits/vector at rel_err 0.0162-0.0173, codec m=8 int8 = 64 bits at 0.0132-0.0140.
+    #   l2i8s4fbs8  row 17's recipe + codec shifts m=8 int8   1,152 + 1,920 = 3,072  (512 below row 17)
+    #   l2i6s8fbs   row 45's layout + codec shifts m=8 int8     896 + 1,536 = 2,432  (512 below row 45)
+    #   l2i6s4fbs   row 45's layout + codec shifts m=8 int4     832 + 1,344 = 2,176  (768 below row 45)
     "l2i8s4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int8",
                 "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"},
                "card rank-2 int8 factors + int4 shifts (1,280/2,304 bits)", None),
@@ -352,6 +362,56 @@ CANDIDATES = {
                   "RWKV_FIXEDBASIS_PATH": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\corruption\\fixedbasis_l2i8s4all.npz"},
                  "card rank 2 (row 17's card) + NOTE fixed basis m=6 int8 (1,280/1,368 = 2,648 bits)",
                  (1280, 1368)),
+    # CHAIN 28 (2026-11-23): the TOKEN-SHIFT CODEC. The two persisted shift vectors are 47% of a
+    # compressed note layer's bits (2*32*4 = 256 of 768 at int4). A MODEL-SIDE mu + P (zero state bits)
+    # codes each vector as m coefficients at the stream's shift level, i.e. 2*m*level bits/layer. Fitted
+    # on the 6-user NOTE dump (3,000 rows per key): m=16 int4 = rel err 0.0112 against raw int4's 0.0121
+    # at HALF the bits; m=16 int8 = 0.0064 at the SAME bits; m=12 int4 = 0.0157 at 3/8; m=8 int4 =
+    # 0.0249 at 1/4. Every point holds chain 26's PASSING point 1 (card rank-2 int8 + note state codec
+    # m=4 int8, 2,432 bits) and changes ONLY the note's shift coder, so the ladder is a clean A/B.
+    # The artifact is NOTE-ONLY (its bare r0/r1 tiers were dropped) and the SCOPE pins the CARD to raw
+    # int4: the card's own shift subspace needs m=16 int8 merely to MATCH int4's error, so the codec
+    # buys nothing on the card.
+    "l2i8fb4nsb16i4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\shiftbasis_note16.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_MODES": "16",
+                   "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+                  "chain 26 point 1 + note shift codec m=16 int4 (1,280/768 = 2,048 bits)", (1280, 768)),
+    "l2i8fb4nsb16i6": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int6",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\shiftbasis_note16.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_MODES": "16",
+                   "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+                  "chain 26 point 1 + note shift codec m=16 int6 (1,280/960 = 2,240 bits)", (1280, 960)),
+    "l2i8fb4nsb16i8": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int8",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\shiftbasis_note16.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_MODES": "16",
+                   "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+                  "chain 26 point 1 + note shift codec m=16 int8 (1,280/1,152 = 2,432 bits, error-only A/B)", (1280, 1152)),
+    "l2i8fb4nsb12i4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\shiftbasis_note16.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_MODES": "12",
+                   "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+                  "chain 26 point 1 + note shift codec m=12 int4 (1,280/672 = 1,952 bits)", (1280, 672)),
+    "l2i8fb4nsb8i4": ({"RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:4:int8",
+                   "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4",
+                   "RWKV_FIXEDBASIS_SCOPE": "note",
+                   "RWKV_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\fixedbasis_l2i8s4all.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_PATH": r"C:\Users\Andrew\rwkv-anki-autoresearch\scratchpad\quant_plan\corruption\shiftbasis_note16.npz",
+                   "RWKV_SHIFT_FIXEDBASIS_MODES": "8",
+                   "RWKV_SHIFT_FIXEDBASIS_SCOPE": "note"},
+                  "chain 26 point 1 + note shift codec m=8 int4 (1,280/576 = 1,856 bits)", (1280, 576)),
     # CHAIN 27 (2026-11-23): the CODEC's own coefficient BIT-WIDTH, and the CARD moved onto
     # the codec. The level slot of RWKV_QAT_LOWRANK_SCOPE sets that stream's qmax, and
     # `fake_fixedbasis_state` quantizes the m x m coefficient block with it, so `note:6:int6`
@@ -559,17 +619,30 @@ def bits_for(env, bits_override=None):
         parts = entry.split(":")
         if len(parts) == 2:
             fq[parts[0]] = _QBITS[parts[1]]
+    # RWKV_SHIFT_FIXEDBASIS_PATH/MODES (2026-11-23): the token-shift CODEC codes each 32-d shift
+    # vector as m coefficients at the stream's shift level, so the shift payload is 2*m*level bits per
+    # layer instead of 64*level. mu/P are model-side and cost no state bits. It applies only where the
+    # shifts are quantized at all (an uncompressed stream keeps fp32 shifts).
+    sfb_on = bool(str(env.get("RWKV_SHIFT_FIXEDBASIS_PATH", "")).strip())
+    sfb_m = int(env.get("RWKV_SHIFT_FIXEDBASIS_MODES", 8) or 8)
+    # RWKV_SHIFT_FIXEDBASIS_SCOPE: the streams whose shifts the codec actually codes. The runtime falls
+    # back to int-N for a stream the artifact has no key for, so accounting it any other way misprices
+    # the candidate. Empty (the default) = every stream with quantized shifts.
+    sfb_scope = {t for t in (p.strip() for p in str(
+        env.get("RWKV_SHIFT_FIXEDBASIS_SCOPE", "")).split(",")) if t}
     out = {}
     for s, n in LAYERS.items():
         sb = shift_bits.get(s, 32)
+        sfb_here = sfb_on and sb < 32 and (not sfb_scope or s in sfb_scope)
+        shift_bits_s = 2 * sfb_m * sb if sfb_here else 64 * sb
         if fb_on and (not fb or s in fb) and s in lr:
             m, qb = lr[s]
-            out[s] = n * (m * m * qb + 64 * sb)
+            out[s] = n * (m * m * qb + shift_bits_s)
         elif s in lr:
             r, qb = lr[s]
-            out[s] = n * (2 * r * 32 * qb + 64 * sb)
+            out[s] = n * (2 * r * 32 * qb + shift_bits_s)
         elif s in fq:
-            out[s] = n * (1024 * fq[s] + 64 * sb)
+            out[s] = n * (1024 * fq[s] + shift_bits_s)
         else:
             out[s] = n * (1024 + 64) * 32
     if bits_override is not None:

@@ -1,0 +1,99 @@
+{
+ "npz": "scratchpad\\quant_plan\\corruption\\shift_probe_out\\shifts_note_l2i8s4.npz",
+ "keys": [
+  "note|?|L-1",
+  "note|RWKV7TimeMixer|L0",
+  "note|RWKV7TimeMixer|L1",
+  "note|RWKV7TimeMixer|L2"
+ ],
+ "by_m": {
+  "6": {
+   "note|?|L-1": {
+    "per_layer": 0.019756946712732315,
+    "pooled_P": 0.020178258419036865,
+    "pooled_all": 0.020822040736675262
+   },
+   "note|RWKV7TimeMixer|L0": {
+    "per_layer": 0.01960139349102974,
+    "pooled_P": 0.020243948325514793,
+    "pooled_all": 0.021993106231093407
+   },
+   "note|RWKV7TimeMixer|L1": {
+    "per_layer": 0.018337411805987358,
+    "pooled_P": 0.018786320462822914,
+    "pooled_all": 0.020160675048828125
+   },
+   "note|RWKV7TimeMixer|L2": {
+    "per_layer": 0.018784357234835625,
+    "pooled_P": 0.019389573484659195,
+    "pooled_all": 0.020263994112610817
+   }
+  },
+  "8": {
+   "note|?|L-1": {
+    "per_layer": 0.014027069322764874,
+    "pooled_P": 0.014439092949032784,
+    "pooled_all": 0.014961066655814648
+   },
+   "note|RWKV7TimeMixer|L0": {
+    "per_layer": 0.013859511353075504,
+    "pooled_P": 0.014566104859113693,
+    "pooled_all": 0.015679936856031418
+   },
+   "note|RWKV7TimeMixer|L1": {
+    "per_layer": 0.013181596994400024,
+    "pooled_P": 0.013652333989739418,
+    "pooled_all": 0.014655212871730328
+   },
+   "note|RWKV7TimeMixer|L2": {
+    "per_layer": 0.013450317084789276,
+    "pooled_P": 0.014145502820611,
+    "pooled_all": 0.014752553775906563
+   }
+  },
+  "10": {
+   "note|?|L-1": {
+    "per_layer": 0.01008838415145874,
+    "pooled_P": 0.01045928057283163,
+    "pooled_all": 0.010877665132284164
+   },
+   "note|RWKV7TimeMixer|L0": {
+    "per_layer": 0.01008164044469595,
+    "pooled_P": 0.010739821940660477,
+    "pooled_all": 0.011744372546672821
+   },
+   "note|RWKV7TimeMixer|L1": {
+    "per_layer": 0.009532380849123001,
+    "pooled_P": 0.009919139556586742,
+    "pooled_all": 0.01080236118286848
+   },
+   "note|RWKV7TimeMixer|L2": {
+    "per_layer": 0.009688649326562881,
+    "pooled_P": 0.010221968404948711,
+    "pooled_all": 0.01082374807447195
+   }
+  },
+  "12": {
+   "note|?|L-1": {
+    "per_layer": 0.00723651610314846,
+    "pooled_P": 0.007674444932490587,
+    "pooled_all": 0.00786635372787714
+   },
+   "note|RWKV7TimeMixer|L0": {
+    "per_layer": 0.0072145015001297,
+    "pooled_P": 0.007907208055257797,
+    "pooled_all": 0.008604994975030422
+   },
+   "note|RWKV7TimeMixer|L1": {
+    "per_layer": 0.006834161467850208,
+    "pooled_P": 0.007267178501933813,
+    "pooled_all": 0.007822604849934578
+   },
+   "note|RWKV7TimeMixer|L2": {
+    "per_layer": 0.0068906513042747974,
+    "pooled_P": 0.007425850722938776,
+    "pooled_all": 0.007779666688293219
+   }
+  }
+ }
+}

@@ -796,10 +796,24 @@ impl FastModel {
                 // Override the shift LEVEL for already-compressed streams (RWKV_STATE_SHIFT_LEVEL); leave
                 // uncompressed streams unquantized. Lets shifts go coarser than the WKV factors.
                 let shift_qmax = base.map(|b| cfg.shift_level.get(&m).copied().unwrap_or(b));
+                // FIXED-BASIS (codec) shift coding (RWKV_SHIFT_FIXEDBASIS_PATH): when this
+                // (module, layer, role) has a basis, code the vector as mu + P*quant(P^T (x - mu))
+                // - the same shape as the WKV codec above, with the same per-vector int-N rule. It
+                // takes precedence over the int-N rounding; RWKV_SHIFT_PQ still wins over both.
+                let fb_t = cfg.shift_fb.get(&(m, l, 0));
+                let fb_c = cfg.shift_fb.get(&(m, l, 1));
                 if let Some(q) = shift_qmax {
                     for bi in 0..b {
-                        crate::model::quant_vec_inplace(&mut t_xshift[bi * c..(bi + 1) * c], q);
-                        crate::model::quant_vec_inplace(&mut c_xshift[bi * c..(bi + 1) * c], q);
+                        let t = &mut t_xshift[bi * c..(bi + 1) * c];
+                        match fb_t {
+                            Some(fb) => crate::model::fixedbasis_vec_inplace(t, fb, cfg.shift_fb_m, q),
+                            None => crate::model::quant_vec_inplace(t, q),
+                        }
+                        let cs = &mut c_xshift[bi * c..(bi + 1) * c];
+                        match fb_c {
+                            Some(fb) => crate::model::fixedbasis_vec_inplace(cs, fb, cfg.shift_fb_m, q),
+                            None => crate::model::quant_vec_inplace(cs, q),
+                        }
                     }
                 }
             }
