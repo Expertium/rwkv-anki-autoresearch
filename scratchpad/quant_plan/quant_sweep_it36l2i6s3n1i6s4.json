@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i6s3n1i6s4\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i6s3n1i6s4",
+      "tag": "ql2i6s3n1i6s4_it36l2i6s3n1i6s4",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int6,note:1:int6",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int3,note:int4"
+      },
+      "comment": "row 45 with the CARD's shifts int4 -> int3 (960/1,920 = 2,880 bits)",
+      "bits": {
+        "card": 960,
+        "note": 1920
+      },
+      "rc": 0,
+      "secs": 1480.6089999999967,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 0.0001875226666666651,
+          "ub95": 0.0002556205403464307,
+          "p_worse": 2.5244719112917214e-10,
+          "mean_cur": 0.3339893333333333,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.00046297466666666616,
+          "ub95": 0.0005369033961078529,
+          "p_worse": 1.7603267355043754e-28,
+          "mean_cur": 0.30667437200000003,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

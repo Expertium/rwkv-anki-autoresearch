@@ -1144,3 +1144,61 @@ Queued behind chain 25 (`it36shiftrung`), the tail of the live queue. Outside `a
 ## Amendment 41 (2026-11-23 09:40): chain 24 point `l2i6s4e1c` - the E1 tail-energy penalty at the 2,944-bit frontier
 
 `l2i6s4e1c` is row 45's int6 layout (card rank-2 int6 + int4 shifts, note rank-1 int6 + int4 shifts, 1,024/1,920 = 2,944 bits) retrained with the E1 penalty at lambda=1.0 and stride 8 on the fused-off Python loop. Landed 09:30 after 36.1 min of eval. It reads 0.334025/0.306393 = +0.000223/+0.000182 (ub95 +0.000348/+0.000297, 750 users) - PASS on both heads. Because the only difference from row 45 is the penalty, the difference between the two rows (+0.000098/-0.000199) is the lever's own effect at the frontier: trades one head against the other. At row 17's layout the same lambda beat its penalty-off control on both heads (row 55 vs row 44), so the lever's value depends on where the tax already is. Finiteness: PASS - the chain's own 50-user check (158,986 state observations, 150 p(recall) tensors, 0 non-finite, 4.5 min).
+
+## Amendment 42 (2026-11-23 10:25): chain 27 (`it36fbwidth`) - the codec's coefficient bit-width, and the CARD on the codec
+
+Chain 27 is LIVE (waiting behind `it36fbrung`, chain 26). It opens the two size knobs the fixed-basis
+codec has that the uniform (rank, factor-width, shift-width) design does not:
+
+1. **The coefficient block's own int-N level.** The codec stores an `m x m` block `C = P^T W Q` and
+   `fake_fixedbasis_state` quantizes it with the SAME qmax the rank-r factors use, which the level slot of
+   `RWKV_QAT_LOWRANK_SCOPE` sets (`note:6:int6` = m=6, int6 coefficients). The Rust engine reads the same
+   level from its own `RWKV_STATE_FIXEDBASIS_SCOPE` (`model.rs:2423`), and every level int2..int8 already
+   exists in `parse_level` / `quant_sweep._QMAX`. No new code.
+2. **The CARD stream.** The basis file already carries `card 0 16` (`P__card__L0` / `Q__card__L0`), fitted
+   at 16 modes like the note's, so the card needs no re-fit; its codec at m=8 int8 is
+   `1*(64*8 + 64*4) = 768` bits against row 17's rank-2 card's 1,280.
+
+The four points, 124 decay steps each against `qnj_it36ctl`, UNGATED point-on-point (a single broken rung
+must not hide the rest), each with its own 50-user finiteness check in the chain's own phase:
+
+    point                    card / note bits      total    vs row 45's 2,944    knob
+    `l2i8fb6n6`              1,280 / 1,416        2,696    248 BELOW            note coefficients int8 -> int6
+    `l2i8fb6n4`              1,280 / 1,200        2,480    464 BELOW            note coefficients int8 -> int4
+    `fbc8n6i8`                 768 / 1,632        2,400    544 BELOW            the CARD on the codec (m=8 int8)
+    `fbc8n6i6`                 768 / 1,416        2,184    760 BELOW            both of the above
+
+**Speed is already cleared** (CPU-only engine probe `rust_speed_c27.json`, 2026-11-23 10:02, run beside a
+chain job so the ratios read LOW): `plain` 2,812.8 rev/s; `l2i8fb6n` (the note-only codec reference)
+0.792x rev/s / 0.781x median per-user; `l2i8fb6n6` 0.770x / 0.760x; `l2i8fb6n4` 0.792x / 0.755x;
+`fbc8n6i8` **0.877x / 0.868x**; `fbc8n6i6` 0.864x / 0.856x. All four are above the 0.75x floor, and the
+two BOTH-CODEC configs are the FASTEST of the family: replacing the card's rank-2 per-step deflation with
+two small m=8 matmuls is cheaper than the Gram/eigen path it replaces, so axis 3 improves as well.
+`l2i8fb6n4`'s 0.755x median is the tightest of the four and needs an idle re-measurement before it is
+quoted as a deploy number.
+
+**Two PTQ screens were run first (3 ranking users, CPU-only, `rust_grid_c27ptq.json` and
+`rust_grid_eqbits.json` + `rust_grid_int2probe.json`), and they changed the design before any GPU time was
+spent.** `rust_grid_c27ptq.json` (untrained codec configs scored on the row-17 checkpoint, against
+`plain`): `l2i8s4` (the checkpoint's own trained config) -0.002967/+0.002772; `l2i8fb6n`
+-0.000894/+0.000983; `l2i8fb6n6` -0.000838/+0.001217; `l2i8fb6n4` -0.000888/+0.001364; `fbc8n6i8`
+**-0.001137/+0.000782**; `fbc8n6i6` -0.001070/+0.000954. So the codec's imm tax is ~3x smaller than the
+rank-2 card's own even untrained, and the CARD codec improves BOTH heads against the rank-2 card at 512
+fewer bits - the rank-2 per-step deflation was not buying anything a rank-8 fit of the same state does not.
+
+The equal-bits screen closed a whole class of designs at zero GPU cost: the note payload is
+`3*(m*m*qbits + 64*4)`, so m=6 int8 and m=12 int2 are BOTH 1,632 bits and m=8 int8 and m=16 int2 are BOTH
+2,304 - and **the int8 codec wins both pairs by a wide margin** (1,632: -0.000894/+0.000983 vs
+-0.001947/+0.003358; 2,304: -0.000795/+0.001077 vs the same -0.001947/+0.003358). The follow-up probe
+shows why: every int2 rung is m-INDEPENDENT (m=6, 8, 12, 16 int2 all read -0.001947 ahead and
++0.003358..+0.003369 imm), because the per-matrix symmetric scale leaves only the dominant coefficient
+above the rounding threshold, so the block collapses to a RANK-1 reconstruction and the extra modes carry
+nothing. The int4 rungs DO track m (m=6 -0.000888/+0.001364 vs m=8 -0.001162/+0.001142), so the
+COEFFICIENT LEVEL is the binding knob, not the mode count. Rule for later designs: a codec rung needs
+>= int3/int4 coefficients, and a larger m only pays if the coefficients keep their levels.
+
+Registration was done BEFORE the launch and verified by a preflight that checked the compile, the point
+lists, the basis `.npz` keys, the engine's text export (`card 0 16` present) and that all four candidates
+derive the same bits in `quant_sweep.bits_for` and `rust_grid.bits_for` (88 candidates, 0 disagreements).
+The chain takes an ATOMIC `os.O_EXCL` lock, because the shell tool can run one launch command twice
+concurrently (see AGENTS.md). Outside `autorun/QUEUE.md` on purpose: the interactive session's chain.
