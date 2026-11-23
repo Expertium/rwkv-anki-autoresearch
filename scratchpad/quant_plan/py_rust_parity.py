@@ -50,7 +50,12 @@ def run_engine(weights, trace_dir, users, name, preds_dir):
     for k in ("RWKV_STATE_QUANT_SCOPE", "RWKV_STATE_LOWRANK_SCOPE", "RWKV_QUANT_SHIFTS",
               "RWKV_STATE_SHIFT_LEVEL", "RWKV_LOWRANK_HADAMARD", "RWKV_LOWRANK_PERCOL",
               "RWKV_LOWRANK_ALS", "RWKV_LOWRANK_4LEVEL", "RWKV_LOWRANK_MIXED53",
-              "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT"):
+              "RWKV_LOWRANK_COMPAND", "RWKV_LOWRANK_VLEVEL", "RWKV_STATE_QUANT",
+              # The fixed-basis (codec) keys MUST be cleared too, exactly as `rust_speed.py` does:
+              # without them an ambient value leaks into a config that does not ask for a codec, so
+              # the engine would code a stream the trace's Python side did not code, and the parity
+              # verdict would be wrong. Added 2026-11-23, before the first codec parity run.
+              "RWKV_STATE_FIXEDBASIS_SCOPE", "RWKV_FIXEDBASIS_PATH"):
         env.pop(k, None)
     env.update({k: str(v) for k, v in rg.CONFIGS[name].items()})
     r = subprocess.run([str(rg.ENGINE)] + [str(u) for u in users], cwd=ROOT, env=env,
