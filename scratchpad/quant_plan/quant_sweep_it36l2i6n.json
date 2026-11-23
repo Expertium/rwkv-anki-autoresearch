@@ -1,0 +1,47 @@
+{
+  "model": "C:\\Users\\Andrew\\rwkv-anki-autoresearch\\scratchpad\\quant_plan\\qat_it36l2i6n\\qat_124.pth",
+  "ref": "qnj_it36ctl",
+  "users": 750,
+  "shards": 2,
+  "bar_bits": {
+    "card": 2176,
+    "note": 6528
+  },
+  "rows": [
+    {
+      "name": "l2i6n",
+      "tag": "ql2i6n_it36l2i6n",
+      "env": {
+        "RWKV_QAT_LOWRANK_SCOPE": "card:2:int8,note:1:int6",
+        "RWKV_QAT_SHIFT_SCOPE": "card:int4,note:int4"
+      },
+      "comment": "row 17 layout with the NOTE at int6 and the card left at int8 (1,280/1,920 = 3,200 bits)",
+      "bits": {
+        "card": 1280,
+        "note": 1920
+      },
+      "rc": 0,
+      "secs": 1574.9370000000054,
+      "users": 750,
+      "bits_ok": true,
+      "gate": {
+        "ahead": {
+          "n": 750,
+          "delta": 9.753066666666647e-05,
+          "ub95": 0.00015960184580081875,
+          "p_worse": 2.0439739519023305e-06,
+          "mean_cur": 0.3338993413333333,
+          "mean_ref": 0.3338018106666667
+        },
+        "imm": {
+          "n": 750,
+          "delta": 0.00035771733333333225,
+          "ub95": 0.0004199186660780881,
+          "p_worse": 2.3967750061173014e-26,
+          "mean_cur": 0.30656911466666664,
+          "mean_ref": 0.3062113973333333
+        }
+      }
+    }
+  ]
+}

@@ -118,3 +118,12 @@
   so the RELATIVE tax GROWS (+0.000715/+0.000793 for `l2i8` at 496 vs +0.0003-ish at 124). Do not
   queue another 496-step point as a fix for the tax; Andrew's "more than 124 steps" permission is for
   turning a failing recipe into a winning one, not for this.
+- **The Rust deploy engine CLI must be started from the REPO ROOT (settled 2026-11-23).** `Model::load`
+  (`rust/rwkv-infer/src/main.rs:1076`) reads `RWKV_WEIGHTS` (default `reference/rwkv_ref_558.safetensors`)
+  and `ref_dir()` reads `RWKV_TRACE_DIR` (default `reference`) as RELATIVE paths, so a run with
+  `cd rust\rwkv-infer` dies inside `Model::load` with `Error: The system cannot find the path specified.
+  (os error 3)` before any mode is dispatched. That error was misread for a day as a `--verify-fast` bug:
+  `--verify-fast 107` is FINE and prints `max|imm_fast - imm_candle| = 2.980e-7  PASS (<1e-4)` (B=1014)
+  when the process starts in the repo root with the same `RWKV_WEIGHTS`/`RWKV_TRACE_DIR` the normal path
+  uses (`rwkv-infer.exe 107` -> 2,815.8 rev/s). Diagnostic rule: set `RUST_BACKTRACE=1`; a backtrace whose
+  frames name `Model::load` means the WEIGHTS path, not the mode.

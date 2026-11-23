@@ -1,0 +1,5 @@
+b = open("scratchpad/quant_plan/rust_grid.py", "rb").read()
+i = b.find(b"l2i5s4n1i8s3")
+print("offset", i)
+print(repr(b[i - 900:i + 500]))
+print("count of anchor:", b.count(b'"l2i5s4n1i8s3"'), b.count(b'"l2i6s4n1i8s2"'))
