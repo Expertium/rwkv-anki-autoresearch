@@ -59,7 +59,11 @@ POINTS = [
     (None, "l2i8fb5n", "it36l2i8fb5n", 5, "0.80-0.86"),
 ]
 # Speed JSONs to try, best first (the post-basis-layout-fix runs, then the older ones).
-SPEED_TAGS = ["fb_speed3", "fb_speed2", "fb_idle", "fb_speed"]
+# "fbrung" (2026-11-23 09:47) is the run that actually NAMES the m=4 and m=5 rungs, with m=6 in
+# the same session as a cross-check. It ran while chain 25 held the machine, so its absolute
+# ratios are a CONSERVATIVE (low) reading of the codec path.
+SPEED_TAGS = ["fbrung", "fb_speed3", "fb_speed2", "fb_idle", "fb_speed"]
+LOADED_TAG = "fbrung"   # the tag measured beside a running chain, so its ratios read low
 
 
 def speed_of(name):
@@ -156,7 +160,11 @@ def build(row_id, name, stamp, m, capture, r):
                      f"(median per-user {med:.3f}x) against `plain` in the same run "
                      f"(`rust_speed_{tag}.json`), so it "
                      f"{'CLEARS' if sp_ok else 'FAILS'} the 0.75x floor by "
-                     f"{abs(med - SPEED_FLOOR):.3f}")
+                     f"{abs(med - SPEED_FLOOR):.3f}"
+                     + (", measured while a chain job held the machine - the same probe reads "
+                        "0.760x for the m=6 rung against 0.793x in `rust_speed_fb_speed3.json`, so "
+                        "this figure is a conservative floor on the codec's speed"
+                        if tag == LOADED_TAG else ""))
     else:
         rev = xrev = med = None
         sp_ok = None
