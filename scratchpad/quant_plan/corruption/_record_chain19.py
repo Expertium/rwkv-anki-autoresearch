@@ -112,6 +112,11 @@ def fmt(x: float) -> str:
     return f"{x:+.6f}"
 
 
+def cmp_word(x: float) -> str:
+    """'+0.000052' is a COST of 0.000052, '-0.000012' is a WIN of 0.000012: never write a negative cost."""
+    return f"BETTER by {abs(x):.6f}" if x < 0 else f"worse by {abs(x):.6f}"
+
+
 def build(row_id, name, stamp, capture, compare, r):
     card, note = r["bits"]["card"], r["bits"]["note"]
     total = card + note
@@ -155,15 +160,14 @@ def build(row_id, name, stamp, capture, compare, r):
         f"(`rust_speed_{sp[3] if sp else 'n/a'}.json`), since speed is per config and not per checkpoint)"
     )
     if ok:
-        size_clause = ("at row 17's EXACT size, so the codec's lower energy capture costs "
-                       f"{fmt(vs17[0])}/{fmt(vs17[1])} for the SAME bits"
+        size_clause = ("at row 17's EXACT size, so this is a pure codec A/B at the same 3,584 bits"
                        if total == 3584 else
-                       f"with {3584 - total} fewer bits than row 17, so the codec's lower energy capture "
-                       f"is bought back by the size cut")
+                       f"with {3584 - total} fewer bits than row 17, so the size cut is real")
         verdict = (
             f"**PASS on both heads**: ahead at {a['ub95'] / CEIL:.2f}x of the ceiling (ub95 "
             f"{fmt(a['ub95'])}) and the immediate head at {i['ub95'] / CEIL:.2f}x (ub95 {fmt(i['ub95'])}). "
-            f"Against row 17 ({fmt(ROW17[0])}/{fmt(ROW17[1])}) it costs {fmt(vs17[0])}/{fmt(vs17[1])}, "
+            f"Against row 17 ({fmt(ROW17[0])}/{fmt(ROW17[1])}) the codec is "
+            f"{cmp_word(vs17[0])}/{cmp_word(vs17[1])}, "
             f"{size_clause}, and {sp_clause}"
         )
     else:
@@ -185,11 +189,12 @@ def build(row_id, name, stamp, capture, compare, r):
         f"rank-1 note's 0.904-0.951 per layer. It reads {a['mean_cur']:.6f}/{i['mean_cur']:.6f} = "
         f"{fmt(a['delta'])}/{fmt(i['delta'])} against `qnj_it36ctl` (ub95 {fmt(a['ub95'])}/"
         f"{fmt(i['ub95'])}, 750 users, {mins:.1f} min) - "
-        f"{'a PASS on both heads' if ok else 'a FAIL'}. Priced against row 17 "
-        f"({fmt(ROW17[0])}/{fmt(ROW17[1])}), the codec costs {fmt(vs17[0])}/{fmt(vs17[1])}; priced "
-        f"against row 45 ({fmt(ROW45[0])}/{fmt(ROW45[1])}), {fmt(vs45[0])}/{fmt(vs45[1])}. "
-        f"{'So a FIXED basis of this size is competitive with the per-step rank-r factors' if ok else 'So the fixed basis pays more than the per-step factors do at this size'}"
-        f". On the speed axis the codec is measured on the deploy engine as {sp_clause}"
+        f"{'a PASS on both heads' if ok else 'a FAIL'}. Against row 17 "
+        f"({fmt(ROW17[0])}/{fmt(ROW17[1])}, the identical 3,584 bits) the codec is "
+        f"{cmp_word(vs17[0])}/{cmp_word(vs17[1])}; against row 45 "
+        f"({fmt(ROW45[0])}/{fmt(ROW45[1])}) it is {cmp_word(vs45[0])}/{cmp_word(vs45[1])}. "
+        f"{'So at a FIXED size a fitted basis BEATS the per-step rank-r factors on both heads' if ok and vs17[0] < 0 and vs17[1] < 0 else ('So a FIXED basis of this size is competitive with the per-step rank-r factors' if ok else 'So the fixed basis pays more than the per-step factors do at this size')}"
+        f". Speed: {sp_clause}"
         f"{' - and because that margin is inside 2% of the floor, an idle-machine re-measure (tag `fb_idle`) is the number to quote' if near_floor else ''}."
     )
     if not ok:
@@ -208,13 +213,13 @@ def build(row_id, name, stamp, capture, compare, r):
         f"capture {capture} against the shipped rank-1 note's 0.904-0.951) reads "
         f"{a['mean_cur']:.6f}/{i['mean_cur']:.6f} = {fmt(a['delta'])}/{fmt(i['delta'])} vs "
         f"`qnj_it36ctl` (ub95 {fmt(a['ub95'])}/{fmt(i['ub95'])}, 750 users, {mins:.1f} min). Against row "
-        f"17 ({fmt(ROW17[0])}/{fmt(ROW17[1])}) it costs {fmt(vs17[0])}/{fmt(vs17[1])}; against row 45 "
-        f"({fmt(ROW45[0])}/{fmt(ROW45[1])}) {fmt(vs45[0])}/{fmt(vs45[1])}. "
-        f"{'At 3,584 bits this is row 17s exact size, so the codec MATCHES the per-step factors for the same bits.' if which == 'fb8n' and ok else ''}"
+        f"17 ({fmt(ROW17[0])}/{fmt(ROW17[1])}, the identical bits) the codec is "
+        f"{cmp_word(vs17[0])}/{cmp_word(vs17[1])}; against row 45 "
+        f"({fmt(ROW45[0])}/{fmt(ROW45[1])}) {cmp_word(vs45[0])}/{cmp_word(vs45[1])}. "
+        f"{'At 3,584 bits this is row 17s exact size, so the codec BEATS the per-step factors for the same bits.' if which == 'fb8n' and ok else ''}"
         f"{'At 2,912 bits this is 32 bits BELOW row 45s frontier, so the frontier has moved.' if which == 'fb6n' and ok else ''}"
         f"{'The codec loses to the per-step factors at this size.' if not ok else ''}"
-        f" Speed is the codec path's OWN engine measurement, because RESULTS.md quotes speed per config: "
-        f"{sp_clause}. "
+        f" Speed: {sp_clause}. "
         f"{'That ratio is within 2% of the floor, so the idle re-measure is the number to quote.' if near_floor else ''}"
         f"{'This row is therefore NOT deployable as measured even where it passes the loss gate.' if ok and sp_ok is False else ''}\n"
     )
@@ -231,7 +236,8 @@ def build(row_id, name, stamp, capture, compare, r):
         f"{i['mean_cur']:.6f} = {fmt(a['delta'])}/{fmt(i['delta'])} (ub95 {fmt(a['ub95'])}/"
         f"{fmt(i['ub95'])}, 750 users) - {'PASS on both heads' if ok else '**FAIL**'}. The codec's "
         f"held-out energy capture is {capture} at m={m}, against the shipped rank-1 note's 0.904-0.951 "
-        f"per layer; priced against row 17 the codec costs {fmt(vs17[0])}/{fmt(vs17[1])}. Speed is "
+        f"per layer; against row 17 (the identical bits) the codec is "
+        f"{cmp_word(vs17[0])}/{cmp_word(vs17[1])}. Speed is "
         f"measured per config on the deploy engine: {sp_clause}. The row's "
         f"finiteness {fin}.\n"
     )

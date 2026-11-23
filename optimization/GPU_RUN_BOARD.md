@@ -1118,3 +1118,7 @@ Both ahead intervals CONTAIN zero, so the question is entirely the immediate hea
 `quant_sweep.CANDIDATES` and `check_corruption.CONFIGS` on 2026-11-23, so nothing else changed. If both
 FAIL, the shift ladder is closed by measurement rather than by inference, and row 45's 2,944 bits stands as
 the floor.
+
+## Amendment 38 (2026-11-23 03:58): chain 19 point (fb8n) `l2i8fb8n` - fixed-basis codec m=8, 1,280/2,304 = 3,584 bits
+
+Approach 1 (fixed-basis state coding) is the codec A/B. `l2i8fb8n` holds row 17's card at rank-2 int8 + int4 shifts and replaces the note's per-step rank-1 factors with an m x m coefficient block against a basis that ships with the model: 1,280/2,304 = 3,584 bits, 0 below row 17 and 640 above row 45. Landed 03:55 after 27.8 min of eval. It reads 0.333842/0.306340 = +0.000040/+0.000129 (ub95 +0.000065/+0.000155, 750 users) - PASS on both heads. The codec's held-out energy capture is 0.876-0.921 at m=8, against the shipped rank-1 note's 0.904-0.951 per layer; against row 17 (the identical bits) the codec is BETTER by 0.000012/BETTER by 0.000198. Speed is measured per config on the deploy engine: the deploy engine's codec path measures 2,166.6 rev/s = 0.757x rev/s (median per-user 0.738x) against `plain` in the SAME run (`rust_speed_fb_speed.json`, users 107/136/156), so it FAILS the 0.75x floor by 0.012. The row's finiteness a corruption check runs in this chain's own phase.
